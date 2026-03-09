@@ -53,6 +53,7 @@ export interface StdinParserOptions {
   armTimeouts?: boolean
   onTimeoutFlush?: () => void
   useKittyKeyboard?: boolean
+  treatRawBackspaceAsCtrlBackspace?: boolean | (() => boolean)
   protocolContext?: Partial<StdinParserProtocolContext>
   clock?: Clock
 }
@@ -500,6 +501,7 @@ export class StdinParser {
   private readonly armTimeouts: boolean
   private readonly onTimeoutFlush: (() => void) | null
   private readonly useKittyKeyboard: boolean
+  private readonly treatRawBackspaceAsCtrlBackspace: () => boolean
   private readonly mouseParser = new MouseParser()
   private readonly clock: Clock
   private protocolContext: StdinParserProtocolContext
@@ -530,6 +532,11 @@ export class StdinParser {
     this.armTimeouts = options.armTimeouts ?? true
     this.onTimeoutFlush = options.onTimeoutFlush ?? null
     this.useKittyKeyboard = options.useKittyKeyboard ?? true
+    const treatRawBackspaceAsCtrlBackspace = options.treatRawBackspaceAsCtrlBackspace ?? false
+    this.treatRawBackspaceAsCtrlBackspace =
+      typeof treatRawBackspaceAsCtrlBackspace === "function"
+        ? treatRawBackspaceAsCtrlBackspace
+        : () => treatRawBackspaceAsCtrlBackspace
     this.clock = options.clock ?? SYSTEM_CLOCK
     this.protocolContext = {
       ...DEFAULT_PROTOCOL_CONTEXT,
@@ -1544,6 +1551,15 @@ export class StdinParser {
   private emitKeyOrResponse(protocol: StdinResponseProtocol, raw: string): void {
     const parsed = parseKeypress(raw, { useKittyKeyboard: this.useKittyKeyboard })
     if (parsed) {
+      if (
+        parsed.raw === "\b" &&
+        parsed.name === "backspace" &&
+        !parsed.ctrl &&
+        this.treatRawBackspaceAsCtrlBackspace()
+      ) {
+        parsed.ctrl = true
+      }
+
       this.events.push({
         type: "key",
         raw: parsed.raw,

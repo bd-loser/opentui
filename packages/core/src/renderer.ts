@@ -774,6 +774,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.drainStdinParser()
       },
       useKittyKeyboard: useKittyForParsing,
+      treatRawBackspaceAsCtrlBackspace: () => this.isWindowsTerminalSession(),
       protocolContext: {
         kittyKeyboardEnabled: useKittyForParsing,
         privateCapabilityRepliesActive: false,
@@ -1483,6 +1484,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.dispatchSequenceHandlers(event.sequence)
         return
     }
+  }
+
+  private isWindowsTerminalSession(): boolean {
+    if (process.env.WT_SESSION) {
+      return true
+    }
+
+    const terminalName = this._capabilities?.terminal?.name?.toLowerCase()
+    return terminalName === "windows terminal" || terminalName === "windows_terminal"
   }
 
   private handleStdinParserFailure(error: unknown): void {

@@ -242,6 +242,89 @@ test("special keys via keyInput events", async () => {
   })
 })
 
+test("raw \\b becomes ctrl+backspace in Windows Terminal", async () => {
+  const previousWtSession = process.env.WT_SESSION
+  process.env.WT_SESSION = "test-session"
+
+  try {
+    const resultBackspace = await triggerInput("\b")
+    expect(resultBackspace).toMatchObject({
+      eventType: "press",
+      name: "backspace",
+      ctrl: true,
+      meta: false,
+      shift: false,
+      option: false,
+      number: false,
+      sequence: "\b",
+      raw: "\b",
+    })
+  } finally {
+    if (previousWtSession === undefined) {
+      delete process.env.WT_SESSION
+    } else {
+      process.env.WT_SESSION = previousWtSession
+    }
+  }
+})
+
+test("raw DEL stays plain backspace in Windows Terminal", async () => {
+  const previousWtSession = process.env.WT_SESSION
+  process.env.WT_SESSION = "test-session"
+
+  try {
+    const resultBackspace = await triggerInput("\x7f")
+    expect(resultBackspace).toMatchObject({
+      eventType: "press",
+      name: "backspace",
+      ctrl: false,
+      meta: false,
+      shift: false,
+      option: false,
+      number: false,
+      sequence: "\x7f",
+      raw: "\x7f",
+    })
+  } finally {
+    if (previousWtSession === undefined) {
+      delete process.env.WT_SESSION
+    } else {
+      process.env.WT_SESSION = previousWtSession
+    }
+  }
+})
+
+test("raw \\b becomes ctrl+backspace from Windows Terminal capability fallback", async () => {
+  const previousWtSession = process.env.WT_SESSION
+  delete process.env.WT_SESSION
+
+  const rendererWithPrivateState = currentRenderer as any
+  const previousCaps = rendererWithPrivateState._capabilities
+  rendererWithPrivateState._capabilities = { terminal: { name: "Windows Terminal" } }
+
+  try {
+    const resultBackspace = await triggerInput("\b")
+    expect(resultBackspace).toMatchObject({
+      eventType: "press",
+      name: "backspace",
+      ctrl: true,
+      meta: false,
+      shift: false,
+      option: false,
+      number: false,
+      sequence: "\b",
+      raw: "\b",
+    })
+  } finally {
+    rendererWithPrivateState._capabilities = previousCaps
+    if (previousWtSession === undefined) {
+      delete process.env.WT_SESSION
+    } else {
+      process.env.WT_SESSION = previousWtSession
+    }
+  }
+})
+
 test("ctrl+letter combinations via keyInput events", async () => {
   const resultCtrlA = await triggerInput("\x01")
   expect(resultCtrlA).toMatchObject({

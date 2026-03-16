@@ -213,7 +213,13 @@ describe("TreeSitterClient Caching", () => {
   })
 
   test("should handle directory creation errors gracefully", async () => {
-    const invalidDataPath = "/invalid/path/that/cannot/be/created"
+    // On Unix, /invalid/... requires root permissions so mkdir fails.
+    // On Windows, /invalid/... resolves to C:\invalid\... which mkdir({recursive:true}) can create,
+    // so we use a non-existent drive letter instead.
+    const invalidDataPath =
+      process.platform === "win32"
+        ? "Z:\\invalid\\path\\that\\cannot\\be\\created"
+        : "/invalid/path/that/cannot/be/created"
     const client = new TreeSitterClient({ dataPath: invalidDataPath })
 
     await expect(client.initialize()).rejects.toThrow()

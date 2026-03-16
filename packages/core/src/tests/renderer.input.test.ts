@@ -1524,6 +1524,40 @@ test("partial SGR mouse stays pending on timeout, completes when rest arrives", 
   expect(keypresses[0].name).toBe("x")
 })
 
+test("partial OSC flushed on timeout should not block later text", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]52;c;"))
+  advanceCurrentClock()
+  expect(keypresses).toHaveLength(0)
+
+  currentRenderer.stdin.emit("data", Buffer.from("abc"))
+  advanceCurrentClock()
+
+  expect(keypresses).toHaveLength(3)
+  expect(keypresses.map((event) => event.name)).toEqual(["a", "b", "c"])
+})
+
+test("partial OSC flushed on timeout should not block later escape sequences", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b]52;c;"))
+  advanceCurrentClock()
+  expect(keypresses).toHaveLength(0)
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[A"))
+  advanceCurrentClock()
+
+  expect(keypresses).toHaveLength(1)
+  expect(keypresses[0].name).toBe("up")
+})
+
 test("incomplete mouse input resets the timeout when more bytes arrive", async () => {
   const keypresses: KeyEvent[] = []
   currentRenderer.keyInput.on("keypress", (event) => {

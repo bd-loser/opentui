@@ -368,13 +368,14 @@ describe("StdinParser", () => {
       }
     })
 
-    test("SS3 timeout-flushed as unknown response", () => {
+    test("SS3 stays pending after timeout", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1bO"))
         expect(snap(parser)).toEqual([])
         clock.advance(10)
-        expect(snap(parser)).toEqual([resp("unknown", "\x1bO")])
+        // ESC O is unambiguous — not flushed on timeout
+        expect(snap(parser)).toEqual([])
       } finally {
         parser.destroy()
       }
@@ -906,49 +907,93 @@ describe("StdinParser", () => {
       }
     })
 
-    test("timeout flushes partial OSC as unknown", () => {
+    test("partial OSC stays pending after timeout", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b]incomplete"))
         expect(snap(parser)).toEqual([])
         clock.advance(10)
-        expect(snap(parser)).toEqual([resp("unknown", "\x1b]incomplete")])
+        expect(snap(parser)).toEqual([])
       } finally {
         parser.destroy()
       }
     })
 
-    test("timeout flushes partial DCS as unknown", () => {
+    test("partial DCS stays pending after timeout", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1bPpartial"))
         expect(snap(parser)).toEqual([])
         clock.advance(10)
-        expect(snap(parser)).toEqual([resp("unknown", "\x1bPpartial")])
+        expect(snap(parser)).toEqual([])
       } finally {
         parser.destroy()
       }
     })
 
-    test("timeout flushes partial APC as unknown", () => {
+    test("partial APC stays pending after timeout", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b_partial"))
         expect(snap(parser)).toEqual([])
         clock.advance(10)
-        expect(snap(parser)).toEqual([resp("unknown", "\x1b_partial")])
+        expect(snap(parser)).toEqual([])
       } finally {
         parser.destroy()
       }
     })
 
-    test("timeout flushes partial CSI as unknown", () => {
+    test("partial CSI stays pending after timeout", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b[123"))
         expect(snap(parser)).toEqual([])
         clock.advance(10)
-        expect(snap(parser)).toEqual([resp("unknown", "\x1b[123")])
+        expect(snap(parser)).toEqual([])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("split CSI across reads reassembles after timeout", () => {
+      const { parser, clock } = createTimedParser()
+      try {
+        // Kitty Ctrl+V release split across two reads
+        parser.push(Buffer.from("\x1b[118;5"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        // Stays pending — not flushed
+        expect(snap(parser)).toEqual([])
+        parser.push(Buffer.from(";3u"))
+        expect(snap(parser)).toEqual([k("v", { ctrl: true, raw: "\x1b[118;5;3u" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("split OSC across reads reassembles after timeout", () => {
+      const { parser, clock } = createTimedParser()
+      try {
+        parser.push(Buffer.from("\x1b]52;c;"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+        parser.push(Buffer.from("dGVzdA==\x07"))
+        expect(snap(parser)).toEqual([resp("osc", "\x1b]52;c;dGVzdA==\x07")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("split DCS across reads reassembles after timeout", () => {
+      const { parser, clock } = createTimedParser()
+      try {
+        parser.push(Buffer.from("\x1bP>|kit"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+        parser.push(Buffer.from("ty(0.42.2)\x1b\\"))
+        expect(snap(parser)).toEqual([resp("dcs", "\x1bP>|kitty(0.42.2)\x1b\\")])
       } finally {
         parser.destroy()
       }
@@ -1137,7 +1182,7 @@ describe("StdinParser", () => {
       }
     })
 
-    test("after timed-out ESC, partial [< waits, then timeout flushes as one response", () => {
+    test("after timed-out ESC, partial [< stays pending after timeout", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b"))
@@ -1147,7 +1192,8 @@ describe("StdinParser", () => {
         parser.push(Buffer.from("[<35;20"))
         expect(snap(parser)).toEqual([])
         clock.advance(10)
-        expect(snap(parser)).toEqual([resp("unknown", "[<35;20")])
+        // esc_less_mouse is unambiguous — stays pending
+        expect(snap(parser)).toEqual([])
       } finally {
         parser.destroy()
       }
@@ -1649,13 +1695,14 @@ describe("StdinParser", () => {
       ["bracketed paste end outside paste mode is a CSI response", "\x1b[201~", [resp("csi", "\x1b[201~")]],
     ])
 
-    test("partial X10 times out as one unknown response", () => {
+    test("partial X10 stays pending after timeout", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b[M !"))
         expect(snap(parser)).toEqual([])
         clock.advance(10)
-        expect(snap(parser)).toEqual([resp("unknown", "\x1b[M !")])
+        // X10 mouse payload is unambiguous — stays pending
+        expect(snap(parser)).toEqual([])
       } finally {
         parser.destroy()
       }

@@ -1498,20 +1498,25 @@ test("capability response followed by keypress", async () => {
   expect(keypresses[0].name).toBe("a")
 })
 
-test("partial SGR mouse flushed on timeout should not trigger keypress", async () => {
+test("partial SGR mouse stays pending on timeout, completes when rest arrives", async () => {
   const keypresses: KeyEvent[] = []
   currentRenderer.keyInput.on("keypress", (event) => {
     keypresses.push(event)
   })
 
-  // Incomplete SGR mouse sequence; the native parser flushes this token on timeout.
+  // Incomplete SGR mouse sequence; stays pending (not flushed on timeout).
   currentRenderer.stdin.emit("data", Buffer.from("\x1b[<35;20"))
 
   // Wait past native stdin parser timeout (10ms)
   advanceCurrentClock()
   expect(keypresses).toHaveLength(0)
 
-  // Ensure normal key input still works after the filtered flush
+  // Completing the mouse sequence should not trigger keypress either
+  currentRenderer.stdin.emit("data", Buffer.from(";5m"))
+  advanceCurrentClock()
+  expect(keypresses).toHaveLength(0)
+
+  // Normal key input still works after
   currentRenderer.stdin.emit("data", Buffer.from("x"))
   advanceCurrentClock()
 

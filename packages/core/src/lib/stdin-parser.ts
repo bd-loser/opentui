@@ -689,15 +689,10 @@ export class StdinParser {
 
         case "ss3": {
           if (this.cursor >= bytes.length) {
-            if (!this.forceFlush) {
-              this.markPending()
-              return
-            }
-
-            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
-            this.state = { tag: "ground" }
-            this.consumePrefix(this.cursor)
-            continue
+            // ESC O already seen — unambiguously SS3, not a lone ESC.
+            // Wait for the next byte rather than timeout-flushing.
+            this.markPending()
+            return
           }
 
           if (byte === ESC) {
@@ -750,15 +745,12 @@ export class StdinParser {
 
         case "csi": {
           if (this.cursor >= bytes.length) {
-            if (!this.forceFlush) {
-              this.markPending()
-              return
-            }
-
-            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
-            this.state = { tag: "ground" }
-            this.consumePrefix(this.cursor)
-            continue
+            // ESC[ already seen — unambiguously CSI. Wait for final byte
+            // or interruption by a new ESC (handled below). Don't
+            // timeout-flush; split sequences across reads are common on
+            // Windows Terminal with kitty keyboard.
+            this.markPending()
+            return
           }
 
           // A new ESC inside an incomplete CSI means the previous sequence
@@ -777,15 +769,9 @@ export class StdinParser {
           if (byte === 0x4d && this.cursor === this.unitStart + 2) {
             const end = this.cursor + 4
             if (bytes.length < end) {
-              if (!this.forceFlush) {
-                this.markPending()
-                return
-              }
-
-              this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, bytes.length))
-              this.state = { tag: "ground" }
-              this.consumePrefix(bytes.length)
-              continue
+              // Inside X10 mouse payload, wait for remaining bytes.
+              this.markPending()
+              return
             }
 
             this.emitMouse(bytes.subarray(this.unitStart, end), "x10")
@@ -854,15 +840,9 @@ export class StdinParser {
         // since the two-byte ESC \ can split across push() calls.
         case "osc": {
           if (this.cursor >= bytes.length) {
-            if (!this.forceFlush) {
-              this.markPending()
-              return
-            }
-
-            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
-            this.state = { tag: "ground" }
-            this.consumePrefix(this.cursor)
-            continue
+            // ESC] already seen — wait for BEL or ESC \ terminator.
+            this.markPending()
+            return
           }
 
           if (this.state.sawEsc) {
@@ -898,15 +878,9 @@ export class StdinParser {
 
         case "dcs": {
           if (this.cursor >= bytes.length) {
-            if (!this.forceFlush) {
-              this.markPending()
-              return
-            }
-
-            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
-            this.state = { tag: "ground" }
-            this.consumePrefix(this.cursor)
-            continue
+            // ESC P already seen — wait for ESC \ terminator.
+            this.markPending()
+            return
           }
 
           if (this.state.sawEsc) {
@@ -934,15 +908,9 @@ export class StdinParser {
 
         case "apc": {
           if (this.cursor >= bytes.length) {
-            if (!this.forceFlush) {
-              this.markPending()
-              return
-            }
-
-            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
-            this.state = { tag: "ground" }
-            this.consumePrefix(this.cursor)
-            continue
+            // ESC _ already seen — wait for ESC \ terminator.
+            this.markPending()
+            return
           }
 
           if (this.state.sawEsc) {
@@ -973,15 +941,9 @@ export class StdinParser {
         // opaque response so split mouse bytes never leak into text.
         case "esc_less_mouse": {
           if (this.cursor >= bytes.length) {
-            if (!this.forceFlush) {
-              this.markPending()
-              return
-            }
-
-            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, this.cursor))
-            this.state = { tag: "ground" }
-            this.consumePrefix(this.cursor)
-            continue
+            // Inside mouse sequence, wait for final byte.
+            this.markPending()
+            return
           }
 
           if ((byte >= 0x30 && byte <= 0x39) || byte === 0x3b) {
@@ -1010,15 +972,9 @@ export class StdinParser {
           const end = this.unitStart + 5
 
           if (bytes.length < end) {
-            if (!this.forceFlush) {
-              this.markPending()
-              return
-            }
-
-            this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, bytes.length))
-            this.state = { tag: "ground" }
-            this.consumePrefix(bytes.length)
-            continue
+            // Inside X10 mouse payload, wait for remaining bytes.
+            this.markPending()
+            return
           }
 
           this.emitOpaqueResponse("unknown", bytes.subarray(this.unitStart, end))

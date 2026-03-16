@@ -32,10 +32,10 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Build core library
+      - name: Build core
         run: |
           cd packages/core
-          bun run build:lib
+          bun run build
 
       - name: Build
         run: |

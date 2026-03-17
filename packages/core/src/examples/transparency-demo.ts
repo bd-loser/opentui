@@ -27,25 +27,36 @@ const THEMES = {
     textUnderAlpha: "#FFB84D",
     moreTextUnder: "#7B68EE",
     boxLabelColor: RGBA.fromInts(255, 255, 255, 220),
+    label: "dark",
   },
-  bright: {
+  light: {
     backgroundColor: "#F6F1E5",
     headerAccent: "#0F766E",
     headerMuted: "#4B5563",
     textUnderAlpha: "#B45309",
     moreTextUnder: "#6D28D9",
     boxLabelColor: RGBA.fromInts(17, 24, 39, 220),
+    label: "light",
+  },
+  transparent: {
+    backgroundColor: "transparent",
+    headerAccent: "#0284C7",
+    headerMuted: "#64748B",
+    textUnderAlpha: "#D97706",
+    moreTextUnder: "#7C3AED",
+    boxLabelColor: RGBA.fromInts(255, 255, 255, 220),
+    label: "transparent",
   },
 } as const
 
 type ThemeName = keyof typeof THEMES
+const THEME_ORDER: ThemeName[] = ["dark", "light", "transparent"]
 
 function getHeaderText(themeName: ThemeName) {
   const theme = THEMES[themeName]
-  const backgroundLabel = themeName === "dark" ? "dark bg" : "bright bg"
 
   return t`${bold(underline(fg(theme.headerAccent)("Interactive Alpha Transparency & Blending Demo - Drag the boxes!")))}
-${fg(theme.headerMuted)(`Drag boxes with the mouse • Press B to toggle background (${backgroundLabel})`)}`
+${fg(theme.headerMuted)(`Drag boxes with the mouse • Press B to cycle dark/light/transparent (current: ${theme.label})`)}`
 }
 
 class DraggableTransparentBox extends BoxRenderable {
@@ -278,7 +289,9 @@ export function run(renderer: CliRenderer): void {
       return
     }
 
-    applyTheme(currentTheme === "dark" ? "bright" : "dark")
+    const currentThemeIndex = THEME_ORDER.indexOf(currentTheme)
+    const nextTheme = THEME_ORDER[(currentThemeIndex + 1) % THEME_ORDER.length]
+    applyTheme(nextTheme)
   }
 
   renderer.keyInput.on("keypress", keyListener)

@@ -12,12 +12,15 @@ import {
   underline,
   fg,
 } from "../index.js"
-import type { CliRenderer, RenderContext } from "../index.js"
+import type { CliRenderer, RenderContext, ThemeMode } from "../index.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let nextZIndex = 101
 let draggableBoxes: DraggableTransparentBox[] = []
 let keyListener: ((key: KeyEvent) => void) | null = null
+let themeModeListener: ((mode: ThemeMode) => void) | null = null
+
+const DEFAULT_THEME_MODE: ThemeMode = "dark"
 
 const THEMES = {
   dark: {
@@ -51,6 +54,18 @@ const THEMES = {
 
 type ThemeName = keyof typeof THEMES
 const THEME_ORDER: ThemeName[] = ["dark", "light", "transparent"]
+
+function getTransparentBackgroundColor(themeMode: ThemeMode): RGBA {
+  return themeMode === "light" ? RGBA.fromInts(255, 255, 255, 0) : RGBA.fromInts(0, 0, 0, 0)
+}
+
+function getThemeBackgroundColor(themeName: ThemeName, themeMode: ThemeMode): string | RGBA {
+  if (themeName === "transparent") {
+    return getTransparentBackgroundColor(themeMode)
+  }
+
+  return THEMES[themeName].backgroundColor
+}
 
 function getHeaderText(themeName: ThemeName) {
   const theme = THEMES[themeName]
@@ -140,7 +155,8 @@ export function run(renderer: CliRenderer): void {
   renderer.start()
 
   let currentTheme: ThemeName = "dark"
-  renderer.setBackgroundColor(THEMES[currentTheme].backgroundColor)
+  let currentThemeMode: ThemeMode = renderer.themeMode ?? DEFAULT_THEME_MODE
+  renderer.setBackgroundColor(getThemeBackgroundColor(currentTheme, currentThemeMode))
 
   const parentContainer = new BoxRenderable(renderer, {
     id: "parent-container",
@@ -268,7 +284,7 @@ export function run(renderer: CliRenderer): void {
     currentTheme = themeName
 
     const theme = THEMES[themeName]
-    renderer.setBackgroundColor(theme.backgroundColor)
+    renderer.setBackgroundColor(getThemeBackgroundColor(themeName, currentThemeMode))
     headerDisplay.content = getHeaderText(themeName)
     textUnderAlpha.fg = theme.textUnderAlpha
     moreTextUnder.fg = theme.moreTextUnder
@@ -284,6 +300,10 @@ export function run(renderer: CliRenderer): void {
     renderer.keyInput.off("keypress", keyListener)
   }
 
+  if (themeModeListener) {
+    renderer.off("theme_mode", themeModeListener)
+  }
+
   keyListener = (key: KeyEvent) => {
     if (key.name !== "b") {
       return
@@ -295,6 +315,16 @@ export function run(renderer: CliRenderer): void {
   }
 
   renderer.keyInput.on("keypress", keyListener)
+
+  themeModeListener = (mode: ThemeMode) => {
+    currentThemeMode = mode
+
+    if (currentTheme === "transparent") {
+      renderer.setBackgroundColor(getThemeBackgroundColor(currentTheme, currentThemeMode))
+    }
+  }
+
+  renderer.on("theme_mode", themeModeListener)
 }
 
 export function destroy(renderer: CliRenderer): void {
@@ -303,6 +333,11 @@ export function destroy(renderer: CliRenderer): void {
   if (keyListener) {
     renderer.keyInput.off("keypress", keyListener)
     keyListener = null
+  }
+
+  if (themeModeListener) {
+    renderer.off("theme_mode", themeModeListener)
+    themeModeListener = null
   }
 
   for (const box of draggableBoxes) {

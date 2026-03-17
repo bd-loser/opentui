@@ -1755,6 +1755,60 @@ test("delayed capability responses should be processed", async () => {
   expect(keypresses.map((k) => k.name)).toEqual(["a", "b", "c"])
 })
 
+test("delayed explicit-width CPR stays in response path while setup probe is active", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // @ts-expect-error - accessing private helper for test coverage
+  currentRenderer.updateStdinParserProtocolContext({ explicitWidthCprActive: true })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[1;2"))
+  advanceCurrentClock()
+  currentRenderer.stdin.emit("data", Buffer.from("R"))
+  advanceCurrentClock()
+
+  expect(keypresses).toHaveLength(0)
+})
+
+test("delayed DECRPM stays in response path while capability probing is active", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // @ts-expect-error - accessing private helper for test coverage
+  currentRenderer.updateStdinParserProtocolContext({ privateCapabilityRepliesActive: true })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?1016;2$"))
+  advanceCurrentClock()
+  currentRenderer.stdin.emit("data", Buffer.from("y"))
+  advanceCurrentClock()
+
+  expect(keypresses).toHaveLength(0)
+})
+
+test("delayed pixel resolution response stays in response path while query is active", async () => {
+  const keypresses: KeyEvent[] = []
+  currentRenderer.keyInput.on("keypress", (event) => {
+    keypresses.push(event)
+  })
+
+  // @ts-expect-error - accessing private property for testing
+  currentRenderer.waitingForPixelResolution = true
+  // @ts-expect-error - accessing private helper for test coverage
+  currentRenderer.updateStdinParserProtocolContext({ pixelResolutionQueryActive: true })
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[4;1080;192"))
+  advanceCurrentClock()
+  currentRenderer.stdin.emit("data", Buffer.from("0t"))
+  advanceCurrentClock()
+
+  expect(keypresses).toHaveLength(0)
+  expect(currentRenderer.resolution).toEqual({ width: 1920, height: 1080 })
+})
+
 test("vscode minimal capability response", async () => {
   const keypresses: KeyEvent[] = []
   currentRenderer.keyInput.on("keypress", (event) => {

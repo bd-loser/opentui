@@ -35,7 +35,7 @@ import {
   parsePixelResolution,
 } from "./lib/terminal-capability-detection.js"
 import { type Clock, type TimerHandle, SystemClock } from "./lib/clock.js"
-import { StdinParser, type StdinEvent } from "./lib/stdin-parser.js"
+import { StdinParser, type StdinEvent, type StdinParserProtocolContext } from "./lib/stdin-parser.js"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -637,6 +637,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.drainStdinParser()
       },
       useKittyKeyboard: useKittyForParsing,
+      protocolContext: {
+        kittyKeyboardEnabled: useKittyForParsing,
+        privateCapabilityRepliesActive: false,
+        pixelResolutionQueryActive: false,
+        explicitWidthCprActive: false,
+      },
       clock: this.clock,
     })
 
@@ -1040,10 +1046,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public enableKittyKeyboard(flags: number = 0b00011): void {
     this.lib.enableKittyKeyboard(this.rendererPtr, flags)
+    this.updateStdinParserProtocolContext({ kittyKeyboardEnabled: true })
   }
 
   public disableKittyKeyboard(): void {
     this.lib.disableKittyKeyboard(this.rendererPtr)
+    this.updateStdinParserProtocolContext({ kittyKeyboardEnabled: false }, true)
   }
 
   public set useThread(useThread: boolean) {
@@ -1057,6 +1065,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._terminalIsSetup) return
     this._terminalIsSetup = true
 
+    this.updateStdinParserProtocolContext({
+      privateCapabilityRepliesActive: true,
+      explicitWidthCprActive: true,
+    })
     this.lib.setupTerminal(this.rendererPtr, this._useAlternateScreen)
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
 
@@ -1072,6 +1084,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.capabilityTimeoutId = this.clock.setTimeout(() => {
       this.capabilityTimeoutId = null
       this.removeInputHandler(this.capabilityHandler)
+      this.updateStdinParserProtocolContext(
+        {
+          privateCapabilityRepliesActive: false,
+          explicitWidthCprActive: false,
+        },
+        true,
+      )
     }, 5000)
 
     if (this._useMouse) {
@@ -1103,6 +1122,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public removeInputHandler(handler: (sequence: string) => boolean): void {
     this.sequenceHandlers = this.sequenceHandlers.filter((candidate) => candidate !== handler)
+  }
+
+  private updateStdinParserProtocolContext(patch: Partial<StdinParserProtocolContext>, drain = false): void {
+    if (!this.stdinParser) return
+    this.stdinParser.updateProtocolContext(patch)
+    if (drain) this.drainStdinParser()
   }
 
   public subscribeOsc(handler: (sequence: string) => void): () => void {
@@ -1242,8 +1267,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         const resolution = parsePixelResolution(sequence)
         if (resolution) {
           this._resolution = resolution
-          this.waitingForPixelResolution = false
         }
+        this.waitingForPixelResolution = false
+        this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: false }, true)
         return true
       }
       return false
@@ -1566,6 +1592,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private queryPixelResolution() {
     this.waitingForPixelResolution = true
+    this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: true })
     this.lib.queryPixelResolution(this.rendererPtr)
   }
 
@@ -1784,6 +1811,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.disableMouse()
     this.removeExitListeners()
+    this.waitingForPixelResolution = false
+    this.updateStdinParserProtocolContext({
+      privateCapabilityRepliesActive: false,
+      pixelResolutionQueryActive: false,
+      explicitWidthCprActive: false,
+    })
     this.stdinParser?.reset()
     this.stdin.removeListener("data", this.stdinListener)
     this.lib.suspendRenderer(this.rendererPtr)
@@ -1925,6 +1958,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._isRunning = false
 
     this.waitingForPixelResolution = false
+    this.updateStdinParserProtocolContext(
+      {
+        privateCapabilityRepliesActive: false,
+        pixelResolutionQueryActive: false,
+        explicitWidthCprActive: false,
+      },
+      true,
+    )
     this.setCapturedRenderable(undefined)
 
     try {

@@ -50,27 +50,36 @@ const resolveRuntimeModuleExports = async (moduleEntry: RuntimeModuleEntry): Pro
   return moduleEntry
 }
 
+const sourcePath = (path: string): string => {
+  const searchIndex = path.indexOf("?")
+  const hashIndex = path.indexOf("#")
+  const end = [searchIndex, hashIndex].filter((index) => index >= 0).sort((a, b) => a - b)[0]
+  return end === undefined ? path : path.slice(0, end)
+}
+
 const runtimeLoaderForPath = (path: string): "js" | "ts" | "jsx" | "tsx" | null => {
-  if (path.endsWith(".tsx")) {
+  const cleanPath = sourcePath(path)
+
+  if (cleanPath.endsWith(".tsx")) {
     return "tsx"
   }
 
-  if (path.endsWith(".jsx")) {
+  if (cleanPath.endsWith(".jsx")) {
     return "jsx"
   }
 
-  if (path.endsWith(".ts") || path.endsWith(".mts") || path.endsWith(".cts")) {
+  if (cleanPath.endsWith(".ts") || cleanPath.endsWith(".mts") || cleanPath.endsWith(".cts")) {
     return "ts"
   }
 
-  if (path.endsWith(".js") || path.endsWith(".mjs") || path.endsWith(".cjs")) {
+  if (cleanPath.endsWith(".js") || cleanPath.endsWith(".mjs") || cleanPath.endsWith(".cjs")) {
     return "js"
   }
 
   return null
 }
 
-const runtimeSourceFilter = /^(?!.*(?:\/|\\)node_modules(?:\/|\\)).*\.(?:[cm]?js|[cm]?ts|jsx|tsx)$/
+const runtimeSourceFilter = /^(?!.*(?:\/|\\)node_modules(?:\/|\\)).*\.(?:[cm]?js|[cm]?ts|jsx|tsx)(?:[?#].*)?$/
 
 const resolveImportSpecifierPatterns = [
   /(from\s+["'])([^"']+)(["'])/g,
@@ -215,17 +224,18 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
       }
 
       build.onLoad({ filter: runtimeSourceFilter }, async (args) => {
+        const path = sourcePath(args.path)
         const loader = runtimeLoaderForPath(args.path)
         if (!loader) {
           throw new Error(`Unable to determine runtime loader for path: ${args.path}`)
         }
 
-        const file = Bun.file(args.path)
+        const file = Bun.file(path)
         const contents = await file.text()
         const runtimeRewrittenContents = rewriteRuntimeSpecifiers(contents, runtimeModuleIdsBySpecifier)
 
         if (runtimeRewrittenContents !== contents) {
-          registerResolveParent(resolveParentsByRecency, args.path)
+          registerResolveParent(resolveParentsByRecency, path)
         }
 
         const transformedContents = rewriteImportsFromResolveParents(runtimeRewrittenContents, resolveParentsByRecency)

@@ -17,8 +17,11 @@ const STATUSBAR_LABEL = "host-status"
 const SIDEBAR_SECTION = "external-plugins"
 const DEFAULT_PLUGIN_ENTRY = ".plugin/index.tsx"
 const EXTERNAL_PLUGIN_PATH_ENV = "OPENTUI_SOLID_EXTERNAL_PLUGIN_PATH"
+const EXTERNAL_PLUGIN_PACKAGE_JSON = "package.json"
+const MAX_INSTALL_OUTPUT_LENGTH = 1200
 
 const moduleDir = dirname(fileURLToPath(import.meta.url))
+const installedPluginDependencyDirs = new Set<string>()
 
 type ExternalPluginSlots = {
   statusbar: { label: string }
@@ -76,10 +79,44 @@ function resolveExternalPluginPath(): string {
   throw new Error(`Unable to locate external plugin. Checked: ${candidates.join(", ")}`)
 }
 
+function formatInstallOutput(stdout: string, stderr: string): string {
+  const output = [stdout.trim(), stderr.trim()].filter((line) => line.length > 0).join("\n")
+
+  if (output.length <= MAX_INSTALL_OUTPUT_LENGTH) {
+    return output
+  }
+
+  return `${output.slice(0, MAX_INSTALL_OUTPUT_LENGTH)}\n...(truncated)...`
+}
+
+function ensureExternalPluginDependencies(pluginEntryPath: string): void {
+  const pluginDir = dirname(pluginEntryPath)
+  const pluginPackageJson = join(pluginDir, EXTERNAL_PLUGIN_PACKAGE_JSON)
+
+  if (!existsSync(pluginPackageJson) || installedPluginDependencyDirs.has(pluginDir)) {
+    return
+  }
+
+  const install = Bun.spawnSync(["bun", "install", "--no-save"], {
+    cwd: pluginDir,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+
+  if (install.exitCode !== 0) {
+    const output = formatInstallOutput(install.stdout.toString(), install.stderr.toString())
+    const details = output.length > 0 ? `\n${output}` : ""
+    throw new Error(`Failed to install external plugin dependencies in ${pluginDir}.${details}`)
+  }
+
+  installedPluginDependencyDirs.add(pluginDir)
+}
+
 async function loadExternalPluginFromDisk(
   nonce: number,
 ): Promise<{ path: string; plugin: SolidPlugin<ExternalPluginSlots, ExternalPluginContext> }> {
   const path = resolveExternalPluginPath()
+  ensureExternalPluginDependencies(path)
   const url = pathToFileURL(path)
   url.searchParams.set("reload", `${nonce}`)
   url.searchParams.set("ts", `${Date.now()}`)

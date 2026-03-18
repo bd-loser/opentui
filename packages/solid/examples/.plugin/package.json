@@ -1,0 +1,10 @@
+{
+  "name": "@opentui/solid-external-plugin-example",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "jimp": "1.6.0",
+    "solid-js": "1.9.11",
+    "three": "0.177.0"
+  }
+}

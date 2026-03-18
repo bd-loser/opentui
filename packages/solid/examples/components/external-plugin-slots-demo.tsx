@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -21,9 +21,10 @@ const EXTERNAL_PLUGIN_PACKAGE_JSON = "package.json"
 const MAX_INSTALL_OUTPUT_LENGTH = 1200
 const BUN_INSTALL_COMMAND = ["install", "--no-save"]
 const BUN_BE_BUN_ENV = "BUN_BE_BUN"
+const NODE_MODULES_DIR = "node_modules"
 
 const moduleDir = dirname(fileURLToPath(import.meta.url))
-const installedPluginDependencyDirs = new Set<string>()
+const installedPluginDependencyManifestsByDir = new Map<string, string>()
 
 type ExternalPluginSlots = {
   statusbar: { label: string }
@@ -91,11 +92,28 @@ function formatInstallOutput(stdout: string, stderr: string): string {
   return `${output.slice(0, MAX_INSTALL_OUTPUT_LENGTH)}\n...(truncated)...`
 }
 
+function readPluginPackageManifest(packageJsonPath: string): string {
+  try {
+    return readFileSync(packageJsonPath, "utf8")
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`Failed to read external plugin package manifest at ${packageJsonPath}: ${message}`)
+  }
+}
+
 function ensureExternalPluginDependencies(pluginEntryPath: string): void {
   const pluginDir = dirname(pluginEntryPath)
   const pluginPackageJson = join(pluginDir, EXTERNAL_PLUGIN_PACKAGE_JSON)
+  const pluginNodeModulesDir = join(pluginDir, NODE_MODULES_DIR)
 
-  if (!existsSync(pluginPackageJson) || installedPluginDependencyDirs.has(pluginDir)) {
+  if (!existsSync(pluginPackageJson)) {
+    return
+  }
+
+  const packageManifest = readPluginPackageManifest(pluginPackageJson)
+  const cachedManifest = installedPluginDependencyManifestsByDir.get(pluginDir)
+
+  if (cachedManifest === packageManifest && existsSync(pluginNodeModulesDir)) {
     return
   }
 
@@ -115,7 +133,7 @@ function ensureExternalPluginDependencies(pluginEntryPath: string): void {
     throw new Error(`Failed to install external plugin dependencies in ${pluginDir}.${details}`)
   }
 
-  installedPluginDependencyDirs.add(pluginDir)
+  installedPluginDependencyManifestsByDir.set(pluginDir, packageManifest)
 }
 
 async function loadExternalPluginFromDisk(

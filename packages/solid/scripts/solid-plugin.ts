@@ -1,24 +1,28 @@
 import { transformAsync } from "@babel/core"
-import { readFile } from "node:fs/promises"
 // @ts-expect-error - Types not important.
 import ts from "@babel/preset-typescript"
 // @ts-expect-error - Types not important.
 import moduleResolver from "babel-plugin-module-resolver"
 // @ts-expect-error - Types not important.
 import solid from "babel-preset-solid"
-import { type BunPlugin } from "bun"
+import { plugin as registerBunPlugin, type BunPlugin } from "bun"
 
 export type ResolveImportPath = (specifier: string) => string | null
 
-const runtimeTransformKey = "__opentuiSolidRuntimeTransform__"
+const solidTransformStateKey = Symbol.for("opentui.solid.transform")
 
-type RuntimeTransform = {
+type SolidTransformRuntime = {
   moduleName?: string
   resolvePath?: ResolveImportPath
 }
 
-type RuntimeTransformState = typeof globalThis & {
-  [runtimeTransformKey]?: RuntimeTransform
+type SolidTransformState = {
+  installed: boolean
+  runtime?: SolidTransformRuntime
+}
+
+type GlobalSolidTransformState = typeof globalThis & {
+  [solidTransformStateKey]?: SolidTransformState
 }
 
 export interface CreateSolidTransformPluginOptions {
@@ -26,19 +30,43 @@ export interface CreateSolidTransformPluginOptions {
   resolvePath?: ResolveImportPath
 }
 
-const runtimeTransform = (): RuntimeTransform => {
-  return (globalThis as RuntimeTransformState)[runtimeTransformKey] ?? {}
+const getSolidTransformState = (): SolidTransformState => {
+  const state = globalThis as GlobalSolidTransformState
+  state[solidTransformStateKey] ??= { installed: false }
+  return state[solidTransformStateKey]
 }
 
-export function configureRuntimeTransform(input?: RuntimeTransform): void {
-  const state = globalThis as RuntimeTransformState
+const getSolidTransformRuntime = (): SolidTransformRuntime => {
+  return getSolidTransformState().runtime ?? {}
+}
 
-  if (!input) {
-    delete state[runtimeTransformKey]
-    return
+const hasSolidTransformRuntime = (input: CreateSolidTransformPluginOptions): boolean => {
+  return input.moduleName !== undefined || input.resolvePath !== undefined
+}
+
+export function ensureSolidTransformPlugin(input: CreateSolidTransformPluginOptions = {}): boolean {
+  const state = getSolidTransformState()
+
+  if (hasSolidTransformRuntime(input)) {
+    state.runtime = {
+      moduleName: input.moduleName,
+      resolvePath: input.resolvePath,
+    }
   }
 
-  state[runtimeTransformKey] = input
+  if (state.installed) {
+    return false
+  }
+
+  registerBunPlugin(createSolidTransformPlugin())
+  state.installed = true
+  return true
+}
+
+export function resetSolidTransformPluginState(): void {
+  const state = getSolidTransformState()
+  state.installed = false
+  delete state.runtime
 }
 
 export function createSolidTransformPlugin(input: CreateSolidTransformPluginOptions = {}): BunPlugin {
@@ -65,7 +93,7 @@ export function createSolidTransformPlugin(input: CreateSolidTransformPluginOpti
       build.onLoad({ filter: /\.(js|ts)x$/ }, async (args) => {
         const file = Bun.file(args.path)
         const code = await file.text()
-        const runtime = runtimeTransform()
+        const runtime = getSolidTransformRuntime()
         const moduleName = input.moduleName ?? runtime.moduleName ?? "@opentui/solid"
         const resolvePath = input.resolvePath ?? runtime.resolvePath
         const plugins = resolvePath

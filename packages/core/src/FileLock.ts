@@ -1,4 +1,5 @@
-import { resolve } from "node:path"
+import { closeSync, existsSync, mkdirSync, openSync } from "node:fs"
+import { dirname, resolve } from "node:path"
 
 import { resolveRenderLib } from "./zig"
 
@@ -9,6 +10,13 @@ type FileLockErrorOptions = {
   op: FileLockOp
   cause?: unknown
 }
+
+export interface FileLockOpenOptions {
+  createIfMissing?: boolean
+  createParentPath?: boolean
+}
+
+export interface FileLockAcquireOptions extends FileLockOpenOptions {}
 
 export class FileLockError extends Error {
   public readonly path: string
@@ -42,6 +50,23 @@ function normalizePath(path: string): string {
   return resolve(path)
 }
 
+function prepareLockPath(path: string, options: FileLockOpenOptions = {}): void {
+  if (options.createParentPath !== false) {
+    mkdirSync(dirname(path), { recursive: true })
+  }
+
+  if (options.createIfMissing === false) {
+    if (!existsSync(path)) {
+      throw new Error(`Lock file does not exist: ${path}`)
+    }
+
+    return
+  }
+
+  const fd = openSync(path, "a")
+  closeSync(fd)
+}
+
 function wrapError(path: string, op: FileLockOp, error: unknown): FileLockError {
   if (error instanceof FileLockError) return error
   return new FileLockError(`${op} failed for ${path}: ${errorMessage(error)}`, {
@@ -52,12 +77,12 @@ function wrapError(path: string, op: FileLockOp, error: unknown): FileLockError 
 }
 
 export class FileLock {
-  public static open(path: string): FileLock {
-    return new FileLock(path)
+  public static open(path: string, options?: FileLockOpenOptions): FileLock {
+    return new FileLock(path, options)
   }
 
-  public static acquire(path: string): FileLock {
-    const lock = new FileLock(path)
+  public static acquire(path: string, options?: FileLockAcquireOptions): FileLock {
+    const lock = FileLock.open(path, options)
 
     try {
       lock.acquire()
@@ -67,8 +92,8 @@ export class FileLock {
     }
   }
 
-  public static tryAcquire(path: string): FileLock | null {
-    const lock = new FileLock(path)
+  public static tryAcquire(path: string, options?: FileLockAcquireOptions): FileLock | null {
+    const lock = FileLock.open(path, options)
 
     try {
       if (!lock.tryAcquire()) {
@@ -103,10 +128,11 @@ export class FileLock {
   private held = false
   private closed = false
 
-  private constructor(path: string) {
+  private constructor(path: string, options: FileLockOpenOptions = {}) {
     this.path = normalizePath(path)
 
     try {
+      prepareLockPath(this.path, options)
       this.id = this.lib.createFileLock(this.path)
     } catch (error) {
       throw wrapError(this.path, "create", error)

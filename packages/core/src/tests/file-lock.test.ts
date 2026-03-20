@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs"
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -47,12 +47,87 @@ async function waitForReady(path: string, timeout = 2_000): Promise<void> {
   throw new Error(`Timed out waiting for ready marker: ${path}`)
 }
 
-test("FileLock throws a catchable error when the parent directory is missing", () => {
+test("FileLock.acquire creates missing parent directories and files by default", () => {
   const dir = mkdtempSync(join(tmpdir(), "opentui-file-lock-"))
   const path = join(dir, "missing", "shared.lock")
 
   try {
-    expect(() => FileLock.acquire(path)).toThrow(FileLockError)
+    const lock = FileLock.acquire(path)
+
+    try {
+      expect(lock.acquired).toBe(true)
+      expect(existsSync(join(dir, "missing"))).toBe(true)
+      expect(existsSync(path)).toBe(true)
+    } finally {
+      lock.close()
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("FileLock.tryAcquire also creates missing parent directories and files by default", () => {
+  const dir = mkdtempSync(join(tmpdir(), "opentui-file-lock-"))
+  const path = join(dir, "missing", "shared.lock")
+  const lock = FileLock.tryAcquire(path)
+
+  try {
+    expect(lock).not.toBeNull()
+    expect(lock?.acquired).toBe(true)
+    expect(existsSync(join(dir, "missing"))).toBe(true)
+    expect(existsSync(path)).toBe(true)
+  } finally {
+    lock?.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("FileLock respects createParentPath: false when the parent directory is missing", () => {
+  const dir = mkdtempSync(join(tmpdir(), "opentui-file-lock-"))
+  const path = join(dir, "missing", "shared.lock")
+
+  try {
+    expect(() => FileLock.acquire(path, { createParentPath: false })).toThrow(FileLockError)
+    expect(existsSync(join(dir, "missing"))).toBe(false)
+    expect(existsSync(path)).toBe(false)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("FileLock respects createIfMissing: false when the lock file is missing", () => {
+  const dir = mkdtempSync(join(tmpdir(), "opentui-file-lock-"))
+  const path = join(dir, "locks", "shared.lock")
+
+  try {
+    mkdirSync(join(dir, "locks"), { recursive: true })
+
+    expect(() => FileLock.acquire(path, { createIfMissing: false })).toThrow(FileLockError)
+    expect(existsSync(path)).toBe(false)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("FileLock strict create options succeed when the lock file already exists", () => {
+  const dir = mkdtempSync(join(tmpdir(), "opentui-file-lock-"))
+  const path = join(dir, "locks", "shared.lock")
+
+  try {
+    mkdirSync(join(dir, "locks"), { recursive: true })
+    const fd = openSync(path, "a")
+    closeSync(fd)
+
+    const lock = FileLock.acquire(path, {
+      createIfMissing: false,
+      createParentPath: false,
+    })
+
+    try {
+      expect(lock.acquired).toBe(true)
+    } finally {
+      lock.close()
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

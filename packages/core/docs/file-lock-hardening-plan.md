@@ -19,17 +19,11 @@ Explicit constraints for this work:
 - do not add CI work as part of this change; cross-platform CI verification will happen later after implementation is done
 - do not push anything to the remote repository during this work
 
-Default ergonomics requested for the public API:
-
-- `createIfMissing: true`
-- `createParentPath: true`
-- the default experience should be: give it a lock path and get a usable lock without manual setup
-
 ## Current Implementation Snapshot
 
 Relevant files and their current roles:
 
-- `packages/core/src/FileLock.ts`: public TypeScript API, path normalization, error wrapping, lifecycle methods
+- `packages/core/src/FileLock.ts`: public TypeScript API, path normalization/preparation, error wrapping, lifecycle methods
 - `packages/core/src/zig.ts`: FFI symbol declarations and the TypeScript wrapper around the native library
 - `packages/core/src/zig-structs.ts`: FFI struct packing/unpacking helpers
 - `packages/core/src/zig/file-lock.zig`: native file lock implementation and registry/handle management
@@ -40,18 +34,18 @@ Relevant files and their current roles:
 
 Current behaviour summary:
 
-- `FileLock.open(path)` normalizes the path and immediately calls the native `createFileLock`
-- the native `open()` path currently creates the file if it does not exist, but does not create the parent directory
+- `FileLock.open(path, options?)`, `FileLock.acquire(path, options?)`, and `FileLock.tryAcquire(path, options?)` normalize the path, create missing parent directories and lock files by default, and support strict opt-out via `createParentPath: false` and `createIfMissing: false`
+- the native `open()` path still implicitly creates the file if it does not exist, so the remaining native follow-up should make that path strict existing-file-only
 - blocking `acquire()` ultimately calls `std.fs.File.lock(.exclusive)`
 - `tryAcquire()` uses `std.fs.File.tryLock(.exclusive)`
 - TypeScript status decoding in `packages/core/src/zig.ts` is not exhaustive; status `9` (`unexpected`) is missing an explicit branch
-- TypeScript tests cover only a few contention/lifecycle cases
+- TypeScript tests cover friendly defaults, strict opt-outs, and a few contention/lifecycle cases, but not timeout or stress behaviour yet
 
 ## Key Insights That Drive This Plan
 
-1. The ergonomic setup work belongs in `packages/core/src/FileLock.ts`, not in the FFI surface.
+1. The path-preparation ergonomics stay in `packages/core/src/FileLock.ts`, not in the FFI surface.
 
-   `FileLock.ts` is the public API and the only current caller of `createFileLock()`. That means the friendly behaviour the user wants can be implemented there without expanding the native create ABI. The public API can normalize the path, create parent directories, and touch the file before asking Zig to open and lock it.
+   `FileLock.ts` is the public API and the only current caller of `createFileLock()`. That split is now in place, and the remaining work should preserve it so the native create ABI can stay small and strict.
 
 2. Timeout support must be implemented in the native layer.
 
@@ -65,47 +59,25 @@ Current behaviour summary:
 
    The TypeScript test layer is the right place to verify real cross-process locking because it can spawn independent processes that contend on the same path. Zig tests should focus on native statuses and lifecycle guarantees exposed by the native API, not mutex internals or ref counts.
 
-5. The earlier concern about implicit file creation is not that creation itself is wrong.
+5. The remaining follow-up should treat the public create-path ergonomics as settled API surface.
 
-   The problem is that the behaviour is currently implicit, incomplete, and not ergonomic enough. The fix is to make the public contract explicit and friendly:
-   - by default, create missing parent directories and the lock file
-   - allow strict opt-out when a caller wants existing-path-only behaviour
-   - document the contract and test both modes
+   The public layer now creates missing parent directories and the lock file by default and allows strict opt-out for existing-path-only callers. The remaining work is to document that contract and make the native create path strict underneath it.
 
 ## Desired End State
 
-The public API should end up with these semantics:
+The remaining public API work should end up with these semantics:
 
 ```ts
-type FileLockOpenOptions = {
-  createIfMissing?: boolean // default true
-  createParentPath?: boolean // default true
-}
-
 type FileLockAcquireOptions = FileLockOpenOptions & {
   timeoutMs?: number
 }
 ```
 
-Public surface:
+Remaining public surface work:
 
-- `FileLock.open(path, options?)`
-- `FileLock.acquire(path, options?)`
-- `FileLock.tryAcquire(path, options?)`
+- `FileLock.acquire(path, options?)` should accept `timeoutMs` once the native timeout path exists
 - `lock.acquire(options?: { timeoutMs?: number })`
 - `lock.tryAcquire()` remains immediate and non-blocking
-
-Default behaviour:
-
-- if parent directories are missing, create them
-- if the lock file is missing, create it
-- then open the native lock handle
-- then acquire or try-acquire as requested
-
-Strict opt-out behaviour:
-
-- `createParentPath: false` means missing parent directories remain an error
-- `createIfMissing: false` means missing lock file remains an error
 
 Timeout behaviour:
 
@@ -127,41 +99,16 @@ Lifecycle behaviour:
 
 ## Detailed Implementation Plan
 
-### 1. Public API and path preparation in `packages/core/src/FileLock.ts`
+### 1. Remaining public API work in `packages/core/src/FileLock.ts`
 
-Add option types and defaulting:
+The create-path ergonomics now live in `FileLock.ts` and should stay there. The remaining work in this file is:
 
-- add `FileLockOpenOptions`
-- add `FileLockAcquireOptions`
+- extend `FileLockAcquireOptions` with `timeoutMs`
 - keep `timeoutMs` only on acquire paths; it does not apply to `tryAcquire()`
-
-Add path preparation helpers in `FileLock.ts`:
-
-- `normalizePath(path)` stays, with the same absolute-path normalization behaviour
-- add `prepareLockPath(path, options)` that:
-  - resolves the absolute path
-  - creates the parent directory recursively when `createParentPath !== false`
-  - touches the lock file when `createIfMissing !== false`
-- use Node-compatible filesystem helpers in this file because this is already a native/FFI-only server-side API layer
-
-Recommended implementation approach:
-
-- import `dirname` from `node:path`
-- import `mkdirSync`, `openSync`, and `closeSync` from `node:fs`
-- create parents with `mkdirSync(dirname(path), { recursive: true })`
-- create the lock file with `openSync(path, "a")` followed by `closeSync(fd)`
-
-Why this belongs here:
-
-- it keeps the public API ergonomic without expanding the native create ABI
-- it keeps all friendly-path setup behaviour close to the public constructor/static helpers
-- once the path is prepared, the native create path can stay low-level and strict
 
 Update public constructors/helpers:
 
-- `FileLock.open(path, options?)` prepares the path, then creates the native handle
-- `FileLock.acquire(path, options?)` prepares the path, then acquires with optional timeout
-- `FileLock.tryAcquire(path, options?)` prepares the path, then tries immediately
+- `FileLock.acquire(path, options?)` should use the timeout-aware native path when `timeoutMs` is provided
 - instance `acquire(options?)` only accepts the timeout subset, because create-path options matter only before the handle exists
 
 Lifecycle contract cleanup:
@@ -278,17 +225,7 @@ Input validation in `zig.ts` / `FileLock.ts`:
 
 Keep the TypeScript suite black-box and process-based.
 
-Add tests for friendly default behaviour:
-
-- `FileLock.acquire(path)` creates missing parent directories by default
-- `FileLock.acquire(path)` creates the missing lock file by default
-- `FileLock.tryAcquire(path)` also works with the same defaults
-
-Add tests for strict opt-out behaviour:
-
-- `createParentPath: false` fails when the parent directory is missing
-- `createIfMissing: false` fails when the file is missing
-- strict mode succeeds when the file already exists
+The friendly-default and strict-opt-out cases are now covered. The remaining additions are:
 
 Add timeout coverage:
 
@@ -377,10 +314,6 @@ The docs should set expectations clearly for local filesystems and make it obvio
 
 `packages/core/src/FileLock.ts`
 
-- add `FileLockOpenOptions`
-- add `FileLockAcquireOptions`
-- add path preparation helpers
-- add default mkdir/touch behaviour
 - add timeout-aware acquire path
 - add stable `FileLockError.code`
 - improve cleanup error preservation
@@ -412,8 +345,6 @@ The docs should set expectations clearly for local filesystems and make it obvio
 
 `packages/core/src/tests/file-lock.test.ts`
 
-- add friendly-default tests
-- add strict-opt-out tests
 - add timeout tests
 - add lifecycle tests
 - add stress/flake-resistance tests
@@ -437,7 +368,7 @@ The docs should set expectations clearly for local filesystems and make it obvio
 
 1. Rework native acquire semantics in `packages/core/src/zig/file-lock.zig` so the registry no longer blocks forever inside a lock call.
 2. Add the timeout FFI export in `packages/core/src/zig/lib.zig` and wire it through `packages/core/src/zig.ts`.
-3. Update `packages/core/src/FileLock.ts` to add the public options, default mkdir/touch behaviour, timeout usage, and stable error codes.
+3. Update `packages/core/src/FileLock.ts` to add timeout usage and stable error codes.
 4. Expand the TypeScript behavioural tests and fixture.
 5. Expand the Zig native tests.
 6. Update docs.
@@ -464,12 +395,10 @@ This plan intentionally does not include CI workflow changes or CI execution. Fi
 
 This follow-up is complete when all of the following are true:
 
-- the public API creates parent directories and lock files by default
-- callers can opt out of either behaviour explicitly
 - blocking acquire supports a timeout
 - pending acquires can stop promptly when destroy/close begins
 - status handling is exhaustive, including `unexpected` and `timed_out`
 - public errors expose stable machine-readable codes
-- tests cover friendly defaults, strict opt-outs, timeouts, lifecycle, and contention behaviour
+- tests cover timeouts, lifecycle, and contention behaviour
 - the behavioural tests remain black-box and do not assert internals
 - the docs describe the real public contract clearly

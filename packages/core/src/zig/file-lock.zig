@@ -43,12 +43,6 @@ pub const FileLock = struct {
         self.allocator.destroy(self);
     }
 
-    pub fn acquire(self: *FileLock) !void {
-        if (self.acquired) return;
-        try self.file.lock(.exclusive);
-        self.acquired = true;
-    }
-
     pub fn tryAcquire(self: *FileLock) !bool {
         if (self.acquired) return true;
 
@@ -121,23 +115,6 @@ pub const Registry = struct {
             .id = id,
             .status = @intFromEnum(Status.ok),
         };
-    }
-
-    pub fn acquire(self: *Registry, id: u64) Status {
-        const entry = switch (self.retain(id)) {
-            .entry => |entry| entry,
-            .status => |status| return status,
-        };
-        defer self.releaseEntry(entry);
-
-        entry.op.lock();
-        defer entry.op.unlock();
-
-        entry.lock.acquire() catch |err| {
-            return statusFromError(err);
-        };
-
-        return .ok;
     }
 
     pub fn tryAcquire(self: *Registry, id: u64) Status {

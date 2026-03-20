@@ -1,4 +1,5 @@
 import { writeFileSync } from "node:fs"
+import { setTimeout as sleep } from "node:timers/promises"
 
 import { FileLock } from "../FileLock"
 
@@ -8,25 +9,35 @@ if (!mode || !lockPath) {
   throw new Error("Expected mode and lock path")
 }
 
+function mustTryAcquire(path: string): FileLock {
+  const lock = FileLock.tryAcquire(path)
+
+  if (!lock) {
+    throw new Error(`Failed to acquire lock: ${path}`)
+  }
+
+  return lock
+}
+
 switch (mode) {
   case "hold": {
     const ms = Number(value ?? "0")
-    const lock = FileLock.acquire(lockPath)
+    const lock = mustTryAcquire(lockPath)
 
     try {
       if (readyPath) writeFileSync(readyPath, "ready")
-      await Bun.sleep(ms)
+      await sleep(ms)
     } finally {
       lock.close()
     }
     break
   }
   case "hang": {
-    const lock = FileLock.acquire(lockPath)
+    const lock = mustTryAcquire(lockPath)
 
     try {
       if (readyPath) writeFileSync(readyPath, "ready")
-      await Bun.sleep(60_000)
+      await sleep(60_000)
     } finally {
       lock.close()
     }
@@ -39,17 +50,6 @@ switch (mode) {
       console.log(JSON.stringify({ acquired: !!lock }))
     } finally {
       lock?.close()
-    }
-    break
-  }
-  case "wait": {
-    const start = Date.now()
-    const lock = FileLock.acquire(lockPath)
-
-    try {
-      console.log(JSON.stringify({ acquired: true, waited: Date.now() - start }))
-    } finally {
-      lock.close()
     }
     break
   }

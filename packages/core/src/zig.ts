@@ -1079,10 +1079,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["u64"],
       returns: "i32",
     },
-    fileLockAcquire: {
-      args: ["u64"],
-      returns: "i32",
-    },
     fileLockTryAcquire: {
       args: ["u64"],
       returns: "i32",
@@ -1861,7 +1857,6 @@ export interface RenderLib {
 
   createFileLock: (path: string) => number
   destroyFileLock: (lock: number) => void
-  fileLockAcquire: (lock: number) => void
   fileLockTryAcquire: (lock: number) => boolean
   fileLockRelease: (lock: number) => void
 
@@ -3143,14 +3138,6 @@ class FFIRenderLib implements RenderLib {
 
     if (status !== FILE_LOCK_OK) {
       throw this.createFileLockError("destroyFileLock", `handle:${lock}`, status)
-    }
-  }
-
-  public fileLockAcquire(lock: number): void {
-    const status = this.opentui.symbols.fileLockAcquire(lock)
-
-    if (status !== FILE_LOCK_OK) {
-      throw this.createFileLockError("fileLockAcquire", `handle:${lock}`, status)
     }
   }
 

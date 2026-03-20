@@ -9,7 +9,7 @@ fn lockPath(tmp: *std.testing.TmpDir) ![]u8 {
     return std.fs.path.join(testing.allocator, &[_][]const u8{ dir_path, "shared.lock" });
 }
 
-test "FileLock acquires, releases, and re-acquires an exclusive lock" {
+test "FileLock tryAcquire acquires, releases, and re-acquires an exclusive lock" {
     const tmpdir = std.testing.tmpDir(.{});
     var tmp = tmpdir;
     defer tmp.cleanup();
@@ -20,7 +20,7 @@ test "FileLock acquires, releases, and re-acquires an exclusive lock" {
     const lock = try raw.FileLock.create(testing.allocator, file_path);
     defer lock.destroy();
 
-    try lock.acquire();
+    try testing.expect(try lock.tryAcquire());
     lock.release();
 
     try testing.expect(try lock.tryAcquire());
@@ -40,7 +40,6 @@ test "Registry returns invalid_handle for unknown handles" {
     var registry = raw.Registry.init(testing.allocator);
     defer registry.deinit();
 
-    try testing.expectEqual(raw.Status.invalid_handle, registry.acquire(999));
     try testing.expectEqual(raw.Status.invalid_handle, registry.tryAcquire(999));
     try testing.expectEqual(raw.Status.invalid_handle, registry.release(999));
     try testing.expectEqual(raw.Status.invalid_handle, registry.destroy(999));
@@ -62,5 +61,5 @@ test "Registry destroy removes the handle" {
     try testing.expect(result.id != 0);
     try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), result.status);
     try testing.expectEqual(raw.Status.ok, registry.destroy(result.id));
-    try testing.expectEqual(raw.Status.invalid_handle, registry.acquire(result.id));
+    try testing.expectEqual(raw.Status.invalid_handle, registry.tryAcquire(result.id));
 }

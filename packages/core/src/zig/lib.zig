@@ -199,10 +199,6 @@ export fn destroyFileLock(lockId: u64) i32 {
     return @intFromEnum(fileLockRegistry.destroy(lockId));
 }
 
-export fn fileLockAcquire(lockId: u64) i32 {
-    return @intFromEnum(fileLockRegistry.acquire(lockId));
-}
-
 export fn fileLockTryAcquire(lockId: u64) i32 {
     return @intFromEnum(fileLockRegistry.tryAcquire(lockId));
 }

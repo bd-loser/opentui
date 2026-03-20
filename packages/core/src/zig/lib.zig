@@ -19,11 +19,13 @@ const event_bus = @import("event-bus.zig");
 const utils = @import("utils.zig");
 const native_span_feed = @import("native-span-feed.zig");
 const buffer_effects = @import("buffer-methods.zig");
+const file_lock = @import("file-lock.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
 pub const Terminal = terminal.Terminal;
 pub const RGBA = buffer.RGBA;
+pub const FileLock = file_lock.FileLock;
 
 comptime {
     _ = native_span_feed;
@@ -183,6 +185,38 @@ export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
         .large_allocations = large_allocations,
         .requested_bytes_valid = requested_bytes.valid,
     };
+}
+
+export fn createFileLock(pathPtr: [*]const u8, pathLen: usize) ?*file_lock.FileLock {
+    const path = pathPtr[0..pathLen];
+    return file_lock.FileLock.create(globalAllocator, path) catch |err| {
+        logger.err("Failed to create file lock: {}", .{err});
+        return null;
+    };
+}
+
+export fn destroyFileLock(lockPtr: *file_lock.FileLock) void {
+    lockPtr.destroy();
+}
+
+export fn fileLockAcquire(lockPtr: *file_lock.FileLock) i32 {
+    lockPtr.acquire() catch |err| {
+        logger.err("Failed to acquire file lock: {}", .{err});
+        return -1;
+    };
+    return 0;
+}
+
+export fn fileLockTryAcquire(lockPtr: *file_lock.FileLock) i32 {
+    const acquired = lockPtr.tryAcquire() catch |err| {
+        logger.err("Failed to try-acquire file lock: {}", .{err});
+        return -1;
+    };
+    return if (acquired) 0 else 1;
+}
+
+export fn fileLockRelease(lockPtr: *file_lock.FileLock) void {
+    lockPtr.release();
 }
 
 export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?*renderer.CliRenderer {

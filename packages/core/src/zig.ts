@@ -1039,6 +1039,27 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
 
+    createFileLock: {
+      args: ["ptr", "usize"],
+      returns: "ptr",
+    },
+    destroyFileLock: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    fileLockAcquire: {
+      args: ["ptr"],
+      returns: "i32",
+    },
+    fileLockTryAcquire: {
+      args: ["ptr"],
+      returns: "i32",
+    },
+    fileLockRelease: {
+      args: ["ptr"],
+      returns: "void",
+    },
+
     // SyntaxStyle functions
     createSyntaxStyle: {
       args: [],
@@ -1805,6 +1826,12 @@ export interface RenderLib {
   getArenaAllocatedBytes: () => number
   getBuildOptions: () => BuildOptions
   getAllocatorStats: () => AllocatorStats
+
+  createFileLock: (path: string) => Pointer
+  destroyFileLock: (lock: Pointer) => void
+  fileLockAcquire: (lock: Pointer) => void
+  fileLockTryAcquire: (lock: Pointer) => boolean
+  fileLockRelease: (lock: Pointer) => void
 
   createSyntaxStyle: () => Pointer
   destroySyntaxStyle: (style: Pointer) => void
@@ -3059,6 +3086,42 @@ class FFIRenderLib implements RenderLib {
       largeAllocations: toNumber(stats.largeAllocations),
       requestedBytesValid: !!stats.requestedBytesValid,
     }
+  }
+
+  public createFileLock(path: string): Pointer {
+    const pathBuffer = this.encoder.encode(path)
+    const lock = this.opentui.symbols.createFileLock(ptr(pathBuffer), pathBuffer.length)
+
+    if (!lock) {
+      throw new Error(`Failed to create file lock for ${path}`)
+    }
+
+    return lock
+  }
+
+  public destroyFileLock(lock: Pointer): void {
+    this.opentui.symbols.destroyFileLock(lock)
+  }
+
+  public fileLockAcquire(lock: Pointer): void {
+    const status = this.opentui.symbols.fileLockAcquire(lock)
+
+    if (status !== 0) {
+      throw new Error(`Failed to acquire file lock: ${status}`)
+    }
+  }
+
+  public fileLockTryAcquire(lock: Pointer): boolean {
+    const status = this.opentui.symbols.fileLockTryAcquire(lock)
+
+    if (status === 0) return true
+    if (status === 1) return false
+
+    throw new Error(`Failed to try-acquire file lock: ${status}`)
+  }
+
+  public fileLockRelease(lock: Pointer): void {
+    this.opentui.symbols.fileLockRelease(lock)
   }
 
   public bufferDrawTextBufferView(buffer: Pointer, view: Pointer, x: number, y: number): void {

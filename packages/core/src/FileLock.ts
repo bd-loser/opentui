@@ -1,15 +1,10 @@
 import { closeSync, existsSync, mkdirSync, openSync } from "node:fs"
 import { dirname, resolve } from "node:path"
+import { setTimeout as sleep } from "node:timers/promises"
 
 import { resolveRenderLib } from "./zig"
 
 type FileLockOp = "create" | "tryAcquire" | "tryAcquireWithTimeout" | "release" | "close"
-
-type FileLockErrorOptions = {
-  path: string
-  op: FileLockOp
-  cause?: unknown
-}
 
 export interface FileLockOpenOptions {
   createIfMissing?: boolean
@@ -23,24 +18,21 @@ export interface FileLockWaitTick {
   waited: number
 }
 
-export type FileLockTickTime = (attempt: number) => number
-export type FileLockWait = (input: FileLockWaitTick) => void | Promise<void>
-
-export interface FileLockWaitOptions {
+export interface FileLockTryAcquireWithTimeoutOptions {
+  createIfMissing?: boolean
+  createParentPath?: boolean
   timeoutMs?: number
-  tickTime?: FileLockTickTime
-  waitTick?: FileLockWait
+  tickTime?: (attempt: number) => number
+  waitTick?: (input: FileLockWaitTick) => void | Promise<void>
   signal?: AbortSignal
 }
-
-export interface FileLockTryAcquireWithTimeoutOptions extends FileLockOpenOptions, FileLockWaitOptions {}
 
 export class FileLockError extends Error {
   public readonly path: string
   public readonly op: FileLockOp
   public override readonly cause?: unknown
 
-  public constructor(message: string, options: FileLockErrorOptions) {
+  public constructor(message: string, options: { path: string; op: FileLockOp; cause?: unknown }) {
     super(message)
     this.name = "FileLockError"
     this.path = options.path
@@ -49,94 +41,18 @@ export class FileLockError extends Error {
   }
 }
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message
-  if (typeof error === "string" && error) return error
-  return "unknown error"
-}
-
-function normalizePath(path: string): string {
-  if (typeof path !== "string") {
-    throw new TypeError("FileLock path must be a string")
-  }
-
-  if (!path.trim()) {
-    throw new Error("FileLock path must not be empty")
-  }
-
-  return resolve(path)
-}
-
-const DEFAULT_TICK_TIME: FileLockTickTime = () => 50
-
-function validateTimeoutMs(timeoutMs: number | undefined): number | undefined {
-  if (timeoutMs === undefined) return undefined
-
-  if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs < 0) {
-    throw new TypeError("FileLock timeoutMs must be a finite, non-negative number")
-  }
-
-  return timeoutMs
-}
-
-function resolveTickDelay(tickTime: FileLockTickTime, attempt: number): number {
-  const delay = tickTime(attempt)
-
-  if (typeof delay !== "number" || !Number.isFinite(delay) || delay < 0) {
-    throw new TypeError("FileLock tickTime must return a finite, non-negative number")
-  }
-
-  return delay
-}
-
-function abortReason(signal?: AbortSignal): unknown {
-  if (signal?.reason !== undefined) return signal.reason
-  return new DOMException("Aborted", "AbortError")
-}
-
-function throwIfAborted(signal?: AbortSignal): void {
-  if (!signal?.aborted) return
-  throw abortReason(signal)
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  throwIfAborted(signal)
-
-  return new Promise<void>((resolve, reject) => {
-    const id = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort)
-      resolve()
-    }, ms)
-
-    function onAbort(): void {
-      clearTimeout(id)
-      reject(abortReason(signal))
-    }
-
-    signal?.addEventListener("abort", onAbort, { once: true })
-  })
-}
-
-function prepareLockPath(path: string, options: FileLockOpenOptions = {}): void {
-  if (options.createParentPath !== false) {
-    mkdirSync(dirname(path), { recursive: true })
-  }
-
-  if (options.createIfMissing === false) {
-    if (!existsSync(path)) {
-      throw new Error(`Lock file does not exist: ${path}`)
-    }
-
-    return
-  }
-
-  const fd = openSync(path, "a")
-  closeSync(fd)
-}
-
 function wrapError(path: string, op: FileLockOp, error: unknown): FileLockError {
   if (error instanceof FileLockError) return error
-  return new FileLockError(`${op} failed for ${path}: ${errorMessage(error)}`, {
+
+  let message = "unknown error"
+
+  if (error instanceof Error && error.message) {
+    message = error.message
+  } else if (typeof error === "string" && error) {
+    message = error
+  }
+
+  return new FileLockError(`${op} failed for ${path}: ${message}`, {
     path,
     op,
     cause: error,
@@ -156,9 +72,29 @@ export class FileLock {
         lock.close()
         return null
       }
+
       return lock
     } catch (error) {
-      FileLock.cleanup(lock, "tryAcquire", error)
+      const wrapped = wrapError(lock.path, "tryAcquire", error)
+
+      try {
+        lock.close()
+      } catch (closeError) {
+        const cleanupMessage =
+          closeError instanceof Error && closeError.message
+            ? closeError.message
+            : typeof closeError === "string" && closeError
+              ? closeError
+              : "unknown error"
+
+        throw new FileLockError(`${wrapped.message}; cleanup failed: ${cleanupMessage}`, {
+          path: lock.path,
+          op: "tryAcquire",
+          cause: closeError,
+        })
+      }
+
+      throw wrapped
     }
   }
 
@@ -166,47 +102,24 @@ export class FileLock {
     path: string,
     options: FileLockTryAcquireWithTimeoutOptions = {},
   ): Promise<FileLock | null> {
-    const { createIfMissing, createParentPath, timeoutMs, tickTime, waitTick, signal } = options
-    const lock = FileLock.open(path, { createIfMissing, createParentPath })
+    const lock = FileLock.open(path, options)
 
     try {
-      const acquired = await lock.tryAcquireWithTimeout({ timeoutMs, tickTime, waitTick, signal })
-
-      if (!acquired) {
+      if (!(await lock.tryAcquireWithTimeout(options))) {
         lock.close()
         return null
       }
 
       return lock
     } catch (error) {
-      FileLock.throwAfterCleanup(lock, error)
+      try {
+        lock.close()
+      } catch (closeError) {
+        throw wrapError(lock.path, "close", closeError)
+      }
+
+      throw error
     }
-  }
-
-  private static cleanup(lock: FileLock, op: FileLockOp, error: unknown): never {
-    const wrapped = wrapError(lock.path, op, error)
-
-    try {
-      lock.close()
-    } catch (closeError) {
-      throw new FileLockError(`${wrapped.message}; cleanup failed: ${errorMessage(closeError)}`, {
-        path: lock.path,
-        op,
-        cause: closeError,
-      })
-    }
-
-    throw wrapped
-  }
-
-  private static throwAfterCleanup(lock: FileLock, error: unknown): never {
-    try {
-      lock.close()
-    } catch (closeError) {
-      throw wrapError(lock.path, "close", closeError)
-    }
-
-    throw error
   }
 
   public readonly path: string
@@ -216,10 +129,29 @@ export class FileLock {
   private closed = false
 
   private constructor(path: string, options: FileLockOpenOptions = {}) {
-    this.path = normalizePath(path)
+    if (typeof path !== "string") {
+      throw new TypeError("FileLock path must be a string")
+    }
+
+    if (!path.trim()) {
+      throw new Error("FileLock path must not be empty")
+    }
+
+    this.path = resolve(path)
 
     try {
-      prepareLockPath(this.path, options)
+      if (options.createParentPath !== false) {
+        mkdirSync(dirname(this.path), { recursive: true })
+      }
+
+      if (options.createIfMissing === false) {
+        if (!existsSync(this.path)) {
+          throw new Error(`Lock file does not exist: ${this.path}`)
+        }
+      } else {
+        closeSync(openSync(this.path, "a"))
+      }
+
       this.id = this.lib.createFileLock(this.path)
     } catch (error) {
       throw wrapError(this.path, "create", error)
@@ -232,60 +164,90 @@ export class FileLock {
 
   public tryAcquire(): boolean {
     this.assertOpen("tryAcquire")
-    if (this.held) return true
+
+    if (this.held) {
+      return true
+    }
 
     try {
-      const acquired = this.lib.fileLockTryAcquire(this.id)
-      this.held = acquired
-      return acquired
+      this.held = this.lib.fileLockTryAcquire(this.id)
+      return this.held
     } catch (error) {
       throw wrapError(this.path, "tryAcquire", error)
     }
   }
 
-  public async tryAcquireWithTimeout(options: FileLockWaitOptions = {}): Promise<boolean> {
-    const timeoutMs = validateTimeoutMs(options.timeoutMs)
-    const tickTime = options.tickTime ?? DEFAULT_TICK_TIME
+  public async tryAcquireWithTimeout(
+    options: {
+      timeoutMs?: number
+      tickTime?: (attempt: number) => number
+      waitTick?: (input: FileLockWaitTick) => void | Promise<void>
+      signal?: AbortSignal
+    } = {},
+  ): Promise<boolean> {
+    this.assertOpen("tryAcquireWithTimeout")
 
-    throwIfAborted(options.signal)
-
-    if (this.tryAcquire()) {
+    if (this.held) {
       return true
     }
 
+    if (
+      options.timeoutMs !== undefined &&
+      (typeof options.timeoutMs !== "number" || !Number.isFinite(options.timeoutMs) || options.timeoutMs < 0)
+    ) {
+      throw new TypeError("FileLock timeoutMs must be a finite, non-negative number")
+    }
+
+    const tickTime = options.tickTime ?? (() => 50)
+    const start = Date.now()
     let attempt = 0
     let waited = 0
-    const startedAt = Date.now()
 
     while (true) {
-      throwIfAborted(options.signal)
+      if (options.signal?.aborted) {
+        throw options.signal.reason ?? new DOMException("Aborted", "AbortError")
+      }
 
-      const elapsed = Date.now() - startedAt
+      if (this.tryAcquire()) {
+        return true
+      }
 
-      if (timeoutMs !== undefined && elapsed >= timeoutMs) {
+      const elapsed = Date.now() - start
+
+      if (options.timeoutMs !== undefined && elapsed >= options.timeoutMs) {
         return false
       }
 
       attempt += 1
 
-      const remaining = timeoutMs === undefined ? undefined : timeoutMs - elapsed
-      const nextDelay = resolveTickDelay(tickTime, attempt)
-      const delay = remaining === undefined ? nextDelay : Math.min(nextDelay, remaining)
+      const nextDelay = tickTime(attempt)
+
+      if (typeof nextDelay !== "number" || !Number.isFinite(nextDelay) || nextDelay < 0) {
+        throw new TypeError("FileLock tickTime must return a finite, non-negative number")
+      }
+
+      const delay =
+        options.timeoutMs === undefined ? nextDelay : Math.min(nextDelay, Math.max(options.timeoutMs - elapsed, 0))
 
       waited += delay
       await options.waitTick?.({ file: this.path, attempt, delay, waited })
-      await sleep(delay, options.signal)
 
-      if (this.tryAcquire()) {
-        return true
+      try {
+        await sleep(delay, undefined, options.signal ? { signal: options.signal } : undefined)
+      } catch (error) {
+        if (options.signal?.aborted) {
+          throw options.signal.reason ?? error
+        }
+
+        throw error
       }
     }
-
-    return false
   }
 
   public release(): void {
-    if (this.closed || !this.held) return
+    if (this.closed || !this.held) {
+      return
+    }
 
     try {
       this.lib.fileLockRelease(this.id)
@@ -296,7 +258,9 @@ export class FileLock {
   }
 
   public close(): void {
-    if (this.closed) return
+    if (this.closed) {
+      return
+    }
 
     try {
       this.lib.destroyFileLock(this.id)
@@ -313,7 +277,13 @@ export class FileLock {
   }
 
   private assertOpen(op: FileLockOp): void {
-    if (!this.closed) return
-    throw new FileLockError(`FileLock is closed: ${this.path}`, { path: this.path, op })
+    if (!this.closed) {
+      return
+    }
+
+    throw new FileLockError(`FileLock is closed: ${this.path}`, {
+      path: this.path,
+      op,
+    })
   }
 }

@@ -12,6 +12,12 @@ pub const Status = enum(i32) {
     system_resources = 7,
     out_of_memory = 8,
     unexpected = 9,
+    closing = 10,
+};
+
+pub const CreateResult = extern struct {
+    id: u64,
+    status: i32,
 };
 
 pub const FileLock = struct {
@@ -83,18 +89,20 @@ pub const Registry = struct {
         self.map.deinit();
     }
 
-    pub fn create(self: *Registry, path: []const u8, outPtr: [*]u8, outLen: usize) u64 {
-        clearMessage(outPtr, outLen);
-
+    pub fn create(self: *Registry, path: []const u8) CreateResult {
         const lock = FileLock.create(self.allocator, path) catch |err| {
-            _ = writeStatus(outPtr, outLen, "create file lock", err);
-            return 0;
+            return .{
+                .id = 0,
+                .status = @intFromEnum(statusFromError(err)),
+            };
         };
         errdefer lock.destroy();
 
         const entry = Entry.create(self.allocator, lock) catch |err| {
-            _ = writeStatus(outPtr, outLen, "allocate file lock entry", err);
-            return 0;
+            return .{
+                .id = 0,
+                .status = @intFromEnum(statusFromError(err)),
+            };
         };
         errdefer entry.destroy();
 
@@ -103,50 +111,58 @@ pub const Registry = struct {
 
         const id = self.nextHandle();
         self.map.put(id, entry) catch |err| {
-            _ = writeStatus(outPtr, outLen, "register file lock", err);
-            return 0;
+            return .{
+                .id = 0,
+                .status = @intFromEnum(statusFromError(err)),
+            };
         };
 
-        return id;
+        return .{
+            .id = id,
+            .status = @intFromEnum(Status.ok),
+        };
     }
 
-    pub fn acquire(self: *Registry, id: u64, outPtr: [*]u8, outLen: usize) Status {
-        clearMessage(outPtr, outLen);
-
-        const entry = self.retain(id, outPtr, outLen) orelse return .invalid_handle;
+    pub fn acquire(self: *Registry, id: u64) Status {
+        const entry = switch (self.retain(id)) {
+            .entry => |entry| entry,
+            .status => |status| return status,
+        };
         defer self.releaseEntry(entry);
 
         entry.op.lock();
         defer entry.op.unlock();
 
         entry.lock.acquire() catch |err| {
-            return writeStatus(outPtr, outLen, "acquire file lock", err);
+            return statusFromError(err);
         };
 
         return .ok;
     }
 
-    pub fn tryAcquire(self: *Registry, id: u64, outPtr: [*]u8, outLen: usize) Status {
-        clearMessage(outPtr, outLen);
-
-        const entry = self.retain(id, outPtr, outLen) orelse return .invalid_handle;
+    pub fn tryAcquire(self: *Registry, id: u64) Status {
+        const entry = switch (self.retain(id)) {
+            .entry => |entry| entry,
+            .status => |status| return status,
+        };
         defer self.releaseEntry(entry);
 
         entry.op.lock();
         defer entry.op.unlock();
 
         const acquired = entry.lock.tryAcquire() catch |err| {
-            return writeStatus(outPtr, outLen, "try-acquire file lock", err);
+            return statusFromError(err);
         };
 
         if (!acquired) return .busy;
         return .ok;
     }
 
-    pub fn release(self: *Registry, id: u64, outPtr: [*]u8, outLen: usize) Status {
-        clearMessage(outPtr, outLen);
-
-        const entry = self.retain(id, outPtr, outLen) orelse return .invalid_handle;
+    pub fn release(self: *Registry, id: u64) Status {
+        const entry = switch (self.retain(id)) {
+            .entry => |entry| entry,
+            .status => |status| return status,
+        };
         defer self.releaseEntry(entry);
 
         entry.op.lock();
@@ -156,17 +172,12 @@ pub const Registry = struct {
         return .ok;
     }
 
-    pub fn destroy(self: *Registry, id: u64, outPtr: [*]u8, outLen: usize) Status {
-        clearMessage(outPtr, outLen);
-
+    pub fn destroy(self: *Registry, id: u64) Status {
         self.mutex.lock();
         const item = self.map.fetchRemove(id);
         self.mutex.unlock();
 
-        const entry = item orelse {
-            writeMessage(outPtr, outLen, "unknown file lock handle");
-            return .invalid_handle;
-        };
+        const entry = item orelse return .invalid_handle;
 
         entry.value.state.lock();
         entry.value.closing = true;
@@ -191,25 +202,21 @@ pub const Registry = struct {
         return id;
     }
 
-    fn retain(self: *Registry, id: u64, outPtr: [*]u8, outLen: usize) ?*Entry {
+    fn retain(self: *Registry, id: u64) union(enum) { entry: *Entry, status: Status } {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        const entry = self.map.get(id) orelse {
-            writeMessage(outPtr, outLen, "unknown file lock handle");
-            return null;
-        };
+        const entry = self.map.get(id) orelse return .{ .status = .invalid_handle };
 
         entry.state.lock();
         defer entry.state.unlock();
 
         if (entry.closing) {
-            writeMessage(outPtr, outLen, "file lock is closing");
-            return null;
+            return .{ .status = .closing };
         }
 
         entry.refs += 1;
-        return entry;
+        return .{ .entry = entry };
     }
 
     fn releaseEntry(_: *Registry, entry: *Entry) void {
@@ -248,23 +255,6 @@ const Entry = struct {
     }
 };
 
-pub fn clearMessage(outPtr: [*]u8, outLen: usize) void {
-    if (outLen == 0) return;
-    @memset(outPtr[0..outLen], 0);
-}
-
-pub fn writeMessage(outPtr: [*]u8, outLen: usize, msg: []const u8) void {
-    if (outLen == 0) return;
-
-    const buf = outPtr[0..outLen];
-    @memset(buf, 0);
-
-    if (buf.len == 1) return;
-
-    const len = @min(buf.len - 1, msg.len);
-    @memcpy(buf[0..len], msg[0..len]);
-}
-
 pub fn statusFromError(err: anyerror) Status {
     return switch (err) {
         error.AccessDenied,
@@ -282,23 +272,6 @@ pub fn statusFromError(err: anyerror) Status {
         error.SystemResources => .system_resources,
         else => .unexpected,
     };
-}
-
-pub fn writeStatus(outPtr: [*]u8, outLen: usize, action: []const u8, err: anyerror) Status {
-    const status = statusFromError(err);
-    writeError(outPtr, outLen, action, err);
-    return status;
-}
-
-pub fn writeError(outPtr: [*]u8, outLen: usize, action: []const u8, err: anyerror) void {
-    if (outLen == 0) return;
-
-    const buf = outPtr[0..outLen];
-    @memset(buf, 0);
-
-    if (buf.len == 1) return;
-
-    _ = std.fmt.bufPrint(buf[0 .. buf.len - 1], "{s} failed: {s}", .{ action, @errorName(err) }) catch {};
 }
 
 fn open(path: []const u8) !std.fs.File {

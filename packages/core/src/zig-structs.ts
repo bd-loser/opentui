@@ -180,6 +180,16 @@ export const AllocatorStatsStruct = defineStruct([
   ["requestedBytesValid", "bool_u8"],
 ])
 
+export type FileLockCreateResult = {
+  id: bigint
+  status: number
+}
+
+export const FileLockCreateResultStruct = defineStruct([
+  ["id", "u64"],
+  ["status", "i32"],
+])
+
 export type GrowthPolicy = "grow" | "block"
 
 export type NativeSpanFeedOptions = {

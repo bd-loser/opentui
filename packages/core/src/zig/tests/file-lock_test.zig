@@ -30,30 +30,20 @@ test "Registry rejects relative paths with an explicit status" {
     var registry = raw.Registry.init(testing.allocator);
     defer registry.deinit();
 
-    var msg: [128]u8 = undefined;
-    const id = registry.create("shared.lock", msg[0..].ptr, msg.len);
+    const result = registry.create("shared.lock");
 
-    try testing.expectEqual(@as(u64, 0), id);
-    try testing.expect(msg[0] != 0);
+    try testing.expectEqual(@as(u64, 0), result.id);
+    try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.invalid_path)), result.status);
 }
 
 test "Registry returns invalid_handle for unknown handles" {
     var registry = raw.Registry.init(testing.allocator);
     defer registry.deinit();
 
-    var msg: [128]u8 = undefined;
-
-    try testing.expectEqual(raw.Status.invalid_handle, registry.acquire(999, msg[0..].ptr, msg.len));
-    try testing.expect(msg[0] != 0);
-
-    try testing.expectEqual(raw.Status.invalid_handle, registry.tryAcquire(999, msg[0..].ptr, msg.len));
-    try testing.expect(msg[0] != 0);
-
-    try testing.expectEqual(raw.Status.invalid_handle, registry.release(999, msg[0..].ptr, msg.len));
-    try testing.expect(msg[0] != 0);
-
-    try testing.expectEqual(raw.Status.invalid_handle, registry.destroy(999, msg[0..].ptr, msg.len));
-    try testing.expect(msg[0] != 0);
+    try testing.expectEqual(raw.Status.invalid_handle, registry.acquire(999));
+    try testing.expectEqual(raw.Status.invalid_handle, registry.tryAcquire(999));
+    try testing.expectEqual(raw.Status.invalid_handle, registry.release(999));
+    try testing.expectEqual(raw.Status.invalid_handle, registry.destroy(999));
 }
 
 test "Registry destroy removes the handle" {
@@ -67,10 +57,10 @@ test "Registry destroy removes the handle" {
     const file_path = try lockPath(&tmp);
     defer testing.allocator.free(file_path);
 
-    var msg: [128]u8 = undefined;
-    const id = registry.create(file_path, msg[0..].ptr, msg.len);
+    const result = registry.create(file_path);
 
-    try testing.expect(id != 0);
-    try testing.expectEqual(raw.Status.ok, registry.destroy(id, msg[0..].ptr, msg.len));
-    try testing.expectEqual(raw.Status.invalid_handle, registry.acquire(id, msg[0..].ptr, msg.len));
+    try testing.expect(result.id != 0);
+    try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), result.status);
+    try testing.expectEqual(raw.Status.ok, registry.destroy(result.id));
+    try testing.expectEqual(raw.Status.invalid_handle, registry.acquire(result.id));
 }

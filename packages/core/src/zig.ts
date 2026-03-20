@@ -34,6 +34,7 @@ import {
   ReserveInfoStruct,
   BuildOptionsStruct,
   AllocatorStatsStruct,
+  FileLockCreateResultStruct,
 } from "./zig-structs.js"
 import type {
   NativeSpanFeedOptions,
@@ -41,6 +42,7 @@ import type {
   ReserveInfo,
   BuildOptions,
   AllocatorStats,
+  FileLockCreateResult,
 } from "./zig-structs.js"
 import { isBunfsPath } from "./lib/bunfs.js"
 
@@ -142,6 +144,8 @@ function fileLockStatus(status: number): string {
       return "system_resources"
     case 8:
       return "out_of_memory"
+    case 10:
+      return "closing"
     default:
       return "unexpected"
   }
@@ -1068,23 +1072,23 @@ function getOpenTUILib(libPath?: string) {
     },
 
     createFileLock: {
-      args: ["ptr", "usize", "ptr", "usize"],
-      returns: "u64",
+      args: ["ptr", "usize", "ptr"],
+      returns: "void",
     },
     destroyFileLock: {
-      args: ["u64", "ptr", "usize"],
+      args: ["u64"],
       returns: "i32",
     },
     fileLockAcquire: {
-      args: ["u64", "ptr", "usize"],
+      args: ["u64"],
       returns: "i32",
     },
     fileLockTryAcquire: {
-      args: ["u64", "ptr", "usize"],
+      args: ["u64"],
       returns: "i32",
     },
     fileLockRelease: {
-      args: ["u64", "ptr", "usize"],
+      args: ["u64"],
       returns: "i32",
     },
 
@@ -3116,65 +3120,54 @@ class FFIRenderLib implements RenderLib {
     }
   }
 
-  private createFileLockError(op: string, path: string, status: number, errorBuffer: Uint8Array): Error {
-    const end = errorBuffer.indexOf(0)
-    const slice = end === -1 ? errorBuffer : errorBuffer.subarray(0, end)
-    const detail = this.decoder.decode(slice).trim()
-    const reason = detail || fileLockStatus(status)
+  private createFileLockError(op: string, path: string, status: number): Error {
+    const reason = fileLockStatus(status)
     return new Error(`${op} failed for ${path}: ${reason}`)
   }
 
   public createFileLock(path: string): number {
     const pathBuffer = this.encoder.encode(path)
-    const errorBuffer = new Uint8Array(512)
-    const lock = this.opentui.symbols.createFileLock(
-      ptr(pathBuffer),
-      pathBuffer.length,
-      ptr(errorBuffer),
-      errorBuffer.length,
-    )
+    const resultBuffer = new ArrayBuffer(FileLockCreateResultStruct.size)
+    this.opentui.symbols.createFileLock(ptr(pathBuffer), pathBuffer.length, ptr(resultBuffer))
+    const result = FileLockCreateResultStruct.unpack(resultBuffer) as FileLockCreateResult
 
-    if (!lock) {
-      throw this.createFileLockError("createFileLock", path, -1, errorBuffer)
+    if (result.status !== FILE_LOCK_OK) {
+      throw this.createFileLockError("createFileLock", path, result.status)
     }
 
-    return toNumber(lock)
+    return toNumber(result.id)
   }
 
   public destroyFileLock(lock: number): void {
-    const errorBuffer = new Uint8Array(512)
-    const status = this.opentui.symbols.destroyFileLock(lock, ptr(errorBuffer), errorBuffer.length)
+    const status = this.opentui.symbols.destroyFileLock(lock)
 
     if (status !== FILE_LOCK_OK) {
-      throw this.createFileLockError("destroyFileLock", `handle:${lock}`, status, errorBuffer)
+      throw this.createFileLockError("destroyFileLock", `handle:${lock}`, status)
     }
   }
 
   public fileLockAcquire(lock: number): void {
-    const errorBuffer = new Uint8Array(512)
-    const status = this.opentui.symbols.fileLockAcquire(lock, ptr(errorBuffer), errorBuffer.length)
+    const status = this.opentui.symbols.fileLockAcquire(lock)
 
     if (status !== FILE_LOCK_OK) {
-      throw this.createFileLockError("fileLockAcquire", `handle:${lock}`, status, errorBuffer)
+      throw this.createFileLockError("fileLockAcquire", `handle:${lock}`, status)
     }
   }
 
   public fileLockTryAcquire(lock: number): boolean {
-    const errorBuffer = new Uint8Array(512)
-    const status = this.opentui.symbols.fileLockTryAcquire(lock, ptr(errorBuffer), errorBuffer.length)
+    const status = this.opentui.symbols.fileLockTryAcquire(lock)
 
     if (status === FILE_LOCK_OK) return true
     if (status === FILE_LOCK_BUSY) return false
 
-    throw this.createFileLockError("fileLockTryAcquire", `handle:${lock}`, status, errorBuffer)
+    throw this.createFileLockError("fileLockTryAcquire", `handle:${lock}`, status)
   }
 
   public fileLockRelease(lock: number): void {
-    const errorBuffer = new Uint8Array(512)
-    const status = this.opentui.symbols.fileLockRelease(lock, ptr(errorBuffer), errorBuffer.length)
+    const status = this.opentui.symbols.fileLockRelease(lock)
 
     if (status !== FILE_LOCK_OK) {
-      throw this.createFileLockError("fileLockRelease", `handle:${lock}`, status, errorBuffer)
+      throw this.createFileLockError("fileLockRelease", `handle:${lock}`, status)
     }
   }
 

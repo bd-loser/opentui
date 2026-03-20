@@ -61,6 +61,8 @@ pub const ExternalAllocatorStats = extern struct {
     requested_bytes_valid: bool,
 };
 
+pub const ExternalFileLockCreateResult = file_lock.CreateResult;
+
 fn toNonNegativeU64(value: anytype) u64 {
     const ValueType = @TypeOf(value);
 
@@ -188,25 +190,25 @@ export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
     };
 }
 
-export fn createFileLock(pathPtr: [*]const u8, pathLen: usize, errPtr: [*]u8, errLen: usize) u64 {
+export fn createFileLock(pathPtr: [*]const u8, pathLen: usize, outPtr: *ExternalFileLockCreateResult) void {
     const path = pathPtr[0..pathLen];
-    return fileLockRegistry.create(path, errPtr, errLen);
+    outPtr.* = fileLockRegistry.create(path);
 }
 
-export fn destroyFileLock(lockId: u64, errPtr: [*]u8, errLen: usize) i32 {
-    return @intFromEnum(fileLockRegistry.destroy(lockId, errPtr, errLen));
+export fn destroyFileLock(lockId: u64) i32 {
+    return @intFromEnum(fileLockRegistry.destroy(lockId));
 }
 
-export fn fileLockAcquire(lockId: u64, errPtr: [*]u8, errLen: usize) i32 {
-    return @intFromEnum(fileLockRegistry.acquire(lockId, errPtr, errLen));
+export fn fileLockAcquire(lockId: u64) i32 {
+    return @intFromEnum(fileLockRegistry.acquire(lockId));
 }
 
-export fn fileLockTryAcquire(lockId: u64, errPtr: [*]u8, errLen: usize) i32 {
-    return @intFromEnum(fileLockRegistry.tryAcquire(lockId, errPtr, errLen));
+export fn fileLockTryAcquire(lockId: u64) i32 {
+    return @intFromEnum(fileLockRegistry.tryAcquire(lockId));
 }
 
-export fn fileLockRelease(lockId: u64, errPtr: [*]u8, errLen: usize) i32 {
-    return @intFromEnum(fileLockRegistry.release(lockId, errPtr, errLen));
+export fn fileLockRelease(lockId: u64) i32 {
+    return @intFromEnum(fileLockRegistry.release(lockId));
 }
 
 export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?*renderer.CliRenderer {

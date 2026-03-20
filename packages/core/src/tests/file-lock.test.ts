@@ -4,6 +4,8 @@ import { join } from "node:path"
 
 import { expect, test } from "bun:test"
 
+import { FileLock, FileLockError } from "../FileLock"
+
 const fixturePath = join(import.meta.dir, "file-lock.fixture.ts")
 const fixtureCwd = join(import.meta.dir, "..", "..")
 
@@ -44,6 +46,33 @@ async function waitForReady(path: string, timeout = 2_000): Promise<void> {
 
   throw new Error(`Timed out waiting for ready marker: ${path}`)
 }
+
+test("FileLock throws a catchable error when the parent directory is missing", () => {
+  const dir = mkdtempSync(join(tmpdir(), "opentui-file-lock-"))
+  const path = join(dir, "missing", "shared.lock")
+
+  try {
+    expect(() => FileLock.acquire(path)).toThrow(FileLockError)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("FileLock.close is idempotent and closed locks throw on reuse", () => {
+  const dir = mkdtempSync(join(tmpdir(), "opentui-file-lock-"))
+  const path = join(dir, "shared.lock")
+  const lock = FileLock.open(path)
+
+  try {
+    lock.close()
+    lock.close()
+
+    expect(() => lock.acquire()).toThrow(FileLockError)
+    expect(() => lock.tryAcquire()).toThrow(FileLockError)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 
 test("FileLock.tryAcquire returns false while another process holds the lock", async () => {
   const dir = mkdtempSync(join(tmpdir(), "opentui-file-lock-"))

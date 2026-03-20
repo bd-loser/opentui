@@ -202,7 +202,7 @@ test("FileLock.tryAcquireWithTimeout waits asynchronously and emits wait ticks",
       expect(lock?.acquired).toBe(true)
       expect(ticks.length).toBeGreaterThan(0)
       expect(ticks[0]?.attempt).toBe(1)
-      expect(ticks[0]?.delay).toBeGreaterThan(0)
+      expect(ticks[0]?.delay).toBe(50)
       expect(ticks[ticks.length - 1]?.waited).toBeGreaterThan(0)
       expect(await holder.exited).toBe(0)
     } finally {
@@ -233,8 +233,42 @@ test("FileLock.tryAcquireWithTimeout returns null after the timeout expires", as
     })
 
     expect(lock).toBeNull()
-    expect(ticks.length).toBeGreaterThan(0)
-    expect(ticks[ticks.length - 1]?.waited).toBe(120)
+    expect(ticks.length).toBeGreaterThanOrEqual(2)
+    expect(ticks[0]?.delay).toBe(50)
+    expect(ticks[1]?.delay).toBe(50)
+    expect(ticks[ticks.length - 1]?.waited).toBeLessThanOrEqual(120)
+    expect(ticks[ticks.length - 1]?.waited).toBeGreaterThan(100)
+  } finally {
+    holder.kill()
+    await holder.exited.catch(() => undefined)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("FileLock.tryAcquireWithTimeout uses custom tickTime when provided", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "opentui-file-lock-"))
+  const lockPath = join(dir, "shared.lock")
+  const readyPath = join(dir, "holder.ready")
+  const holder = spawnFixture("hold", lockPath, readyPath, "120")
+  const ticks: FileLockWaitTick[] = []
+
+  try {
+    await waitForReady(readyPath)
+
+    const lock = await FileLock.tryAcquireWithTimeout(lockPath, {
+      tickTime: (attempt) => attempt * 25,
+      waitTick: (tick) => {
+        ticks.push(tick)
+      },
+    })
+
+    try {
+      expect(lock).not.toBeNull()
+      expect(lock?.acquired).toBe(true)
+      expect(ticks.map((tick) => tick.delay)).toEqual([25, 50, 75])
+    } finally {
+      lock?.close()
+    }
   } finally {
     holder.kill()
     await holder.exited.catch(() => undefined)

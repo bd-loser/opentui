@@ -23,10 +23,12 @@ export interface FileLockWaitTick {
   waited: number
 }
 
+export type FileLockTickTime = (attempt: number) => number
 export type FileLockWait = (input: FileLockWaitTick) => void | Promise<void>
 
 export interface FileLockWaitOptions {
   timeoutMs?: number
+  tickTime?: FileLockTickTime
   waitTick?: FileLockWait
   signal?: AbortSignal
 }
@@ -65,9 +67,7 @@ function normalizePath(path: string): string {
   return resolve(path)
 }
 
-function defaultRetryDelay(attempt: number): number {
-  return Math.min(50 * attempt, 250)
-}
+const DEFAULT_TICK_TIME: FileLockTickTime = () => 50
 
 function validateTimeoutMs(timeoutMs: number | undefined): number | undefined {
   if (timeoutMs === undefined) return undefined
@@ -77,6 +77,16 @@ function validateTimeoutMs(timeoutMs: number | undefined): number | undefined {
   }
 
   return timeoutMs
+}
+
+function resolveTickDelay(tickTime: FileLockTickTime, attempt: number): number {
+  const delay = tickTime(attempt)
+
+  if (typeof delay !== "number" || !Number.isFinite(delay) || delay < 0) {
+    throw new TypeError("FileLock tickTime must return a finite, non-negative number")
+  }
+
+  return delay
 }
 
 function abortReason(signal?: AbortSignal): unknown {
@@ -156,11 +166,11 @@ export class FileLock {
     path: string,
     options: FileLockTryAcquireWithTimeoutOptions = {},
   ): Promise<FileLock | null> {
-    const { createIfMissing, createParentPath, timeoutMs, waitTick, signal } = options
+    const { createIfMissing, createParentPath, timeoutMs, tickTime, waitTick, signal } = options
     const lock = FileLock.open(path, { createIfMissing, createParentPath })
 
     try {
-      const acquired = await lock.tryAcquireWithTimeout({ timeoutMs, waitTick, signal })
+      const acquired = await lock.tryAcquireWithTimeout({ timeoutMs, tickTime, waitTick, signal })
 
       if (!acquired) {
         lock.close()
@@ -235,6 +245,7 @@ export class FileLock {
 
   public async tryAcquireWithTimeout(options: FileLockWaitOptions = {}): Promise<boolean> {
     const timeoutMs = validateTimeoutMs(options.timeoutMs)
+    const tickTime = options.tickTime ?? DEFAULT_TICK_TIME
 
     throwIfAborted(options.signal)
 
@@ -244,19 +255,22 @@ export class FileLock {
 
     let attempt = 0
     let waited = 0
+    const startedAt = Date.now()
 
-    while (timeoutMs === undefined || waited < timeoutMs) {
+    while (true) {
       throwIfAborted(options.signal)
+
+      const elapsed = Date.now() - startedAt
+
+      if (timeoutMs !== undefined && elapsed >= timeoutMs) {
+        return false
+      }
 
       attempt += 1
 
-      const remaining = timeoutMs === undefined ? undefined : timeoutMs - waited
-      const delay =
-        remaining === undefined ? defaultRetryDelay(attempt) : Math.min(defaultRetryDelay(attempt), remaining)
-
-      if (delay <= 0) {
-        return false
-      }
+      const remaining = timeoutMs === undefined ? undefined : timeoutMs - elapsed
+      const nextDelay = resolveTickDelay(tickTime, attempt)
+      const delay = remaining === undefined ? nextDelay : Math.min(nextDelay, remaining)
 
       waited += delay
       await options.waitTick?.({ file: this.path, attempt, delay, waited })

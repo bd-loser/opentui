@@ -35,7 +35,7 @@ Current behaviour summary:
 
 - `FileLock.open(path, options?)`, `FileLock.tryAcquire(path, options?)`, and `FileLock.tryAcquireWithTimeout(path, options?)` normalize the path, create missing parent directories and lock files by default, and support strict opt-out via `createParentPath: false` and `createIfMissing: false`
 - there is no blocking acquire API in TypeScript or Zig; all lock contention handling goes through immediate `tryAcquire()` plus asynchronous retry logic in `FileLock.ts`
-- `FileLock.tryAcquireWithTimeout()` retries without blocking the event loop, supports `timeoutMs`, `waitTick`, and `signal`, and returns `null` on timeout
+- `FileLock.tryAcquireWithTimeout()` retries without blocking the event loop, supports `timeoutMs`, `tickTime`, `waitTick`, and `signal`, defaults `tickTime` to `() => 50`, and returns `null` on timeout
 - the native layer currently uses `std.fs.File.tryLock(.exclusive)` for lock attempts
 - the native `open()` path still implicitly creates the file if it does not exist, so the remaining native follow-up should make that path strict existing-file-only
 - TypeScript status decoding in `packages/core/src/zig.ts` is not exhaustive; status `9` (`unexpected`) is still not handled explicitly from a single source of truth
@@ -66,6 +66,7 @@ The public API should settle on these semantics:
 ```ts
 type FileLockTryAcquireWithTimeoutOptions = FileLockOpenOptions & {
   timeoutMs?: number
+  tickTime?: (attempt: number) => number // default () => 50
   signal?: AbortSignal
   waitTick?: (tick: { file: string; attempt: number; delay: number; waited: number }) => void | Promise<void>
 }
@@ -95,6 +96,8 @@ Timeout behaviour:
 
 - `tryAcquire()` remains immediate and returns `false` on contention
 - `tryAcquireWithTimeout({ timeoutMs })` retries asynchronously up to the requested bound and returns `null` / `false` on timeout
+- `tryAcquireWithTimeout()` defaults to a constant `tickTime` of `() => 50`
+- callers can provide `tickTime` when they want custom pacing such as exponential backoff
 - `tryAcquireWithTimeout()` without `timeoutMs` may keep retrying until success or abort, but it must never block the main thread
 - `signal` aborts waiting and rethrows the abort reason
 
@@ -199,7 +202,7 @@ Document:
 - what `FileLock` is for
 - the default friendly behaviour (`createIfMissing: true`, `createParentPath: true`)
 - the strict opt-out flags
-- the non-blocking `tryAcquireWithTimeout()` semantics, including timeout, abort, and wait-tick behaviour
+- the non-blocking `tryAcquireWithTimeout()` semantics, including timeout, configurable `tickTime`, abort, and wait-tick behaviour
 - the lifecycle contract for `tryAcquire`, `tryAcquireWithTimeout`, `release`, `close`, and `Symbol.dispose`
 - that dedicated `.lock` files may remain on disk after release, which is expected
 - that lock support depends on the underlying filesystem and platform capabilities

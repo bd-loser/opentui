@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const ansi = @import("ansi.zig");
 const tb = @import("text-buffer.zig");
 const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
@@ -18,6 +19,20 @@ const GraphemeInfo = seg_mod.GraphemeInfo;
 
 pub const TextBufferViewError = error{
     OutOfMemory,
+};
+
+pub const SelectionStyle = struct {
+    bgColor: ?RGBA = null,
+    fgColor: ?RGBA = null,
+    bgTag: ansi.ColorTag = ansi.COLOR_TAG_RGB,
+    fgTag: ansi.ColorTag = ansi.COLOR_TAG_RGB,
+
+    pub fn rgb(bgColor: ?RGBA, fgColor: ?RGBA) SelectionStyle {
+        return .{
+            .bgColor = bgColor,
+            .fgColor = fgColor,
+        };
+    }
 };
 
 /// Viewport defines a rectangular window into the virtual line space
@@ -503,23 +518,32 @@ pub const UnifiedTextBufferView = struct {
         return self.virtual_lines_arena.queryCapacity();
     }
 
-    pub fn setSelection(self: *Self, start: u32, end: u32, bgColor: ?RGBA, fgColor: ?RGBA) void {
-        self.selection = TextSelection{
+    fn selectionFromStyle(start: u32, end: u32, style: SelectionStyle) TextSelection {
+        return .{
             .start = start,
             .end = end,
-            .bgColor = bgColor,
-            .fgColor = fgColor,
+            .bgColor = style.bgColor,
+            .fgColor = style.fgColor,
+            .bgTag = style.bgTag,
+            .fgTag = style.fgTag,
         };
     }
 
+    pub fn setSelection(self: *Self, start: u32, end: u32, bgColor: ?RGBA, fgColor: ?RGBA) void {
+        self.setSelectionStyle(start, end, SelectionStyle.rgb(bgColor, fgColor));
+    }
+
+    pub fn setSelectionStyle(self: *Self, start: u32, end: u32, style: SelectionStyle) void {
+        self.selection = selectionFromStyle(start, end, style);
+    }
+
     pub fn updateSelection(self: *Self, end: u32, bgColor: ?RGBA, fgColor: ?RGBA) void {
+        self.updateSelectionStyle(end, SelectionStyle.rgb(bgColor, fgColor));
+    }
+
+    pub fn updateSelectionStyle(self: *Self, end: u32, style: SelectionStyle) void {
         if (self.selection) |sel| {
-            self.selection = TextSelection{
-                .start = sel.start,
-                .end = end,
-                .bgColor = bgColor,
-                .fgColor = fgColor,
-            };
+            self.selection = selectionFromStyle(sel.start, end, style);
         }
     }
 
@@ -548,6 +572,10 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn setLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
+        return self.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, SelectionStyle.rgb(bgColor, fgColor));
+    }
+
+    pub fn setLocalSelectionStyle(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, style: SelectionStyle) bool {
         self.updateVirtualLines();
         if (self.truncate and self.viewport != null) {
             self.ensureTruncation();
@@ -598,12 +626,7 @@ pub const UnifiedTextBufferView = struct {
         const new_end = @max(anchor_offset, focus_offset);
 
         // Always store selection, even if zero-width, to preserve anchor for updateLocalSelection
-        const new_selection = TextSelection{
-            .start = new_start,
-            .end = new_end,
-            .bgColor = bgColor,
-            .fgColor = fgColor,
-        };
+        const new_selection = selectionFromStyle(new_start, new_end, style);
 
         const selection_changed = if (self.selection) |old_sel|
             old_sel.start != new_selection.start or old_sel.end != new_selection.end
@@ -615,14 +638,18 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn updateLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
+        return self.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, SelectionStyle.rgb(bgColor, fgColor));
+    }
+
+    pub fn updateLocalSelectionStyle(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, style: SelectionStyle) bool {
         if (self.selection_anchor_offset) |_| {
-            return self.updateLocalSelectionFocusOnly(focusX, focusY, bgColor, fgColor);
+            return self.updateLocalSelectionFocusOnly(focusX, focusY, style);
         } else {
-            return self.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+            return self.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, style);
         }
     }
 
-    fn updateLocalSelectionFocusOnly(self: *Self, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
+    fn updateLocalSelectionFocusOnly(self: *Self, focusX: i32, focusY: i32, style: SelectionStyle) bool {
         const anchor_offset = self.selection_anchor_offset orelse return false;
 
         self.updateVirtualLines();
@@ -650,12 +677,7 @@ pub const UnifiedTextBufferView = struct {
             new_end = @min(new_end + 1, text_end_offset);
         }
 
-        self.selection = TextSelection{
-            .start = new_start,
-            .end = new_end,
-            .bgColor = bgColor,
-            .fgColor = fgColor,
-        };
+        self.selection = selectionFromStyle(new_start, new_end, style);
 
         return true;
     }

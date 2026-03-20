@@ -2,11 +2,93 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 pub const RGBA = [4]f32;
+pub const ColorTag = u16;
+pub const COLOR_TAG_RGB: ColorTag = 256;
+pub const COLOR_TAG_DEFAULT: ColorTag = 257;
+
+pub const ColorKind = enum {
+    indexed,
+    rgb,
+    default,
+};
+
+pub const DecodedColorTag = struct {
+    kind: ColorKind,
+    index: ?u8 = null,
+};
 
 pub const AnsiError = error{
     InvalidFormat,
     WriteFailed,
 };
+
+pub const ANSI16_RGB = [_][3]u8{
+    .{ 0x00, 0x00, 0x00 },
+    .{ 0x80, 0x00, 0x00 },
+    .{ 0x00, 0x80, 0x00 },
+    .{ 0x80, 0x80, 0x00 },
+    .{ 0x00, 0x00, 0x80 },
+    .{ 0x80, 0x00, 0x80 },
+    .{ 0x00, 0x80, 0x80 },
+    .{ 0xc0, 0xc0, 0xc0 },
+    .{ 0x80, 0x80, 0x80 },
+    .{ 0xff, 0x00, 0x00 },
+    .{ 0x00, 0xff, 0x00 },
+    .{ 0xff, 0xff, 0x00 },
+    .{ 0x00, 0x00, 0xff },
+    .{ 0xff, 0x00, 0xff },
+    .{ 0x00, 0xff, 0xff },
+    .{ 0xff, 0xff, 0xff },
+};
+
+pub const ANSI_256_CUBE_LEVELS = [_]u8{ 0, 95, 135, 175, 215, 255 };
+
+pub fn rgbaComponentToU8(component: f32) u8 {
+    if (!std.math.isFinite(component)) return 0;
+
+    const clamped = std.math.clamp(component, 0.0, 1.0);
+    return @intFromFloat(@round(clamped * 255.0));
+}
+
+pub fn u8RgbToRgba(r: u8, g: u8, b: u8) RGBA {
+    return .{
+        @as(f32, @floatFromInt(r)) / 255.0,
+        @as(f32, @floatFromInt(g)) / 255.0,
+        @as(f32, @floatFromInt(b)) / 255.0,
+        1.0,
+    };
+}
+
+pub fn fallbackAnsi256Color(index: usize) RGBA {
+    if (index < ANSI16_RGB.len) {
+        return u8RgbToRgba(ANSI16_RGB[index][0], ANSI16_RGB[index][1], ANSI16_RGB[index][2]);
+    }
+
+    if (index < 232) {
+        const cube_index = index - 16;
+        const r = ANSI_256_CUBE_LEVELS[(cube_index / 36) % 6];
+        const g = ANSI_256_CUBE_LEVELS[(cube_index / 6) % 6];
+        const b = ANSI_256_CUBE_LEVELS[cube_index % 6];
+        return u8RgbToRgba(r, g, b);
+    }
+
+    const gray_value: u8 = @intCast(8 + (index - 232) * 10);
+    return u8RgbToRgba(gray_value, gray_value, gray_value);
+}
+
+pub fn colorDistanceSquared(a: RGBA, b: RGBA) f32 {
+    const dr = a[0] - b[0];
+    const dg = a[1] - b[1];
+    const db = a[2] - b[2];
+    return dr * dr + dg * dg + db * db;
+}
+
+pub fn rgbaToRgb24(rgba: RGBA) u32 {
+    const r = @as(u32, rgbaComponentToU8(rgba[0]));
+    const g = @as(u32, rgbaComponentToU8(rgba[1]));
+    const b = @as(u32, rgbaComponentToU8(rgba[2]));
+    return (r << 16) | (g << 8) | b;
+}
 
 pub const ANSI = struct {
     pub const reset = "\x1b[0m";
@@ -29,8 +111,24 @@ pub const ANSI = struct {
         writer.print("\x1b[38;2;{d};{d};{d}m", .{ r, g, b }) catch return AnsiError.WriteFailed;
     }
 
+    pub fn fgIndexedColorOutput(writer: anytype, index: u8) AnsiError!void {
+        writer.print("\x1b[38;5;{d}m", .{index}) catch return AnsiError.WriteFailed;
+    }
+
+    pub fn fgDefaultOutput(writer: anytype) AnsiError!void {
+        writer.writeAll("\x1b[39m") catch return AnsiError.WriteFailed;
+    }
+
     pub fn bgColorOutput(writer: anytype, r: u8, g: u8, b: u8) AnsiError!void {
         writer.print("\x1b[48;2;{d};{d};{d}m", .{ r, g, b }) catch return AnsiError.WriteFailed;
+    }
+
+    pub fn bgIndexedColorOutput(writer: anytype, index: u8) AnsiError!void {
+        writer.print("\x1b[48;5;{d}m", .{index}) catch return AnsiError.WriteFailed;
+    }
+
+    pub fn bgDefaultOutput(writer: anytype) AnsiError!void {
+        writer.writeAll("\x1b[49m") catch return AnsiError.WriteFailed;
     }
 
     // Text attribute constants
@@ -194,6 +292,45 @@ pub const ANSI = struct {
     }
 };
 
+pub fn rgbColorTag() ColorTag {
+    return COLOR_TAG_RGB;
+}
+
+pub fn defaultColorTag() ColorTag {
+    return COLOR_TAG_DEFAULT;
+}
+
+pub fn indexedColorTag(index: u8) ColorTag {
+    return @as(ColorTag, index);
+}
+
+pub fn decodeColorTag(tag: ColorTag) DecodedColorTag {
+    if (tag == COLOR_TAG_DEFAULT) {
+        return .{ .kind = .default };
+    }
+
+    if (tag == COLOR_TAG_RGB) {
+        return .{ .kind = .rgb };
+    }
+
+    return .{
+        .kind = .indexed,
+        .index = @intCast(tag),
+    };
+}
+
+pub fn isRgbColorTag(tag: ColorTag) bool {
+    return tag == COLOR_TAG_RGB;
+}
+
+pub fn isDefaultColorTag(tag: ColorTag) bool {
+    return tag == COLOR_TAG_DEFAULT;
+}
+
+pub fn isIndexedColorTag(tag: ColorTag) bool {
+    return tag < COLOR_TAG_RGB;
+}
+
 pub const TextAttributes = struct {
     pub const NONE: u8 = 0;
     pub const BOLD: u8 = 1 << 0;
@@ -276,4 +413,11 @@ pub fn hsvToRgb(h: f32, s: f32, v: f32) RGBA {
     };
 
     return .{ rgb[0], rgb[1], rgb[2], 1.0 };
+}
+
+test "fallbackAnsi256Color returns base, cube, and grayscale colors" {
+    try std.testing.expectEqual(@as(u32, 0xff0000), rgbaToRgb24(fallbackAnsi256Color(9)));
+    try std.testing.expectEqual(@as(u32, 0x0000ff), rgbaToRgb24(fallbackAnsi256Color(21)));
+    try std.testing.expectEqual(@as(u32, 0x080808), rgbaToRgb24(fallbackAnsi256Color(232)));
+    try std.testing.expectEqual(@as(u32, 0xeeeeee), rgbaToRgb24(fallbackAnsi256Color(255)));
 }

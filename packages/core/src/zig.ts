@@ -209,6 +209,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "ptr",
     },
+    rendererSetPaletteState: {
+      args: ["ptr", "ptr", "usize", "ptr", "ptr", "u32"],
+      returns: "void",
+    },
 
     queryPixelResolution: {
       args: ["ptr"],
@@ -249,6 +253,14 @@ function getOpenTUILib(libPath?: string) {
       returns: "ptr",
     },
     bufferGetBgPtr: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    bufferGetFgTagPtr: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    bufferGetBgTagPtr: {
       args: ["ptr"],
       returns: "ptr",
     },
@@ -1084,7 +1096,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     syntaxStyleRegister: {
-      args: ["ptr", "ptr", "usize", "ptr", "ptr", "u8"],
+      args: ["ptr", "ptr", "usize", "ptr", "ptr", "u32"],
       returns: "u32",
     },
     syntaxStyleResolveByName: {
@@ -1451,6 +1463,13 @@ export interface RenderLib {
   ) => number
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
+  rendererSetPaletteState: (
+    renderer: Pointer,
+    palette: readonly RGBA[],
+    defaultForeground: RGBA,
+    defaultBackground: RGBA,
+    paletteEpoch: number,
+  ) => void
   createOptimizedBuffer: (
     width: number,
     height: number,
@@ -1475,6 +1494,8 @@ export interface RenderLib {
   bufferGetCharPtr: (buffer: Pointer) => Pointer
   bufferGetFgPtr: (buffer: Pointer) => Pointer
   bufferGetBgPtr: (buffer: Pointer) => Pointer
+  bufferGetFgTagPtr: (buffer: Pointer) => Pointer
+  bufferGetBgTagPtr: (buffer: Pointer) => Pointer
   bufferGetAttributesPtr: (buffer: Pointer) => Pointer
   bufferGetRespectAlpha: (buffer: Pointer) => boolean
   bufferSetRespectAlpha: (buffer: Pointer, respectAlpha: boolean) => void
@@ -2156,6 +2177,34 @@ class FFIRenderLib implements RenderLib {
     return new OptimizedBuffer(this, bufferPtr, width, height, { id: "current buffer", widthMethod: "unicode" })
   }
 
+  public rendererSetPaletteState(
+    renderer: Pointer,
+    palette: readonly RGBA[],
+    defaultForeground: RGBA,
+    defaultBackground: RGBA,
+    paletteEpoch: number,
+  ): void {
+    const paletteBuffer = new Float32Array(palette.length * 4)
+
+    for (let index = 0; index < palette.length; index++) {
+      const color = palette[index]
+      const base = index * 4
+      paletteBuffer[base] = color.r
+      paletteBuffer[base + 1] = color.g
+      paletteBuffer[base + 2] = color.b
+      paletteBuffer[base + 3] = color.a
+    }
+
+    this.opentui.symbols.rendererSetPaletteState(
+      renderer,
+      paletteBuffer,
+      paletteBuffer.length,
+      defaultForeground.buffer,
+      defaultBackground.buffer,
+      paletteEpoch >>> 0,
+    )
+  }
+
   public bufferGetCharPtr(buffer: Pointer): Pointer {
     const ptr = this.opentui.symbols.bufferGetCharPtr(buffer)
     if (!ptr) {
@@ -2176,6 +2225,22 @@ class FFIRenderLib implements RenderLib {
     const ptr = this.opentui.symbols.bufferGetBgPtr(buffer)
     if (!ptr) {
       throw new Error("Failed to get bg pointer")
+    }
+    return ptr
+  }
+
+  public bufferGetFgTagPtr(buffer: Pointer): Pointer {
+    const ptr = this.opentui.symbols.bufferGetFgTagPtr(buffer)
+    if (!ptr) {
+      throw new Error("Failed to get fg tag pointer")
+    }
+    return ptr
+  }
+
+  public bufferGetBgTagPtr(buffer: Pointer): Pointer {
+    const ptr = this.opentui.symbols.bufferGetBgTagPtr(buffer)
+    if (!ptr) {
+      throw new Error("Failed to get bg tag pointer")
     }
     return ptr
   }
@@ -3747,6 +3812,7 @@ class FFIRenderLib implements RenderLib {
       kitty_keyboard: caps.kitty_keyboard,
       kitty_graphics: caps.kitty_graphics,
       rgb: caps.rgb,
+      ansi256: caps.ansi256,
       unicode: caps.unicode,
       sgr_pixels: caps.sgr_pixels,
       color_scheme_updates: caps.color_scheme_updates,

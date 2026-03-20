@@ -841,6 +841,221 @@ test "renderer - hyperlink spanning multiple rows uses same id" {
     try std.testing.expectEqual(@as(usize, 1), count);
 }
 
+test "renderer - explicit default and indexed tags use ANSI default/indexed output" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        4,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = true;
+    cli_renderer.terminal.caps.ansi256 = true;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    next_buffer.set(0, 0, buffer.Cell{
+        .char = 'A',
+        .fg = RGBA{ 1.0, 1.0, 1.0, 1.0 },
+        .bg = RGBA{ 0.0, 0.0, 0.0, 1.0 },
+        .fg_tag = ansi.COLOR_TAG_DEFAULT,
+        .bg_tag = ansi.COLOR_TAG_RGB,
+        .attributes = 0,
+    });
+    next_buffer.set(1, 0, buffer.Cell{
+        .char = 'B',
+        .fg = RGBA{ 0.2, 0.7, 0.9, 1.0 },
+        .bg = RGBA{ 0.0, 0.0, 0.0, 1.0 },
+        .fg_tag = ansi.indexedColorTag(6),
+        .bg_tag = ansi.COLOR_TAG_RGB,
+        .attributes = 0,
+    });
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[39m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;6m") != null);
+}
+
+test "renderer - indexed snapshots fall back to rgb and explicit bg default resets without ansi256" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        2,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = true;
+    cli_renderer.terminal.caps.ansi256 = false;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    next_buffer.set(0, 0, buffer.Cell{
+        .char = 'A',
+        .fg = RGBA{ 0.2, 0.4, 0.6, 1.0 },
+        .bg = RGBA{ 0.0, 0.0, 0.0, 1.0 },
+        .fg_tag = ansi.indexedColorTag(6),
+        .bg_tag = ansi.COLOR_TAG_DEFAULT,
+        .attributes = 0,
+    });
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;2;51;102;153m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;6m") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[49m") != null);
+}
+
+test "renderer - rgb colors fall back to ANSI256 mapping when rgb is unavailable" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        2,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = false;
+    cli_renderer.terminal.caps.ansi256 = true;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawText("A", 0, 0, RGBA{ 0.95, 0.1, 0.1, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 }, 0);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;2;") == null);
+}
+
+test "renderer - rgb fallback uses published palette state" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        2,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = false;
+    cli_renderer.terminal.caps.ansi256 = true;
+
+    const target = RGBA{ 0.3, 0.6, 0.9, 1.0 };
+    var palette = [_]RGBA{RGBA{ 0.0, 0.0, 0.0, 1.0 }} ** 256;
+    palette[42] = target;
+    cli_renderer.setPaletteState(palette[0..], RGBA{ 1.0, 1.0, 1.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 }, 1);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawText("A", 0, 0, target, RGBA{ 0.0, 0.0, 0.0, 1.0 }, 0);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;42m") != null);
+}
+
+test "renderer - palette epoch changes force repaint and use new palette mapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        2,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = false;
+    cli_renderer.terminal.caps.ansi256 = true;
+
+    const target = RGBA{ 0.3, 0.6, 0.9, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    var palette_a = [_]RGBA{RGBA{ 0.0, 0.0, 0.0, 1.0 }} ** 256;
+    palette_a[42] = target;
+    cli_renderer.setPaletteState(palette_a[0..], RGBA{ 1.0, 1.0, 1.0, 1.0 }, bg, 1);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawText("A", 0, 0, target, bg, 0);
+    cli_renderer.render(false);
+
+    const first_output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, first_output, "\x1b[38;5;42m") != null);
+
+    try next_buffer.drawText("A", 0, 0, target, bg, 0);
+    cli_renderer.render(false);
+
+    const second_output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, second_output, "A") == null);
+
+    var palette_b = [_]RGBA{RGBA{ 0.0, 0.0, 0.0, 1.0 }} ** 256;
+    palette_b[77] = target;
+    cli_renderer.setPaletteState(palette_b[0..], RGBA{ 1.0, 1.0, 1.0, 1.0 }, bg, 2);
+
+    try next_buffer.drawText("A", 0, 0, target, bg, 0);
+    cli_renderer.render(false);
+
+    const third_output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, third_output, "A") != null);
+    try std.testing.expect(std.mem.indexOf(u8, third_output, "\x1b[38;5;77m") != null);
+}
+
+test "renderer - transparent rgb backgrounds still emit 49 reset" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        2,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = true;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawText("A", 0, 0, RGBA{ 1.0, 1.0, 1.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 0.0 }, 0);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[49m") != null);
+}
+
 // ============================================================================
 // GRAPHEME CURSOR POSITIONING TESTS
 // ============================================================================
@@ -1493,6 +1708,9 @@ test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer
     );
     defer cli_renderer.destroy();
 
+    cli_renderer.terminal.caps.rgb = true;
+    cli_renderer.terminal.caps.ansi256 = true;
+
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
     const next_buffer = cli_renderer.getNextBuffer();
@@ -1527,6 +1745,63 @@ test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer
     try std.testing.expect(sync_index != null);
     try std.testing.expect(sync_index.? < snapshot_text_index.?);
     try std.testing.expect(footer_clear_index == null);
+}
+
+test "renderer - commitSplitFooterSnapshot preserves indexed and default color tags" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        8,
+        4,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = true;
+    cli_renderer.terminal.caps.ansi256 = true;
+
+    _ = cli_renderer.resetSplitScrollback(2, 2);
+
+    var snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        2,
+        1,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer snapshot.deinit();
+
+    try snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    snapshot.set(0, 0, buffer.Cell{
+        .char = 'A',
+        .fg = RGBA{ 1.0, 1.0, 1.0, 1.0 },
+        .bg = RGBA{ 0.0, 0.0, 0.0, 1.0 },
+        .fg_tag = ansi.COLOR_TAG_DEFAULT,
+        .bg_tag = ansi.COLOR_TAG_RGB,
+        .attributes = 0,
+    });
+    snapshot.set(1, 0, buffer.Cell{
+        .char = 'B',
+        .fg = RGBA{ 0.2, 0.4, 0.6, 1.0 },
+        .bg = RGBA{ 0.0, 0.0, 0.0, 1.0 },
+        .fg_tag = ansi.indexedColorTag(6),
+        .bg_tag = ansi.COLOR_TAG_DEFAULT,
+        .attributes = 0,
+    });
+
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 2, true, false, 2, false, true, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "A") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "B") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[39m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;6m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[49m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;2;51;102;153m") == null);
 }
 
 test "renderer - commitSplitFooterSnapshot does not emit NUL padding for short rows" {

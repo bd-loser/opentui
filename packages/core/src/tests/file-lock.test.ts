@@ -255,7 +255,7 @@ test("FileLock.tryAcquireWithTimeout exposes invalid_argument for invalid option
   }
 })
 
-test("resolveRenderLib file lock wrappers expose stable native error codes", () => {
+test("resolveRenderLib file lock wrappers expose stable create error codes", () => {
   const lib = resolveRenderLib()
 
   let createError: unknown
@@ -268,17 +268,6 @@ test("resolveRenderLib file lock wrappers expose stable native error codes", () 
 
   expect(createError).toBeInstanceOf(Error)
   expect((createError as { code?: string }).code).toBe("invalid_path")
-
-  let destroyError: unknown
-
-  try {
-    lib.destroyFileLock(0)
-  } catch (caught) {
-    destroyError = caught
-  }
-
-  expect(destroyError).toBeInstanceOf(Error)
-  expect((destroyError as { code?: string }).code).toBe("invalid_handle")
 })
 
 test("FileLock.release unlocks the file and lets the same instance acquire again", () => {

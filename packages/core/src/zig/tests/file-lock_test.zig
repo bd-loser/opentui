@@ -34,12 +34,6 @@ test "lib createFileLock rejects relative paths with invalid_path" {
     try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.invalid_path)), result.status);
 }
 
-test "lib file lock wrappers return invalid_handle for null pointers" {
-    try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.invalid_handle)), ffi.fileLockTryAcquire(null));
-    try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.invalid_handle)), ffi.fileLockRelease(null));
-    try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.invalid_handle)), ffi.destroyFileLock(null));
-}
-
 test "lib destroyFileLock releases the lock for a new pointer" {
     const tmpdir = std.testing.tmpDir(.{});
     var tmp = tmpdir;
@@ -53,7 +47,7 @@ test "lib destroyFileLock releases the lock for a new pointer" {
 
     try testing.expect(first.ptr != null);
     try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), first.status);
-    try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), ffi.destroyFileLock(first.ptr));
+    try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), ffi.destroyFileLock(first.ptr.?));
 
     var second: ffi.ExternalFileLockCreateResult = undefined;
     ffi.createFileLockAndTryAcquire(file_path.ptr, file_path.len, true, true, &second);
@@ -99,8 +93,8 @@ test "lib file lock wrappers complete repeated create tryAcquire release destroy
 
         try testing.expect(result.ptr != null);
         try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), result.status);
-        try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), ffi.fileLockTryAcquire(result.ptr));
-        try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), ffi.fileLockRelease(result.ptr));
-        try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), ffi.destroyFileLock(result.ptr));
+        try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), ffi.fileLockTryAcquire(result.ptr.?));
+        try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), ffi.fileLockRelease(result.ptr.?));
+        try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), ffi.destroyFileLock(result.ptr.?));
     }
 }

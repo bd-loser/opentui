@@ -226,25 +226,21 @@ pub export fn createFileLockAndTryAcquire(pathPtr: [*]const u8, pathLen: usize, 
     };
 }
 
-pub export fn destroyFileLock(lock: ?*file_lock.FileLock) i32 {
-    const fileLock = lock orelse return @intFromEnum(file_lock.Status.invalid_handle);
-    fileLock.destroy();
+pub export fn destroyFileLock(lock: *file_lock.FileLock) i32 {
+    lock.destroy();
     return @intFromEnum(file_lock.Status.ok);
 }
 
-pub export fn fileLockTryAcquire(lock: ?*file_lock.FileLock) i32 {
-    const fileLock = lock orelse return @intFromEnum(file_lock.Status.invalid_handle);
-
-    const acquired = fileLock.tryAcquire() catch |err| {
+pub export fn fileLockTryAcquire(lock: *file_lock.FileLock) i32 {
+    const acquired = lock.tryAcquire() catch |err| {
         return @intFromEnum(file_lock.statusFromError(err));
     };
 
     return @intFromEnum(if (acquired) file_lock.Status.ok else file_lock.Status.busy);
 }
 
-pub export fn fileLockRelease(lock: ?*file_lock.FileLock) i32 {
-    const fileLock = lock orelse return @intFromEnum(file_lock.Status.invalid_handle);
-    fileLock.release();
+pub export fn fileLockRelease(lock: *file_lock.FileLock) i32 {
+    lock.release();
     return @intFromEnum(file_lock.Status.ok);
 }
 

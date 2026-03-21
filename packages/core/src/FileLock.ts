@@ -1,5 +1,6 @@
 import { resolve } from "node:path"
 import { setTimeout as sleep } from "node:timers/promises"
+import type { Pointer } from "bun:ffi"
 
 import { FileLockError, type FileLockOp } from "./FileLockError"
 import { resolveRenderLib } from "./zig"
@@ -96,11 +97,11 @@ export class FileLock {
 
   public readonly path: string
   private readonly lib = resolveRenderLib()
-  private ptr: number | null
+  private ptr: Pointer
   private held = false
   private closed = false
 
-  private constructor(path: string, ptr: number, held = false) {
+  private constructor(path: string, ptr: Pointer, held = false) {
     this.path = path
     this.ptr = ptr
     this.held = held
@@ -213,7 +214,6 @@ export class FileLock {
     }
 
     this.lib.destroyFileLock(this.ptr)
-    this.ptr = null
     this.held = false
     this.closed = true
   }

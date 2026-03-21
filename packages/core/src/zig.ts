@@ -1063,6 +1063,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "usize", "ptr"],
       returns: "void",
     },
+    createFileLockAndTryAcquire: {
+      args: ["ptr", "usize", "ptr"],
+      returns: "void",
+    },
     destroyFileLock: {
       args: ["u64"],
       returns: "i32",
@@ -1844,6 +1848,7 @@ export interface RenderLib {
   getAllocatorStats: () => AllocatorStats
 
   createFileLock: (path: string) => number
+  createFileLockAndTryAcquire: (path: string) => number | null
   destroyFileLock: (lock: number) => void
   fileLockTryAcquire: (lock: number) => boolean
   fileLockRelease: (lock: number) => void
@@ -3118,6 +3123,27 @@ class FFIRenderLib implements RenderLib {
     }
 
     return toNumber(result.id)
+  }
+
+  public createFileLockAndTryAcquire(path: string): number | null {
+    const pathBuffer = this.encoder.encode(path)
+    const resultBuffer = new ArrayBuffer(FileLockCreateResultStruct.size)
+    this.opentui.symbols.createFileLockAndTryAcquire(ptr(pathBuffer), pathBuffer.length, ptr(resultBuffer))
+    const result = FileLockCreateResultStruct.unpack(resultBuffer) as FileLockCreateResult
+
+    if (result.status === FILE_LOCK_OK) {
+      return toNumber(result.id)
+    }
+
+    if (result.status === FILE_LOCK_BUSY) {
+      return null
+    }
+
+    throw new FileLockError({
+      path,
+      op: "tryAcquire",
+      code: FILE_LOCK_ERROR_CODE_BY_STATUS[result.status] ?? "unexpected",
+    })
   }
 
   public destroyFileLock(lock: number): void {

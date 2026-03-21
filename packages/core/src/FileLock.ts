@@ -28,46 +28,77 @@ export interface FileLockTryAcquireWithTimeoutOptions {
   signal?: AbortSignal
 }
 
+function preparePath(path: string, options: FileLockOpenOptions = {}): string {
+  const inputPath = typeof path === "string" ? path : String(path)
+
+  if (typeof path !== "string") {
+    throw new FileLockError({
+      path: inputPath,
+      op: "create",
+      code: "invalid_path",
+      message: `create failed for ${inputPath}: FileLock path must be a string`,
+    })
+  }
+
+  if (!path.trim()) {
+    throw new FileLockError({
+      path,
+      op: "create",
+      code: "invalid_path",
+      message: `create failed for ${path}: FileLock path must not be empty`,
+    })
+  }
+
+  const resolvedPath = resolve(path)
+
+  try {
+    if (options.createParentPath !== false) {
+      mkdirSync(dirname(resolvedPath), { recursive: true })
+    }
+
+    if (options.createIfMissing === false) {
+      if (!existsSync(resolvedPath)) {
+        throw new FileLockError({
+          path: resolvedPath,
+          op: "create",
+          code: "file_not_found",
+          message: `create failed for ${resolvedPath}: Lock file does not exist: ${resolvedPath}`,
+        })
+      }
+    } else {
+      closeSync(openSync(resolvedPath, "a"))
+    }
+  } catch (error) {
+    if (error instanceof FileLockError) {
+      throw error
+    }
+
+    if (error && typeof error === "object" && "code" in error) {
+      if (error.code === "ENOENT" || error.code === "ENOTDIR") {
+        throw new FileLockError({ path: resolvedPath, op: "create", code: "file_not_found", cause: error })
+      }
+
+      if (error.code === "EACCES" || error.code === "EPERM") {
+        throw new FileLockError({ path: resolvedPath, op: "create", code: "access_denied", cause: error })
+      }
+    }
+
+    throw new FileLockError({ path: resolvedPath, op: "create", cause: error })
+  }
+
+  return resolvedPath
+}
+
 export class FileLock {
   public static open(path: string, options?: FileLockOpenOptions): FileLock {
-    return new FileLock(path, options)
+    const resolvedPath = preparePath(path, options)
+    return new FileLock(resolvedPath, resolveRenderLib().createFileLock(resolvedPath))
   }
 
   public static tryAcquire(path: string, options?: FileLockOpenOptions): FileLock | null {
-    const lock = FileLock.open(path, options)
-
-    try {
-      if (!lock.tryAcquire()) {
-        lock.close()
-        return null
-      }
-
-      return lock
-    } catch (error) {
-      const wrapped =
-        error instanceof FileLockError ? error : new FileLockError({ path: lock.path, op: "tryAcquire", cause: error })
-
-      try {
-        lock.close()
-      } catch (closeError) {
-        const cleanupMessage =
-          closeError instanceof Error && closeError.message
-            ? closeError.message
-            : typeof closeError === "string" && closeError
-              ? closeError
-              : "unknown error"
-
-        throw new FileLockError({
-          code: wrapped.code,
-          path: lock.path,
-          op: "tryAcquire",
-          cause: closeError,
-          message: `${wrapped.message}; cleanup failed: ${cleanupMessage}`,
-        })
-      }
-
-      throw wrapped
-    }
+    const resolvedPath = preparePath(path, options)
+    const id = resolveRenderLib().createFileLockAndTryAcquire(resolvedPath)
+    return id === null ? null : new FileLock(resolvedPath, id, true)
   }
 
   public static async tryAcquireWithTimeout(
@@ -86,13 +117,7 @@ export class FileLock {
     } catch (error) {
       try {
         lock.close()
-      } catch (closeError) {
-        if (closeError instanceof FileLockError) {
-          throw closeError
-        }
-
-        throw new FileLockError({ path: lock.path, op: "close", cause: closeError })
-      }
+      } catch {}
 
       throw error
     }
@@ -104,65 +129,10 @@ export class FileLock {
   private held = false
   private closed = false
 
-  private constructor(path: string, options: FileLockOpenOptions = {}) {
-    this.path = typeof path === "string" ? path : String(path)
-
-    try {
-      if (typeof path !== "string") {
-        throw new FileLockError({
-          path: this.path,
-          op: "create",
-          code: "invalid_path",
-          message: `create failed for ${this.path}: FileLock path must be a string`,
-        })
-      }
-
-      if (!path.trim()) {
-        throw new FileLockError({
-          path,
-          op: "create",
-          code: "invalid_path",
-          message: `create failed for ${path}: FileLock path must not be empty`,
-        })
-      }
-
-      this.path = resolve(path)
-
-      if (options.createParentPath !== false) {
-        mkdirSync(dirname(this.path), { recursive: true })
-      }
-
-      if (options.createIfMissing === false) {
-        if (!existsSync(this.path)) {
-          throw new FileLockError({
-            path: this.path,
-            op: "create",
-            code: "file_not_found",
-            message: `create failed for ${this.path}: Lock file does not exist: ${this.path}`,
-          })
-        }
-      } else {
-        closeSync(openSync(this.path, "a"))
-      }
-
-      this.id = this.lib.createFileLock(this.path)
-    } catch (error) {
-      if (error instanceof FileLockError) {
-        throw error
-      }
-
-      if (error && typeof error === "object" && "code" in error) {
-        if (error.code === "ENOENT" || error.code === "ENOTDIR") {
-          throw new FileLockError({ path: this.path, op: "create", code: "file_not_found", cause: error })
-        }
-
-        if (error.code === "EACCES" || error.code === "EPERM") {
-          throw new FileLockError({ path: this.path, op: "create", code: "access_denied", cause: error })
-        }
-      }
-
-      throw new FileLockError({ path: this.path, op: "create", cause: error })
-    }
+  private constructor(path: string, id: number, held = false) {
+    this.path = path
+    this.id = id
+    this.held = held
   }
 
   public get acquired(): boolean {
@@ -176,16 +146,8 @@ export class FileLock {
       return true
     }
 
-    try {
-      this.held = this.lib.fileLockTryAcquire(this.id)
-      return this.held
-    } catch (error) {
-      if (error instanceof FileLockError) {
-        throw error
-      }
-
-      throw new FileLockError({ path: this.path, op: "tryAcquire", cause: error })
-    }
+    this.held = this.lib.fileLockTryAcquire(this.id)
+    return this.held
   }
 
   public async tryAcquireWithTimeout(
@@ -270,16 +232,8 @@ export class FileLock {
       return
     }
 
-    try {
-      this.lib.fileLockRelease(this.id)
-      this.held = false
-    } catch (error) {
-      if (error instanceof FileLockError) {
-        throw error
-      }
-
-      throw new FileLockError({ path: this.path, op: "release", cause: error })
-    }
+    this.lib.fileLockRelease(this.id)
+    this.held = false
   }
 
   public close(): void {
@@ -287,18 +241,10 @@ export class FileLock {
       return
     }
 
-    try {
-      this.lib.destroyFileLock(this.id)
-      this.held = false
-      this.closed = true
-      this.id = 0
-    } catch (error) {
-      if (error instanceof FileLockError) {
-        throw error
-      }
-
-      throw new FileLockError({ path: this.path, op: "close", cause: error })
-    }
+    this.lib.destroyFileLock(this.id)
+    this.held = false
+    this.closed = true
+    this.id = 0
   }
 
   public [Symbol.dispose](): void {

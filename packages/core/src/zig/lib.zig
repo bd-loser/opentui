@@ -195,6 +195,11 @@ export fn createFileLock(pathPtr: [*]const u8, pathLen: usize, outPtr: *External
     outPtr.* = fileLockRegistry.create(path);
 }
 
+export fn createFileLockAndTryAcquire(pathPtr: [*]const u8, pathLen: usize, outPtr: *ExternalFileLockCreateResult) void {
+    const path = pathPtr[0..pathLen];
+    outPtr.* = fileLockRegistry.createAndTryAcquire(path);
+}
+
 export fn destroyFileLock(lockId: u64) i32 {
     return @intFromEnum(fileLockRegistry.destroy(lockId));
 }

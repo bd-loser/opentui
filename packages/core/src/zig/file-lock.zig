@@ -117,6 +117,55 @@ pub const Registry = struct {
         };
     }
 
+    pub fn createAndTryAcquire(self: *Registry, path: []const u8) CreateResult {
+        const lock = FileLock.create(self.allocator, path) catch |err| {
+            return .{
+                .id = 0,
+                .status = @intFromEnum(statusFromError(err)),
+            };
+        };
+        errdefer lock.destroy();
+
+        const acquired = lock.tryAcquire() catch |err| {
+            return .{
+                .id = 0,
+                .status = @intFromEnum(statusFromError(err)),
+            };
+        };
+
+        if (!acquired) {
+            lock.destroy();
+            return .{
+                .id = 0,
+                .status = @intFromEnum(Status.busy),
+            };
+        }
+
+        const entry = Entry.create(self.allocator, lock) catch |err| {
+            return .{
+                .id = 0,
+                .status = @intFromEnum(statusFromError(err)),
+            };
+        };
+        errdefer entry.destroy();
+
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        const id = self.nextHandle();
+        self.map.put(id, entry) catch |err| {
+            return .{
+                .id = 0,
+                .status = @intFromEnum(statusFromError(err)),
+            };
+        };
+
+        return .{
+            .id = id,
+            .status = @intFromEnum(Status.ok),
+        };
+    }
+
     pub fn tryAcquire(self: *Registry, id: u64) Status {
         const entry = switch (self.retain(id)) {
             .entry => |entry| entry,

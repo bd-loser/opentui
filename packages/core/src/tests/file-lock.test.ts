@@ -272,7 +272,7 @@ test("resolveRenderLib file lock wrappers expose stable native error codes", () 
   let destroyError: unknown
 
   try {
-    lib.destroyFileLock(999)
+    lib.destroyFileLock(0)
   } catch (caught) {
     destroyError = caught
   }

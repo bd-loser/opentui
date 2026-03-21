@@ -1060,23 +1060,23 @@ function getOpenTUILib(libPath?: string) {
     },
 
     createFileLock: {
-      args: ["ptr", "usize", "ptr"],
+      args: ["ptr", "usize", "bool", "bool", "ptr"],
       returns: "void",
     },
     createFileLockAndTryAcquire: {
-      args: ["ptr", "usize", "ptr"],
+      args: ["ptr", "usize", "bool", "bool", "ptr"],
       returns: "void",
     },
     destroyFileLock: {
-      args: ["u64"],
+      args: ["ptr"],
       returns: "i32",
     },
     fileLockTryAcquire: {
-      args: ["u64"],
+      args: ["ptr"],
       returns: "i32",
     },
     fileLockRelease: {
-      args: ["u64"],
+      args: ["ptr"],
       returns: "i32",
     },
 
@@ -1847,11 +1847,11 @@ export interface RenderLib {
   getBuildOptions: () => BuildOptions
   getAllocatorStats: () => AllocatorStats
 
-  createFileLock: (path: string) => number
-  createFileLockAndTryAcquire: (path: string) => number | null
-  destroyFileLock: (lock: number) => void
-  fileLockTryAcquire: (lock: number) => boolean
-  fileLockRelease: (lock: number) => void
+  createFileLock: (path: string, createIfMissing?: boolean, createParentPath?: boolean) => number
+  createFileLockAndTryAcquire: (path: string, createIfMissing?: boolean, createParentPath?: boolean) => number | null
+  destroyFileLock: (lock: number | null) => void
+  fileLockTryAcquire: (lock: number | null) => boolean
+  fileLockRelease: (lock: number | null) => void
 
   createSyntaxStyle: () => Pointer
   destroySyntaxStyle: (style: Pointer) => void
@@ -3108,10 +3108,16 @@ class FFIRenderLib implements RenderLib {
     }
   }
 
-  public createFileLock(path: string): number {
+  public createFileLock(path: string, createIfMissing = true, createParentPath = true): number {
     const pathBuffer = this.encoder.encode(path)
     const resultBuffer = new ArrayBuffer(FileLockCreateResultStruct.size)
-    this.opentui.symbols.createFileLock(ptr(pathBuffer), pathBuffer.length, ptr(resultBuffer))
+    this.opentui.symbols.createFileLock(
+      ptr(pathBuffer),
+      pathBuffer.length,
+      createIfMissing,
+      createParentPath,
+      ptr(resultBuffer),
+    )
     const result = FileLockCreateResultStruct.unpack(resultBuffer) as FileLockCreateResult
 
     if (result.status !== FILE_LOCK_OK) {
@@ -3122,17 +3128,23 @@ class FFIRenderLib implements RenderLib {
       })
     }
 
-    return toNumber(result.id)
+    return toNumber(result.ptr as number | bigint)
   }
 
-  public createFileLockAndTryAcquire(path: string): number | null {
+  public createFileLockAndTryAcquire(path: string, createIfMissing = true, createParentPath = true): number | null {
     const pathBuffer = this.encoder.encode(path)
     const resultBuffer = new ArrayBuffer(FileLockCreateResultStruct.size)
-    this.opentui.symbols.createFileLockAndTryAcquire(ptr(pathBuffer), pathBuffer.length, ptr(resultBuffer))
+    this.opentui.symbols.createFileLockAndTryAcquire(
+      ptr(pathBuffer),
+      pathBuffer.length,
+      createIfMissing,
+      createParentPath,
+      ptr(resultBuffer),
+    )
     const result = FileLockCreateResultStruct.unpack(resultBuffer) as FileLockCreateResult
 
     if (result.status === FILE_LOCK_OK) {
-      return toNumber(result.id)
+      return toNumber(result.ptr as number | bigint)
     }
 
     if (result.status === FILE_LOCK_BUSY) {
@@ -3146,8 +3158,8 @@ class FFIRenderLib implements RenderLib {
     })
   }
 
-  public destroyFileLock(lock: number): void {
-    const status = this.opentui.symbols.destroyFileLock(lock)
+  public destroyFileLock(lock: number | null): void {
+    const status = this.opentui.symbols.destroyFileLock(lock as Pointer | null)
 
     if (status !== FILE_LOCK_OK) {
       throw new FileLockError({
@@ -3158,8 +3170,8 @@ class FFIRenderLib implements RenderLib {
     }
   }
 
-  public fileLockTryAcquire(lock: number): boolean {
-    const status = this.opentui.symbols.fileLockTryAcquire(lock)
+  public fileLockTryAcquire(lock: number | null): boolean {
+    const status = this.opentui.symbols.fileLockTryAcquire(lock as Pointer | null)
 
     if (status === FILE_LOCK_OK) return true
     if (status === FILE_LOCK_BUSY) return false
@@ -3171,8 +3183,8 @@ class FFIRenderLib implements RenderLib {
     })
   }
 
-  public fileLockRelease(lock: number): void {
-    const status = this.opentui.symbols.fileLockRelease(lock)
+  public fileLockRelease(lock: number | null): void {
+    const status = this.opentui.symbols.fileLockRelease(lock as Pointer | null)
 
     if (status !== FILE_LOCK_OK) {
       throw new FileLockError({

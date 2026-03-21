@@ -16,7 +16,7 @@ pub const Status = enum(i32) {
 };
 
 pub const CreateResult = extern struct {
-    id: u64,
+    ptr: ?*FileLock,
     status: i32,
 };
 
@@ -25,15 +25,27 @@ pub const FileLock = struct {
     file: std.fs.File,
     acquired: bool,
 
-    pub fn create(allocator: Allocator, path: []const u8) !*FileLock {
+    pub fn create(allocator: Allocator, path: []const u8, create_if_missing: bool, create_parent_path: bool) !*FileLock {
         const self = try allocator.create(FileLock);
         errdefer allocator.destroy(self);
 
         self.* = .{
             .allocator = allocator,
-            .file = try open(path),
+            .file = try open(path, create_if_missing, create_parent_path),
             .acquired = false,
         };
+        return self;
+    }
+
+    pub fn createAndTryAcquire(allocator: Allocator, path: []const u8, create_if_missing: bool, create_parent_path: bool) !?*FileLock {
+        const self = try create(allocator, path, create_if_missing, create_parent_path);
+        errdefer self.destroy();
+
+        if (!(try self.tryAcquire())) {
+            self.destroy();
+            return null;
+        }
+
         return self;
     }
 
@@ -59,227 +71,55 @@ pub const FileLock = struct {
     }
 };
 
-pub const Registry = struct {
-    allocator: Allocator,
-    map: std.AutoHashMap(u64, *Entry),
-    mutex: std.Thread.Mutex = .{},
-    next: u64 = 1,
-
-    pub fn init(allocator: Allocator) Registry {
+pub fn createResult(allocator: Allocator, path: []const u8, create_if_missing: bool, create_parent_path: bool) CreateResult {
+    const lock = FileLock.create(allocator, path, create_if_missing, create_parent_path) catch |err| {
         return .{
-            .allocator = allocator,
-            .map = std.AutoHashMap(u64, *Entry).init(allocator),
+            .ptr = null,
+            .status = @intFromEnum(statusFromError(err)),
         };
-    }
+    };
 
-    pub fn deinit(self: *Registry) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    return .{
+        .ptr = lock,
+        .status = @intFromEnum(Status.ok),
+    };
+}
 
-        var values = self.map.valueIterator();
-        while (values.next()) |entry| {
-            entry.*.destroy();
-        }
-        self.map.deinit();
-    }
-
-    pub fn create(self: *Registry, path: []const u8) CreateResult {
-        const lock = FileLock.create(self.allocator, path) catch |err| {
-            return .{
-                .id = 0,
-                .status = @intFromEnum(statusFromError(err)),
-            };
-        };
-        errdefer lock.destroy();
-
-        const entry = Entry.create(self.allocator, lock) catch |err| {
-            return .{
-                .id = 0,
-                .status = @intFromEnum(statusFromError(err)),
-            };
-        };
-        errdefer entry.destroy();
-
-        self.mutex.lock();
-        defer self.mutex.unlock();
-
-        const id = self.nextHandle();
-        self.map.put(id, entry) catch |err| {
-            return .{
-                .id = 0,
-                .status = @intFromEnum(statusFromError(err)),
-            };
-        };
-
+pub fn createAndTryAcquireResult(allocator: Allocator, path: []const u8, create_if_missing: bool, create_parent_path: bool) CreateResult {
+    const lock = FileLock.createAndTryAcquire(allocator, path, create_if_missing, create_parent_path) catch |err| {
         return .{
-            .id = id,
-            .status = @intFromEnum(Status.ok),
+            .ptr = null,
+            .status = @intFromEnum(statusFromError(err)),
         };
-    }
+    };
 
-    pub fn createAndTryAcquire(self: *Registry, path: []const u8) CreateResult {
-        const lock = FileLock.create(self.allocator, path) catch |err| {
-            return .{
-                .id = 0,
-                .status = @intFromEnum(statusFromError(err)),
-            };
-        };
-        errdefer lock.destroy();
+    return .{
+        .ptr = lock,
+        .status = @intFromEnum(if (lock == null) Status.busy else Status.ok),
+    };
+}
 
-        const acquired = lock.tryAcquire() catch |err| {
-            return .{
-                .id = 0,
-                .status = @intFromEnum(statusFromError(err)),
-            };
-        };
+pub fn destroy(lock: ?*FileLock) Status {
+    const file_lock = lock orelse return .invalid_handle;
+    file_lock.destroy();
+    return .ok;
+}
 
-        if (!acquired) {
-            lock.destroy();
-            return .{
-                .id = 0,
-                .status = @intFromEnum(Status.busy),
-            };
-        }
+pub fn tryAcquire(lock: ?*FileLock) Status {
+    const file_lock = lock orelse return .invalid_handle;
 
-        const entry = Entry.create(self.allocator, lock) catch |err| {
-            return .{
-                .id = 0,
-                .status = @intFromEnum(statusFromError(err)),
-            };
-        };
-        errdefer entry.destroy();
+    const acquired = file_lock.tryAcquire() catch |err| {
+        return statusFromError(err);
+    };
 
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    return if (acquired) .ok else .busy;
+}
 
-        const id = self.nextHandle();
-        self.map.put(id, entry) catch |err| {
-            return .{
-                .id = 0,
-                .status = @intFromEnum(statusFromError(err)),
-            };
-        };
-
-        return .{
-            .id = id,
-            .status = @intFromEnum(Status.ok),
-        };
-    }
-
-    pub fn tryAcquire(self: *Registry, id: u64) Status {
-        const entry = switch (self.retain(id)) {
-            .entry => |entry| entry,
-            .status => |status| return status,
-        };
-        defer self.releaseEntry(entry);
-
-        entry.op.lock();
-        defer entry.op.unlock();
-
-        const acquired = entry.lock.tryAcquire() catch |err| {
-            return statusFromError(err);
-        };
-
-        if (!acquired) return .busy;
-        return .ok;
-    }
-
-    pub fn release(self: *Registry, id: u64) Status {
-        const entry = switch (self.retain(id)) {
-            .entry => |entry| entry,
-            .status => |status| return status,
-        };
-        defer self.releaseEntry(entry);
-
-        entry.op.lock();
-        defer entry.op.unlock();
-
-        entry.lock.release();
-        return .ok;
-    }
-
-    pub fn destroy(self: *Registry, id: u64) Status {
-        self.mutex.lock();
-        const item = self.map.fetchRemove(id);
-        self.mutex.unlock();
-
-        const entry = item orelse return .invalid_handle;
-
-        entry.value.state.lock();
-        entry.value.closing = true;
-        while (entry.value.refs != 0) {
-            entry.value.ready.wait(&entry.value.state);
-        }
-        entry.value.state.unlock();
-
-        entry.value.destroy();
-        return .ok;
-    }
-
-    fn nextHandle(self: *Registry) u64 {
-        while (self.next == 0 or self.map.contains(self.next)) {
-            self.next +%= 1;
-            if (self.next == 0) self.next = 1;
-        }
-
-        const id = self.next;
-        self.next +%= 1;
-        if (self.next == 0) self.next = 1;
-        return id;
-    }
-
-    fn retain(self: *Registry, id: u64) union(enum) { entry: *Entry, status: Status } {
-        self.mutex.lock();
-        defer self.mutex.unlock();
-
-        const entry = self.map.get(id) orelse return .{ .status = .invalid_handle };
-
-        entry.state.lock();
-        defer entry.state.unlock();
-
-        if (entry.closing) {
-            return .{ .status = .closing };
-        }
-
-        entry.refs += 1;
-        return .{ .entry = entry };
-    }
-
-    fn releaseEntry(_: *Registry, entry: *Entry) void {
-        entry.state.lock();
-        defer entry.state.unlock();
-
-        std.debug.assert(entry.refs > 0);
-        entry.refs -= 1;
-        if (entry.closing and entry.refs == 0) {
-            entry.ready.signal();
-        }
-    }
-};
-
-const Entry = struct {
-    allocator: Allocator,
-    lock: *FileLock,
-    refs: usize = 0,
-    closing: bool = false,
-    state: std.Thread.Mutex = .{},
-    ready: std.Thread.Condition = .{},
-    op: std.Thread.Mutex = .{},
-
-    fn create(allocator: Allocator, lock: *FileLock) !*Entry {
-        const self = try allocator.create(Entry);
-        self.* = .{
-            .allocator = allocator,
-            .lock = lock,
-        };
-        return self;
-    }
-
-    fn destroy(self: *Entry) void {
-        self.lock.destroy();
-        self.allocator.destroy(self);
-    }
-};
+pub fn release(lock: ?*FileLock) Status {
+    const file_lock = lock orelse return .invalid_handle;
+    file_lock.release();
+    return .ok;
+}
 
 pub fn statusFromError(err: anyerror) Status {
     return switch (err) {
@@ -288,6 +128,8 @@ pub fn statusFromError(err: anyerror) Status {
         => .access_denied,
         error.EmptyPath,
         error.RelativePath,
+        error.BadPathName,
+        error.NameTooLong,
         => .invalid_path,
         error.FileNotFound,
         error.PathNotFound,
@@ -300,12 +142,34 @@ pub fn statusFromError(err: anyerror) Status {
     };
 }
 
-fn open(path: []const u8) !std.fs.File {
+fn open(path: []const u8, create_if_missing: bool, create_parent_path: bool) !std.fs.File {
     if (path.len == 0) return error.EmptyPath;
     if (!std.fs.path.isAbsolute(path)) return error.RelativePath;
 
-    return std.fs.openFileAbsolute(path, .{ .mode = .read_write }) catch |err| switch (err) {
-        error.FileNotFound => std.fs.createFileAbsolute(path, .{ .read = true, .truncate = false }),
-        else => err,
+    if (create_parent_path) {
+        const parent = std.fs.path.dirname(path) orelse return error.BadPathName;
+        try makePathAbsolute(parent);
+    }
+
+    if (create_if_missing) {
+        return std.fs.createFileAbsolute(path, .{ .read = true, .truncate = false }) catch |err| switch (err) {
+            error.PathAlreadyExists => std.fs.openFileAbsolute(path, .{ .mode = .read_write }),
+            else => err,
+        };
+    }
+
+    return std.fs.openFileAbsolute(path, .{ .mode = .read_write });
+}
+
+fn makePathAbsolute(path: []const u8) !void {
+    std.fs.makeDirAbsolute(path) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        error.FileNotFound => {
+            const parent = std.fs.path.dirname(path) orelse return err;
+            if (std.mem.eql(u8, parent, path)) return err;
+            try makePathAbsolute(parent);
+            try std.fs.makeDirAbsolute(path);
+        },
+        else => return err,
     };
 }

@@ -46,7 +46,6 @@ var gpa = std.heap.GeneralPurposeAllocator(.{
 const globalAllocator = gpa.allocator();
 var arena = std.heap.ArenaAllocator.init(globalAllocator);
 const globalArena = arena.allocator();
-var fileLockRegistry = file_lock.Registry.init(globalAllocator);
 
 pub const ExternalBuildOptions = extern struct {
     gpa_safe_stats: bool,
@@ -190,26 +189,26 @@ export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
     };
 }
 
-export fn createFileLock(pathPtr: [*]const u8, pathLen: usize, outPtr: *ExternalFileLockCreateResult) void {
+export fn createFileLock(pathPtr: [*]const u8, pathLen: usize, createIfMissing: bool, createParentPath: bool, outPtr: *ExternalFileLockCreateResult) void {
     const path = pathPtr[0..pathLen];
-    outPtr.* = fileLockRegistry.create(path);
+    outPtr.* = file_lock.createResult(globalAllocator, path, createIfMissing, createParentPath);
 }
 
-export fn createFileLockAndTryAcquire(pathPtr: [*]const u8, pathLen: usize, outPtr: *ExternalFileLockCreateResult) void {
+export fn createFileLockAndTryAcquire(pathPtr: [*]const u8, pathLen: usize, createIfMissing: bool, createParentPath: bool, outPtr: *ExternalFileLockCreateResult) void {
     const path = pathPtr[0..pathLen];
-    outPtr.* = fileLockRegistry.createAndTryAcquire(path);
+    outPtr.* = file_lock.createAndTryAcquireResult(globalAllocator, path, createIfMissing, createParentPath);
 }
 
-export fn destroyFileLock(lockId: u64) i32 {
-    return @intFromEnum(fileLockRegistry.destroy(lockId));
+export fn destroyFileLock(lock: ?*file_lock.FileLock) i32 {
+    return @intFromEnum(file_lock.destroy(lock));
 }
 
-export fn fileLockTryAcquire(lockId: u64) i32 {
-    return @intFromEnum(fileLockRegistry.tryAcquire(lockId));
+export fn fileLockTryAcquire(lock: ?*file_lock.FileLock) i32 {
+    return @intFromEnum(file_lock.tryAcquire(lock));
 }
 
-export fn fileLockRelease(lockId: u64) i32 {
-    return @intFromEnum(fileLockRegistry.release(lockId));
+export fn fileLockRelease(lock: ?*file_lock.FileLock) i32 {
+    return @intFromEnum(file_lock.release(lock));
 }
 
 export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?*renderer.CliRenderer {

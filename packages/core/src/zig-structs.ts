@@ -181,12 +181,12 @@ export const AllocatorStatsStruct = defineStruct([
 ])
 
 export type FileLockCreateResult = {
-  id: bigint
+  ptr: Pointer | null
   status: number
 }
 
 export const FileLockCreateResultStruct = defineStruct([
-  ["id", "u64"],
+  ["ptr", "pointer", { optional: true }],
   ["status", "i32"],
 ])
 

@@ -72,6 +72,7 @@ import * as grayscaleBufferDemo from "./grayscale-buffer-demo.js"
 import * as focusRestoreDemo from "./focus-restore-demo.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as corePluginSlotsDemo from "./core-plugin-slots-demo.js"
+import * as wideGraphemeOverlayDemo from "./wide-grapheme-overlay-demo.js"
 
 interface Example {
   name: string
@@ -441,6 +442,12 @@ const examples: Example[] = [
     description: "Draggable boxes and background filled with complex graphemes",
     run: fullUnicodeExample.run,
     destroy: fullUnicodeExample.destroy,
+  },
+  {
+    name: "Wide Grapheme Overlay Demo",
+    description: "Drag transparent boxes over CJK/emoji, toggle dimming scrim with D key",
+    run: wideGraphemeOverlayDemo.run,
+    destroy: wideGraphemeOverlayDemo.destroy,
   },
   {
     name: "Split Mode Demo (Experimental)",

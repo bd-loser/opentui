@@ -1,5 +1,12 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
+const is_windows = builtin.os.tag == .windows;
+const windows = std.os.windows;
+const posix = std.posix;
+
+const lock_range_off: windows.LARGE_INTEGER = 0;
+const lock_range_len: windows.LARGE_INTEGER = 1;
 
 pub const Status = enum(i32) {
     ok = 0,
@@ -52,7 +59,7 @@ pub const FileLock = struct {
     pub fn tryAcquire(self: *FileLock) !bool {
         if (self.acquired) return true;
 
-        const acquired = try self.file.tryLock(.exclusive);
+        const acquired = try tryLockExclusive(self.file);
         self.acquired = acquired;
         return acquired;
     }
@@ -84,6 +91,36 @@ pub fn statusFromError(err: anyerror) Status {
         error.SystemResources => .system_resources,
         else => .unexpected,
     };
+}
+
+fn tryLockExclusive(file: std.fs.File) !bool {
+    if (is_windows) {
+        var io_status_block: windows.IO_STATUS_BLOCK = undefined;
+        windows.LockFile(
+            file.handle,
+            null,
+            null,
+            null,
+            &io_status_block,
+            &lock_range_off,
+            &lock_range_len,
+            null,
+            windows.TRUE,
+            windows.TRUE,
+        ) catch |err| switch (err) {
+            error.WouldBlock => return false,
+            else => |e| return e,
+        };
+
+        return true;
+    }
+
+    posix.flock(file.handle, posix.LOCK.EX | posix.LOCK.NB) catch |err| switch (err) {
+        error.WouldBlock => return false,
+        else => |e| return e,
+    };
+
+    return true;
 }
 
 fn open(path: []const u8, create_if_missing: bool, create_parent_path: bool) !std.fs.File {

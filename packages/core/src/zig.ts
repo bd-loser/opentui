@@ -128,7 +128,6 @@ const FILE_LOCK_BUSY = 1
 const FILE_LOCK_ERROR_CODE_BY_STATUS = [
   undefined,
   undefined,
-  "invalid_handle",
   "invalid_path",
   "access_denied",
   "file_not_found",

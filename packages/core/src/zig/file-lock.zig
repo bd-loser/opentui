@@ -4,15 +4,14 @@ const Allocator = std.mem.Allocator;
 pub const Status = enum(i32) {
     ok = 0,
     busy = 1,
-    invalid_handle = 2,
-    invalid_path = 3,
-    access_denied = 4,
-    file_not_found = 5,
-    locks_not_supported = 6,
-    system_resources = 7,
-    out_of_memory = 8,
-    unexpected = 9,
-    closing = 10,
+    invalid_path = 2,
+    access_denied = 3,
+    file_not_found = 4,
+    locks_not_supported = 5,
+    system_resources = 6,
+    out_of_memory = 7,
+    unexpected = 8,
+    closing = 9,
 };
 
 pub const FileLock = struct {

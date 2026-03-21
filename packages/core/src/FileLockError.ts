@@ -1,7 +1,6 @@
 export type FileLockOp = "create" | "tryAcquire" | "tryAcquireWithTimeout" | "release" | "close"
 
 export type FileLockErrorCode =
-  | "invalid_handle"
   | "invalid_path"
   | "access_denied"
   | "file_not_found"

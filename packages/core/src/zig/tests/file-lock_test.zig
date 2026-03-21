@@ -1,6 +1,7 @@
 const std = @import("std");
 const testing = std.testing;
 const raw = @import("../file-lock.zig");
+const ffi = @import("../lib.zig");
 
 fn lockPath(tmp: *std.testing.TmpDir) ![]u8 {
     const dir_path = try tmp.dir.realpathAlloc(testing.allocator, ".");
@@ -25,20 +26,21 @@ test "FileLock create, tryAcquire, release, and re-acquire work" {
     try testing.expect(try lock.tryAcquire());
 }
 
-test "FileLock createResult rejects relative paths with invalid_path" {
-    const result = raw.createResult(testing.allocator, "shared.lock", true, true);
+test "lib createFileLock rejects relative paths with invalid_path" {
+    var result: ffi.ExternalFileLockCreateResult = undefined;
+    ffi.createFileLock("shared.lock".ptr, "shared.lock".len, true, true, &result);
 
-    try testing.expectEqual(@as(?*raw.FileLock, null), result.ptr);
+    try testing.expectEqual(@as(?*ffi.FileLock, null), result.ptr);
     try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.invalid_path)), result.status);
 }
 
-test "FileLock null pointer returns invalid_handle" {
-    try testing.expectEqual(raw.Status.invalid_handle, raw.tryAcquire(null));
-    try testing.expectEqual(raw.Status.invalid_handle, raw.release(null));
-    try testing.expectEqual(raw.Status.invalid_handle, raw.destroy(null));
+test "lib file lock wrappers return invalid_handle for null pointers" {
+    try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.invalid_handle)), ffi.fileLockTryAcquire(null));
+    try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.invalid_handle)), ffi.fileLockRelease(null));
+    try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.invalid_handle)), ffi.destroyFileLock(null));
 }
 
-test "FileLock destroy releases the lock for a new pointer" {
+test "lib destroyFileLock releases the lock for a new pointer" {
     const tmpdir = std.testing.tmpDir(.{});
     var tmp = tmpdir;
     defer tmp.cleanup();
@@ -46,18 +48,22 @@ test "FileLock destroy releases the lock for a new pointer" {
     const file_path = try lockPath(&tmp);
     defer testing.allocator.free(file_path);
 
-    const first = try raw.FileLock.createAndTryAcquire(testing.allocator, file_path, true, true);
+    var first: ffi.ExternalFileLockCreateResult = undefined;
+    ffi.createFileLockAndTryAcquire(file_path.ptr, file_path.len, true, true, &first);
 
-    try testing.expect(first != null);
-    try testing.expectEqual(raw.Status.ok, raw.destroy(first));
+    try testing.expect(first.ptr != null);
+    try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), first.status);
+    try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), ffi.destroyFileLock(first.ptr));
 
-    const second = try raw.FileLock.createAndTryAcquire(testing.allocator, file_path, true, true);
-    defer if (second) |lock| lock.destroy();
+    var second: ffi.ExternalFileLockCreateResult = undefined;
+    ffi.createFileLockAndTryAcquire(file_path.ptr, file_path.len, true, true, &second);
+    defer if (second.ptr) |lock| lock.destroy();
 
-    try testing.expect(second != null);
+    try testing.expect(second.ptr != null);
+    try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), second.status);
 }
 
-test "FileLock createAndTryAcquire returns busy without leaking a pointer" {
+test "lib createFileLockAndTryAcquire returns busy without leaking a pointer" {
     const tmpdir = std.testing.tmpDir(.{});
     var tmp = tmpdir;
     defer tmp.cleanup();
@@ -65,19 +71,21 @@ test "FileLock createAndTryAcquire returns busy without leaking a pointer" {
     const file_path = try lockPath(&tmp);
     defer testing.allocator.free(file_path);
 
-    const first = raw.createAndTryAcquireResult(testing.allocator, file_path, true, true);
+    var first: ffi.ExternalFileLockCreateResult = undefined;
+    ffi.createFileLockAndTryAcquire(file_path.ptr, file_path.len, true, true, &first);
     defer if (first.ptr) |lock| lock.destroy();
 
     try testing.expect(first.ptr != null);
     try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), first.status);
 
-    const second = raw.createAndTryAcquireResult(testing.allocator, file_path, true, true);
+    var second: ffi.ExternalFileLockCreateResult = undefined;
+    ffi.createFileLockAndTryAcquire(file_path.ptr, file_path.len, true, true, &second);
 
-    try testing.expectEqual(@as(?*raw.FileLock, null), second.ptr);
+    try testing.expectEqual(@as(?*ffi.FileLock, null), second.ptr);
     try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.busy)), second.status);
 }
 
-test "FileLock repeated create tryAcquire release destroy cycles complete cleanly" {
+test "lib file lock wrappers complete repeated create tryAcquire release destroy cycles cleanly" {
     const tmpdir = std.testing.tmpDir(.{});
     var tmp = tmpdir;
     defer tmp.cleanup();
@@ -86,10 +94,13 @@ test "FileLock repeated create tryAcquire release destroy cycles complete cleanl
     defer testing.allocator.free(file_path);
 
     for (0..32) |_| {
-        const lock = try raw.FileLock.create(testing.allocator, file_path, true, true);
+        var result: ffi.ExternalFileLockCreateResult = undefined;
+        ffi.createFileLock(file_path.ptr, file_path.len, true, true, &result);
 
-        try testing.expectEqual(raw.Status.ok, raw.tryAcquire(lock));
-        try testing.expectEqual(raw.Status.ok, raw.release(lock));
-        try testing.expectEqual(raw.Status.ok, raw.destroy(lock));
+        try testing.expect(result.ptr != null);
+        try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), result.status);
+        try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), ffi.fileLockTryAcquire(result.ptr));
+        try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), ffi.fileLockRelease(result.ptr));
+        try testing.expectEqual(@as(i32, @intFromEnum(raw.Status.ok)), ffi.destroyFileLock(result.ptr));
     }
 }

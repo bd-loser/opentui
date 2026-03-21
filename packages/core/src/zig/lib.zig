@@ -60,7 +60,10 @@ pub const ExternalAllocatorStats = extern struct {
     requested_bytes_valid: bool,
 };
 
-pub const ExternalFileLockCreateResult = file_lock.CreateResult;
+pub const ExternalFileLockCreateResult = extern struct {
+    ptr: ?*file_lock.FileLock,
+    status: i32,
+};
 
 fn toNonNegativeU64(value: anytype) u64 {
     const ValueType = @TypeOf(value);
@@ -189,26 +192,60 @@ export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
     };
 }
 
-export fn createFileLock(pathPtr: [*]const u8, pathLen: usize, createIfMissing: bool, createParentPath: bool, outPtr: *ExternalFileLockCreateResult) void {
+pub export fn createFileLock(pathPtr: [*]const u8, pathLen: usize, createIfMissing: bool, createParentPath: bool, outPtr: *ExternalFileLockCreateResult) void {
     const path = pathPtr[0..pathLen];
-    outPtr.* = file_lock.createResult(globalAllocator, path, createIfMissing, createParentPath);
+
+    const lock = file_lock.FileLock.create(globalAllocator, path, createIfMissing, createParentPath) catch |err| {
+        outPtr.* = .{
+            .ptr = null,
+            .status = @intFromEnum(file_lock.statusFromError(err)),
+        };
+        return;
+    };
+
+    outPtr.* = .{
+        .ptr = lock,
+        .status = @intFromEnum(file_lock.Status.ok),
+    };
 }
 
-export fn createFileLockAndTryAcquire(pathPtr: [*]const u8, pathLen: usize, createIfMissing: bool, createParentPath: bool, outPtr: *ExternalFileLockCreateResult) void {
+pub export fn createFileLockAndTryAcquire(pathPtr: [*]const u8, pathLen: usize, createIfMissing: bool, createParentPath: bool, outPtr: *ExternalFileLockCreateResult) void {
     const path = pathPtr[0..pathLen];
-    outPtr.* = file_lock.createAndTryAcquireResult(globalAllocator, path, createIfMissing, createParentPath);
+
+    const lock = file_lock.FileLock.createAndTryAcquire(globalAllocator, path, createIfMissing, createParentPath) catch |err| {
+        outPtr.* = .{
+            .ptr = null,
+            .status = @intFromEnum(file_lock.statusFromError(err)),
+        };
+        return;
+    };
+
+    outPtr.* = .{
+        .ptr = lock,
+        .status = @intFromEnum(if (lock == null) file_lock.Status.busy else file_lock.Status.ok),
+    };
 }
 
-export fn destroyFileLock(lock: ?*file_lock.FileLock) i32 {
-    return @intFromEnum(file_lock.destroy(lock));
+pub export fn destroyFileLock(lock: ?*file_lock.FileLock) i32 {
+    const fileLock = lock orelse return @intFromEnum(file_lock.Status.invalid_handle);
+    fileLock.destroy();
+    return @intFromEnum(file_lock.Status.ok);
 }
 
-export fn fileLockTryAcquire(lock: ?*file_lock.FileLock) i32 {
-    return @intFromEnum(file_lock.tryAcquire(lock));
+pub export fn fileLockTryAcquire(lock: ?*file_lock.FileLock) i32 {
+    const fileLock = lock orelse return @intFromEnum(file_lock.Status.invalid_handle);
+
+    const acquired = fileLock.tryAcquire() catch |err| {
+        return @intFromEnum(file_lock.statusFromError(err));
+    };
+
+    return @intFromEnum(if (acquired) file_lock.Status.ok else file_lock.Status.busy);
 }
 
-export fn fileLockRelease(lock: ?*file_lock.FileLock) i32 {
-    return @intFromEnum(file_lock.release(lock));
+pub export fn fileLockRelease(lock: ?*file_lock.FileLock) i32 {
+    const fileLock = lock orelse return @intFromEnum(file_lock.Status.invalid_handle);
+    fileLock.release();
+    return @intFromEnum(file_lock.Status.ok);
 }
 
 export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?*renderer.CliRenderer {

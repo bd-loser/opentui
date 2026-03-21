@@ -15,11 +15,6 @@ pub const Status = enum(i32) {
     closing = 10,
 };
 
-pub const CreateResult = extern struct {
-    ptr: ?*FileLock,
-    status: i32,
-};
-
 pub const FileLock = struct {
     allocator: Allocator,
     file: std.fs.File,
@@ -70,56 +65,6 @@ pub const FileLock = struct {
         self.acquired = false;
     }
 };
-
-pub fn createResult(allocator: Allocator, path: []const u8, create_if_missing: bool, create_parent_path: bool) CreateResult {
-    const lock = FileLock.create(allocator, path, create_if_missing, create_parent_path) catch |err| {
-        return .{
-            .ptr = null,
-            .status = @intFromEnum(statusFromError(err)),
-        };
-    };
-
-    return .{
-        .ptr = lock,
-        .status = @intFromEnum(Status.ok),
-    };
-}
-
-pub fn createAndTryAcquireResult(allocator: Allocator, path: []const u8, create_if_missing: bool, create_parent_path: bool) CreateResult {
-    const lock = FileLock.createAndTryAcquire(allocator, path, create_if_missing, create_parent_path) catch |err| {
-        return .{
-            .ptr = null,
-            .status = @intFromEnum(statusFromError(err)),
-        };
-    };
-
-    return .{
-        .ptr = lock,
-        .status = @intFromEnum(if (lock == null) Status.busy else Status.ok),
-    };
-}
-
-pub fn destroy(lock: ?*FileLock) Status {
-    const file_lock = lock orelse return .invalid_handle;
-    file_lock.destroy();
-    return .ok;
-}
-
-pub fn tryAcquire(lock: ?*FileLock) Status {
-    const file_lock = lock orelse return .invalid_handle;
-
-    const acquired = file_lock.tryAcquire() catch |err| {
-        return statusFromError(err);
-    };
-
-    return if (acquired) .ok else .busy;
-}
-
-pub fn release(lock: ?*FileLock) Status {
-    const file_lock = lock orelse return .invalid_handle;
-    file_lock.release();
-    return .ok;
-}
 
 pub fn statusFromError(err: anyerror) Status {
     return switch (err) {

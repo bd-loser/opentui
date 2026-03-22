@@ -1395,9 +1395,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     ) {
       const canStartSelection = Boolean(
         maybeRenderable &&
-          maybeRenderable.selectable &&
-          !maybeRenderable.isDestroyed &&
-          maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y),
+        maybeRenderable.selectable &&
+        !maybeRenderable.isDestroyed &&
+        maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y),
       )
 
       if (canStartSelection && maybeRenderable) {

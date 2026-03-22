@@ -81,34 +81,29 @@ class ParserWorker {
     if (this.initializePromise) {
       return this.initializePromise
     }
-    this.initializePromise = new Promise(async (resolve, reject) => {
+    this.initializePromise = (async () => {
       this.dataPath = dataPath
       this.tsDataPath = path.join(dataPath, "tree-sitter")
 
-      try {
-        await mkdir(path.join(this.tsDataPath, "languages"), { recursive: true })
-        await mkdir(path.join(this.tsDataPath, "queries"), { recursive: true })
+      await mkdir(path.join(this.tsDataPath, "languages"), { recursive: true })
+      await mkdir(path.join(this.tsDataPath, "queries"), { recursive: true })
 
-        let { default: treeWasm } = await import("web-tree-sitter/tree-sitter.wasm" as string, {
-          with: { type: "wasm" },
-        })
+      let { default: treeWasm } = await import("web-tree-sitter/tree-sitter.wasm" as string, {
+        with: { type: "wasm" },
+      })
 
-        if (isBunfsPath(treeWasm)) {
-          treeWasm = normalizeBunfsPath(path.parse(treeWasm).base)
-        }
-
-        await Parser.init({
-          locateFile() {
-            return treeWasm
-          },
-        })
-
-        this.initialized = true
-        resolve()
-      } catch (error) {
-        reject(error)
+      if (isBunfsPath(treeWasm)) {
+        treeWasm = normalizeBunfsPath(path.parse(treeWasm).base)
       }
-    })
+
+      await Parser.init({
+        locateFile() {
+          return treeWasm
+        },
+      })
+
+      this.initialized = true
+    })()
     return this.initializePromise
   }
 

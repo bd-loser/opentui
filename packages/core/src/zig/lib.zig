@@ -287,6 +287,15 @@ export fn renderSplitFooter(
     return rendererPtr.renderSplitFooter(output, pinnedRenderOffset, force);
 }
 
+export fn renderSplitFooterSnapshot(
+    rendererPtr: *renderer.CliRenderer,
+    snapshotBufferPtr: *buffer.OptimizedBuffer,
+    pinnedRenderOffset: u32,
+    force: bool,
+) u32 {
+    return rendererPtr.renderSplitFooterSnapshot(snapshotBufferPtr, pinnedRenderOffset, force);
+}
+
 export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8, idPtr: [*]const u8, idLen: usize) ?*buffer.OptimizedBuffer {
     if (width == 0 or height == 0) {
         logger.warn("Invalid buffer dimensions: {}x{}", .{ width, height });

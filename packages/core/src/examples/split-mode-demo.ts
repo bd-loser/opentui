@@ -4,23 +4,15 @@ import {
   createCliRenderer,
   InputRenderable,
   InputRenderableEvents,
-  OptimizedBuffer,
-  RootRenderable,
-  TextAttributes,
   TextRenderable,
-  type CapturedLine,
-  type CapturedSpan,
   type CliRenderer,
   type KeyEvent,
   type RenderContext,
-  type Renderable,
   type ScrollbackComponent,
+  type ScrollbackSnapshot,
   type ThemeMode,
-  type WidthMethod,
 } from "../index.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-import { EventEmitter } from "events"
-import { InternalKeyHandler, KeyHandler } from "../lib/KeyHandler.js"
 
 const DEFAULT_FOOTER_HEIGHT = 14
 const MIN_FOOTER_HEIGHT = 10
@@ -132,7 +124,7 @@ interface ToolCardEntry {
 interface RenderableSnapshotEntry {
   width: number
   height: number
-  build: (context: SnapshotRenderContext, root: RootRenderable) => void
+  build: (context: RenderContext) => BoxRenderable
 }
 
 function formatTimestamp(timestamp: Date): string {
@@ -223,124 +215,7 @@ function wrapText(text: string, width: number): string[] {
   return wrapped.length > 0 ? wrapped : [""]
 }
 
-function spanToAnsi(span: CapturedSpan): string {
-  if (span.text.length === 0) {
-    return ""
-  }
-
-  const codes: string[] = ["0"]
-  const [fgR, fgG, fgB, fgA] = span.fg.toInts()
-  const [bgR, bgG, bgB, bgA] = span.bg.toInts()
-
-  if (fgA > 0) {
-    codes.push(`38;2;${fgR};${fgG};${fgB}`)
-  }
-
-  if (bgA > 0) {
-    codes.push(`48;2;${bgR};${bgG};${bgB}`)
-  }
-
-  if (span.attributes & TextAttributes.BOLD) codes.push("1")
-  if (span.attributes & TextAttributes.DIM) codes.push("2")
-  if (span.attributes & TextAttributes.ITALIC) codes.push("3")
-  if (span.attributes & TextAttributes.UNDERLINE) codes.push("4")
-  if (span.attributes & TextAttributes.BLINK) codes.push("5")
-  if (span.attributes & TextAttributes.INVERSE) codes.push("7")
-  if (span.attributes & TextAttributes.HIDDEN) codes.push("8")
-  if (span.attributes & TextAttributes.STRIKETHROUGH) codes.push("9")
-
-  return `\x1b[${codes.join(";")}m${span.text}`
-}
-
-function spanLinesToAnsi(lines: CapturedLine[]): string {
-  const renderedLines: string[] = []
-
-  for (const line of lines) {
-    const segments = line.spans.map((span) => spanToAnsi(span)).join("")
-    renderedLines.push(`${segments}\x1b[0m`)
-  }
-
-  return `${renderedLines.join("\n")}\n`
-}
-
-class SnapshotRenderContext extends EventEmitter implements RenderContext {
-  public width: number
-  public height: number
-  public widthMethod: WidthMethod
-  public capabilities: any | null = null
-  public hasSelection: boolean = false
-  public currentFocusedRenderable: Renderable | null = null
-  public keyInput: KeyHandler
-  public _internalKeyInput: InternalKeyHandler
-
-  private lifecyclePasses: Set<Renderable> = new Set()
-
-  constructor(width: number, height: number, widthMethod: WidthMethod) {
-    super()
-    this.width = width
-    this.height = height
-    this.widthMethod = widthMethod
-    this.keyInput = new KeyHandler()
-    this._internalKeyInput = new InternalKeyHandler()
-  }
-
-  public addToHitGrid(_x: number, _y: number, _width: number, _height: number, _id: number): void {}
-  public pushHitGridScissorRect(_x: number, _y: number, _width: number, _height: number): void {}
-  public popHitGridScissorRect(): void {}
-  public clearHitGridScissorRects(): void {}
-  public requestRender(): void {}
-  public setCursorPosition(_x: number, _y: number, _visible: boolean): void {}
-  public setCursorStyle(_options: any): void {}
-  public setCursorColor(_color: any): void {}
-  public setMousePointer(_shape: any): void {}
-  public requestLive(): void {}
-  public dropLive(): void {}
-  public getSelection(): null {
-    return null
-  }
-  public requestSelectionUpdate(): void {}
-  public focusRenderable(renderable: Renderable): void {
-    this.currentFocusedRenderable = renderable
-  }
-  public registerLifecyclePass(renderable: Renderable): void {
-    this.lifecyclePasses.add(renderable)
-  }
-  public unregisterLifecyclePass(renderable: Renderable): void {
-    this.lifecyclePasses.delete(renderable)
-  }
-  public getLifecyclePasses(): Set<Renderable> {
-    return this.lifecyclePasses
-  }
-  public clearSelection(): void {}
-  public startSelection(_renderable: Renderable, _x: number, _y: number): void {}
-  public updateSelection(_currentRenderable: Renderable | undefined, _x: number, _y: number): void {}
-}
-
-function renderSnapshotFromTree(
-  width: number,
-  height: number,
-  widthMethod: WidthMethod,
-  build: (context: SnapshotRenderContext, root: RootRenderable) => void,
-): string {
-  const snapshotWidth = Math.max(1, Math.trunc(width))
-  const snapshotHeight = Math.max(1, Math.trunc(height))
-  const context = new SnapshotRenderContext(snapshotWidth, snapshotHeight, widthMethod)
-  const root = new RootRenderable(context)
-  const buffer = OptimizedBuffer.create(snapshotWidth, snapshotHeight, widthMethod, {
-    id: "split-mode-demo-snapshot",
-  })
-
-  try {
-    build(context, root)
-    root.render(buffer, 0)
-    return spanLinesToAnsi(buffer.getSpanLines())
-  } finally {
-    root.destroyRecursively()
-    buffer.destroy()
-  }
-}
-
-function getRoleBorderColor(role: ChatRole, palette: DemoPalette): string {
+function roleBorderColor(role: ChatRole, palette: DemoPalette): string {
   switch (role) {
     case "user":
       return palette.chatUserBorder
@@ -351,12 +226,12 @@ function getRoleBorderColor(role: ChatRole, palette: DemoPalette): string {
   }
 }
 
-const renderableSnapshotComponent: ScrollbackComponent<RenderableSnapshotEntry> = {
-  scrollback: (entry, ctx) => {
-    const snapshotWidth = Math.max(1, Math.min(entry.width, ctx.width))
-    const snapshotHeight = Math.max(1, entry.height)
-    return renderSnapshotFromTree(snapshotWidth, snapshotHeight, ctx.widthMethod, entry.build)
-  },
+function createSnapshot(root: BoxRenderable, width: number, height: number): ScrollbackSnapshot {
+  return {
+    root,
+    width,
+    height,
+  }
 }
 
 const chatMessageComponent: ScrollbackComponent<ChatMessageEntry> = {
@@ -366,37 +241,35 @@ const chatMessageComponent: ScrollbackComponent<ChatMessageEntry> = {
     const bodyWidth = Math.max(1, cardWidth - 2)
     const wrappedMessage = wrapText(entry.text, bodyWidth)
     const cardHeight = Math.max(3, wrappedMessage.length + 2)
-    const roleColor = getRoleBorderColor(entry.role, entry.palette)
 
-    return renderSnapshotFromTree(cardWidth, cardHeight, ctx.widthMethod, (snapshotContext, snapshotRoot) => {
-      const card = new BoxRenderable(snapshotContext, {
-        id: "snapshot-chat-card",
-        position: "absolute",
-        left: 0,
-        top: 0,
-        width: cardWidth,
-        height: cardHeight,
-        border: true,
-        borderStyle: "single",
-        borderColor: roleColor,
-        backgroundColor: "transparent",
-        title: `${roleLabel} ${formatTimestamp(entry.timestamp)}`,
-      })
-
-      const body = new TextRenderable(snapshotContext, {
-        id: "snapshot-chat-text",
-        position: "absolute",
-        left: 1,
-        top: 1,
-        width: bodyWidth,
-        height: Math.max(1, cardHeight - 2),
-        content: wrappedMessage.join("\n"),
-        fg: entry.palette.chatBodyText,
-      })
-
-      card.add(body)
-      snapshotRoot.add(card)
+    const card = new BoxRenderable(ctx.renderContext, {
+      id: `chat-card-${entry.role}-${entry.timestamp.getTime()}`,
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: cardWidth,
+      height: cardHeight,
+      border: true,
+      borderStyle: "single",
+      borderColor: roleBorderColor(entry.role, entry.palette),
+      backgroundColor: "transparent",
+      title: `${roleLabel} ${formatTimestamp(entry.timestamp)}`,
     })
+
+    const body = new TextRenderable(ctx.renderContext, {
+      id: `chat-card-text-${entry.timestamp.getTime()}`,
+      position: "absolute",
+      left: 1,
+      top: 1,
+      width: bodyWidth,
+      height: Math.max(1, cardHeight - 2),
+      content: wrappedMessage.join("\n"),
+      fg: entry.palette.chatBodyText,
+    })
+
+    card.add(body)
+
+    return createSnapshot(card, cardWidth, cardHeight)
   },
 }
 
@@ -415,36 +288,34 @@ const bulletListComponent: ScrollbackComponent<BulletListEntry> = {
     }
 
     const cardHeight = Math.max(3, lines.length + 2)
-
-    return renderSnapshotFromTree(cardWidth, cardHeight, ctx.widthMethod, (snapshotContext, snapshotRoot) => {
-      const card = new BoxRenderable(snapshotContext, {
-        id: "snapshot-bullet-card",
-        position: "absolute",
-        left: 0,
-        top: 0,
-        width: cardWidth,
-        height: cardHeight,
-        border: true,
-        borderStyle: "single",
-        borderColor: entry.palette.bulletBorder,
-        backgroundColor: "transparent",
-        title: truncateToWidth(entry.title, Math.max(1, cardWidth - 4)),
-      })
-
-      const body = new TextRenderable(snapshotContext, {
-        id: "snapshot-bullet-text",
-        position: "absolute",
-        left: 1,
-        top: 1,
-        width: bodyWidth,
-        height: Math.max(1, cardHeight - 2),
-        content: lines.join("\n"),
-        fg: entry.palette.bulletBodyText,
-      })
-
-      card.add(body)
-      snapshotRoot.add(card)
+    const card = new BoxRenderable(ctx.renderContext, {
+      id: `bullet-card-${Date.now()}`,
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: cardWidth,
+      height: cardHeight,
+      border: true,
+      borderStyle: "single",
+      borderColor: entry.palette.bulletBorder,
+      backgroundColor: "transparent",
+      title: truncateToWidth(entry.title, Math.max(1, cardWidth - 4)),
     })
+
+    const body = new TextRenderable(ctx.renderContext, {
+      id: `bullet-card-text-${Date.now()}`,
+      position: "absolute",
+      left: 1,
+      top: 1,
+      width: bodyWidth,
+      height: Math.max(1, cardHeight - 2),
+      content: lines.join("\n"),
+      fg: entry.palette.bulletBodyText,
+    })
+
+    card.add(body)
+
+    return createSnapshot(card, cardWidth, cardHeight)
   },
 }
 
@@ -466,36 +337,43 @@ const toolCardComponent: ScrollbackComponent<ToolCardEntry> = {
     })
 
     const cardHeight = Math.max(3, lines.length + 2)
-
-    return renderSnapshotFromTree(cardWidth, cardHeight, ctx.widthMethod, (snapshotContext, snapshotRoot) => {
-      const card = new BoxRenderable(snapshotContext, {
-        id: "snapshot-tool-card",
-        position: "absolute",
-        left: 0,
-        top: 0,
-        width: cardWidth,
-        height: cardHeight,
-        border: true,
-        borderStyle: "double",
-        borderColor: entry.palette.toolBorder,
-        backgroundColor: "transparent",
-        title: truncateToWidth(entry.title, Math.max(1, cardWidth - 4)),
-      })
-
-      const body = new TextRenderable(snapshotContext, {
-        id: "snapshot-tool-text",
-        position: "absolute",
-        left: 1,
-        top: 1,
-        width: bodyWidth,
-        height: Math.max(1, cardHeight - 2),
-        content: lines.join("\n"),
-        fg: entry.palette.toolBodyText,
-      })
-
-      card.add(body)
-      snapshotRoot.add(card)
+    const card = new BoxRenderable(ctx.renderContext, {
+      id: `tool-card-${Date.now()}`,
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: cardWidth,
+      height: cardHeight,
+      border: true,
+      borderStyle: "double",
+      borderColor: entry.palette.toolBorder,
+      backgroundColor: "transparent",
+      title: truncateToWidth(entry.title, Math.max(1, cardWidth - 4)),
     })
+
+    const body = new TextRenderable(ctx.renderContext, {
+      id: `tool-card-text-${Date.now()}`,
+      position: "absolute",
+      left: 1,
+      top: 1,
+      width: bodyWidth,
+      height: Math.max(1, cardHeight - 2),
+      content: lines.join("\n"),
+      fg: entry.palette.toolBodyText,
+    })
+
+    card.add(body)
+
+    return createSnapshot(card, cardWidth, cardHeight)
+  },
+}
+
+const renderableSnapshotComponent: ScrollbackComponent<RenderableSnapshotEntry> = {
+  scrollback: (entry, ctx) => {
+    const width = Math.max(1, Math.min(entry.width, ctx.width))
+    const height = Math.max(1, entry.height)
+    const root = entry.build(ctx.renderContext)
+    return createSnapshot(root, width, height)
   },
 }
 
@@ -543,7 +421,7 @@ class SplitFooterChatDemo {
 
     this.headerText = new TextRenderable(this.renderer, {
       id: "split-chat-header",
-      content: "Split footer chat + scrollback components",
+      content: "Split footer chat + snapshot commits",
       position: "absolute",
       left: 2,
       top: 1,
@@ -555,7 +433,7 @@ class SplitFooterChatDemo {
 
     this.helpText = new TextRenderable(this.renderer, {
       id: "split-chat-help",
-      content: "Type /help, /tree for nested renderable snapshot, /footer <n> to resize",
+      content: "Type /help, /tree for renderable snapshots, /footer <n> to resize",
       position: "absolute",
       left: 2,
       top: 2,
@@ -642,45 +520,18 @@ class SplitFooterChatDemo {
     this.footerContainer.add(this.inputFrame)
     this.footerContainer.add(this.promptText)
     this.footerContainer.add(this.input)
-
     this.renderer.root.add(this.footerContainer)
 
     this.input.on(InputRenderableEvents.INPUT, this.handleInputChange)
     this.input.on(InputRenderableEvents.ENTER, this.handleInputSubmit)
-
     this.renderer.keyInput.on("keypress", this.handleKeyPress)
     this.renderer.on("resize", this.handleResize)
     this.renderer.on(CliRenderEvents.THEME_MODE, this.handleThemeMode)
 
     this.relayout()
     this.applyPalette()
-    this.refreshStatus("Type /help, then send a prompt to publish your first scrollback commit")
+    this.refreshStatus("Type /help, then send a prompt to publish your first snapshot commit")
     this.input.focus()
-  }
-
-  private applyPalette(): void {
-    this.renderer.setBackgroundColor(this.palette.appBackground)
-    this.footerContainer.borderColor = this.palette.footerBorder
-    this.footerContainer.backgroundColor = this.palette.footerBackground
-    this.headerText.fg = this.palette.headerText
-    this.helpText.fg = this.palette.helpText
-    this.statusText.fg = this.palette.statusText
-    this.typingText.fg = this.palette.typingText
-    this.inputFrame.borderColor = this.palette.inputFrameBorder
-    this.inputFrame.backgroundColor = this.palette.inputFrameBackground
-    this.promptText.fg = this.palette.promptText
-    this.input.placeholderColor = this.palette.inputPlaceholder
-    this.input.textColor = this.palette.inputText
-    this.input.focusedTextColor = this.palette.inputFocusedText
-    this.input.backgroundColor = this.palette.inputFrameBackground
-    this.input.focusedBackgroundColor = this.palette.inputFocusedBackground
-    this.input.cursorColor = this.palette.inputCursor
-  }
-
-  private handleThemeMode = (mode: ThemeMode): void => {
-    this.palette = resolveDemoPalette(mode)
-    this.applyPalette()
-    this.refreshStatus(`theme ${mode}`)
   }
 
   private clampFooterHeight(nextHeight: number): number {
@@ -712,6 +563,25 @@ class SplitFooterChatDemo {
     this.input.width = availableInputWidth
   }
 
+  private applyPalette(): void {
+    this.renderer.setBackgroundColor(this.palette.appBackground)
+    this.footerContainer.borderColor = this.palette.footerBorder
+    this.footerContainer.backgroundColor = this.palette.footerBackground
+    this.headerText.fg = this.palette.headerText
+    this.helpText.fg = this.palette.helpText
+    this.statusText.fg = this.palette.statusText
+    this.typingText.fg = this.palette.typingText
+    this.inputFrame.borderColor = this.palette.inputFrameBorder
+    this.inputFrame.backgroundColor = this.palette.inputFrameBackground
+    this.promptText.fg = this.palette.promptText
+    this.input.placeholderColor = this.palette.inputPlaceholder
+    this.input.textColor = this.palette.inputText
+    this.input.focusedTextColor = this.palette.inputFocusedText
+    this.input.backgroundColor = this.palette.inputFrameBackground
+    this.input.focusedBackgroundColor = this.palette.inputFocusedBackground
+    this.input.cursorColor = this.palette.inputCursor
+  }
+
   private refreshStatus(message?: string): void {
     if (message) {
       this.statusMessage = message
@@ -725,22 +595,17 @@ class SplitFooterChatDemo {
       `widthMethod ${this.renderer.widthMethod}`,
     ]
     this.statusText.content = `${statusParts.join(" | ")} | ${this.statusMessage}`
-
     this.typingText.content = this.assistantTyping ? "assistant is composing a response..." : ""
   }
 
   private publishToScrollback<Data>(component: ScrollbackComponent<Data>, data: Data): void {
     this.publishQueue = this.publishQueue
       .then(async () => {
-        if (this.destroyed) {
-          return
-        }
+        if (this.destroyed) return
 
         await this.renderer.writeToScrollback(component, data)
 
-        if (this.destroyed) {
-          return
-        }
+        if (this.destroyed) return
 
         this.commitCount += 1
         this.refreshStatus()
@@ -782,7 +647,7 @@ class SplitFooterChatDemo {
   private appendRenderableSnapshot(
     width: number,
     height: number,
-    build: (context: SnapshotRenderContext, root: RootRenderable) => void,
+    build: (context: RenderContext) => BoxRenderable,
   ): void {
     this.publishToScrollback(renderableSnapshotComponent, {
       width,
@@ -796,7 +661,7 @@ class SplitFooterChatDemo {
     const cardHeight = 11
     const palette = this.palette
 
-    this.appendRenderableSnapshot(cardWidth, cardHeight, (snapshotContext, snapshotRoot) => {
+    this.appendRenderableSnapshot(cardWidth, cardHeight, (snapshotContext) => {
       const frame = new BoxRenderable(snapshotContext, {
         id: "showcase-frame",
         position: "absolute",
@@ -887,7 +752,7 @@ class SplitFooterChatDemo {
         top: 5,
         width: Math.max(1, cardWidth - Math.max(4, Math.floor(cardWidth * 0.55) + 1) - 2),
         height: 1,
-        content: "render -> snapshot -> commit",
+        content: "render -> snapshot -> native commit",
         fg: palette.toolBodyText,
       })
 
@@ -898,7 +763,7 @@ class SplitFooterChatDemo {
         top: 9,
         width: Math.max(1, cardWidth - 4),
         height: 1,
-        content: "actual component tree serialized as ANSI text artifact",
+        content: "actual renderable tree commit (no UTF-8 payload bridge)",
         fg: palette.helpText,
       })
 
@@ -910,7 +775,7 @@ class SplitFooterChatDemo {
       frame.add(metricBarB)
       frame.add(toolLine)
       frame.add(footerLine)
-      snapshotRoot.add(frame)
+      return frame
     })
   }
 
@@ -931,11 +796,10 @@ class SplitFooterChatDemo {
 
     this.appendToolCard("component snapshot", [
       "source: split-mode-demo",
-      "bridge: renderer.writeToScrollback(component, data)",
+      "path: renderer.writeToScrollback(component, data)",
+      "payload: native snapshot commit",
       "ownership: placement and pinning stay native",
     ])
-
-    this.refreshStatus("welcome entries queued")
   }
 
   private handleInputChange = (value: string): void => {
@@ -1038,13 +902,13 @@ class SplitFooterChatDemo {
   private publishDemoSequence(): void {
     this.appendChat(
       "assistant",
-      "This demo uses writeToScrollback(component, data). Every call is one append commit.",
+      "This demo uses writeToScrollback(component, data). Each call commits one snapshot artifact.",
     )
 
     this.appendToolCard("render pipeline", [
-      "1) TS builds one component payload",
-      "2) payload enters shared split queue",
-      "3) native renderSplitFooter commits append + footer repaint",
+      "1) TS builds a renderable tree from component + data",
+      "2) renderer snapshots the tree into a native buffer",
+      "3) native commit appends snapshot then repaints footer",
     ])
 
     this.appendBulletList("Why this shape is useful", [
@@ -1084,15 +948,15 @@ class SplitFooterChatDemo {
     const normalized = userText.toLowerCase()
 
     if (normalized.includes("stage 3")) {
-      return "Stage 3 is about explicit append commits through writeToScrollback on the native split boundary."
+      return "Stage 3 now means snapshot commits through writeToScrollback while split placement stays native."
     }
 
     if (normalized.includes("component")) {
-      return "You can model each transcript turn as a component snapshot and publish it as one append-only commit."
+      return "Each transcript turn can be a renderable tree snapshot committed as one append-only artifact."
     }
 
     if (normalized.includes("resize")) {
-      return "Try /footer 10 or /footer 18 to exercise resize transitions while keeping scrollback append-only."
+      return "Try /footer 10 or /footer 18 to exercise resize transitions while keeping append-only commits."
     }
 
     return `Got it: \"${truncateToWidth(userText, 80)}\". Try /demo for a multi-component publish sequence.`
@@ -1140,6 +1004,12 @@ class SplitFooterChatDemo {
     }
   }
 
+  private handleThemeMode = (mode: ThemeMode): void => {
+    this.palette = resolveDemoPalette(mode)
+    this.applyPalette()
+    this.refreshStatus(`theme ${mode}`)
+  }
+
   private handleResize = (): void => {
     const clampedFooterHeight = this.clampFooterHeight(this.renderer.footerHeight)
     if (clampedFooterHeight !== this.renderer.footerHeight) {
@@ -1164,7 +1034,6 @@ class SplitFooterChatDemo {
 
     this.input.off(InputRenderableEvents.INPUT, this.handleInputChange)
     this.input.off(InputRenderableEvents.ENTER, this.handleInputSubmit)
-
     this.renderer.keyInput.off("keypress", this.handleKeyPress)
     this.renderer.off("resize", this.handleResize)
     this.renderer.off(CliRenderEvents.THEME_MODE, this.handleThemeMode)

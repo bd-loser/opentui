@@ -624,6 +624,26 @@ pub const CliRenderer = struct {
         return self.renderOffset;
     }
 
+    pub fn renderSplitFooterSnapshot(
+        self: *CliRenderer,
+        snapshot: *const OptimizedBuffer,
+        pinned_render_offset: u32,
+        force: bool,
+    ) u32 {
+        const now = std.time.microTimestamp();
+        const deltaTimeMs = @as(f64, @floatFromInt(now - self.lastRenderTime));
+        const deltaTime = deltaTimeMs / 1000.0; // Convert to seconds
+
+        self.lastRenderTime = now;
+        self.renderDebugOverlay();
+
+        self.prepareSplitFooterSnapshotFrame(snapshot, pinned_render_offset, force);
+
+        self.finalizeRender(deltaTime);
+
+        return self.renderOffset;
+    }
+
     fn finalizeRender(self: *CliRenderer, deltaTime: f64) void {
         if (self.useThread) {
             self.renderMutex.lock();
@@ -718,6 +738,164 @@ pub const CliRenderer = struct {
 
             // Reclaim footer area at the target top and place cursor there so the
             // following frame paint starts from a known clean footer surface.
+            ansi.ANSI.moveToOutput(writer, 1, targetFooterTopLine) catch {};
+            writer.writeAll(ansi.ANSI.eraseBelowCursor) catch {};
+            ansi.ANSI.moveToOutput(writer, 1, targetFooterTopLine) catch {};
+        } else {
+            self.renderOffset = next_render_offset;
+        }
+
+        self.prepareRenderFrame(force, false);
+    }
+
+    fn writeSnapshotCommit(self: *CliRenderer, writer: anytype, snapshot: *const OptimizedBuffer) void {
+        var currentFg: ?RGBA = null;
+        var currentBg: ?RGBA = null;
+        var currentAttributes: i32 = -1;
+        var currentLinkId: u32 = 0;
+        var utf8Buf: [4]u8 = undefined;
+
+        const colorEpsilon: f32 = COLOR_EPSILON_DEFAULT;
+        const hyperlinksEnabled = self.terminal.getCapabilities().hyperlinks;
+
+        for (0..snapshot.height) |uy| {
+            const y = @as(u32, @intCast(uy));
+
+            for (0..snapshot.width) |ux| {
+                const x = @as(u32, @intCast(ux));
+                const cell = snapshot.get(x, y) orelse continue;
+
+                const fgMatch = currentFg != null and buf.rgbaEqual(currentFg.?, cell.fg, colorEpsilon);
+                const bgMatch = currentBg != null and buf.rgbaEqual(currentBg.?, cell.bg, colorEpsilon);
+                const sameAttributes = fgMatch and bgMatch and @as(i32, @intCast(cell.attributes)) == currentAttributes;
+
+                const linkId = if (hyperlinksEnabled) ansi.TextAttributes.getLinkId(cell.attributes) else 0;
+                if (hyperlinksEnabled and linkId != currentLinkId) {
+                    if (currentLinkId != 0) {
+                        writer.writeAll("\x1b]8;;\x1b\\") catch {};
+                    }
+                    currentLinkId = linkId;
+                    if (currentLinkId != 0) {
+                        const lp = link.initGlobalLinkPool(self.allocator);
+                        if (lp.get(currentLinkId)) |url_bytes| {
+                            writer.print("\x1b]8;id={d};{s}\x1b\\", .{ currentLinkId, url_bytes }) catch {};
+                        } else |_| {
+                            currentLinkId = 0;
+                        }
+                    }
+                }
+
+                if (!sameAttributes) {
+                    writer.writeAll(ansi.ANSI.reset) catch {};
+
+                    currentFg = cell.fg;
+                    currentBg = cell.bg;
+                    currentAttributes = @as(i32, @intCast(cell.attributes));
+
+                    const fgR = rgbaComponentToU8(cell.fg[0]);
+                    const fgG = rgbaComponentToU8(cell.fg[1]);
+                    const fgB = rgbaComponentToU8(cell.fg[2]);
+
+                    const bgR = rgbaComponentToU8(cell.bg[0]);
+                    const bgG = rgbaComponentToU8(cell.bg[1]);
+                    const bgB = rgbaComponentToU8(cell.bg[2]);
+                    const bgA = cell.bg[3];
+
+                    ansi.ANSI.fgColorOutput(writer, fgR, fgG, fgB) catch {};
+                    if (bgA < 0.001) {
+                        writer.writeAll("\x1b[49m") catch {};
+                    } else {
+                        ansi.ANSI.bgColorOutput(writer, bgR, bgG, bgB) catch {};
+                    }
+
+                    ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
+                }
+
+                if (gp.isGraphemeChar(cell.char)) {
+                    const gid: u32 = gp.graphemeIdFromChar(cell.char);
+                    const bytes = self.pool.get(gid) catch {
+                        writer.writeByte(' ') catch {};
+                        continue;
+                    };
+
+                    if (bytes.len > 0) {
+                        const capabilities = self.terminal.getCapabilities();
+                        const graphemeWidth = gp.charRightExtent(cell.char) + 1;
+                        if (capabilities.explicit_width) {
+                            ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
+                        } else {
+                            writer.writeAll(bytes) catch {};
+                        }
+                    }
+                } else if (gp.isContinuationChar(cell.char)) {
+                    writer.writeByte(' ') catch {};
+                } else {
+                    const len = std.unicode.utf8Encode(@intCast(cell.char), &utf8Buf) catch 1;
+                    writer.writeAll(utf8Buf[0..len]) catch {};
+                }
+            }
+
+            writer.writeAll("\r\n") catch {};
+            writer.writeAll(ansi.ANSI.reset) catch {};
+            currentFg = null;
+            currentBg = null;
+            currentAttributes = -1;
+
+            if (hyperlinksEnabled and currentLinkId != 0) {
+                writer.writeAll("\x1b]8;;\x1b\\") catch {};
+                currentLinkId = 0;
+            }
+        }
+    }
+
+    fn prepareSplitFooterSnapshotFrame(
+        self: *CliRenderer,
+        snapshot: *const OptimizedBuffer,
+        pinned_render_offset: u32,
+        force: bool,
+    ) void {
+        resetActiveOutputBuffer();
+
+        const previousRenderOffset = self.renderOffset;
+        const previousOutputColumn = self.splitScrollback.tail_column;
+        const snapshot_has_content = snapshot.width > 0 and snapshot.height > 0;
+        const starts_mid_line = previousOutputColumn > 0;
+
+        if (snapshot_has_content) {
+            if (starts_mid_line) {
+                self.splitScrollback.noteNewline();
+            }
+            self.splitScrollback.publishSnapshotRows(snapshot.height, snapshot.width, self.width);
+        }
+
+        const next_render_offset = self.splitScrollback.renderOffset(pinned_render_offset);
+        const previousFooterTopLine: u32 = @max(previousRenderOffset + 1, @as(u32, 1));
+        const targetFooterTopLine: u32 = @max(next_render_offset + 1, @as(u32, 1));
+
+        if (snapshot_has_content or force) {
+            var writer = OutputBufferWriter.writer();
+
+            if (snapshot_has_content) {
+                ansi.ANSI.moveToOutput(writer, 1, previousFooterTopLine) catch {};
+                writer.writeAll(ansi.ANSI.eraseBelowCursor) catch {};
+
+                if (pinned_render_offset > 0) {
+                    writer.print("\x1b[1;{d}r", .{pinned_render_offset}) catch {};
+                }
+
+                moveToSplitOutputCursor(writer, previousRenderOffset, previousOutputColumn, self.width);
+                if (starts_mid_line) {
+                    writer.writeAll("\r\n") catch {};
+                }
+
+                self.writeSnapshotCommit(writer, snapshot);
+
+                if (pinned_render_offset > 0) {
+                    writer.writeAll("\x1b[r") catch {};
+                }
+            }
+
+            self.renderOffset = next_render_offset;
             ansi.ANSI.moveToOutput(writer, 1, targetFooterTopLine) catch {};
             writer.writeAll(ansi.ANSI.eraseBelowCursor) catch {};
             ansi.ANSI.moveToOutput(writer, 1, targetFooterTopLine) catch {};

@@ -182,6 +182,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr", "usize", "u32", "bool"],
       returns: "u32",
     },
+    renderSplitFooterSnapshot: {
+      args: ["ptr", "ptr", "u32", "bool"],
+      returns: "u32",
+    },
     getNextBuffer: {
       args: ["ptr"],
       returns: "ptr",
@@ -1403,6 +1407,12 @@ export interface RenderLib {
   updateMemoryStats: (renderer: Pointer, heapUsed: number, heapTotal: number, arrayBuffers: number) => void
   render: (renderer: Pointer, force: boolean) => void
   renderSplitFooter: (renderer: Pointer, output: Uint8Array, pinnedRenderOffset: number, force: boolean) => number
+  renderSplitFooterSnapshot: (
+    renderer: Pointer,
+    snapshot: OptimizedBuffer,
+    pinnedRenderOffset: number,
+    force: boolean,
+  ) => number
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
   createOptimizedBuffer: (
@@ -2452,6 +2462,15 @@ class FFIRenderLib implements RenderLib {
       pinnedRenderOffset,
       force,
     )
+  }
+
+  public renderSplitFooterSnapshot(
+    renderer: Pointer,
+    snapshot: OptimizedBuffer,
+    pinnedRenderOffset: number,
+    force: boolean,
+  ): number {
+    return this.opentui.symbols.renderSplitFooterSnapshot(renderer, snapshot.ptr, pinnedRenderOffset, force)
   }
 
   public createOptimizedBuffer(

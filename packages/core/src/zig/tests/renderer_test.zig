@@ -1121,3 +1121,55 @@ test "renderer - renderSplitFooter settling phase moves footer downward" {
     try std.testing.expect(append_index.? < footer_clear_index.?);
     try std.testing.expect(footer_clear_index.? < sync_index.?);
 }
+
+test "renderer - renderSplitFooterSnapshot appends styled snapshot before footer repaint" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        16,
+        4,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    _ = cli_renderer.resetSplitScrollback(2, 2);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
+
+    var snapshot = try OptimizedBuffer.init(
+        std.testing.allocator,
+        8,
+        2,
+        .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
+    );
+    defer snapshot.deinit();
+
+    try snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 32);
+    try snapshot.drawText("SNAP", 0, 0, .{ 1.0, 0.5, 0.0, 1.0 }, .{ 0.0, 0.0, 0.0, 0.0 }, ansi.TextAttributes.BOLD);
+    try snapshot.drawText("SHOT", 0, 1, .{ 0.2, 0.8, 0.9, 1.0 }, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
+
+    _ = cli_renderer.renderSplitFooterSnapshot(snapshot, 2, true);
+
+    const output = cli_renderer.getLastOutputForTest();
+    const snapshot_text_index = std.mem.indexOf(u8, output, "SNAP");
+    const orange_fg_index = std.mem.indexOf(u8, output, "\x1b[38;2;255;128;0m");
+    const bold_index = std.mem.indexOf(u8, output, "\x1b[1m");
+    const sync_index = std.mem.indexOf(u8, output, ansi.ANSI.syncSet);
+    const footer_clear_index = std.mem.indexOf(u8, output, "\x1b[3;1H\x1b[J");
+
+    try std.testing.expect(snapshot_text_index != null);
+    try std.testing.expect(orange_fg_index != null);
+    try std.testing.expect(bold_index != null);
+    try std.testing.expect(sync_index != null);
+    try std.testing.expect(footer_clear_index != null);
+    try std.testing.expect(snapshot_text_index.? < sync_index.?);
+    try std.testing.expect(footer_clear_index.? < sync_index.?);
+}

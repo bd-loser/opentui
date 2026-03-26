@@ -71,3 +71,26 @@ test "split scrollback text bridge ignores ANSI OSC bytes for width accounting" 
     try std.testing.expectEqual(@as(u32, 1), scrollback.published_rows);
     try std.testing.expectEqual(@as(u32, 4), scrollback.tail_column);
 }
+
+test "split scrollback snapshot rows start at line boundary" {
+    var scrollback = split_scrollback.SplitScrollback{};
+
+    scrollback.publishTextBridge("tail", 20, .unicode);
+    try std.testing.expectEqual(@as(u32, 1), scrollback.published_rows);
+    try std.testing.expectEqual(@as(u32, 4), scrollback.tail_column);
+
+    scrollback.noteNewline();
+    scrollback.publishSnapshotRows(2, 8, 20);
+
+    try std.testing.expectEqual(@as(u32, 4), scrollback.published_rows);
+    try std.testing.expectEqual(@as(u32, 0), scrollback.tail_column);
+}
+
+test "split scrollback snapshot rows wrap visible columns against terminal width" {
+    var scrollback = split_scrollback.SplitScrollback{};
+
+    scrollback.publishSnapshotRows(1, 6, 4);
+
+    try std.testing.expectEqual(@as(u32, 3), scrollback.published_rows);
+    try std.testing.expectEqual(@as(u32, 0), scrollback.tail_column);
+}

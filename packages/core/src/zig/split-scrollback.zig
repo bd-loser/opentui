@@ -85,6 +85,27 @@ pub const SplitScrollback = struct {
         return @min(self.published_rows, pinned_render_offset);
     }
 
+    pub fn noteNewline(self: *SplitScrollback) void {
+        if (self.published_rows == 0) {
+            self.published_rows = 1;
+        }
+
+        self.published_rows += 1;
+        self.tail_column = 0;
+    }
+
+    pub fn publishSnapshotRows(self: *SplitScrollback, row_count: u32, row_columns: u32, terminal_width: u32) void {
+        if (row_count == 0) {
+            return;
+        }
+
+        var row: u32 = 0;
+        while (row < row_count) : (row += 1) {
+            self.publishColumns(row_columns, terminal_width);
+            self.noteNewline();
+        }
+    }
+
     pub fn publishTextBridge(self: *SplitScrollback, output: []const u8, width: u32, width_method: utf8.WidthMethod) void {
         const safe_width = @max(width, @as(u32, 1));
         var pos: usize = 0;
@@ -93,11 +114,7 @@ pub const SplitScrollback = struct {
             const byte = output[pos];
             switch (byte) {
                 '\n' => {
-                    if (self.published_rows == 0) {
-                        self.published_rows = 1;
-                    }
-                    self.published_rows += 1;
-                    self.tail_column = 0;
+                    self.noteNewline();
                     pos += 1;
                 },
                 '\r' => {
@@ -181,6 +198,37 @@ pub const SplitScrollback = struct {
             self.tail_column += wrap.columns_used;
 
             if (remaining.len > 0) {
+                self.published_rows += 1;
+                self.tail_column = 0;
+            }
+        }
+    }
+
+    fn publishColumns(self: *SplitScrollback, columns: u32, width: u32) void {
+        if (columns == 0) {
+            return;
+        }
+
+        const safe_width = @max(width, @as(u32, 1));
+        var remaining = columns;
+
+        while (remaining > 0) {
+            if (self.published_rows == 0) {
+                self.published_rows = 1;
+            }
+
+            if (self.tail_column >= safe_width) {
+                self.published_rows += 1;
+                self.tail_column = 0;
+            }
+
+            const available_width = safe_width - self.tail_column;
+            const step = @min(remaining, available_width);
+
+            self.tail_column += step;
+            remaining -= step;
+
+            if (remaining > 0 and self.tail_column >= safe_width) {
                 self.published_rows += 1;
                 self.tail_column = 0;
             }

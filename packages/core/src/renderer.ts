@@ -208,10 +208,17 @@ export type PixelResolution = {
 export interface ScrollbackRenderContext {
   width: number
   widthMethod: WidthMethod
+  renderContext: RenderContext
+}
+
+export interface ScrollbackSnapshot {
+  root: Renderable
+  width?: number
+  height?: number
 }
 
 export interface ScrollbackComponent<Data> {
-  scrollback: (data: Data, ctx: ScrollbackRenderContext) => string
+  scrollback: (data: Data, ctx: ScrollbackRenderContext) => ScrollbackSnapshot
 }
 
 const DEFAULT_FOOTER_HEIGHT = 12
@@ -263,27 +270,108 @@ function resolveModes(config: CliRendererConfig): {
   }
 }
 
-class ExternalOutputQueue {
-  private chunks: string[] = []
-
-  get size(): number {
-    return this.chunks.length
-  }
-
-  write(text: string): void {
-    if (text.length === 0) return
-    this.chunks.push(text)
-  }
-
-  claim(): string {
-    if (this.chunks.length === 0) {
-      return ""
+type ExternalOutputCommit =
+  | {
+      kind: "text"
+      text: string
+    }
+  | {
+      kind: "snapshot"
+      snapshot: OptimizedBuffer
     }
 
-    const output = this.chunks.join("")
-    this.chunks = []
+class ExternalOutputQueue {
+  private commits: ExternalOutputCommit[] = []
+
+  get size(): number {
+    return this.commits.length
+  }
+
+  writeText(text: string): void {
+    if (text.length === 0) return
+    this.commits.push({ kind: "text", text })
+  }
+
+  writeSnapshot(snapshot: OptimizedBuffer): void {
+    this.commits.push({ kind: "snapshot", snapshot })
+  }
+
+  claim(): ExternalOutputCommit[] {
+    if (this.commits.length === 0) {
+      return []
+    }
+
+    const output = this.commits
+    this.commits = []
     return output
   }
+
+  clear(): void {
+    for (const commit of this.commits) {
+      if (commit.kind === "snapshot") {
+        commit.snapshot.destroy()
+      }
+    }
+    this.commits = []
+  }
+}
+
+class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderContext {
+  public width: number
+  public height: number
+  public widthMethod: WidthMethod
+  public capabilities: any | null = null
+  public hasSelection: boolean = false
+  public currentFocusedRenderable: Renderable | null = null
+  public keyInput: KeyHandler
+  public _internalKeyInput: InternalKeyHandler
+
+  private lifecyclePasses: Set<Renderable> = new Set()
+
+  constructor(width: number, height: number, widthMethod: WidthMethod) {
+    super()
+    this.width = width
+    this.height = height
+    this.widthMethod = widthMethod
+    this.keyInput = new KeyHandler()
+    this._internalKeyInput = new InternalKeyHandler()
+  }
+
+  public addToHitGrid(_x: number, _y: number, _width: number, _height: number, _id: number): void {}
+  public pushHitGridScissorRect(_x: number, _y: number, _width: number, _height: number): void {}
+  public popHitGridScissorRect(): void {}
+  public clearHitGridScissorRects(): void {}
+  public requestRender(): void {}
+  public setCursorPosition(_x: number, _y: number, _visible: boolean): void {}
+  public setCursorStyle(_options: CursorStyleOptions): void {}
+  public setCursorColor(_color: RGBA): void {}
+  public setMousePointer(_shape: MousePointerStyle): void {}
+  public requestLive(): void {}
+  public dropLive(): void {}
+  public getSelection(): Selection | null {
+    return null
+  }
+  public requestSelectionUpdate(): void {}
+  public focusRenderable(renderable: Renderable): void {
+    this.currentFocusedRenderable = renderable
+  }
+  public registerLifecyclePass(renderable: Renderable): void {
+    this.lifecyclePasses.add(renderable)
+  }
+  public unregisterLifecyclePass(renderable: Renderable): void {
+    this.lifecyclePasses.delete(renderable)
+  }
+  public getLifecyclePasses(): Set<Renderable> {
+    return this.lifecyclePasses
+  }
+  public clearSelection(): void {}
+  public startSelection(_renderable: Renderable, _x: number, _y: number): void {}
+  public updateSelection(
+    _currentRenderable: Renderable | undefined,
+    _x: number,
+    _y: number,
+    _options?: { finishDragging?: boolean },
+  ): void {}
 }
 
 const DEFAULT_FORWARDED_ENV_KEYS = [
@@ -624,6 +712,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private externalOutputQueue = new ExternalOutputQueue()
   private externalOutputEncoder = new TextEncoder()
+  private readonly emptyExternalOutputBytes = new Uint8Array(0)
   private realStdoutWrite: (chunk: any, encoding?: any, callback?: any) => boolean
 
   private _useConsole: boolean = true
@@ -668,7 +757,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private dumpOutputCache(optionalMessage: string = ""): void {
     const cachedLogs = this.console.getCachedLogs()
     const capturedConsoleOutput = capture.claimOutput()
-    const capturedExternalOutput = this.externalOutputQueue.claim()
+    const capturedExternalOutputCommits = this.externalOutputQueue.claim()
+
+    let capturedExternalOutput = ""
+    for (const commit of capturedExternalOutputCommits) {
+      if (commit.kind === "text") {
+        capturedExternalOutput += commit.text
+      } else {
+        capturedExternalOutput += `[snapshot ${commit.snapshot.width}x${commit.snapshot.height}]\n`
+        commit.snapshot.destroy()
+      }
+    }
 
     if (capturedConsoleOutput.length > 0 || capturedExternalOutput.length > 0 || cachedLogs.length > 0) {
       this.realStdoutWrite.call(this.stdout, optionalMessage)
@@ -1231,21 +1330,109 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       throw new Error('writeToScrollback requires screenMode "split-footer" and externalOutputMode "capture-stdout"')
     }
 
-    const text = component.scrollback(data, {
-      width: this.width,
-      widthMethod: this.widthMethod,
-    })
-
-    this.enqueueExternalOutput(text)
+    const snapshot = this.createScrollbackSnapshot(component, data)
+    this.enqueueExternalSnapshot(snapshot)
   }
 
-  private enqueueExternalOutput(text: string): void {
+  private getSnapshotDimension(value: number | undefined, fallback: number, axis: "width" | "height"): number {
+    const rawValue = value ?? fallback
+
+    if (!Number.isFinite(rawValue)) {
+      throw new Error(`writeToScrollback produced a non-finite ${axis}`)
+    }
+
+    const maxDimension = axis === "width" ? Math.max(this.width, 1) : Math.max(this._terminalHeight, 1)
+    return Math.min(Math.max(Math.trunc(rawValue), 1), maxDimension)
+  }
+
+  private createScrollbackSnapshot<Data>(component: ScrollbackComponent<Data>, data: Data): OptimizedBuffer {
+    const snapshotContext = new ScrollbackSnapshotRenderContext(this.width, this.height, this.widthMethod)
+    const snapshot = component.scrollback(data, {
+      width: this.width,
+      widthMethod: this.widthMethod,
+      renderContext: snapshotContext,
+    })
+
+    if (!snapshot || !snapshot.root) {
+      throw new Error("writeToScrollback component must return a snapshot root renderable")
+    }
+
+    const rootRenderable = snapshot.root
+    const snapshotWidth = this.getSnapshotDimension(snapshot.width, rootRenderable.width, "width")
+    const snapshotHeight = this.getSnapshotDimension(snapshot.height, rootRenderable.height, "height")
+    const snapshotRoot = new RootRenderable(snapshotContext)
+    const snapshotBuffer = OptimizedBuffer.create(snapshotWidth, snapshotHeight, this.widthMethod, {
+      id: "scrollback-snapshot-commit",
+    })
+
+    try {
+      snapshotRoot.add(rootRenderable)
+      snapshotRoot.render(snapshotBuffer, 0)
+      return snapshotBuffer
+    } catch (error) {
+      snapshotBuffer.destroy()
+      throw error
+    } finally {
+      snapshotRoot.destroyRecursively()
+    }
+  }
+
+  private enqueueExternalText(text: string): void {
     if (text.length === 0) {
       return
     }
 
-    this.externalOutputQueue.write(text)
+    this.externalOutputQueue.writeText(text)
     this.requestRender()
+  }
+
+  private enqueueExternalSnapshot(snapshot: OptimizedBuffer): void {
+    this.externalOutputQueue.writeSnapshot(snapshot)
+    this.requestRender()
+  }
+
+  private flushPendingSplitCommits(forceFooterRepaint: boolean = false): void {
+    const commits = this.externalOutputQueue.claim()
+    let hasCommittedOutput = false
+
+    for (const commit of commits) {
+      if (commit.kind === "text") {
+        const outputBytes = this.externalOutputEncoder.encode(commit.text)
+        if (outputBytes.length === 0) {
+          continue
+        }
+
+        this.renderOffset = this.lib.renderSplitFooter(
+          this.rendererPtr,
+          outputBytes,
+          this.getSplitPinnedRenderOffset(),
+          true,
+        )
+        hasCommittedOutput = true
+        continue
+      }
+
+      try {
+        this.renderOffset = this.lib.renderSplitFooterSnapshot(
+          this.rendererPtr,
+          commit.snapshot,
+          this.getSplitPinnedRenderOffset(),
+          true,
+        )
+        hasCommittedOutput = true
+      } finally {
+        commit.snapshot.destroy()
+      }
+    }
+
+    if (!hasCommittedOutput) {
+      this.renderOffset = this.lib.renderSplitFooter(
+        this.rendererPtr,
+        this.emptyExternalOutputBytes,
+        this.getSplitPinnedRenderOffset(),
+        forceFooterRepaint,
+      )
+    }
   }
 
   private interceptStdoutWrite = (chunk: any, encoding?: any, callback?: any): boolean => {
@@ -1258,7 +1445,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._screenMode === "split-footer" &&
       this._splitHeight > 0
     ) {
-      this.enqueueExternalOutput(text)
+      this.enqueueExternalText(text)
     }
 
     if (typeof resolvedCallback === "function") {
@@ -1285,10 +1472,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
 
-    const output = this.externalOutputQueue.claim()
-    const outputBytes = this.externalOutputEncoder.encode(output)
-    const force = forceFooterRepaint || outputBytes.length > 0
-    this.renderOffset = this.lib.renderSplitFooter(this.rendererPtr, outputBytes, this.getSplitPinnedRenderOffset(), force)
+    this.flushPendingSplitCommits(forceFooterRepaint)
   }
 
   private resetSplitScrollback(seedRows: number = 0): void {
@@ -1408,7 +1592,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private flushStdoutCache(space: number, force: boolean = false): boolean {
     if (this.externalOutputQueue.size === 0 && !force) return false
 
-    const output = this.externalOutputQueue.claim()
+    const outputCommits = this.externalOutputQueue.claim()
+    let output = ""
+    for (const commit of outputCommits) {
+      if (commit.kind === "text") {
+        output += commit.text
+      } else {
+        output += `[snapshot ${commit.snapshot.width}x${commit.snapshot.height}]\n`
+        commit.snapshot.destroy()
+      }
+    }
 
     const rendererStartLine = this.renderOffset + 1
     const flush = ANSI.moveCursorAndClear(rendererStartLine, 1)
@@ -2461,6 +2654,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._externalOutputMode = "passthrough"
     this.stdout.write = this.realStdoutWrite
+    this.externalOutputQueue.clear()
 
     this.lib.destroyRenderer(this.rendererPtr)
     rendererTracker.removeRenderer(this)
@@ -2602,14 +2796,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.renderingNative = true
     if (this._splitHeight > 0 && this._externalOutputMode === "capture-stdout") {
-      const output = this.externalOutputQueue.claim()
-      const outputBytes = this.externalOutputEncoder.encode(output)
-      this.renderOffset = this.lib.renderSplitFooter(
-        this.rendererPtr,
-        outputBytes,
-        this.getSplitPinnedRenderOffset(),
-        outputBytes.length > 0,
-      )
+      this.flushPendingSplitCommits(false)
     } else {
       this.lib.render(this.rendererPtr, false)
     }

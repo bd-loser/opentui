@@ -44,3 +44,30 @@ test "split scrollback reset seeds pinned rows" {
     try std.testing.expectEqual(@as(u32, 6), scrollback.renderOffset(6));
     try std.testing.expectEqual(@as(u32, 1), scrollback.tail_column);
 }
+
+test "split scrollback text bridge ignores ANSI SGR bytes for width accounting" {
+    var scrollback = split_scrollback.SplitScrollback{};
+
+    scrollback.publishTextBridge("\x1b[38;2;255;0;0mred\x1b[0m", 10, .unicode);
+
+    try std.testing.expectEqual(@as(u32, 1), scrollback.published_rows);
+    try std.testing.expectEqual(@as(u32, 3), scrollback.tail_column);
+}
+
+test "split scrollback text bridge wraps by visible columns with ANSI SGR content" {
+    var scrollback = split_scrollback.SplitScrollback{};
+
+    scrollback.publishTextBridge("\x1b[31mabcd\x1b[0m", 3, .unicode);
+
+    try std.testing.expectEqual(@as(u32, 2), scrollback.published_rows);
+    try std.testing.expectEqual(@as(u32, 1), scrollback.tail_column);
+}
+
+test "split scrollback text bridge ignores ANSI OSC bytes for width accounting" {
+    var scrollback = split_scrollback.SplitScrollback{};
+
+    scrollback.publishTextBridge("\x1b]8;;https://example.com\x07link\x1b]8;;\x07", 10, .unicode);
+
+    try std.testing.expectEqual(@as(u32, 1), scrollback.published_rows);
+    try std.testing.expectEqual(@as(u32, 4), scrollback.tail_column);
+}

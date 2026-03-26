@@ -7,12 +7,65 @@ fn findTextRunEnd(output: []const u8, start: usize) usize {
 
     while (end < output.len) : (end += 1) {
         const byte = output[end];
-        if (byte == '\r' or byte == '\n') {
+        if (byte == '\r' or byte == '\n' or byte == 0x1b) {
             break;
         }
     }
 
     return end;
+}
+
+fn skipAnsiEscape(output: []const u8, start: usize) usize {
+    if (start + 1 >= output.len) {
+        return output.len;
+    }
+
+    const introducer = output[start + 1];
+
+    // CSI escape sequence, e.g. \x1b[38;2;255;0;0m
+    if (introducer == '[') {
+        var pos = start + 2;
+        while (pos < output.len) : (pos += 1) {
+            const byte = output[pos];
+            if (byte >= 0x40 and byte <= 0x7e) {
+                return pos + 1;
+            }
+        }
+
+        return output.len;
+    }
+
+    // OSC escape sequence, e.g. \x1b]8;;url\x07text\x1b]8;;\x07
+    if (introducer == ']') {
+        var pos = start + 2;
+        while (pos < output.len) : (pos += 1) {
+            const byte = output[pos];
+            if (byte == 0x07) {
+                return pos + 1;
+            }
+
+            if (byte == 0x1b and pos + 1 < output.len and output[pos + 1] == '\\') {
+                return pos + 2;
+            }
+        }
+
+        return output.len;
+    }
+
+    // DCS/SOS/PM/APC style escape sequences terminated by ST.
+    if (introducer == 'P' or introducer == '_' or introducer == '^' or introducer == 'X') {
+        var pos = start + 2;
+        while (pos < output.len) : (pos += 1) {
+            if (output[pos] == 0x1b and pos + 1 < output.len and output[pos + 1] == '\\') {
+                return pos + 2;
+            }
+        }
+
+        return output.len;
+    }
+
+    // Other short escape forms are typically ESC + one byte.
+    return @min(start + 2, output.len);
 }
 
 pub const SplitScrollback = struct {
@@ -52,6 +105,9 @@ pub const SplitScrollback = struct {
                         self.tail_column = 0;
                     }
                     pos += 1;
+                },
+                0x1b => {
+                    pos = skipAnsiEscape(output, pos);
                 },
                 else => {
                     const run_end = findTextRunEnd(output, pos);

@@ -11,6 +11,10 @@ let previousUseAlternateScreen: string | undefined
 let previousOverrideStdout: string | undefined
 let previousUseConsole: string | undefined
 
+const textScrollbackComponent = {
+  scrollback: (data: string) => data,
+}
+
 beforeEach(() => {
   previousShowConsole = process.env.SHOW_CONSOLE
   previousUseAlternateScreen = process.env.OTUI_USE_ALTERNATE_SCREEN
@@ -154,6 +158,134 @@ test("CliRenderer rejects captured output outside split-footer mode", async () =
   ).rejects.toThrow('externalOutputMode "capture-stdout" requires screenMode "split-footer"')
 })
 
+test("CliRenderer writeToScrollback throws when screen mode is not split-footer", async () => {
+  const result = await createTestRenderer({
+    screenMode: "main-screen",
+    externalOutputMode: "passthrough",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+
+  await expect(renderer.writeToScrollback(textScrollbackComponent, "ignored\n")).rejects.toThrow(
+    'writeToScrollback requires screenMode "split-footer" and externalOutputMode "capture-stdout"',
+  )
+})
+
+test("CliRenderer writeToScrollback throws when external output mode is passthrough", async () => {
+  const result = await createTestRenderer({
+    screenMode: "split-footer",
+    footerHeight: 6,
+    externalOutputMode: "passthrough",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+
+  await expect(renderer.writeToScrollback(textScrollbackComponent, "ignored\n")).rejects.toThrow(
+    'writeToScrollback requires screenMode "split-footer" and externalOutputMode "capture-stdout"',
+  )
+})
+
+test("CliRenderer writeToScrollback enqueues text and commits unchanged bytes", async () => {
+  const result = await createTestRenderer({
+    screenMode: "split-footer",
+    footerHeight: 6,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  const splitCommitSpy = spyOn((renderer as any).lib, "renderSplitFooter")
+
+  await renderer.writeToScrollback(textScrollbackComponent, "api-line-1\napi-line-2\n")
+
+  expect((renderer as any).externalOutputQueue.size).toBe(1)
+
+  await result.renderOnce()
+
+  expect(splitCommitSpy).toHaveBeenCalledTimes(1)
+
+  const outputBytes = splitCommitSpy.mock.calls[0]?.[1] as Uint8Array
+  const decodedOutput = new TextDecoder().decode(outputBytes)
+  expect(decodedOutput).toBe("api-line-1\napi-line-2\n")
+
+  splitCommitSpy.mockRestore()
+})
+
+test("CliRenderer writeToScrollback passes width and widthMethod to the scrollback component", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  let receivedContext: { width: number; widthMethod: string } | null = null
+
+  await renderer.writeToScrollback(
+    {
+      scrollback: (_data: null, ctx) => {
+        receivedContext = ctx
+        return "ctx\n"
+      },
+    },
+    null,
+  )
+
+  expect(receivedContext).toEqual({
+    width: renderer.width,
+    widthMethod: renderer.widthMethod,
+  })
+})
+
+test("CliRenderer preserves append order when writeToScrollback and stdout capture are interleaved", async () => {
+  const result = await createTestRenderer({
+    screenMode: "split-footer",
+    footerHeight: 6,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  const splitCommitSpy = spyOn((renderer as any).lib, "renderSplitFooter")
+
+  await renderer.writeToScrollback(textScrollbackComponent, "api-1\n")
+  ;(renderer as any).stdout.write("stdout-1\n")
+  await renderer.writeToScrollback(textScrollbackComponent, "api-2\n")
+
+  await result.renderOnce()
+
+  expect(splitCommitSpy).toHaveBeenCalledTimes(1)
+
+  const outputBytes = splitCommitSpy.mock.calls[0]?.[1] as Uint8Array
+  const decodedOutput = new TextDecoder().decode(outputBytes)
+  expect(decodedOutput).toBe("api-1\nstdout-1\napi-2\n")
+
+  splitCommitSpy.mockRestore()
+})
+
+test("CliRenderer writeToScrollback bypasses global console capture singleton", async () => {
+  const result = await createTestRenderer({
+    screenMode: "split-footer",
+    footerHeight: 6,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  capture.claimOutput()
+
+  await renderer.writeToScrollback(textScrollbackComponent, "api-only\n")
+  await result.renderOnce()
+
+  expect(capture.size).toBe(0)
+  expect(capture.claimOutput()).toBe("")
+})
+
 test("CliRenderer flushes captured output before switching to passthrough in split-footer", async () => {
   const result = await createTestRenderer({
     screenMode: "split-footer",
@@ -191,6 +323,45 @@ test("CliRenderer flushes pending split output before resize applies new geometr
   renderer = result.renderer
   ;(renderer as any)._terminalIsSetup = true
   ;(renderer as any).stdout.write("before-resize\n")
+
+  const order: string[] = []
+  const lib = (renderer as any).lib
+  const originalRenderSplitFooter = lib.renderSplitFooter.bind(lib)
+  const originalResizeRenderer = lib.resizeRenderer.bind(lib)
+
+  lib.renderSplitFooter = (...args: any[]) => {
+    order.push("split-commit")
+    return originalRenderSplitFooter(...args)
+  }
+  lib.resizeRenderer = (...args: any[]) => {
+    order.push("resize")
+    return originalResizeRenderer(...args)
+  }
+
+  ;(renderer as any).processResize(60, 16)
+
+  expect(order.indexOf("split-commit")).toBeGreaterThanOrEqual(0)
+  expect(order.indexOf("resize")).toBeGreaterThanOrEqual(0)
+  expect(order.indexOf("split-commit")).toBeLessThan(order.indexOf("resize"))
+
+  lib.renderSplitFooter = originalRenderSplitFooter
+  lib.resizeRenderer = originalResizeRenderer
+})
+
+test("CliRenderer flushes pending writeToScrollback output before resize applies new geometry", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+
+  await renderer.writeToScrollback(textScrollbackComponent, "before-resize\n")
 
   const order: string[] = []
   const lib = (renderer as any).lib
@@ -266,6 +437,45 @@ test("CliRenderer does not flush captured split output during resize while suspe
   splitCommitSpy.mockRestore()
 })
 
+test("CliRenderer flushes pending writeToScrollback output before suspend", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+
+  await renderer.writeToScrollback(textScrollbackComponent, "before-suspend\n")
+
+  const order: string[] = []
+  const lib = (renderer as any).lib
+  const originalRenderSplitFooter = lib.renderSplitFooter.bind(lib)
+  const originalSuspendRenderer = lib.suspendRenderer.bind(lib)
+
+  lib.renderSplitFooter = (...args: any[]) => {
+    order.push("split-commit")
+    return originalRenderSplitFooter(...args)
+  }
+  lib.suspendRenderer = (...args: any[]) => {
+    order.push("suspend")
+    return originalSuspendRenderer(...args)
+  }
+
+  renderer.suspend()
+
+  expect(order.indexOf("split-commit")).toBeGreaterThanOrEqual(0)
+  expect(order.indexOf("suspend")).toBeGreaterThanOrEqual(0)
+  expect(order.indexOf("split-commit")).toBeLessThan(order.indexOf("suspend"))
+
+  lib.renderSplitFooter = originalRenderSplitFooter
+  lib.suspendRenderer = originalSuspendRenderer
+})
+
 test("CliRenderer clears split footer surface when leaving split-footer mode", async () => {
   const result = await createTestRenderer({
     width: 40,
@@ -309,6 +519,50 @@ test("CliRenderer destroy flushes split output before clearing split footer surf
   renderer = result.renderer
   ;(renderer as any)._terminalIsSetup = true
   ;(renderer as any).stdout.write("before-destroy\n")
+
+  const order: string[] = []
+  const lib = (renderer as any).lib
+  const originalRenderSplitFooter = lib.renderSplitFooter.bind(lib)
+  const originalSetRenderOffset = lib.setRenderOffset.bind(lib)
+  const originalDestroyRenderer = lib.destroyRenderer.bind(lib)
+
+  lib.renderSplitFooter = (...args: any[]) => {
+    order.push("split-commit")
+    return originalRenderSplitFooter(...args)
+  }
+  lib.setRenderOffset = (...args: any[]) => {
+    if (args[1] === 0) {
+      order.push("clear")
+    }
+    return originalSetRenderOffset(...args)
+  }
+  lib.destroyRenderer = (...args: any[]) => {
+    order.push("destroy")
+    return originalDestroyRenderer(...args)
+  }
+
+  renderer.destroy()
+
+  expect(order).toEqual(["split-commit", "clear", "destroy"])
+
+  lib.renderSplitFooter = originalRenderSplitFooter
+  lib.setRenderOffset = originalSetRenderOffset
+  lib.destroyRenderer = originalDestroyRenderer
+})
+
+test("CliRenderer destroy flushes writeToScrollback output before clearing split footer surface", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+  await renderer.writeToScrollback(textScrollbackComponent, "before-destroy\n")
 
   const order: string[] = []
   const lib = (renderer as any).lib

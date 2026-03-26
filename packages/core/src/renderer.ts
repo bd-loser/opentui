@@ -205,6 +205,15 @@ export type PixelResolution = {
   height: number
 }
 
+export interface ScrollbackRenderContext {
+  width: number
+  widthMethod: WidthMethod
+}
+
+export interface ScrollbackComponent<Data> {
+  scrollback: (data: Data, ctx: ScrollbackRenderContext) => string
+}
+
 const DEFAULT_FOOTER_HEIGHT = 12
 
 function normalizeFooterHeight(footerHeight: number | undefined): number {
@@ -1217,6 +1226,28 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setKittyKeyboardFlags(this.rendererPtr, flags)
   }
 
+  public async writeToScrollback<Data>(component: ScrollbackComponent<Data>, data: Data): Promise<void> {
+    if (this._screenMode !== "split-footer" || this._externalOutputMode !== "capture-stdout") {
+      throw new Error('writeToScrollback requires screenMode "split-footer" and externalOutputMode "capture-stdout"')
+    }
+
+    const text = component.scrollback(data, {
+      width: this.width,
+      widthMethod: this.widthMethod,
+    })
+
+    this.enqueueExternalOutput(text)
+  }
+
+  private enqueueExternalOutput(text: string): void {
+    if (text.length === 0) {
+      return
+    }
+
+    this.externalOutputQueue.write(text)
+    this.requestRender()
+  }
+
   private interceptStdoutWrite = (chunk: any, encoding?: any, callback?: any): boolean => {
     const resolvedCallback = typeof encoding === "function" ? encoding : callback
     const resolvedEncoding = typeof encoding === "string" ? encoding : undefined
@@ -1227,8 +1258,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._screenMode === "split-footer" &&
       this._splitHeight > 0
     ) {
-      this.externalOutputQueue.write(text)
-      this.requestRender()
+      this.enqueueExternalOutput(text)
     }
 
     if (typeof resolvedCallback === "function") {

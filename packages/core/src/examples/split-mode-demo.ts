@@ -1,671 +1,1201 @@
 import {
   BoxRenderable,
-  bold,
+  CliRenderEvents,
   createCliRenderer,
-  fg,
+  InputRenderable,
+  InputRenderableEvents,
+  OptimizedBuffer,
+  RootRenderable,
+  TextAttributes,
   TextRenderable,
-  t,
+  type CapturedLine,
+  type CapturedSpan,
   type CliRenderer,
   type KeyEvent,
+  type RenderContext,
+  type Renderable,
+  type ScrollbackComponent,
+  type ThemeMode,
+  type WidthMethod,
 } from "../index.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-import { createTimeline, type JSAnimation, Timeline } from "../animation/Timeline.js"
+import { EventEmitter } from "events"
+import { InternalKeyHandler, KeyHandler } from "../lib/KeyHandler.js"
 
-const DEFAULT_FOOTER_HEIGHT = 20
-const MIN_FOOTER_HEIGHT = DEFAULT_FOOTER_HEIGHT
-const MIN_MAIN_SCREEN_HEIGHT = 5
-const DEFAULT_OUTPUT_INTERVAL = 100
-const MIN_OUTPUT_INTERVAL = 5
-const MAX_OUTPUT_INTERVAL = 1000
+const DEFAULT_FOOTER_HEIGHT = 14
+const MIN_FOOTER_HEIGHT = 10
+const MIN_MAIN_SCREEN_HEIGHT = 6
 
-let text: TextRenderable | null = null
-let instructionsText: TextRenderable | null = null
-let keyHandler: ((key: KeyEvent) => void) | null = null
-let resizeHandler: ((width: number, height: number) => void) | null = null
-let outputTimer: ReturnType<typeof setInterval> | null = null
-let animationSystem: SplitModeAnimations | null = null
-let testOutputInterval = DEFAULT_OUTPUT_INTERVAL
+type ChatRole = "user" | "assistant" | "system"
 
-function writeDemoOutput(message: string): void {
-  process.stdout.write(`${message}\n`)
+interface DemoPalette {
+  appBackground: string
+  footerBorder: string
+  footerBackground: string
+  headerText: string
+  helpText: string
+  statusText: string
+  typingText: string
+  inputFrameBorder: string
+  inputFrameBackground: string
+  promptText: string
+  inputPlaceholder: string
+  inputText: string
+  inputFocusedText: string
+  inputFocusedBackground: string
+  inputCursor: string
+  chatUserBorder: string
+  chatAssistantBorder: string
+  chatSystemBorder: string
+  chatBodyText: string
+  bulletBorder: string
+  bulletBodyText: string
+  toolBorder: string
+  toolBodyText: string
 }
 
-function clearOutputTimer(): void {
-  if (!outputTimer) return
-  clearInterval(outputTimer)
-  outputTimer = null
+const DARK_PALETTE: DemoPalette = {
+  appBackground: "#091324",
+  footerBorder: "#395172",
+  footerBackground: "#10243f",
+  headerText: "#f8fafc",
+  helpText: "#bfd3ea",
+  statusText: "#8fb3d8",
+  typingText: "#f5c063",
+  inputFrameBorder: "#5d7ea6",
+  inputFrameBackground: "#0c1e35",
+  promptText: "#7ef0c1",
+  inputPlaceholder: "#5f7894",
+  inputText: "#e2f1ff",
+  inputFocusedText: "#ffffff",
+  inputFocusedBackground: "#0f2744",
+  inputCursor: "#f8fafc",
+  chatUserBorder: "#67c7a2",
+  chatAssistantBorder: "#7ba7d8",
+  chatSystemBorder: "#d7a46c",
+  chatBodyText: "#f1f7ff",
+  bulletBorder: "#6293c2",
+  bulletBodyText: "#dbeaf8",
+  toolBorder: "#8a7cd3",
+  toolBodyText: "#eee7ff",
 }
 
-function getMaxFooterHeight(renderer: CliRenderer): number {
-  return Math.max(1, renderer.terminalHeight - MIN_MAIN_SCREEN_HEIGHT)
+const LIGHT_PALETTE: DemoPalette = {
+  appBackground: "#ecf3fb",
+  footerBorder: "#87a3bf",
+  footerBackground: "#f7fbff",
+  headerText: "#1f3852",
+  helpText: "#395876",
+  statusText: "#496988",
+  typingText: "#8c5b17",
+  inputFrameBorder: "#9ab0c6",
+  inputFrameBackground: "#ffffff",
+  promptText: "#0a7a4f",
+  inputPlaceholder: "#8298ad",
+  inputText: "#1d3348",
+  inputFocusedText: "#13283b",
+  inputFocusedBackground: "#f1f7fe",
+  inputCursor: "#1f3852",
+  chatUserBorder: "#1e9a66",
+  chatAssistantBorder: "#366fa8",
+  chatSystemBorder: "#b27d2a",
+  chatBodyText: "#1f3852",
+  bulletBorder: "#4177a8",
+  bulletBodyText: "#294766",
+  toolBorder: "#6550b5",
+  toolBodyText: "#3f2f7d",
 }
 
-function clampFooterHeight(renderer: CliRenderer, footerHeight: number): number {
-  const maxFooterHeight = getMaxFooterHeight(renderer)
-  const minFooterHeight = Math.min(MIN_FOOTER_HEIGHT, maxFooterHeight)
-
-  return Math.min(Math.max(footerHeight, minFooterHeight), maxFooterHeight)
+function resolveDemoPalette(themeMode: ThemeMode | null): DemoPalette {
+  return themeMode === "light" ? LIGHT_PALETTE : DARK_PALETTE
 }
 
-class SplitModeAnimations {
-  private timeline: Timeline
-  private renderer: CliRenderer
-  private container: BoxRenderable
+interface ChatMessageEntry {
+  role: ChatRole
+  text: string
+  timestamp: Date
+  palette: DemoPalette
+}
 
-  private systemLoadingBars: BoxRenderable[] = []
-  private systemBarBackgrounds: BoxRenderable[] = []
-  private movingOrbs: BoxRenderable[] = []
-  private statusCounters: TextRenderable[] = []
-  private pulsingElements: BoxRenderable[] = []
-  private statusPanel: BoxRenderable | null = null
-  private statsPanel: BoxRenderable | null = null
-  private compactCounterLabels = false
-  private orbTrackMaxX = 2
+interface BulletListEntry {
+  title: string
+  items: string[]
+  palette: DemoPalette
+}
 
-  private systemProgress = { cpu: 0, memory: 0, network: 0, disk: 0 }
-  private counters = { packets: 0, connections: 0, processes: 0, uptime: 0 }
-  private orbPositions = [
-    { x: 2, y: 2 },
-    { x: 15, y: 3 },
-    { x: 30, y: 2 },
-  ]
+interface ToolCardEntry {
+  title: string
+  rows: string[]
+  palette: DemoPalette
+}
 
-  constructor(renderer: CliRenderer) {
-    this.renderer = renderer
-    this.orbTrackMaxX = Math.max(2, this.renderer.width - 10)
-    this.timeline = createTimeline({
-      duration: 8000,
-      loop: true,
-    })
+interface RenderableSnapshotEntry {
+  width: number
+  height: number
+  build: (context: SnapshotRenderContext, root: RootRenderable) => void
+}
 
-    this.container = new BoxRenderable(renderer, {
-      id: "animation-container",
-      zIndex: 5,
-    })
-    this.renderer.root.add(this.container)
+function formatTimestamp(timestamp: Date): string {
+  const hh = timestamp.getHours().toString().padStart(2, "0")
+  const mm = timestamp.getMinutes().toString().padStart(2, "0")
+  const ss = timestamp.getSeconds().toString().padStart(2, "0")
+  return `${hh}:${mm}:${ss}`
+}
 
-    this.setupUI()
-    this.setupAnimations()
-    this.timeline.play()
+function truncateToWidth(text: string, width: number): string {
+  if (width <= 0) {
+    return ""
   }
 
-  private setupUI(): void {
-    const statusPanel = new BoxRenderable(this.renderer, {
-      id: "status-panel",
+  if (text.length <= width) {
+    return text
+  }
+
+  if (width <= 3) {
+    return text.slice(0, width)
+  }
+
+  return `${text.slice(0, width - 3)}...`
+}
+
+function splitLongToken(token: string, width: number): string[] {
+  const clampedWidth = Math.max(1, width)
+  const segments: string[] = []
+
+  for (let offset = 0; offset < token.length; offset += clampedWidth) {
+    segments.push(token.slice(offset, offset + clampedWidth))
+  }
+
+  return segments
+}
+
+function wrapText(text: string, width: number): string[] {
+  const clampedWidth = Math.max(1, width)
+  const normalized = text.replace(/\r/g, "")
+  const paragraphs = normalized.split("\n")
+  const wrapped: string[] = []
+
+  for (const paragraph of paragraphs) {
+    if (paragraph.length === 0) {
+      wrapped.push("")
+      continue
+    }
+
+    const words = paragraph.split(/\s+/)
+    let current = ""
+
+    for (const word of words) {
+      if (word.length === 0) {
+        continue
+      }
+
+      if (current.length === 0) {
+        if (word.length <= clampedWidth) {
+          current = word
+        } else {
+          const segments = splitLongToken(word, clampedWidth)
+          current = segments.pop() ?? ""
+          wrapped.push(...segments)
+        }
+        continue
+      }
+
+      const candidate = `${current} ${word}`
+      if (candidate.length <= clampedWidth) {
+        current = candidate
+        continue
+      }
+
+      wrapped.push(current)
+
+      if (word.length <= clampedWidth) {
+        current = word
+      } else {
+        const segments = splitLongToken(word, clampedWidth)
+        current = segments.pop() ?? ""
+        wrapped.push(...segments)
+      }
+    }
+
+    wrapped.push(current)
+  }
+
+  return wrapped.length > 0 ? wrapped : [""]
+}
+
+function spanToAnsi(span: CapturedSpan): string {
+  if (span.text.length === 0) {
+    return ""
+  }
+
+  const codes: string[] = ["0"]
+  const [fgR, fgG, fgB, fgA] = span.fg.toInts()
+  const [bgR, bgG, bgB, bgA] = span.bg.toInts()
+
+  if (fgA > 0) {
+    codes.push(`38;2;${fgR};${fgG};${fgB}`)
+  }
+
+  if (bgA > 0) {
+    codes.push(`48;2;${bgR};${bgG};${bgB}`)
+  }
+
+  if (span.attributes & TextAttributes.BOLD) codes.push("1")
+  if (span.attributes & TextAttributes.DIM) codes.push("2")
+  if (span.attributes & TextAttributes.ITALIC) codes.push("3")
+  if (span.attributes & TextAttributes.UNDERLINE) codes.push("4")
+  if (span.attributes & TextAttributes.BLINK) codes.push("5")
+  if (span.attributes & TextAttributes.INVERSE) codes.push("7")
+  if (span.attributes & TextAttributes.HIDDEN) codes.push("8")
+  if (span.attributes & TextAttributes.STRIKETHROUGH) codes.push("9")
+
+  return `\x1b[${codes.join(";")}m${span.text}`
+}
+
+function spanLinesToAnsi(lines: CapturedLine[]): string {
+  const renderedLines: string[] = []
+
+  for (const line of lines) {
+    const segments = line.spans.map((span) => spanToAnsi(span)).join("")
+    renderedLines.push(`${segments}\x1b[0m`)
+  }
+
+  return `${renderedLines.join("\n")}\n`
+}
+
+class SnapshotRenderContext extends EventEmitter implements RenderContext {
+  public width: number
+  public height: number
+  public widthMethod: WidthMethod
+  public capabilities: any | null = null
+  public hasSelection: boolean = false
+  public currentFocusedRenderable: Renderable | null = null
+  public keyInput: KeyHandler
+  public _internalKeyInput: InternalKeyHandler
+
+  private lifecyclePasses: Set<Renderable> = new Set()
+
+  constructor(width: number, height: number, widthMethod: WidthMethod) {
+    super()
+    this.width = width
+    this.height = height
+    this.widthMethod = widthMethod
+    this.keyInput = new KeyHandler()
+    this._internalKeyInput = new InternalKeyHandler()
+  }
+
+  public addToHitGrid(_x: number, _y: number, _width: number, _height: number, _id: number): void {}
+  public pushHitGridScissorRect(_x: number, _y: number, _width: number, _height: number): void {}
+  public popHitGridScissorRect(): void {}
+  public clearHitGridScissorRects(): void {}
+  public requestRender(): void {}
+  public setCursorPosition(_x: number, _y: number, _visible: boolean): void {}
+  public setCursorStyle(_options: any): void {}
+  public setCursorColor(_color: any): void {}
+  public setMousePointer(_shape: any): void {}
+  public requestLive(): void {}
+  public dropLive(): void {}
+  public getSelection(): null {
+    return null
+  }
+  public requestSelectionUpdate(): void {}
+  public focusRenderable(renderable: Renderable): void {
+    this.currentFocusedRenderable = renderable
+  }
+  public registerLifecyclePass(renderable: Renderable): void {
+    this.lifecyclePasses.add(renderable)
+  }
+  public unregisterLifecyclePass(renderable: Renderable): void {
+    this.lifecyclePasses.delete(renderable)
+  }
+  public getLifecyclePasses(): Set<Renderable> {
+    return this.lifecyclePasses
+  }
+  public clearSelection(): void {}
+  public startSelection(_renderable: Renderable, _x: number, _y: number): void {}
+  public updateSelection(_currentRenderable: Renderable | undefined, _x: number, _y: number): void {}
+}
+
+function renderSnapshotFromTree(
+  width: number,
+  height: number,
+  widthMethod: WidthMethod,
+  build: (context: SnapshotRenderContext, root: RootRenderable) => void,
+): string {
+  const snapshotWidth = Math.max(1, Math.trunc(width))
+  const snapshotHeight = Math.max(1, Math.trunc(height))
+  const context = new SnapshotRenderContext(snapshotWidth, snapshotHeight, widthMethod)
+  const root = new RootRenderable(context)
+  const buffer = OptimizedBuffer.create(snapshotWidth, snapshotHeight, widthMethod, {
+    id: "split-mode-demo-snapshot",
+  })
+
+  try {
+    build(context, root)
+    root.render(buffer, 0)
+    return spanLinesToAnsi(buffer.getSpanLines())
+  } finally {
+    root.destroyRecursively()
+    buffer.destroy()
+  }
+}
+
+function getRoleBorderColor(role: ChatRole, palette: DemoPalette): string {
+  switch (role) {
+    case "user":
+      return palette.chatUserBorder
+    case "assistant":
+      return palette.chatAssistantBorder
+    case "system":
+      return palette.chatSystemBorder
+  }
+}
+
+const renderableSnapshotComponent: ScrollbackComponent<RenderableSnapshotEntry> = {
+  scrollback: (entry, ctx) => {
+    const snapshotWidth = Math.max(1, Math.min(entry.width, ctx.width))
+    const snapshotHeight = Math.max(1, entry.height)
+    return renderSnapshotFromTree(snapshotWidth, snapshotHeight, ctx.widthMethod, entry.build)
+  },
+}
+
+const chatMessageComponent: ScrollbackComponent<ChatMessageEntry> = {
+  scrollback: (entry, ctx) => {
+    const roleLabel = entry.role.toUpperCase()
+    const cardWidth = Math.max(16, Math.min(ctx.width, 80))
+    const bodyWidth = Math.max(1, cardWidth - 2)
+    const wrappedMessage = wrapText(entry.text, bodyWidth)
+    const cardHeight = Math.max(3, wrappedMessage.length + 2)
+    const roleColor = getRoleBorderColor(entry.role, entry.palette)
+
+    return renderSnapshotFromTree(cardWidth, cardHeight, ctx.widthMethod, (snapshotContext, snapshotRoot) => {
+      const card = new BoxRenderable(snapshotContext, {
+        id: "snapshot-chat-card",
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: cardWidth,
+        height: cardHeight,
+        border: true,
+        borderStyle: "single",
+        borderColor: roleColor,
+        backgroundColor: "transparent",
+        title: `${roleLabel} ${formatTimestamp(entry.timestamp)}`,
+      })
+
+      const body = new TextRenderable(snapshotContext, {
+        id: "snapshot-chat-text",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: bodyWidth,
+        height: Math.max(1, cardHeight - 2),
+        content: wrappedMessage.join("\n"),
+        fg: entry.palette.chatBodyText,
+      })
+
+      card.add(body)
+      snapshotRoot.add(card)
+    })
+  },
+}
+
+const bulletListComponent: ScrollbackComponent<BulletListEntry> = {
+  scrollback: (entry, ctx) => {
+    const lines: string[] = []
+    const cardWidth = Math.max(20, Math.min(ctx.width, 82))
+    const bodyWidth = Math.max(1, cardWidth - 2)
+    const itemWidth = Math.max(1, bodyWidth - 2)
+
+    for (const item of entry.items) {
+      const wrappedItem = wrapText(item, itemWidth)
+      wrappedItem.forEach((line, index) => {
+        lines.push(`${index === 0 ? "- " : "  "}${line}`)
+      })
+    }
+
+    const cardHeight = Math.max(3, lines.length + 2)
+
+    return renderSnapshotFromTree(cardWidth, cardHeight, ctx.widthMethod, (snapshotContext, snapshotRoot) => {
+      const card = new BoxRenderable(snapshotContext, {
+        id: "snapshot-bullet-card",
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: cardWidth,
+        height: cardHeight,
+        border: true,
+        borderStyle: "single",
+        borderColor: entry.palette.bulletBorder,
+        backgroundColor: "transparent",
+        title: truncateToWidth(entry.title, Math.max(1, cardWidth - 4)),
+      })
+
+      const body = new TextRenderable(snapshotContext, {
+        id: "snapshot-bullet-text",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: bodyWidth,
+        height: Math.max(1, cardHeight - 2),
+        content: lines.join("\n"),
+        fg: entry.palette.bulletBodyText,
+      })
+
+      card.add(body)
+      snapshotRoot.add(card)
+    })
+  },
+}
+
+const toolCardComponent: ScrollbackComponent<ToolCardEntry> = {
+  scrollback: (entry, ctx) => {
+    const cardWidth = Math.max(18, Math.min(ctx.width, 76))
+    const bodyWidth = Math.max(1, cardWidth - 2)
+    const lines: string[] = []
+
+    entry.rows.forEach((row, rowIndex) => {
+      const wrappedRows = wrapText(row, bodyWidth)
+      for (const wrappedRow of wrappedRows) {
+        lines.push(wrappedRow)
+      }
+
+      if (rowIndex < entry.rows.length - 1) {
+        lines.push("")
+      }
+    })
+
+    const cardHeight = Math.max(3, lines.length + 2)
+
+    return renderSnapshotFromTree(cardWidth, cardHeight, ctx.widthMethod, (snapshotContext, snapshotRoot) => {
+      const card = new BoxRenderable(snapshotContext, {
+        id: "snapshot-tool-card",
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: cardWidth,
+        height: cardHeight,
+        border: true,
+        borderStyle: "double",
+        borderColor: entry.palette.toolBorder,
+        backgroundColor: "transparent",
+        title: truncateToWidth(entry.title, Math.max(1, cardWidth - 4)),
+      })
+
+      const body = new TextRenderable(snapshotContext, {
+        id: "snapshot-tool-text",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: bodyWidth,
+        height: Math.max(1, cardHeight - 2),
+        content: lines.join("\n"),
+        fg: entry.palette.toolBodyText,
+      })
+
+      card.add(body)
+      snapshotRoot.add(card)
+    })
+  },
+}
+
+class SplitFooterChatDemo {
+  private footerContainer: BoxRenderable
+  private headerText: TextRenderable
+  private helpText: TextRenderable
+  private statusText: TextRenderable
+  private typingText: TextRenderable
+  private inputFrame: BoxRenderable
+  private promptText: TextRenderable
+  private input: InputRenderable
+
+  private publishQueue: Promise<void> = Promise.resolve()
+  private pendingAssistantReply: ReturnType<typeof setTimeout> | null = null
+  private commitCount: number = 0
+  private messageCount: number = 0
+  private assistantTyping: boolean = false
+  private statusMessage: string = "Ready"
+  private destroyed: boolean = false
+  private palette: DemoPalette
+
+  constructor(private renderer: CliRenderer) {
+    this.palette = resolveDemoPalette(this.renderer.themeMode)
+    this.renderer.footerHeight = this.clampFooterHeight(DEFAULT_FOOTER_HEIGHT)
+    this.renderer.screenMode = "split-footer"
+    this.renderer.externalOutputMode = "capture-stdout"
+    this.renderer.setBackgroundColor(this.palette.appBackground)
+
+    this.footerContainer = new BoxRenderable(this.renderer, {
+      id: "split-chat-footer-container",
       position: "absolute",
-      left: 2,
-      top: 5,
-      width: this.renderer.width - 6,
-      height: 8,
-      backgroundColor: "#1a1a2e",
-      zIndex: 1,
+      left: 0,
+      top: 0,
+      width: this.renderer.width,
+      height: this.renderer.height,
+      zIndex: 10,
+      border: true,
       borderStyle: "double",
-      borderColor: "#4a4a6a",
-      title: "◆ SYSTEM MONITOR ◆",
+      borderColor: this.palette.footerBorder,
+      backgroundColor: this.palette.footerBackground,
+      title: "Direct Mode Chat",
       titleAlignment: "center",
-      border: true,
-    })
-    this.statusPanel = statusPanel
-    this.container.add(statusPanel)
-
-    this.systemLoadingBars = []
-    this.systemBarBackgrounds = []
-    const systems = [
-      { name: "CPU", color: "#6a5acd", y: 6 },
-      { name: "MEM", color: "#4682b4", y: 7 },
-      { name: "NET", color: "#20b2aa", y: 8 },
-      { name: "DSK", color: "#daa520", y: 9 },
-    ]
-
-    systems.forEach((system, index) => {
-      const label = new TextRenderable(this.renderer, {
-        id: `${system.name.toLowerCase()}-label`,
-        content: `${system.name}:`,
-        position: "absolute",
-        left: 4,
-        top: system.y,
-        fg: system.color,
-        zIndex: 2,
-      })
-      this.container.add(label)
-
-      const bgBar = new BoxRenderable(this.renderer, {
-        id: `${system.name.toLowerCase()}-bg`,
-        position: "absolute",
-        left: 9,
-        top: system.y,
-        width: this.renderer.width - 16,
-        height: 1,
-        backgroundColor: "#333333",
-        zIndex: 1,
-      })
-      this.container.add(bgBar)
-      this.systemBarBackgrounds.push(bgBar)
-
-      const progressBar = new BoxRenderable(this.renderer, {
-        id: `${system.name.toLowerCase()}-progress`,
-        position: "absolute",
-        left: 9,
-        top: system.y,
-        width: 1,
-        height: 1,
-        backgroundColor: system.color,
-        zIndex: 2,
-      })
-      this.container.add(progressBar)
-      this.systemLoadingBars.push(progressBar)
     })
 
-    const statsPanel = new BoxRenderable(this.renderer, {
-      id: "stats-panel",
+    this.headerText = new TextRenderable(this.renderer, {
+      id: "split-chat-header",
+      content: "Split footer chat + scrollback components",
       position: "absolute",
       left: 2,
-      top: 14,
-      width: this.renderer.width - 6,
-      height: 4,
-      backgroundColor: "#2d1b2e",
-      zIndex: 1,
-      borderStyle: "single",
-      borderColor: "#8a4a8a",
-      title: "◇ REAL-TIME STATS ◇",
-      titleAlignment: "center",
+      top: 1,
+      width: Math.max(1, this.renderer.width - 4),
+      height: 1,
+      zIndex: 11,
+      fg: this.palette.headerText,
+    })
+
+    this.helpText = new TextRenderable(this.renderer, {
+      id: "split-chat-help",
+      content: "Type /help, /tree for nested renderable snapshot, /footer <n> to resize",
+      position: "absolute",
+      left: 2,
+      top: 2,
+      width: Math.max(1, this.renderer.width - 4),
+      height: 1,
+      zIndex: 11,
+      fg: this.palette.helpText,
+    })
+
+    this.statusText = new TextRenderable(this.renderer, {
+      id: "split-chat-status",
+      content: "",
+      position: "absolute",
+      left: 2,
+      top: 3,
+      width: Math.max(1, this.renderer.width - 4),
+      height: 1,
+      zIndex: 11,
+      fg: this.palette.statusText,
+    })
+
+    this.typingText = new TextRenderable(this.renderer, {
+      id: "split-chat-typing",
+      content: "",
+      position: "absolute",
+      left: 2,
+      top: 4,
+      width: Math.max(1, this.renderer.width - 4),
+      height: 1,
+      zIndex: 11,
+      fg: this.palette.typingText,
+    })
+
+    this.inputFrame = new BoxRenderable(this.renderer, {
+      id: "split-chat-input-frame",
+      position: "absolute",
+      left: 2,
+      top: Math.max(5, this.renderer.height - 4),
+      width: Math.max(4, this.renderer.width - 4),
+      height: 3,
+      zIndex: 11,
       border: true,
+      borderStyle: "single",
+      borderColor: this.palette.inputFrameBorder,
+      backgroundColor: this.palette.inputFrameBackground,
     })
-    this.statsPanel = statsPanel
-    this.container.add(statsPanel)
 
-    this.statusCounters = []
-    const counterLabels = ["PACKETS", "CONNECTIONS", "PROCESSES", "UPTIME"]
-    counterLabels.forEach((label, index) => {
-      const counter = new TextRenderable(this.renderer, {
-        id: `counter-${index}`,
-        content: `${label}: 0`,
-        position: "absolute",
-        left: 4 + index * 15,
-        top: 15,
-        fg: "#9a9acd",
-        zIndex: 2,
+    this.promptText = new TextRenderable(this.renderer, {
+      id: "split-chat-prompt",
+      content: "you >",
+      position: "absolute",
+      left: 3,
+      top: Math.max(6, this.renderer.height - 3),
+      width: 5,
+      height: 1,
+      zIndex: 12,
+      fg: this.palette.promptText,
+      bg: "transparent",
+    })
+
+    this.input = new InputRenderable(this.renderer, {
+      id: "split-chat-input",
+      position: "absolute",
+      left: 9,
+      top: Math.max(6, this.renderer.height - 3),
+      width: Math.max(1, this.renderer.width - 12),
+      height: 1,
+      zIndex: 12,
+      placeholder: "Type a message and press Enter...",
+      placeholderColor: this.palette.inputPlaceholder,
+      textColor: this.palette.inputText,
+      focusedTextColor: this.palette.inputFocusedText,
+      backgroundColor: this.palette.inputFrameBackground,
+      focusedBackgroundColor: this.palette.inputFocusedBackground,
+      cursorColor: this.palette.inputCursor,
+      value: "",
+      maxLength: 400,
+    })
+
+    this.footerContainer.add(this.headerText)
+    this.footerContainer.add(this.helpText)
+    this.footerContainer.add(this.statusText)
+    this.footerContainer.add(this.typingText)
+    this.footerContainer.add(this.inputFrame)
+    this.footerContainer.add(this.promptText)
+    this.footerContainer.add(this.input)
+
+    this.renderer.root.add(this.footerContainer)
+
+    this.input.on(InputRenderableEvents.INPUT, this.handleInputChange)
+    this.input.on(InputRenderableEvents.ENTER, this.handleInputSubmit)
+
+    this.renderer.keyInput.on("keypress", this.handleKeyPress)
+    this.renderer.on("resize", this.handleResize)
+    this.renderer.on(CliRenderEvents.THEME_MODE, this.handleThemeMode)
+
+    this.relayout()
+    this.applyPalette()
+    this.refreshStatus("Type /help, then send a prompt to publish your first scrollback commit")
+    this.input.focus()
+  }
+
+  private applyPalette(): void {
+    this.renderer.setBackgroundColor(this.palette.appBackground)
+    this.footerContainer.borderColor = this.palette.footerBorder
+    this.footerContainer.backgroundColor = this.palette.footerBackground
+    this.headerText.fg = this.palette.headerText
+    this.helpText.fg = this.palette.helpText
+    this.statusText.fg = this.palette.statusText
+    this.typingText.fg = this.palette.typingText
+    this.inputFrame.borderColor = this.palette.inputFrameBorder
+    this.inputFrame.backgroundColor = this.palette.inputFrameBackground
+    this.promptText.fg = this.palette.promptText
+    this.input.placeholderColor = this.palette.inputPlaceholder
+    this.input.textColor = this.palette.inputText
+    this.input.focusedTextColor = this.palette.inputFocusedText
+    this.input.backgroundColor = this.palette.inputFrameBackground
+    this.input.focusedBackgroundColor = this.palette.inputFocusedBackground
+    this.input.cursorColor = this.palette.inputCursor
+  }
+
+  private handleThemeMode = (mode: ThemeMode): void => {
+    this.palette = resolveDemoPalette(mode)
+    this.applyPalette()
+    this.refreshStatus(`theme ${mode}`)
+  }
+
+  private clampFooterHeight(nextHeight: number): number {
+    const maxFooterHeight = Math.max(1, this.renderer.terminalHeight - MIN_MAIN_SCREEN_HEIGHT)
+    const minFooterHeight = Math.min(MIN_FOOTER_HEIGHT, maxFooterHeight)
+    return Math.min(Math.max(nextHeight, minFooterHeight), maxFooterHeight)
+  }
+
+  private relayout(): void {
+    this.footerContainer.width = this.renderer.width
+    this.footerContainer.height = this.renderer.height
+
+    const contentWidth = Math.max(1, this.renderer.width - 4)
+    this.headerText.width = contentWidth
+    this.helpText.width = contentWidth
+    this.statusText.width = contentWidth
+    this.typingText.width = contentWidth
+
+    const inputTop = Math.max(5, this.renderer.height - 4)
+    this.inputFrame.top = inputTop
+    this.inputFrame.width = Math.max(4, this.renderer.width - 4)
+
+    this.promptText.top = inputTop + 1
+    this.input.top = inputTop + 1
+
+    const inputLeft = this.promptText.x + this.promptText.width + 1
+    const availableInputWidth = Math.max(1, this.inputFrame.width - (inputLeft - this.inputFrame.x) - 2)
+    this.input.x = inputLeft
+    this.input.width = availableInputWidth
+  }
+
+  private refreshStatus(message?: string): void {
+    if (message) {
+      this.statusMessage = message
+    }
+
+    const statusParts = [
+      `commits ${this.commitCount}`,
+      `messages ${this.messageCount}`,
+      `footer ${this.renderer.footerHeight}`,
+      `width ${this.renderer.width}`,
+      `widthMethod ${this.renderer.widthMethod}`,
+    ]
+    this.statusText.content = `${statusParts.join(" | ")} | ${this.statusMessage}`
+
+    this.typingText.content = this.assistantTyping ? "assistant is composing a response..." : ""
+  }
+
+  private publishToScrollback<Data>(component: ScrollbackComponent<Data>, data: Data): void {
+    this.publishQueue = this.publishQueue
+      .then(async () => {
+        if (this.destroyed) {
+          return
+        }
+
+        await this.renderer.writeToScrollback(component, data)
+
+        if (this.destroyed) {
+          return
+        }
+
+        this.commitCount += 1
+        this.refreshStatus()
       })
-      this.container.add(counter)
-      this.statusCounters.push(counter)
-    })
+      .catch((error) => {
+        if (!this.destroyed) {
+          this.refreshStatus("scrollback publish failed")
+          console.error("split-mode-demo publish failed", error)
+        }
+      })
+  }
 
-    this.movingOrbs = []
-    const orbColors = ["#ff6b9d", "#4ecdc4", "#ffe66d"]
-    orbColors.forEach((color, index) => {
-      const orb = new BoxRenderable(this.renderer, {
-        id: `orb-${index}`,
+  private appendChat(role: ChatRole, text: string): void {
+    this.messageCount += 1
+    this.publishToScrollback(chatMessageComponent, {
+      role,
+      text,
+      timestamp: new Date(),
+      palette: this.palette,
+    })
+  }
+
+  private appendBulletList(title: string, items: string[]): void {
+    this.publishToScrollback(bulletListComponent, {
+      title,
+      items,
+      palette: this.palette,
+    })
+  }
+
+  private appendToolCard(title: string, rows: string[]): void {
+    this.publishToScrollback(toolCardComponent, {
+      title,
+      rows,
+      palette: this.palette,
+    })
+  }
+
+  private appendRenderableSnapshot(
+    width: number,
+    height: number,
+    build: (context: SnapshotRenderContext, root: RootRenderable) => void,
+  ): void {
+    this.publishToScrollback(renderableSnapshotComponent, {
+      width,
+      height,
+      build,
+    })
+  }
+
+  private appendComponentTreeShowcase(title: string): void {
+    const cardWidth = Math.max(32, Math.min(this.renderer.width, 88))
+    const cardHeight = 11
+    const palette = this.palette
+
+    this.appendRenderableSnapshot(cardWidth, cardHeight, (snapshotContext, snapshotRoot) => {
+      const frame = new BoxRenderable(snapshotContext, {
+        id: "showcase-frame",
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: cardWidth,
+        height: cardHeight,
+        border: true,
+        borderStyle: "double",
+        borderColor: palette.toolBorder,
+        backgroundColor: "transparent",
+        title,
+      })
+
+      const banner = new BoxRenderable(snapshotContext, {
+        id: "showcase-banner",
+        position: "absolute",
+        left: 1,
+        top: 1,
+        width: Math.max(1, cardWidth - 2),
+        height: 1,
+        backgroundColor: palette.footerBackground,
+      })
+
+      const bannerText = new TextRenderable(snapshotContext, {
+        id: "showcase-banner-text",
         position: "absolute",
         left: 2,
-        top: this.orbPositions[index].y,
-        width: 3,
-        height: 1,
-        backgroundColor: color,
-        zIndex: 3,
-      })
-      this.container.add(orb)
-      this.movingOrbs.push(orb)
-    })
-
-    this.pulsingElements = []
-    const pulseColors = ["#ff8a80", "#80cbc4", "#fff176"]
-    pulseColors.forEach((color, index) => {
-      const pulse = new BoxRenderable(this.renderer, {
-        id: `pulse-${index}`,
-        position: "absolute",
-        left: this.renderer.width - 8 + index * 2,
         top: 1,
-        width: 1,
+        width: Math.max(1, cardWidth - 4),
         height: 1,
-        backgroundColor: color,
-        zIndex: 3,
+        content: "nested renderable tree snapshot",
+        fg: palette.headerText,
       })
-      this.container.add(pulse)
-      this.pulsingElements.push(pulse)
-    })
 
-    this.relayoutStatusCounters()
-  }
-
-  private updateSystemBars(progress: typeof this.systemProgress): void {
-    const maxWidth = this.renderer.width - 16
-    const barValues = [progress.cpu, progress.memory, progress.network, progress.disk]
-
-    barValues.forEach((value, index) => {
-      this.systemLoadingBars[index].width = Math.max(1, Math.floor((value / 100) * maxWidth))
-    })
-  }
-
-  private updateStatusCounters(counters: typeof this.counters): void {
-    const labels = this.compactCounterLabels
-      ? ["PKT", "CON", "PRC", "UP"]
-      : ["PACKETS", "CONN", "PROC", "UP"]
-
-    const counterValues = [
-      `${labels[0]}: ${Math.floor(counters.packets)}`,
-      `${labels[1]}: ${Math.floor(counters.connections)}`,
-      `${labels[2]}: ${Math.floor(counters.processes)}`,
-      `${labels[3]}: ${Math.floor(counters.uptime)}s`,
-    ]
-
-    counterValues.forEach((value, index) => {
-      this.statusCounters[index].content = value
-    })
-  }
-
-  private updateOrbPosition(index: number, position: { x: number }): void {
-    const maxX = Math.max(2, this.renderer.width - 10)
-    const clampedX = Math.max(2, Math.min(position.x, maxX))
-    this.movingOrbs[index].x = Math.floor(clampedX)
-  }
-
-  private updatePulseHeight(index: number, intensity: number): void {
-    const height = Math.max(1, Math.floor(intensity))
-    this.pulsingElements[index].height = Math.min(3, height)
-  }
-
-  private setupAnimations(): void {
-    this.timeline.add(
-      this.systemProgress,
-      {
-        cpu: 85,
-        memory: 70,
-        network: 95,
-        disk: 60,
-        duration: 3000,
-        ease: "inOutQuad",
-        onUpdate: (values: JSAnimation) => {
-          this.updateSystemBars(values.targets[0])
-        },
-      },
-      0,
-    )
-
-    this.timeline.add(
-      this.systemProgress,
-      {
-        cpu: 20,
-        memory: 30,
-        network: 15,
-        disk: 25,
-        duration: 2000,
-        ease: "inOutSine",
-        onUpdate: (values: JSAnimation) => {
-          this.updateSystemBars(values.targets[0])
-        },
-      },
-      4000,
-    )
-
-    this.timeline.add(
-      this.counters,
-      {
-        packets: 12847,
-        connections: 234,
-        processes: 187,
-        uptime: 86400,
-        duration: 8000,
-        ease: "linear",
-        onUpdate: (values: JSAnimation) => {
-          this.updateStatusCounters(values.targets[0])
-        },
-      },
-      0,
-    )
-
-    this.orbPositions.forEach((orbPos, index) => {
-      this.timeline.add(
-        orbPos,
-        {
-          x: this.orbTrackMaxX,
-          duration: 2000 + index * 400,
-          ease: "inOutSine",
-          onUpdate: (values: JSAnimation) => {
-            this.updateOrbPosition(index, values.targets[0])
-          },
-        },
-        index * 800,
-      )
-
-      this.timeline.add(
-        orbPos,
-        {
-          x: 2,
-          duration: 2000 + index * 400,
-          ease: "inOutSine",
-          onUpdate: (values: JSAnimation) => {
-            this.updateOrbPosition(index, values.targets[0])
-          },
-        },
-        4000 + index * 800,
-      )
-    })
-
-    this.pulsingElements.forEach((_, index) => {
-      const pulseData = { intensity: 1.0 }
-      this.timeline.add(
-        pulseData,
-        {
-          intensity: 3.0,
-          duration: 1000,
-          ease: "inOutQuad",
-          loop: 8,
-          alternate: true,
-          onUpdate: (values: JSAnimation) => {
-            this.updatePulseHeight(index, values.targets[0].intensity)
-          },
-        },
-        index * 300,
-      )
-    })
-  }
-
-  private relayoutStatusCounters(): void {
-    const left = 4
-    const right = Math.max(left, this.renderer.width - 4)
-    const availableWidth = Math.max(1, right - left)
-    const singleRowStep = this.statusCounters.length > 1 ? Math.floor(availableWidth / (this.statusCounters.length - 1)) : 0
-    const useTwoRows = singleRowStep < 12
-
-    if (useTwoRows) {
-      const columnCount = 2
-      const columnStep = Math.max(1, Math.floor(availableWidth / (columnCount - 1)))
-      this.compactCounterLabels = true
-
-      this.statusCounters.forEach((counter, index) => {
-        const col = index % columnCount
-        const row = Math.floor(index / columnCount)
-        counter.x = left + col * columnStep
-        counter.y = 15 + row
+      const leftPanel = new BoxRenderable(snapshotContext, {
+        id: "showcase-left-panel",
+        position: "absolute",
+        left: 2,
+        top: 3,
+        width: Math.max(10, Math.floor((cardWidth - 6) * 0.5)),
+        height: 5,
+        border: true,
+        borderStyle: "single",
+        borderColor: palette.chatAssistantBorder,
+        backgroundColor: "transparent",
+        title: "metrics",
       })
+
+      const rightPanel = new BoxRenderable(snapshotContext, {
+        id: "showcase-right-panel",
+        position: "absolute",
+        left: Math.max(3, Math.floor(cardWidth * 0.55)),
+        top: 3,
+        width: Math.max(8, cardWidth - Math.max(3, Math.floor(cardWidth * 0.55)) - 2),
+        height: 5,
+        border: true,
+        borderStyle: "single",
+        borderColor: palette.chatUserBorder,
+        backgroundColor: "transparent",
+        title: "tools",
+      })
+
+      const metricBarA = new BoxRenderable(snapshotContext, {
+        id: "showcase-metric-bar-a",
+        position: "absolute",
+        left: 3,
+        top: 4,
+        width: Math.max(2, Math.floor((cardWidth - 10) * 0.3)),
+        height: 1,
+        backgroundColor: palette.chatSystemBorder,
+      })
+
+      const metricBarB = new BoxRenderable(snapshotContext, {
+        id: "showcase-metric-bar-b",
+        position: "absolute",
+        left: 3,
+        top: 6,
+        width: Math.max(2, Math.floor((cardWidth - 10) * 0.4)),
+        height: 1,
+        backgroundColor: palette.chatAssistantBorder,
+      })
+
+      const toolLine = new TextRenderable(snapshotContext, {
+        id: "showcase-tool-line",
+        position: "absolute",
+        left: Math.max(4, Math.floor(cardWidth * 0.55) + 1),
+        top: 5,
+        width: Math.max(1, cardWidth - Math.max(4, Math.floor(cardWidth * 0.55) + 1) - 2),
+        height: 1,
+        content: "render -> snapshot -> commit",
+        fg: palette.toolBodyText,
+      })
+
+      const footerLine = new TextRenderable(snapshotContext, {
+        id: "showcase-footer-line",
+        position: "absolute",
+        left: 2,
+        top: 9,
+        width: Math.max(1, cardWidth - 4),
+        height: 1,
+        content: "actual component tree serialized as ANSI text artifact",
+        fg: palette.helpText,
+      })
+
+      frame.add(banner)
+      frame.add(bannerText)
+      frame.add(leftPanel)
+      frame.add(rightPanel)
+      frame.add(metricBarA)
+      frame.add(metricBarB)
+      frame.add(toolLine)
+      frame.add(footerLine)
+      snapshotRoot.add(frame)
+    })
+  }
+
+  private publishWelcomeEntries(): void {
+    this.appendChat(
+      "system",
+      `Split footer ready. Render width ${this.renderer.width}, width method ${this.renderer.widthMethod}.`,
+    )
+
+    this.appendBulletList("Commands", [
+      "/help - show command guide",
+      "/card - append a tool-card component",
+      "/tree - append a nested renderable tree snapshot",
+      "/demo - append a short multi-component transcript",
+      "/welcome - append the initial onboarding entries",
+      "/footer <n> - change footer height",
+    ])
+
+    this.appendToolCard("component snapshot", [
+      "source: split-mode-demo",
+      "bridge: renderer.writeToScrollback(component, data)",
+      "ownership: placement and pinning stay native",
+    ])
+
+    this.refreshStatus("welcome entries queued")
+  }
+
+  private handleInputChange = (value: string): void => {
+    this.refreshStatus(`draft length ${value.length}`)
+  }
+
+  private handleInputSubmit = (value: string): void => {
+    const trimmedValue = value.trim()
+    if (trimmedValue.length === 0) {
+      this.refreshStatus("empty draft ignored")
       return
     }
 
-    this.compactCounterLabels = false
-    this.statusCounters.forEach((counter, index) => {
-      counter.x = left + index * singleRowStep
-      counter.y = 15
-    })
-  }
+    this.input.value = ""
+    this.appendChat("user", trimmedValue)
 
-  private remapOrbTrackForResize(): void {
-    const nextOrbTrackMaxX = Math.max(2, this.renderer.width - 10)
-    if (nextOrbTrackMaxX === this.orbTrackMaxX) {
+    if (trimmedValue.startsWith("/")) {
+      this.handleCommand(trimmedValue)
       return
     }
 
-    const previousSpan = Math.max(1, this.orbTrackMaxX - 2)
-    const nextSpan = Math.max(1, nextOrbTrackMaxX - 2)
-
-    this.orbPositions.forEach((orbPos) => {
-      const clampedPreviousX = Math.max(2, Math.min(orbPos.x, this.orbTrackMaxX))
-      const progress = (clampedPreviousX - 2) / previousSpan
-      orbPos.x = 2 + progress * nextSpan
-    })
-
-    this.orbTrackMaxX = nextOrbTrackMaxX
+    this.scheduleAssistantReply(trimmedValue)
   }
 
-  public update(deltaTime: number): void {
-    this.timeline.update(deltaTime)
+  private handleCommand(commandLine: string): void {
+    const [command, ...args] = commandLine.split(/\s+/)
+
+    switch (command.toLowerCase()) {
+      case "/help": {
+        this.appendBulletList("Interactive commands", [
+          "/help - print this help block",
+          "/card - render one tool-card component entry",
+          "/tree - render a nested renderable tree with backgrounds",
+          "/demo - render a mini sequence of different component entries",
+          "/welcome - enqueue onboarding entries",
+          "/footer <n> - resize the split footer to a specific height",
+        ])
+        this.refreshStatus("help published")
+        return
+      }
+
+      case "/card": {
+        this.appendToolCard("tool call: summarize-state", [
+          "status: ok",
+          `current footer: ${this.renderer.footerHeight}`,
+          `render width: ${this.renderer.width}`,
+          "result: one snapshot component entry appended",
+        ])
+        this.refreshStatus("tool card published")
+        return
+      }
+
+      case "/tree": {
+        this.appendComponentTreeShowcase("component tree snapshot")
+        this.refreshStatus("renderable tree snapshot published")
+        return
+      }
+
+      case "/demo": {
+        this.publishDemoSequence()
+        this.refreshStatus("demo sequence queued")
+        return
+      }
+
+      case "/welcome": {
+        this.publishWelcomeEntries()
+        this.refreshStatus("welcome entries queued")
+        return
+      }
+
+      case "/footer": {
+        if (args.length === 0) {
+          this.appendChat("system", "usage: /footer <height>")
+          this.refreshStatus("missing footer height")
+          return
+        }
+
+        const requestedHeight = Number.parseInt(args[0], 10)
+        if (!Number.isFinite(requestedHeight)) {
+          this.appendChat("system", `invalid footer height: ${args[0]}`)
+          this.refreshStatus("invalid footer height")
+          return
+        }
+
+        const clampedHeight = this.clampFooterHeight(requestedHeight)
+        this.renderer.footerHeight = clampedHeight
+        this.relayout()
+        this.appendChat("system", `footer height set to ${clampedHeight}`)
+        this.refreshStatus(`footer resized to ${clampedHeight}`)
+        return
+      }
+
+      default: {
+        this.appendChat("system", `unknown command: ${command}`)
+        this.refreshStatus("unknown command")
+      }
+    }
   }
 
-  public handleResize(): void {
-    const panelWidth = Math.max(10, this.renderer.width - 6)
-    const maxBarWidth = Math.max(1, this.renderer.width - 16)
+  private publishDemoSequence(): void {
+    this.appendChat(
+      "assistant",
+      "This demo uses writeToScrollback(component, data). Every call is one append commit.",
+    )
 
-    this.remapOrbTrackForResize()
+    this.appendToolCard("render pipeline", [
+      "1) TS builds one component payload",
+      "2) payload enters shared split queue",
+      "3) native renderSplitFooter commits append + footer repaint",
+    ])
 
-    if (this.statusPanel) {
-      this.statusPanel.width = panelWidth
+    this.appendBulletList("Why this shape is useful", [
+      "lets us iterate on commit primitives with realistic chat turns",
+      "keeps split placement ownership native",
+      "avoids reintroducing TS scrollback placement state",
+    ])
+
+    this.appendComponentTreeShowcase("demo: arbitrary renderable tree")
+  }
+
+  private scheduleAssistantReply(userText: string): void {
+    if (this.pendingAssistantReply) {
+      clearTimeout(this.pendingAssistantReply)
+      this.pendingAssistantReply = null
     }
 
-    if (this.statsPanel) {
-      this.statsPanel.width = panelWidth
+    this.assistantTyping = true
+    this.refreshStatus("assistant thinking")
+
+    const delayMs = Math.min(1200, 300 + userText.length * 10)
+    this.pendingAssistantReply = setTimeout(() => {
+      this.pendingAssistantReply = null
+
+      if (this.destroyed) {
+        return
+      }
+
+      const response = this.buildAssistantReply(userText)
+      this.appendChat("assistant", response)
+      this.assistantTyping = false
+      this.refreshStatus("assistant reply queued")
+    }, delayMs)
+  }
+
+  private buildAssistantReply(userText: string): string {
+    const normalized = userText.toLowerCase()
+
+    if (normalized.includes("stage 3")) {
+      return "Stage 3 is about explicit append commits through writeToScrollback on the native split boundary."
     }
 
-    this.systemBarBackgrounds.forEach((bar) => {
-      bar.width = maxBarWidth
-    })
+    if (normalized.includes("component")) {
+      return "You can model each transcript turn as a component snapshot and publish it as one append-only commit."
+    }
 
-    this.relayoutStatusCounters()
+    if (normalized.includes("resize")) {
+      return "Try /footer 10 or /footer 18 to exercise resize transitions while keeping scrollback append-only."
+    }
 
-    this.orbPositions.forEach((orbPos, index) => {
-      this.updateOrbPosition(index, orbPos)
-    })
+    return `Got it: \"${truncateToWidth(userText, 80)}\". Try /demo for a multi-component publish sequence.`
+  }
 
-    this.pulsingElements.forEach((pulse, index) => {
-      pulse.x = Math.max(1, this.renderer.width - 8 + index * 2)
-    })
+  private adjustFooterHeight(delta: number): void {
+    const nextHeight = this.clampFooterHeight(this.renderer.footerHeight + delta)
+    if (nextHeight === this.renderer.footerHeight) {
+      this.refreshStatus("footer already at limit")
+      return
+    }
 
-    this.updateSystemBars(this.systemProgress)
-    this.updateStatusCounters(this.counters)
+    this.renderer.footerHeight = nextHeight
+    this.relayout()
+    this.appendChat("system", `footer height adjusted to ${nextHeight}`)
+    this.refreshStatus(`footer adjusted to ${nextHeight}`)
+  }
+
+  private handleKeyPress = (key: KeyEvent): void => {
+    if (key.ctrl && key.name === "l") {
+      this.input.value = ""
+      this.refreshStatus("draft cleared")
+      return
+    }
+
+    if (key.ctrl && key.name === "r") {
+      this.publishDemoSequence()
+      this.refreshStatus("demo sequence queued")
+      return
+    }
+
+    if (key.ctrl && key.name === "up") {
+      this.adjustFooterHeight(1)
+      return
+    }
+
+    if (key.ctrl && key.name === "down") {
+      this.adjustFooterHeight(-1)
+      return
+    }
+
+    if (key.name === "escape") {
+      this.input.focus()
+      this.refreshStatus("input focused")
+    }
+  }
+
+  private handleResize = (): void => {
+    const clampedFooterHeight = this.clampFooterHeight(this.renderer.footerHeight)
+    if (clampedFooterHeight !== this.renderer.footerHeight) {
+      this.renderer.footerHeight = clampedFooterHeight
+    }
+
+    this.relayout()
+    this.refreshStatus("layout resized")
   }
 
   public destroy(): void {
-    this.timeline.pause()
-    this.renderer.root.remove("animation-container")
-    this.statusPanel = null
-    this.statsPanel = null
-  }
-}
-
-export function run(rendererInstance: CliRenderer): void {
-  rendererInstance.setBackgroundColor("#001122")
-  rendererInstance.footerHeight = clampFooterHeight(rendererInstance, DEFAULT_FOOTER_HEIGHT)
-  rendererInstance.screenMode = "split-footer"
-  rendererInstance.externalOutputMode = "capture-stdout"
-
-  animationSystem = new SplitModeAnimations(rendererInstance)
-
-  text = new TextRenderable(rendererInstance, {
-    id: "demo-text",
-    position: "absolute",
-    left: 2,
-    top: 0,
-    width: rendererInstance.width - 4,
-    height: 2,
-    zIndex: 10,
-    content: t`${bold(fg("#00ffff")("◆ SPLIT MODE DEMO - ANIMATED DASHBOARD ◆"))}`,
-  })
-
-  instructionsText = new TextRenderable(rendererInstance, {
-    id: "split-mode-instructions",
-    position: "absolute",
-    left: 2,
-    bottom: 0,
-    width: rendererInstance.width - 4,
-    height: 2,
-    zIndex: 10,
-    content: "",
-  })
-
-  rendererInstance.root.add(text)
-  rendererInstance.root.add(instructionsText)
-
-  rendererInstance.setFrameCallback(async (deltaTime: number) => {
-    animationSystem?.update(deltaTime)
-  })
-
-  const isCapturingOutput = () =>
-    rendererInstance.screenMode === "split-footer" && rendererInstance.externalOutputMode === "capture-stdout"
-
-  const updateInstructions = () => {
-    if (!instructionsText) return
-
-    const modeLabel =
-      rendererInstance.screenMode === "split-footer" ? `footer ${rendererInstance.footerHeight}` : "fullscreen"
-    const outputLabel = isCapturingOutput() ? `${testOutputInterval}ms` : "paused"
-    const mouseLabel = rendererInstance.useMouse ? "on" : "off"
-
-    instructionsText.content = t`${bold(
-      fg("#cccccc")(
-        `[+/-] Height ${rendererInstance.footerHeight} | [0] Mode ${modeLabel} | [M/L] Output ${outputLabel} | [U] Mouse ${mouseLabel}`,
-      ),
-    )}`
-  }
-
-  const updateLayoutForCurrentSize = () => {
-    if (text) {
-      text.width = Math.max(1, rendererInstance.width - 4)
-    }
-
-    if (instructionsText) {
-      instructionsText.width = Math.max(1, rendererInstance.width - 4)
-    }
-
-    animationSystem?.handleResize()
-  }
-
-  const writeCapturedOutput = (message: string) => {
-    if (!isCapturingOutput()) return
-    writeDemoOutput(message)
-  }
-
-  let messageCount = 0
-
-  const startTestOutput = () => {
-    clearOutputTimer()
-    if (!isCapturingOutput()) {
-      updateInstructions()
+    if (this.destroyed) {
       return
     }
 
-    outputTimer = setInterval(() => {
-      messageCount++
-      writeDemoOutput(`Test output ${messageCount}: This should appear above the renderer and scroll naturally`)
-    }, testOutputInterval)
+    this.destroyed = true
 
-    updateInstructions()
-  }
-
-  const enableSplitMode = () => {
-    rendererInstance.footerHeight = clampFooterHeight(rendererInstance, rendererInstance.footerHeight)
-    rendererInstance.screenMode = "split-footer"
-    rendererInstance.externalOutputMode = "capture-stdout"
-    startTestOutput()
-    writeCapturedOutput(`Switched to split-footer mode (height ${rendererInstance.footerHeight})`)
-  }
-
-  const disableSplitMode = () => {
-    writeCapturedOutput("Switched to main-screen mode (test output paused)")
-    clearOutputTimer()
-    rendererInstance.externalOutputMode = "passthrough"
-    rendererInstance.screenMode = "main-screen"
-    updateInstructions()
-  }
-
-  updateInstructions()
-  updateLayoutForCurrentSize()
-
-  resizeHandler = () => {
-    const clampedFooterHeight = clampFooterHeight(rendererInstance, rendererInstance.footerHeight)
-    if (clampedFooterHeight !== rendererInstance.footerHeight) {
-      rendererInstance.footerHeight = clampedFooterHeight
+    if (this.pendingAssistantReply) {
+      clearTimeout(this.pendingAssistantReply)
+      this.pendingAssistantReply = null
     }
 
-    updateLayoutForCurrentSize()
-    updateInstructions()
-  }
+    this.input.off(InputRenderableEvents.INPUT, this.handleInputChange)
+    this.input.off(InputRenderableEvents.ENTER, this.handleInputSubmit)
 
-  rendererInstance.on("resize", resizeHandler)
+    this.renderer.keyInput.off("keypress", this.handleKeyPress)
+    this.renderer.off("resize", this.handleResize)
+    this.renderer.off(CliRenderEvents.THEME_MODE, this.handleThemeMode)
 
-  writeDemoOutput("=== Split Mode Demo ===")
-  writeDemoOutput(`Terminal size: ${rendererInstance.terminalWidth}x${rendererInstance.terminalHeight}`)
-  writeDemoOutput(`Renderer split height: ${rendererInstance.footerHeight}`)
-  writeDemoOutput(`Renderer offset: ${Math.max(rendererInstance.terminalHeight - rendererInstance.footerHeight, 0)}`)
-  writeDemoOutput("Console output should appear here and scroll naturally")
-  writeDemoOutput("The renderer should stay fixed at the bottom as a footer")
-  writeDemoOutput(`Test output running at ${testOutputInterval}ms intervals (use M/L to adjust speed)`)
-  writeDemoOutput(`Mouse functionality: ${rendererInstance.useMouse ? "enabled" : "disabled"} (use U to toggle)`)
+    this.input.destroy()
+    this.renderer.root.remove(this.footerContainer.id)
 
-  startTestOutput()
-
-  keyHandler = (key) => {
-    switch (key.name?.toLowerCase()) {
-      case "+": {
-        const newHeight = clampFooterHeight(rendererInstance, rendererInstance.footerHeight + 1)
-        if (newHeight === rendererInstance.footerHeight) break
-        rendererInstance.footerHeight = newHeight
-        updateInstructions()
-        writeCapturedOutput(`Split height increased to ${newHeight}`)
-        break
-      }
-      case "-": {
-        const newHeight = clampFooterHeight(rendererInstance, rendererInstance.footerHeight - 1)
-        if (newHeight === rendererInstance.footerHeight) break
-        rendererInstance.footerHeight = newHeight
-        updateInstructions()
-        writeCapturedOutput(`Split height decreased to ${newHeight}`)
-        break
-      }
-      case "0": {
-        if (rendererInstance.screenMode === "split-footer") {
-          disableSplitMode()
-        } else {
-          enableSplitMode()
-        }
-        break
-      }
-      case "m": {
-        const nextInterval = Math.max(MIN_OUTPUT_INTERVAL, testOutputInterval - 5)
-        if (nextInterval === testOutputInterval) break
-        testOutputInterval = nextInterval
-        startTestOutput()
-        writeCapturedOutput(`Test output speed increased (interval: ${testOutputInterval}ms)`)
-        break
-      }
-      case "l": {
-        const nextInterval = Math.min(MAX_OUTPUT_INTERVAL, testOutputInterval + 5)
-        if (nextInterval === testOutputInterval) break
-        testOutputInterval = nextInterval
-        startTestOutput()
-        writeCapturedOutput(`Test output speed decreased (interval: ${testOutputInterval}ms)`)
-        break
-      }
-      case "u": {
-        rendererInstance.useMouse = !rendererInstance.useMouse
-        updateInstructions()
-        writeCapturedOutput(`Mouse functionality ${rendererInstance.useMouse ? "enabled" : "disabled"}`)
-        break
-      }
+    if (!this.renderer.isDestroyed) {
+      this.renderer.externalOutputMode = "passthrough"
+      this.renderer.screenMode = "main-screen"
     }
   }
-
-  rendererInstance.keyInput.on("keypress", keyHandler)
 }
 
-export function destroy(rendererInstance: CliRenderer): void {
-  if (keyHandler) {
-    rendererInstance.keyInput.off("keypress", keyHandler)
-    keyHandler = null
+let activeDemo: SplitFooterChatDemo | null = null
+
+export function run(rendererInstance: CliRenderer): void {
+  if (activeDemo) {
+    activeDemo.destroy()
   }
 
-  if (resizeHandler) {
-    rendererInstance.off("resize", resizeHandler)
-    resizeHandler = null
+  activeDemo = new SplitFooterChatDemo(rendererInstance)
+}
+
+export function destroy(_rendererInstance: CliRenderer): void {
+  if (!activeDemo) {
+    return
   }
 
-  clearOutputTimer()
-
-  if (animationSystem) {
-    animationSystem.destroy()
-    animationSystem = null
-  }
-
-  if (text) {
-    rendererInstance.root.remove(text.id)
-    text = null
-  }
-
-  if (instructionsText) {
-    rendererInstance.root.remove(instructionsText.id)
-    instructionsText = null
-  }
-
-  rendererInstance.clearFrameCallbacks()
-  rendererInstance.externalOutputMode = "passthrough"
-  rendererInstance.screenMode = "main-screen"
+  activeDemo.destroy()
+  activeDemo = null
 }
 
 if (import.meta.main) {

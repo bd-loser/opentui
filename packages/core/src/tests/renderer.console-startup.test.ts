@@ -228,14 +228,14 @@ test("CliRenderer writeToScrollback enqueues snapshot commits to native", async 
 
   renderer = result.renderer
   const lib = (renderer as any).lib
-  const snapshotCommitSpy = spyOn(lib, "renderSplitFooterSnapshot")
-  const originalRenderSplitFooterSnapshot = lib.renderSplitFooterSnapshot.bind(lib)
+  const snapshotCommitSpy = spyOn(lib, "commitSplitFooterSnapshot")
+  const originalCommitSplitFooterSnapshot = lib.commitSplitFooterSnapshot.bind(lib)
   let decodedOutput = ""
 
-  lib.renderSplitFooterSnapshot = (...args: any[]) => {
+  lib.commitSplitFooterSnapshot = (...args: any[]) => {
     const snapshotBuffer = args[1]
     decodedOutput = new TextDecoder().decode(snapshotBuffer.getRealCharBytes(true))
-    return originalRenderSplitFooterSnapshot(...args)
+    return originalCommitSplitFooterSnapshot(...args)
   }
 
   await renderer.writeToScrollback(textScrollbackComponent, "api-line-1\napi-line-2\n")
@@ -248,7 +248,7 @@ test("CliRenderer writeToScrollback enqueues snapshot commits to native", async 
   expect(decodedOutput).toContain("api-line-1")
   expect(decodedOutput).toContain("api-line-2")
 
-  lib.renderSplitFooterSnapshot = originalRenderSplitFooterSnapshot
+  lib.commitSplitFooterSnapshot = originalCommitSplitFooterSnapshot
   snapshotCommitSpy.mockRestore()
 })
 
@@ -306,14 +306,14 @@ test("CliRenderer preserves append order when writeToScrollback and stdout captu
   renderer = result.renderer
   const order: string[] = []
   const lib = (renderer as any).lib
-  const originalRenderSplitFooterSnapshot = lib.renderSplitFooterSnapshot.bind(lib)
+  const originalCommitSplitFooterSnapshot = lib.commitSplitFooterSnapshot.bind(lib)
 
-  lib.renderSplitFooterSnapshot = (...args: any[]) => {
+  lib.commitSplitFooterSnapshot = (...args: any[]) => {
     const snapshotBuffer = args[1]
     const content = new TextDecoder().decode(snapshotBuffer.getRealCharBytes(true)).trim()
     const startOnNewLine = args[3] as boolean
     order.push(`${startOnNewLine ? "api" : "stdout"}:${content}`)
-    return originalRenderSplitFooterSnapshot(...args)
+    return originalCommitSplitFooterSnapshot(...args)
   }
 
   await renderer.writeToScrollback(textScrollbackComponent, "api-1\n")
@@ -327,7 +327,7 @@ test("CliRenderer preserves append order when writeToScrollback and stdout captu
   expect(order[1]).toContain("stdout:stdout-1")
   expect(order[2]).toContain("api:api-2")
 
-  lib.renderSplitFooterSnapshot = originalRenderSplitFooterSnapshot
+  lib.commitSplitFooterSnapshot = originalCommitSplitFooterSnapshot
 })
 
 test("CliRenderer writeToScrollback bypasses global console capture singleton", async () => {
@@ -358,13 +358,13 @@ test("CliRenderer flushes captured output before switching to passthrough in spl
 
   renderer = result.renderer
   const lib = (renderer as any).lib
-  const splitCommitSpy = spyOn(lib, "renderSplitFooterSnapshot")
-  const originalRenderSplitFooterSnapshot = lib.renderSplitFooterSnapshot.bind(lib)
+  const splitCommitSpy = spyOn(lib, "commitSplitFooterSnapshot")
+  const originalCommitSplitFooterSnapshot = lib.commitSplitFooterSnapshot.bind(lib)
   let committedOutput = ""
 
-  lib.renderSplitFooterSnapshot = (...args: any[]) => {
+  lib.commitSplitFooterSnapshot = (...args: any[]) => {
     committedOutput = new TextDecoder().decode(args[1].getRealCharBytes(true))
-    return originalRenderSplitFooterSnapshot(...args)
+    return originalCommitSplitFooterSnapshot(...args)
   }
 
   ;(renderer as any).stdout.write("pending output\n")
@@ -376,7 +376,7 @@ test("CliRenderer flushes captured output before switching to passthrough in spl
   expect(splitCommitSpy).toHaveBeenCalledTimes(1)
   expect(committedOutput).toContain("pending output")
   expect((renderer as any).externalOutputQueue.size).toBe(0)
-  lib.renderSplitFooterSnapshot = originalRenderSplitFooterSnapshot
+  lib.commitSplitFooterSnapshot = originalCommitSplitFooterSnapshot
   splitCommitSpy.mockRestore()
 })
 
@@ -396,12 +396,12 @@ test("CliRenderer flushes pending split output before resize applies new geometr
 
   const order: string[] = []
   const lib = (renderer as any).lib
-  const originalRenderSplitFooterSnapshot = lib.renderSplitFooterSnapshot.bind(lib)
+  const originalCommitSplitFooterSnapshot = lib.commitSplitFooterSnapshot.bind(lib)
   const originalResizeRenderer = lib.resizeRenderer.bind(lib)
 
-  lib.renderSplitFooterSnapshot = (...args: any[]) => {
+  lib.commitSplitFooterSnapshot = (...args: any[]) => {
     order.push("split-commit")
-    return originalRenderSplitFooterSnapshot(...args)
+    return originalCommitSplitFooterSnapshot(...args)
   }
   lib.resizeRenderer = (...args: any[]) => {
     order.push("resize")
@@ -414,7 +414,7 @@ test("CliRenderer flushes pending split output before resize applies new geometr
   expect(order.indexOf("resize")).toBeGreaterThanOrEqual(0)
   expect(order.indexOf("split-commit")).toBeLessThan(order.indexOf("resize"))
 
-  lib.renderSplitFooterSnapshot = originalRenderSplitFooterSnapshot
+  lib.commitSplitFooterSnapshot = originalCommitSplitFooterSnapshot
   lib.resizeRenderer = originalResizeRenderer
 })
 
@@ -435,12 +435,12 @@ test("CliRenderer flushes pending writeToScrollback output before resize applies
 
   const order: string[] = []
   const lib = (renderer as any).lib
-  const originalRenderSplitFooterSnapshot = lib.renderSplitFooterSnapshot.bind(lib)
+  const originalCommitSplitFooterSnapshot = lib.commitSplitFooterSnapshot.bind(lib)
   const originalResizeRenderer = lib.resizeRenderer.bind(lib)
 
-  lib.renderSplitFooterSnapshot = (...args: any[]) => {
+  lib.commitSplitFooterSnapshot = (...args: any[]) => {
     order.push("split-commit")
-    return originalRenderSplitFooterSnapshot(...args)
+    return originalCommitSplitFooterSnapshot(...args)
   }
   lib.resizeRenderer = (...args: any[]) => {
     order.push("resize")
@@ -453,7 +453,7 @@ test("CliRenderer flushes pending writeToScrollback output before resize applies
   expect(order.indexOf("resize")).toBeGreaterThanOrEqual(0)
   expect(order.indexOf("split-commit")).toBeLessThan(order.indexOf("resize"))
 
-  lib.renderSplitFooterSnapshot = originalRenderSplitFooterSnapshot
+  lib.commitSplitFooterSnapshot = originalCommitSplitFooterSnapshot
   lib.resizeRenderer = originalResizeRenderer
 })
 
@@ -496,7 +496,7 @@ test("CliRenderer does not flush captured split output during resize while suspe
   renderer = result.renderer
   ;(renderer as any)._terminalIsSetup = true
 
-  const splitCommitSpy = spyOn((renderer as any).lib, "renderSplitFooterSnapshot")
+  const splitCommitSpy = spyOn((renderer as any).lib, "commitSplitFooterSnapshot")
 
   renderer.suspend()
   ;(renderer as any).stdout.write("during-suspend\n")
@@ -524,12 +524,12 @@ test("CliRenderer flushes pending writeToScrollback output before suspend", asyn
 
   const order: string[] = []
   const lib = (renderer as any).lib
-  const originalRenderSplitFooterSnapshot = lib.renderSplitFooterSnapshot.bind(lib)
+  const originalCommitSplitFooterSnapshot = lib.commitSplitFooterSnapshot.bind(lib)
   const originalSuspendRenderer = lib.suspendRenderer.bind(lib)
 
-  lib.renderSplitFooterSnapshot = (...args: any[]) => {
+  lib.commitSplitFooterSnapshot = (...args: any[]) => {
     order.push("split-commit")
-    return originalRenderSplitFooterSnapshot(...args)
+    return originalCommitSplitFooterSnapshot(...args)
   }
   lib.suspendRenderer = (...args: any[]) => {
     order.push("suspend")
@@ -542,7 +542,7 @@ test("CliRenderer flushes pending writeToScrollback output before suspend", asyn
   expect(order.indexOf("suspend")).toBeGreaterThanOrEqual(0)
   expect(order.indexOf("split-commit")).toBeLessThan(order.indexOf("suspend"))
 
-  lib.renderSplitFooterSnapshot = originalRenderSplitFooterSnapshot
+  lib.commitSplitFooterSnapshot = originalCommitSplitFooterSnapshot
   lib.suspendRenderer = originalSuspendRenderer
 })
 
@@ -592,13 +592,13 @@ test("CliRenderer destroy flushes split output before clearing split footer surf
 
   const order: string[] = []
   const lib = (renderer as any).lib
-  const originalRenderSplitFooterSnapshot = lib.renderSplitFooterSnapshot.bind(lib)
+  const originalCommitSplitFooterSnapshot = lib.commitSplitFooterSnapshot.bind(lib)
   const originalSetRenderOffset = lib.setRenderOffset.bind(lib)
   const originalDestroyRenderer = lib.destroyRenderer.bind(lib)
 
-  lib.renderSplitFooterSnapshot = (...args: any[]) => {
+  lib.commitSplitFooterSnapshot = (...args: any[]) => {
     order.push("split-commit")
-    return originalRenderSplitFooterSnapshot(...args)
+    return originalCommitSplitFooterSnapshot(...args)
   }
   lib.setRenderOffset = (...args: any[]) => {
     if (args[1] === 0) {
@@ -615,7 +615,7 @@ test("CliRenderer destroy flushes split output before clearing split footer surf
 
   expect(order).toEqual(["split-commit", "clear", "destroy"])
 
-  lib.renderSplitFooterSnapshot = originalRenderSplitFooterSnapshot
+  lib.commitSplitFooterSnapshot = originalCommitSplitFooterSnapshot
   lib.setRenderOffset = originalSetRenderOffset
   lib.destroyRenderer = originalDestroyRenderer
 })
@@ -636,13 +636,13 @@ test("CliRenderer destroy flushes writeToScrollback output before clearing split
 
   const order: string[] = []
   const lib = (renderer as any).lib
-  const originalRenderSplitFooterSnapshot = lib.renderSplitFooterSnapshot.bind(lib)
+  const originalCommitSplitFooterSnapshot = lib.commitSplitFooterSnapshot.bind(lib)
   const originalSetRenderOffset = lib.setRenderOffset.bind(lib)
   const originalDestroyRenderer = lib.destroyRenderer.bind(lib)
 
-  lib.renderSplitFooterSnapshot = (...args: any[]) => {
+  lib.commitSplitFooterSnapshot = (...args: any[]) => {
     order.push("split-commit")
-    return originalRenderSplitFooterSnapshot(...args)
+    return originalCommitSplitFooterSnapshot(...args)
   }
   lib.setRenderOffset = (...args: any[]) => {
     if (args[1] === 0) {
@@ -659,7 +659,7 @@ test("CliRenderer destroy flushes writeToScrollback output before clearing split
 
   expect(order).toEqual(["split-commit", "clear", "destroy"])
 
-  lib.renderSplitFooterSnapshot = originalRenderSplitFooterSnapshot
+  lib.commitSplitFooterSnapshot = originalCommitSplitFooterSnapshot
   lib.setRenderOffset = originalSetRenderOffset
   lib.destroyRenderer = originalDestroyRenderer
 })
@@ -788,14 +788,14 @@ test("CliRenderer split-footer commits only unpublished captured output chunks",
 
   renderer = result.renderer
   const lib = (renderer as any).lib
-  const snapshotCommitSpy = spyOn(lib, "renderSplitFooterSnapshot")
+  const snapshotCommitSpy = spyOn(lib, "commitSplitFooterSnapshot")
   const fullRenderSpy = spyOn(lib, "repaintSplitFooter")
 
   const committedPayloads: string[] = []
-  const originalRenderSplitFooterSnapshot = lib.renderSplitFooterSnapshot.bind(lib)
-  lib.renderSplitFooterSnapshot = (...args: any[]) => {
+  const originalCommitSplitFooterSnapshot = lib.commitSplitFooterSnapshot.bind(lib)
+  lib.commitSplitFooterSnapshot = (...args: any[]) => {
     committedPayloads.push(new TextDecoder().decode(args[1].getRealCharBytes(true)).trim())
-    return originalRenderSplitFooterSnapshot(...args)
+    return originalCommitSplitFooterSnapshot(...args)
   }
 
   ;(renderer as any).stdout.write("first\n")
@@ -813,7 +813,7 @@ test("CliRenderer split-footer commits only unpublished captured output chunks",
   expect(fullRenderSpy).toHaveBeenCalledTimes(1)
   expect(fullRenderSpy.mock.calls[0]?.[2]).toBe(false)
 
-  lib.renderSplitFooterSnapshot = originalRenderSplitFooterSnapshot
+  lib.commitSplitFooterSnapshot = originalCommitSplitFooterSnapshot
   snapshotCommitSpy.mockRestore()
   fullRenderSpy.mockRestore()
 })
@@ -828,13 +828,13 @@ test("CliRenderer split-footer routes captured output through snapshot native co
 
   renderer = result.renderer
   const lib = (renderer as any).lib
-  const splitCommitSpy = spyOn(lib, "renderSplitFooterSnapshot")
-  const originalRenderSplitFooterSnapshot = lib.renderSplitFooterSnapshot.bind(lib)
+  const splitCommitSpy = spyOn(lib, "commitSplitFooterSnapshot")
+  const originalCommitSplitFooterSnapshot = lib.commitSplitFooterSnapshot.bind(lib)
   const payloads: string[] = []
 
-  lib.renderSplitFooterSnapshot = (...args: any[]) => {
+  lib.commitSplitFooterSnapshot = (...args: any[]) => {
     payloads.push(new TextDecoder().decode(args[1].getRealCharBytes(true)).trim())
-    return originalRenderSplitFooterSnapshot(...args)
+    return originalCommitSplitFooterSnapshot(...args)
   }
 
   ;(renderer as any).stdout.write("line-1\nline-2\n")
@@ -845,7 +845,7 @@ test("CliRenderer split-footer routes captured output through snapshot native co
   expect(payloads[1]).toContain("line-2")
   expect((renderer as any).renderOffset).toBe(3)
 
-  lib.renderSplitFooterSnapshot = originalRenderSplitFooterSnapshot
+  lib.commitSplitFooterSnapshot = originalCommitSplitFooterSnapshot
   splitCommitSpy.mockRestore()
 })
 

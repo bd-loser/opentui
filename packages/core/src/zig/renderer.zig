@@ -623,7 +623,7 @@ pub const CliRenderer = struct {
         return self.renderOffset;
     }
 
-    pub fn renderSplitFooterSnapshot(
+    pub fn commitSplitFooterSnapshot(
         self: *CliRenderer,
         snapshot: *const OptimizedBuffer,
         row_columns: u32,

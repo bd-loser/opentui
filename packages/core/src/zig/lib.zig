@@ -284,7 +284,7 @@ export fn repaintSplitFooter(
     return rendererPtr.repaintSplitFooter(pinnedRenderOffset, force);
 }
 
-export fn renderSplitFooterSnapshot(
+export fn commitSplitFooterSnapshot(
     rendererPtr: *renderer.CliRenderer,
     snapshotBufferPtr: *buffer.OptimizedBuffer,
     rowColumns: u32,
@@ -293,7 +293,7 @@ export fn renderSplitFooterSnapshot(
     pinnedRenderOffset: u32,
     force: bool,
 ) u32 {
-    return rendererPtr.renderSplitFooterSnapshot(snapshotBufferPtr, rowColumns, startOnNewLine, trailingNewline, pinnedRenderOffset, force);
+    return rendererPtr.commitSplitFooterSnapshot(snapshotBufferPtr, rowColumns, startOnNewLine, trailingNewline, pinnedRenderOffset, force);
 }
 
 export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8, idPtr: [*]const u8, idLen: usize) ?*buffer.OptimizedBuffer {

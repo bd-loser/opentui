@@ -163,7 +163,7 @@ test("CliRenderer flushes captured output before switching to passthrough in spl
   })
 
   renderer = result.renderer
-  const flushSpy = spyOn(renderer as any, "flushStdoutCache")
+  const splitCommitSpy = spyOn((renderer as any).lib, "renderSplitFooter")
 
   ;(renderer as any).stdout.write("pending output\n")
 
@@ -171,9 +171,173 @@ test("CliRenderer flushes captured output before switching to passthrough in spl
 
   renderer.externalOutputMode = "passthrough"
 
-  expect(flushSpy).toHaveBeenCalledTimes(1)
+  expect(splitCommitSpy).toHaveBeenCalledTimes(1)
+  const flushedOutput = new TextDecoder().decode(splitCommitSpy.mock.calls[0]?.[1] as Uint8Array)
+  expect(flushedOutput).toBe("pending output\n")
   expect((renderer as any).externalOutputQueue.size).toBe(0)
-  flushSpy.mockRestore()
+  splitCommitSpy.mockRestore()
+})
+
+test("CliRenderer flushes pending split output before resize applies new geometry", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+  ;(renderer as any).stdout.write("before-resize\n")
+
+  const order: string[] = []
+  const lib = (renderer as any).lib
+  const originalRenderSplitFooter = lib.renderSplitFooter.bind(lib)
+  const originalResizeRenderer = lib.resizeRenderer.bind(lib)
+
+  lib.renderSplitFooter = (...args: any[]) => {
+    order.push("split-commit")
+    return originalRenderSplitFooter(...args)
+  }
+  lib.resizeRenderer = (...args: any[]) => {
+    order.push("resize")
+    return originalResizeRenderer(...args)
+  }
+
+  ;(renderer as any).processResize(60, 16)
+
+  expect(order.indexOf("split-commit")).toBeGreaterThanOrEqual(0)
+  expect(order.indexOf("resize")).toBeGreaterThanOrEqual(0)
+  expect(order.indexOf("split-commit")).toBeLessThan(order.indexOf("resize"))
+
+  lib.renderSplitFooter = originalRenderSplitFooter
+  lib.resizeRenderer = originalResizeRenderer
+})
+
+test("CliRenderer reuses generic suspend/resume native helpers in split-footer mode", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+
+  const suspendGenericSpy = spyOn((renderer as any).lib, "suspendRenderer")
+  const resumeGenericSpy = spyOn((renderer as any).lib, "resumeRenderer")
+
+  renderer.suspend()
+  renderer.resume()
+
+  expect(suspendGenericSpy).toHaveBeenCalledTimes(1)
+  expect(resumeGenericSpy).toHaveBeenCalledTimes(1)
+
+  suspendGenericSpy.mockRestore()
+  resumeGenericSpy.mockRestore()
+})
+
+test("CliRenderer does not flush captured split output during resize while suspended", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+
+  const splitCommitSpy = spyOn((renderer as any).lib, "renderSplitFooter")
+
+  renderer.suspend()
+  ;(renderer as any).stdout.write("during-suspend\n")
+  ;(renderer as any).processResize(60, 16)
+
+  expect(splitCommitSpy).toHaveBeenCalledTimes(1)
+
+  splitCommitSpy.mockRestore()
+})
+
+test("CliRenderer clears split footer surface when leaving split-footer mode", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "passthrough",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+  const clearCalls: number[] = []
+  const lib = (renderer as any).lib
+  const originalSetRenderOffset = lib.setRenderOffset.bind(lib)
+
+  lib.setRenderOffset = (...args: any[]) => {
+    if (args[1] === 0) {
+      clearCalls.push(args[1])
+    }
+    return originalSetRenderOffset(...args)
+  }
+
+  renderer.screenMode = "main-screen"
+
+  expect(clearCalls.length).toBeGreaterThanOrEqual(1)
+
+  lib.setRenderOffset = originalSetRenderOffset
+})
+
+test("CliRenderer destroy flushes split output before clearing split footer surface", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+  ;(renderer as any).stdout.write("before-destroy\n")
+
+  const order: string[] = []
+  const lib = (renderer as any).lib
+  const originalRenderSplitFooter = lib.renderSplitFooter.bind(lib)
+  const originalSetRenderOffset = lib.setRenderOffset.bind(lib)
+  const originalDestroyRenderer = lib.destroyRenderer.bind(lib)
+
+  lib.renderSplitFooter = (...args: any[]) => {
+    order.push("split-commit")
+    return originalRenderSplitFooter(...args)
+  }
+  lib.setRenderOffset = (...args: any[]) => {
+    if (args[1] === 0) {
+      order.push("clear")
+    }
+    return originalSetRenderOffset(...args)
+  }
+  lib.destroyRenderer = (...args: any[]) => {
+    order.push("destroy")
+    return originalDestroyRenderer(...args)
+  }
+
+  renderer.destroy()
+
+  expect(order).toEqual(["split-commit", "clear", "destroy"])
+
+  lib.renderSplitFooter = originalRenderSplitFooter
+  lib.setRenderOffset = originalSetRenderOffset
+  lib.destroyRenderer = originalDestroyRenderer
 })
 
 test("CliRenderer split-footer passthrough ignores console capture writes", async () => {

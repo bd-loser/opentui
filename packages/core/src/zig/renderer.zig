@@ -330,10 +330,10 @@ pub const CliRenderer = struct {
         };
         writer.flush() catch {};
 
-        self.setupTerminalWithoutDetection(useAlternateScreen);
+        self.setupTerminalWithoutDetection(useAlternateScreen, true);
     }
 
-    fn setupTerminalWithoutDetection(self: *CliRenderer, useAlternateScreen: bool) void {
+    fn setupTerminalWithoutDetection(self: *CliRenderer, useAlternateScreen: bool, reserve_non_alt_surface: bool) void {
         var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
         const writer = &stdoutWriter.interface;
 
@@ -341,7 +341,7 @@ pub const CliRenderer = struct {
 
         if (useAlternateScreen) {
             self.terminal.enterAltScreen(writer) catch {};
-        } else {
+        } else if (reserve_non_alt_surface) {
             ansi.ANSI.makeRoomForRendererOutput(writer, @max(self.height, 1)) catch {};
         }
 
@@ -359,7 +359,17 @@ pub const CliRenderer = struct {
 
     pub fn resumeRenderer(self: *CliRenderer) void {
         if (!self.terminalSetup) return;
-        self.setupTerminalWithoutDetection(self.useAlternateScreen);
+        self.setupTerminalWithoutDetection(self.useAlternateScreen, self.renderOffset == 0);
+    }
+
+    fn clearSplitFooterSurface(self: *CliRenderer, writer: anytype) void {
+        if (self.renderOffset == 0) return;
+
+        const footer_top_line = @max(self.renderOffset + 1, @as(u32, 1));
+        writer.writeAll("\x1b[r") catch {};
+        ansi.ANSI.moveToOutput(writer, 1, footer_top_line) catch {};
+        writer.writeAll(ansi.ANSI.eraseBelowCursor) catch {};
+        ansi.ANSI.moveToOutput(writer, 1, footer_top_line) catch {};
     }
 
     pub fn performShutdownSequence(self: *CliRenderer) void {
@@ -377,9 +387,8 @@ pub const CliRenderer = struct {
             direct.writeAll("\x1b[H\x1b[J") catch {};
             direct.flush() catch {};
         } else if (self.renderOffset > 0) {
-            // Currently still handled in typescript
-            // const consoleEndLine = self.height - self.renderOffset;
-            // ansi.ANSI.moveToOutput(direct, 1, consoleEndLine) catch {};
+            self.clearSplitFooterSurface(direct);
+            direct.flush() catch {};
         }
 
         // NOTE: This messes up state after shutdown, but might be necessary for windows?
@@ -516,6 +525,13 @@ pub const CliRenderer = struct {
     }
 
     pub fn setRenderOffset(self: *CliRenderer, offset: u32) void {
+        if (self.terminalSetup and !self.useAlternateScreen and self.renderOffset > 0 and offset == 0) {
+            var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+            const writer = &stdoutWriter.interface;
+            self.clearSplitFooterSurface(writer);
+            writer.flush() catch {};
+        }
+
         self.renderOffset = offset;
     }
 

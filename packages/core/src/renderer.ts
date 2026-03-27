@@ -225,9 +225,7 @@ export interface ScrollbackSnapshot {
   trailingNewline?: boolean
 }
 
-export interface ScrollbackComponent<Data> {
-  scrollback: (data: Data, ctx: ScrollbackRenderContext) => ScrollbackSnapshot
-}
+export type ScrollbackWriter = (ctx: ScrollbackRenderContext) => ScrollbackSnapshot
 
 const DEFAULT_FOOTER_HEIGHT = 12
 
@@ -1320,36 +1318,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.setKittyKeyboardFlags(this.rendererPtr, flags)
   }
 
-  public async writeToScrollback<Data>(component: ScrollbackComponent<Data>, data: Data): Promise<void> {
+  public writeToScrollback(write: ScrollbackWriter): void {
     if (this._screenMode !== "split-footer" || this._externalOutputMode !== "capture-stdout") {
       throw new Error('writeToScrollback requires screenMode "split-footer" and externalOutputMode "capture-stdout"')
     }
 
-    const commit = this.createScrollbackSnapshotCommit(component, data)
-    this.enqueueExternalSnapshotCommit(commit)
-  }
-
-  private getSnapshotDimension(value: number | undefined, fallback: number, axis: "width" | "height"): number {
-    const rawValue = value ?? fallback
-
-    if (!Number.isFinite(rawValue)) {
-      throw new Error(`writeToScrollback produced a non-finite ${axis}`)
-    }
-
-    const maxDimension = axis === "width" ? Math.max(this.width, 1) : Math.max(this._terminalHeight, 1)
-    return Math.min(Math.max(Math.trunc(rawValue), 1), maxDimension)
-  }
-
-  private createScrollbackSnapshotCommit<Data>(component: ScrollbackComponent<Data>, data: Data): ExternalOutputCommit {
     const snapshotContext = new ScrollbackSnapshotRenderContext(this.width, this.height, this.widthMethod)
-    const snapshot = component.scrollback(data, {
+    const snapshot = write({
       width: this.width,
       widthMethod: this.widthMethod,
       renderContext: snapshotContext,
     })
 
     if (!snapshot || !snapshot.root) {
-      throw new Error("writeToScrollback component must return a snapshot root renderable")
+      throw new Error("writeToScrollback must return a snapshot root renderable")
     }
 
     const rootRenderable = snapshot.root
@@ -1369,18 +1351,30 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     try {
       snapshotRoot.add(rootRenderable)
       snapshotRoot.render(snapshotBuffer, 0)
-      return {
+      this.externalOutputQueue.writeSnapshot({
         snapshot: snapshotBuffer,
         rowColumns: snapshotRowColumns,
         startOnNewLine,
         trailingNewline,
-      }
+      })
+      this.requestRender()
     } catch (error) {
       snapshotBuffer.destroy()
       throw error
     } finally {
       snapshotRoot.destroyRecursively()
     }
+  }
+
+  private getSnapshotDimension(value: number | undefined, fallback: number, axis: "width" | "height"): number {
+    const rawValue = value ?? fallback
+
+    if (!Number.isFinite(rawValue)) {
+      throw new Error(`writeToScrollback produced a non-finite ${axis}`)
+    }
+
+    const maxDimension = axis === "width" ? Math.max(this.width, 1) : Math.max(this._terminalHeight, 1)
+    return Math.min(Math.max(Math.trunc(rawValue), 1), maxDimension)
   }
 
   private createStdoutSnapshotCommit(line: string, trailingNewline: boolean): ExternalOutputCommit {
@@ -1470,11 +1464,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     return commits
-  }
-
-  private enqueueExternalSnapshotCommit(commit: ExternalOutputCommit): void {
-    this.externalOutputQueue.writeSnapshot(commit)
-    this.requestRender()
   }
 
   private flushPendingSplitCommits(forceFooterRepaint: boolean = false): void {

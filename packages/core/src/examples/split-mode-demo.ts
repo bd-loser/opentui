@@ -7,7 +7,9 @@ import {
   type CliRenderer,
   type KeyEvent,
   type RenderContext,
-  type ScrollbackComponent,
+  type ScrollbackRenderContext,
+  type ScrollbackSnapshot,
+  type ScrollbackWriter,
   type ThemeMode,
 } from "../index.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
@@ -442,133 +444,127 @@ function roleBodyColor(role: MessageRole, palette: DemoPalette): string {
   }
 }
 
-const simpleTextBoxComponent: ScrollbackComponent<BoxMessageEntry> = {
-  scrollback: (entry, ctx) => {
-    const maxTextWidth = Math.max(18, Math.min(ctx.width - 4, 90))
-    const headingCore = truncateToWidth(
-      `${roleLabel(entry.role)} | ${formatTimestamp(entry.timestamp)}`,
-      Math.max(1, maxTextWidth - 2),
-    )
-    const headingLine = ` ${headingCore}`
-    const bodyIndent = entry.role === "stream" ? " > " : " "
-    const bodyWrapWidth = Math.max(1, maxTextWidth - bodyIndent.length)
-    const bodyLines = wrapText(entry.text, bodyWrapWidth).map((line) => `${bodyIndent}${line}`)
-    const longestBody = bodyLines.reduce((maxWidth, line) => Math.max(maxWidth, line.length), 1)
-    const longestLine = Math.max(headingLine.length, longestBody)
+function buildSimpleTextBoxSnapshot(entry: BoxMessageEntry, ctx: ScrollbackRenderContext): ScrollbackSnapshot {
+  const maxTextWidth = Math.max(18, Math.min(ctx.width - 4, 90))
+  const headingCore = truncateToWidth(
+    `${roleLabel(entry.role)} | ${formatTimestamp(entry.timestamp)}`,
+    Math.max(1, maxTextWidth - 2),
+  )
+  const headingLine = ` ${headingCore}`
+  const bodyIndent = entry.role === "stream" ? " > " : " "
+  const bodyWrapWidth = Math.max(1, maxTextWidth - bodyIndent.length)
+  const bodyLines = wrapText(entry.text, bodyWrapWidth).map((line) => `${bodyIndent}${line}`)
+  const longestBody = bodyLines.reduce((maxWidth, line) => Math.max(maxWidth, line.length), 1)
+  const longestLine = Math.max(headingLine.length, longestBody)
 
-    const textWidth = Math.min(maxTextWidth, Math.max(2, longestLine + 1))
-    const boxWidth = Math.min(ctx.width, Math.max(4, textWidth + 1))
-    const boxHeight = Math.max(4, bodyLines.length + 3)
+  const textWidth = Math.min(maxTextWidth, Math.max(2, longestLine + 1))
+  const boxWidth = Math.min(ctx.width, Math.max(4, textWidth + 1))
+  const boxHeight = Math.max(4, bodyLines.length + 3)
 
-    const box = new BoxRenderable(ctx.renderContext, {
-      id: `split-simple-box-${snapshotNodeCounter++}`,
-      position: "absolute",
-      left: 0,
-      top: 0,
-      width: boxWidth,
-      height: boxHeight,
-      border: ["left"],
-      borderStyle: "double",
-      borderColor: roleBorderColor(entry.role, entry.palette),
-      backgroundColor: "transparent",
-    })
+  const box = new BoxRenderable(ctx.renderContext, {
+    id: `split-simple-box-${snapshotNodeCounter++}`,
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: boxWidth,
+    height: boxHeight,
+    border: ["left"],
+    borderStyle: "double",
+    borderColor: roleBorderColor(entry.role, entry.palette),
+    backgroundColor: "transparent",
+  })
 
-    const headingText = new TextRenderable(ctx.renderContext, {
-      id: `split-simple-heading-${snapshotNodeCounter++}`,
-      position: "absolute",
-      left: 1,
-      top: 1,
-      width: Math.max(1, boxWidth - 1),
-      height: 1,
-      content: headingLine,
-      fg: roleHeadingColor(entry.role, entry.palette),
-      attributes: roleHeadingAttributes(entry.role),
-    })
+  const headingText = new TextRenderable(ctx.renderContext, {
+    id: `split-simple-heading-${snapshotNodeCounter++}`,
+    position: "absolute",
+    left: 1,
+    top: 1,
+    width: Math.max(1, boxWidth - 1),
+    height: 1,
+    content: headingLine,
+    fg: roleHeadingColor(entry.role, entry.palette),
+    attributes: roleHeadingAttributes(entry.role),
+  })
 
-    const bodyText = new TextRenderable(ctx.renderContext, {
-      id: `split-simple-body-${snapshotNodeCounter++}`,
-      position: "absolute",
-      left: 1,
-      top: 2,
-      width: Math.max(1, boxWidth - 1),
-      height: Math.max(1, boxHeight - 3),
-      content: bodyLines.join("\n"),
-      fg: roleBodyColor(entry.role, entry.palette),
-    })
+  const bodyText = new TextRenderable(ctx.renderContext, {
+    id: `split-simple-body-${snapshotNodeCounter++}`,
+    position: "absolute",
+    left: 1,
+    top: 2,
+    width: Math.max(1, boxWidth - 1),
+    height: Math.max(1, boxHeight - 3),
+    content: bodyLines.join("\n"),
+    fg: roleBodyColor(entry.role, entry.palette),
+  })
 
-    box.add(headingText)
-    box.add(bodyText)
+  box.add(headingText)
+  box.add(bodyText)
 
-    return {
-      root: box,
-      width: boxWidth,
-      height: boxHeight,
-    }
-  },
+  return {
+    root: box,
+    width: boxWidth,
+    height: boxHeight,
+  }
 }
 
-const toolCardComponent: ScrollbackComponent<ToolCardEntry> = {
-  scrollback: (entry, ctx) => {
-    const cardWidth = Math.max(24, Math.min(ctx.width, 80))
-    const bodyWidth = Math.max(1, cardWidth - 2)
-    const lines: string[] = []
+function buildToolCardSnapshot(entry: ToolCardEntry, ctx: ScrollbackRenderContext): ScrollbackSnapshot {
+  const cardWidth = Math.max(24, Math.min(ctx.width, 80))
+  const bodyWidth = Math.max(1, cardWidth - 2)
+  const lines: string[] = []
 
-    entry.rows.forEach((row, index) => {
-      lines.push(...wrapText(row, bodyWidth))
-      if (index < entry.rows.length - 1) {
-        lines.push("")
-      }
-    })
-
-    const cardHeight = Math.max(3, lines.length + 2)
-
-    const card = new BoxRenderable(ctx.renderContext, {
-      id: `split-tool-card-${snapshotNodeCounter++}`,
-      position: "absolute",
-      left: 0,
-      top: 0,
-      width: cardWidth,
-      height: cardHeight,
-      border: true,
-      borderStyle: "double",
-      borderColor: entry.palette.assistantBorder,
-      backgroundColor: "transparent",
-      title: truncateToWidth(entry.title, Math.max(1, cardWidth - 4)),
-    })
-
-    const body = new TextRenderable(ctx.renderContext, {
-      id: `split-tool-card-text-${snapshotNodeCounter++}`,
-      position: "absolute",
-      left: 1,
-      top: 1,
-      width: bodyWidth,
-      height: Math.max(1, cardHeight - 2),
-      content: lines.join("\n"),
-      fg: entry.palette.messageText,
-    })
-
-    card.add(body)
-
-    return {
-      root: card,
-      width: cardWidth,
-      height: cardHeight,
+  entry.rows.forEach((row, index) => {
+    lines.push(...wrapText(row, bodyWidth))
+    if (index < entry.rows.length - 1) {
+      lines.push("")
     }
-  },
+  })
+
+  const cardHeight = Math.max(3, lines.length + 2)
+
+  const card = new BoxRenderable(ctx.renderContext, {
+    id: `split-tool-card-${snapshotNodeCounter++}`,
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: cardWidth,
+    height: cardHeight,
+    border: true,
+    borderStyle: "double",
+    borderColor: entry.palette.assistantBorder,
+    backgroundColor: "transparent",
+    title: truncateToWidth(entry.title, Math.max(1, cardWidth - 4)),
+  })
+
+  const body = new TextRenderable(ctx.renderContext, {
+    id: `split-tool-card-text-${snapshotNodeCounter++}`,
+    position: "absolute",
+    left: 1,
+    top: 1,
+    width: bodyWidth,
+    height: Math.max(1, cardHeight - 2),
+    content: lines.join("\n"),
+    fg: entry.palette.messageText,
+  })
+
+  card.add(body)
+
+  return {
+    root: card,
+    width: cardWidth,
+    height: cardHeight,
+  }
 }
 
-const renderableSnapshotComponent: ScrollbackComponent<RenderableSnapshotEntry> = {
-  scrollback: (entry, ctx) => {
-    const width = Math.max(1, Math.min(entry.width, ctx.width))
-    const height = Math.max(1, entry.height)
-    const root = entry.build(ctx.renderContext)
+function buildRenderableSnapshot(entry: RenderableSnapshotEntry, ctx: ScrollbackRenderContext): ScrollbackSnapshot {
+  const width = Math.max(1, Math.min(entry.width, ctx.width))
+  const height = Math.max(1, entry.height)
+  const root = entry.build(ctx.renderContext)
 
-    return {
-      root,
-      width,
-      height,
-    }
-  },
+  return {
+    root,
+    width,
+    height,
+  }
 }
 
 class SplitFooterDemo {
@@ -587,7 +583,6 @@ class SplitFooterDemo {
   private palette: DemoPalette
   private mode: DemoMode = "split-footer"
   private desiredFooterHeight = DEFAULT_FOOTER_HEIGHT
-  private publishQueue: Promise<void> = Promise.resolve()
   private pendingAssistantReply: ReturnType<typeof setTimeout> | null = null
   private streamTimer: ReturnType<typeof setInterval> | null = null
   private streamEnabled = true
@@ -855,37 +850,31 @@ class SplitFooterDemo {
     }
   }
 
-  private enqueueScrollbackComponent<Data>(
-    component: ScrollbackComponent<Data>,
-    data: Data,
-    failureStatus: string,
-  ): void {
+  private enqueueScrollback(write: ScrollbackWriter, failureStatus: string): void {
     if (!this.isSplitCaptureMode()) {
       this.refreshStatus("output paused in fullscreen")
       return
     }
 
-    this.publishQueue = this.publishQueue
-      .then(async () => {
-        if (this.destroyed || !this.isSplitCaptureMode()) {
-          return
-        }
+    if (this.destroyed || !this.isSplitCaptureMode()) {
+      return
+    }
 
-        await this.renderer.writeToScrollback(component, data)
+    try {
+      this.renderer.writeToScrollback(write)
 
-        if (this.destroyed) {
-          return
-        }
+      if (this.destroyed) {
+        return
+      }
 
-        this.commitCount += 1
-        this.refreshStatus()
-      })
-      .catch((error) => {
-        if (!this.destroyed) {
-          this.refreshStatus(failureStatus)
-          console.error("split-mode-demo publish failed", error)
-        }
-      })
+      this.commitCount += 1
+      this.refreshStatus()
+    } catch (error) {
+      if (!this.destroyed) {
+        this.refreshStatus(failureStatus)
+        console.error("split-mode-demo publish failed", error)
+      }
+    }
   }
 
   private publishMessage(role: MessageRole, text: string, countAsMessage: boolean = true): void {
@@ -895,14 +884,17 @@ class SplitFooterDemo {
 
     const paletteSnapshot: DemoPalette = { ...this.palette }
 
-    this.enqueueScrollbackComponent(
-      simpleTextBoxComponent,
-      {
-        role,
-        text,
-        timestamp: new Date(),
-        palette: paletteSnapshot,
-      },
+    this.enqueueScrollback(
+      (ctx) =>
+        buildSimpleTextBoxSnapshot(
+          {
+            role,
+            text,
+            timestamp: new Date(),
+            palette: paletteSnapshot,
+          },
+          ctx,
+        ),
       "failed to publish text box",
     )
   }
@@ -910,13 +902,16 @@ class SplitFooterDemo {
   private publishToolCard(title: string, rows: string[]): void {
     const paletteSnapshot: DemoPalette = { ...this.palette }
 
-    this.enqueueScrollbackComponent(
-      toolCardComponent,
-      {
-        title,
-        rows,
-        palette: paletteSnapshot,
-      },
+    this.enqueueScrollback(
+      (ctx) =>
+        buildToolCardSnapshot(
+          {
+            title,
+            rows,
+            palette: paletteSnapshot,
+          },
+          ctx,
+        ),
       "failed to publish tool card",
     )
   }
@@ -926,13 +921,8 @@ class SplitFooterDemo {
     height: number,
     build: (context: RenderContext) => BoxRenderable,
   ): void {
-    this.enqueueScrollbackComponent(
-      renderableSnapshotComponent,
-      {
-        width,
-        height,
-        build,
-      },
+    this.enqueueScrollback(
+      (ctx) => buildRenderableSnapshot({ width, height, build }, ctx),
       "failed to publish renderable snapshot",
     )
   }

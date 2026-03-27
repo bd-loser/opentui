@@ -4,7 +4,7 @@ import { capture } from "../console.ts"
 import { clearEnvCache } from "../lib/env.ts"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import { ManualClock } from "../testing/manual-clock.js"
-import { TextRenderable, type ScrollbackComponent } from "../index.js"
+import { TextRenderable, type ScrollbackRenderContext } from "../index.js"
 
 let renderer: TestRenderer | null = null
 let previousShowConsole: string | undefined
@@ -12,8 +12,8 @@ let previousUseAlternateScreen: string | undefined
 let previousOverrideStdout: string | undefined
 let previousUseConsole: string | undefined
 
-const textScrollbackComponent: ScrollbackComponent<string> = {
-  scrollback: (data: string, ctx) => {
+function textScrollbackWrite(data: string) {
+  return (ctx: ScrollbackRenderContext) => {
     const lines = data.replace(/\r/g, "").split("\n")
     if (lines.length > 0 && lines[lines.length - 1] === "") {
       lines.pop()
@@ -43,7 +43,7 @@ const textScrollbackComponent: ScrollbackComponent<string> = {
       width,
       height,
     }
-  },
+  }
 }
 
 beforeEach(() => {
@@ -198,7 +198,7 @@ test("CliRenderer writeToScrollback throws when screen mode is not split-footer"
 
   renderer = result.renderer
 
-  await expect(renderer.writeToScrollback(textScrollbackComponent, "ignored\n")).rejects.toThrow(
+  expect(() => renderer!.writeToScrollback(textScrollbackWrite("ignored\n"))).toThrow(
     'writeToScrollback requires screenMode "split-footer" and externalOutputMode "capture-stdout"',
   )
 })
@@ -213,7 +213,7 @@ test("CliRenderer writeToScrollback throws when external output mode is passthro
 
   renderer = result.renderer
 
-  await expect(renderer.writeToScrollback(textScrollbackComponent, "ignored\n")).rejects.toThrow(
+  expect(() => renderer!.writeToScrollback(textScrollbackWrite("ignored\n"))).toThrow(
     'writeToScrollback requires screenMode "split-footer" and externalOutputMode "capture-stdout"',
   )
 })
@@ -238,7 +238,7 @@ test("CliRenderer writeToScrollback enqueues snapshot commits to native", async 
     return originalCommitSplitFooterSnapshot(...args)
   }
 
-  await renderer.writeToScrollback(textScrollbackComponent, "api-line-1\napi-line-2\n")
+  renderer.writeToScrollback(textScrollbackWrite("api-line-1\napi-line-2\n"))
 
   expect((renderer as any).externalOutputQueue.size).toBe(1)
 
@@ -252,7 +252,7 @@ test("CliRenderer writeToScrollback enqueues snapshot commits to native", async 
   snapshotCommitSpy.mockRestore()
 })
 
-test("CliRenderer writeToScrollback passes width and widthMethod to the scrollback component", async () => {
+test("CliRenderer writeToScrollback passes width and widthMethod to the scrollback writer", async () => {
   const result = await createTestRenderer({
     width: 40,
     height: 10,
@@ -263,36 +263,37 @@ test("CliRenderer writeToScrollback passes width and widthMethod to the scrollba
   })
 
   renderer = result.renderer
-  let receivedContext: { width: number; widthMethod: string } | null = null
+  let receivedContext: ScrollbackRenderContext | null = null
 
-  await renderer.writeToScrollback(
-    {
-      scrollback: (_data: null, ctx) => {
-        receivedContext = ctx
+  renderer.writeToScrollback((ctx) => {
+    receivedContext = ctx
 
-        const root = new TextRenderable(ctx.renderContext, {
-          id: "scrollback-context-test",
-          position: "absolute",
-          left: 0,
-          top: 0,
-          width: 3,
-          height: 1,
-          content: "ctx",
-        })
+    const root = new TextRenderable(ctx.renderContext, {
+      id: "scrollback-context-test",
+      position: "absolute",
+      left: 0,
+      top: 0,
+      width: 3,
+      height: 1,
+      content: "ctx",
+    })
 
-        return {
-          root,
-          width: 3,
-          height: 1,
-        }
-      },
-    },
-    null,
-  )
+    return {
+      root,
+      width: 3,
+      height: 1,
+    }
+  })
 
   expect(receivedContext).not.toBeNull()
-  expect(receivedContext?.width).toBe(renderer.width)
-  expect(receivedContext?.widthMethod).toBe(renderer.widthMethod)
+
+  if (receivedContext === null) {
+    throw new Error("expected writeToScrollback to provide context")
+  }
+
+  const writeContext = receivedContext as ScrollbackRenderContext
+  expect(writeContext.width).toBe(result.renderer.width)
+  expect(writeContext.widthMethod).toBe(result.renderer.widthMethod)
 })
 
 test("CliRenderer preserves append order when writeToScrollback and stdout capture are interleaved", async () => {
@@ -316,9 +317,9 @@ test("CliRenderer preserves append order when writeToScrollback and stdout captu
     return originalCommitSplitFooterSnapshot(...args)
   }
 
-  await renderer.writeToScrollback(textScrollbackComponent, "api-1\n")
+  renderer.writeToScrollback(textScrollbackWrite("api-1\n"))
   ;(renderer as any).stdout.write("stdout-1\n")
-  await renderer.writeToScrollback(textScrollbackComponent, "api-2\n")
+  renderer.writeToScrollback(textScrollbackWrite("api-2\n"))
 
   await result.renderOnce()
 
@@ -341,7 +342,7 @@ test("CliRenderer writeToScrollback bypasses global console capture singleton", 
   renderer = result.renderer
   capture.claimOutput()
 
-  await renderer.writeToScrollback(textScrollbackComponent, "api-only\n")
+  renderer.writeToScrollback(textScrollbackWrite("api-only\n"))
   await result.renderOnce()
 
   expect(capture.size).toBe(0)
@@ -431,7 +432,7 @@ test("CliRenderer flushes pending writeToScrollback output before resize applies
   renderer = result.renderer
   ;(renderer as any)._terminalIsSetup = true
 
-  await renderer.writeToScrollback(textScrollbackComponent, "before-resize\n")
+  renderer.writeToScrollback(textScrollbackWrite("before-resize\n"))
 
   const order: string[] = []
   const lib = (renderer as any).lib
@@ -520,7 +521,7 @@ test("CliRenderer flushes pending writeToScrollback output before suspend", asyn
   renderer = result.renderer
   ;(renderer as any)._terminalIsSetup = true
 
-  await renderer.writeToScrollback(textScrollbackComponent, "before-suspend\n")
+  renderer.writeToScrollback(textScrollbackWrite("before-suspend\n"))
 
   const order: string[] = []
   const lib = (renderer as any).lib
@@ -632,7 +633,7 @@ test("CliRenderer destroy flushes writeToScrollback output before clearing split
 
   renderer = result.renderer
   ;(renderer as any)._terminalIsSetup = true
-  await renderer.writeToScrollback(textScrollbackComponent, "before-destroy\n")
+  renderer.writeToScrollback(textScrollbackWrite("before-destroy\n"))
 
   const order: string[] = []
   const lib = (renderer as any).lib

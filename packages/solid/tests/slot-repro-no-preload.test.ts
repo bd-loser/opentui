@@ -76,10 +76,11 @@ async function setupSlotTest(
   return { setup, registry };
 }
 
-describe("slot repros without preload", () => {
-  it("REPRO #1: burst unregister spikes selection listeners before next tick cleanup", async () => {
-    const counts: number[] = [];
+describe("slot behavior stability without preload", () => {
+  it("keeps selection listeners stable while unregistering plugins for other slots", async () => {
     const off: Array<() => void> = [];
+    let mounts = 0;
+    let cleanups = 0;
 
     const { setup } = await setupSlotTest(
       (registry) => {
@@ -111,12 +112,16 @@ describe("slot repros without preload", () => {
 
         const Fallback = () => {
           onMount(() => {
-            console.log(`[slot-repro-1] fallback mount listenerCount=${registry.renderer.listenerCount("selection")}`);
+            mounts += 1;
+            console.log(
+              `[slot-stable-1] fallback mount #${mounts} listenerCount=${registry.renderer.listenerCount("selection")}`,
+            );
           });
 
           onCleanup(() => {
+            cleanups += 1;
             console.log(
-              `[slot-repro-1] fallback cleanup listenerCount=${registry.renderer.listenerCount("selection")}`,
+              `[slot-stable-1] fallback cleanup #${cleanups} listenerCount=${registry.renderer.listenerCount("selection")}`,
             );
           });
 
@@ -147,33 +152,30 @@ describe("slot repros without preload", () => {
       await setup.renderOnce();
 
       const baseline = setup.renderer.listenerCount("selection");
-      counts.push(baseline);
-      console.log(`[slot-repro-1] baseline listeners=${baseline}`);
+      console.log(`[slot-stable-1] baseline listeners=${baseline}`);
 
       const owner = off[0];
       if (!owner) throw new Error("missing owner unregister");
       owner();
-      counts.push(setup.renderer.listenerCount("selection"));
-      console.log(`[slot-repro-1] after owner unregister listeners=${setup.renderer.listenerCount("selection")}`);
+      console.log(`[slot-stable-1] after owner unregister listeners=${setup.renderer.listenerCount("selection")}`);
 
       for (const [i, item] of off.slice(1).entries()) {
         item();
-        const current = setup.renderer.listenerCount("selection");
-        counts.push(current);
-        console.log(`[slot-repro-1] after sidebar-${i} unregister listeners=${current}`);
+        console.log(
+          `[slot-stable-1] after sidebar-${i} unregister listeners=${setup.renderer.listenerCount("selection")}`,
+        );
       }
 
-      const peak = Math.max(...counts);
-      console.log(`[slot-repro-1] immediate peak listeners=${peak}`);
-
+      await setup.renderOnce();
       await Bun.sleep(0);
       await setup.renderOnce();
 
       const settled = setup.renderer.listenerCount("selection");
-      console.log(`[slot-repro-1] settled listeners=${settled}`);
+      console.log(`[slot-stable-1] settled listeners=${settled} mounts=${mounts} cleanups=${cleanups}`);
 
-      expect(peak).toBeGreaterThan(10);
-      expect(settled).toBeLessThanOrEqual(1);
+      expect(mounts).toBe(1);
+      expect(cleanups).toBe(0);
+      expect(settled).toBe(1);
     } finally {
       if (!setup.renderer.isDestroyed) {
         setup.renderer.destroy();
@@ -181,7 +183,7 @@ describe("slot repros without preload", () => {
     }
   });
 
-  it("REPRO #2: fallback remounts repeatedly on unrelated slot notifications", async () => {
+  it("does not remount replace fallback for unrelated slot order updates", async () => {
     let mounts = 0;
     let cleanups = 0;
 
@@ -211,12 +213,12 @@ describe("slot repros without preload", () => {
         const FallbackProbe = () => {
           onMount(() => {
             mounts += 1;
-            console.log(`[slot-repro-2] fallback mount #${mounts}`);
+            console.log(`[slot-stable-2] fallback mount #${mounts}`);
           });
 
           onCleanup(() => {
             cleanups += 1;
-            console.log(`[slot-repro-2] fallback cleanup #${cleanups}`);
+            console.log(`[slot-stable-2] fallback cleanup #${cleanups}`);
           });
 
           return text(useRenderer(), "fallback-probe");
@@ -244,11 +246,11 @@ describe("slot repros without preload", () => {
 
     try {
       await setup.renderOnce();
-      console.log(`[slot-repro-2] after initial render mounts=${mounts} cleanups=${cleanups}`);
+      console.log(`[slot-stable-2] after initial render mounts=${mounts} cleanups=${cleanups}`);
 
       registry.unregister("statusbar-owner");
       await setup.renderOnce();
-      console.log(`[slot-repro-2] after owner removal mounts=${mounts} cleanups=${cleanups}`);
+      console.log(`[slot-stable-2] after owner removal mounts=${mounts} cleanups=${cleanups}`);
 
       registry.updateOrder("sidebar-only", 1);
       registry.updateOrder("sidebar-only", 2);
@@ -260,10 +262,10 @@ describe("slot repros without preload", () => {
       await Bun.sleep(0);
       await setup.renderOnce();
 
-      console.log(`[slot-repro-2] after sidebar updates mounts=${mounts} cleanups=${cleanups}`);
+      console.log(`[slot-stable-2] after sidebar updates mounts=${mounts} cleanups=${cleanups}`);
 
-      expect(mounts).toBeGreaterThan(1);
-      expect(cleanups).toBeGreaterThan(0);
+      expect(mounts).toBe(1);
+      expect(cleanups).toBe(0);
     } finally {
       if (!setup.renderer.isDestroyed) {
         setup.renderer.destroy();

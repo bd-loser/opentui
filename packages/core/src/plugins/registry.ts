@@ -205,16 +205,10 @@ export class SlotRegistry<TNode, TSlots extends object, TContext extends PluginC
       return run()
     } finally {
       this.batchDepth -= 1
-      if (this.batchDepth > 0) {
-        return
+      if (this.batchDepth === 0 && this.batchedNotify) {
+        this.batchedNotify = false
+        this.flushListeners()
       }
-
-      if (!this.batchedNotify) {
-        return
-      }
-
-      this.batchedNotify = false
-      this.flushListeners()
     }
   }
 

@@ -38,11 +38,7 @@ import {
   parsePixelResolution,
 } from "./lib/terminal-capability-detection.js"
 import { type Clock, type TimerHandle, SystemClock } from "./lib/clock.js"
-import {
-  StdinParser,
-  type StdinEvent,
-  type StdinParserProtocolContext,
-} from "./lib/stdin-parser.js"
+import { StdinParser, type StdinEvent, type StdinParserProtocolContext } from "./lib/stdin-parser.js"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -823,12 +819,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const { screenMode, footerHeight, externalOutputMode } = resolveModes(config)
     this._externalOutputMode = externalOutputMode
 
-    const initialGeometry = calculateRenderGeometry(
-      screenMode,
-      this._terminalWidth,
-      this._terminalHeight,
-      footerHeight,
-    )
+    const initialGeometry = calculateRenderGeometry(screenMode, this._terminalWidth, this._terminalHeight, footerHeight)
 
     this.width = initialGeometry.renderWidth
     this.height = initialGeometry.renderHeight
@@ -1337,10 +1328,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const rootRenderable = snapshot.root
     const snapshotWidth = this.getSnapshotDimension(snapshot.width, rootRenderable.width, "width")
     const snapshotHeight = this.getSnapshotDimension(snapshot.height, rootRenderable.height, "height")
-    const snapshotRowColumns = Math.min(
-      Math.max(Math.trunc(snapshot.rowColumns ?? snapshotWidth), 0),
-      snapshotWidth,
-    )
+    const snapshotRowColumns = Math.min(Math.max(Math.trunc(snapshot.rowColumns ?? snapshotWidth), 0), snapshotWidth)
     const startOnNewLine = snapshot.startOnNewLine ?? true
     const trailingNewline = snapshot.trailingNewline ?? true
     const snapshotRoot = new RootRenderable(snapshotContext)
@@ -1501,11 +1489,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const resolvedEncoding = typeof encoding === "string" ? encoding : undefined
     const text = typeof chunk === "string" ? chunk : (chunk?.toString(resolvedEncoding) ?? "")
 
-    if (
-      this._externalOutputMode === "capture-stdout" &&
-      this._screenMode === "split-footer" &&
-      this._splitHeight > 0
-    ) {
+    if (this._externalOutputMode === "capture-stdout" && this._screenMode === "split-footer" && this._splitHeight > 0) {
       const commits = this.createStdoutSnapshotCommits(text)
       for (const commit of commits) {
         this.externalOutputQueue.writeSnapshot(commit)

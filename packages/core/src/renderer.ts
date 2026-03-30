@@ -1272,7 +1272,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (previousMode === "capture-stdout" && mode === "passthrough" && this._splitHeight > 0) {
-      this.flushPendingSplitOutputBeforeTransition(true)
+      this.flushPendingSplitOutputBeforeTransition()
     }
 
     this._externalOutputMode = mode
@@ -1280,6 +1280,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (this._screenMode === "split-footer" && this._splitHeight > 0 && mode === "capture-stdout") {
       this.resetSplitScrollback(this.getSplitCursorSeedRows())
+      return
+    }
+
+    if (
+      this._screenMode === "split-footer" &&
+      this._splitHeight > 0 &&
+      previousMode === "capture-stdout" &&
+      mode === "passthrough"
+    ) {
       return
     }
 

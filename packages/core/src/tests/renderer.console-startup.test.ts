@@ -381,6 +381,50 @@ test("CliRenderer flushes captured output before switching to passthrough in spl
   splitCommitSpy.mockRestore()
 })
 
+test("CliRenderer preserves split render offset when switching to passthrough", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any).stdout.write("seed\n")
+  await result.renderOnce()
+
+  const before = (renderer as any).renderOffset
+  const pinned = (renderer as any)._terminalHeight - (renderer as any)._splitHeight
+
+  renderer.externalOutputMode = "passthrough"
+
+  expect(before).toBeGreaterThan(0)
+  expect(before).toBeLessThanOrEqual(pinned)
+  expect((renderer as any).renderOffset).toBe(before)
+})
+
+test("CliRenderer does not force split repaint when switching to passthrough with no pending output", async () => {
+  const result = await createTestRenderer({
+    screenMode: "split-footer",
+    footerHeight: 6,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  const lib = (renderer as any).lib
+  const repaintSpy = spyOn(lib, "repaintSplitFooter")
+
+  expect((renderer as any).externalOutputQueue.size).toBe(0)
+
+  renderer.externalOutputMode = "passthrough"
+
+  expect(repaintSpy).toHaveBeenCalledTimes(0)
+  repaintSpy.mockRestore()
+})
+
 test("CliRenderer flushes pending split output before resize applies new geometry", async () => {
   const result = await createTestRenderer({
     width: 40,

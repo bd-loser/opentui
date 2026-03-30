@@ -103,3 +103,23 @@ test("loop() clamps negative deltaTime after a backward clock jump", async () =>
 
   expect(deltas).toEqual([0])
 })
+
+test("start() does not double-schedule frames when a render was already queued", async () => {
+  let renderCalls = 0
+
+  // @ts-expect-error - intercept private render method in regression test
+  renderer.renderNative = () => {
+    renderCalls++
+  }
+
+  renderer.requestRender()
+  renderer.start()
+
+  clock.advance(1000)
+  await Promise.resolve()
+
+  // @ts-expect-error - inspect private manual clock timers in regression test
+  expect(clock.timers.size).toBe(1)
+  expect(renderCalls).toBeGreaterThanOrEqual(25)
+  expect(renderCalls).toBeLessThanOrEqual(40)
+})

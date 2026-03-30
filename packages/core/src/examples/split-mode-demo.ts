@@ -6,7 +6,6 @@ import {
   createCliRenderer,
   type CliRenderer,
   type KeyEvent,
-  type RenderContext,
   type ScrollbackRenderContext,
   type ScrollbackSnapshot,
   type ScrollbackWriter,
@@ -32,20 +31,9 @@ const WALL_STREAM_PASSAGES: WallLyricPassage[] = [
   {
     song: "In the Flesh?",
     lines: [
-      "So ya",
-      "Thought ya",
-      "Might like to go to the show",
+      "So ya thought ya might like to go to the show",
       "To feel the warm thrill of confusion",
       "That space cadet glow",
-    ],
-  },
-  {
-    song: "The Thin Ice",
-    lines: [
-      "Mamma loves her baby",
-      "And Daddy loves you too",
-      "And the sea may look warm to you babe",
-      "And the sky may look blue",
     ],
   },
   {
@@ -53,7 +41,7 @@ const WALL_STREAM_PASSAGES: WallLyricPassage[] = [
     lines: [
       "We don't need no education",
       "We don't need no thought control",
-      "No dark sarcasm in the class room",
+      "No dark sarcasm in the classroom",
       "Teacher leave us kids alone",
     ],
   },
@@ -65,39 +53,6 @@ const WALL_STREAM_PASSAGES: WallLyricPassage[] = [
       "Mother will they put me in the firing line",
       "Oooh is it just a waste of time",
     ],
-  },
-  {
-    song: "Goodbye Blue Sky",
-    lines: [
-      "Did, did, did, did you see the frightened ones",
-      "Did, did, did, did you hear the falling bombs",
-      "When the promise of a brave new world unfurled beneath a clear blue sky",
-      "The flames are all long gone",
-      "But the pain lingers on",
-    ],
-  },
-  {
-    song: "Empty Spaces",
-    lines: [
-      "What shall we use to fill the empty spaces where we used to talk",
-      "Shall we set out across this sea of faces in search of more and more applause",
-      "But never relax at all",
-      "With our backs to the wall",
-    ],
-  },
-  {
-    song: "One of My Turns",
-    lines: [
-      "Day after day, love turns grey",
-      "Nothing is very much fun anymore",
-      "Would you like to watch TV?",
-      "Would you like something to eat?",
-      "Why are you running away?",
-    ],
-  },
-  {
-    song: "Goodbye Cruel World",
-    lines: ["Goodbye cruel world", "I'm leaving you today", "Goodbye"],
   },
   {
     song: "Hey You",
@@ -131,16 +86,6 @@ const WALL_STREAM_PASSAGES: WallLyricPassage[] = [
     ],
   },
   {
-    song: "The Trial",
-    lines: [
-      "Good morning Worm your honour",
-      "The prisoner who now stands before you",
-      "Was caught red handed showing feelings",
-      "In all my years of judging I have never heard before of someone more deserving",
-      "Tear down the wall",
-    ],
-  },
-  {
     song: "Outside the Wall",
     lines: [
       "All alone, or in twos",
@@ -152,44 +97,12 @@ const WALL_STREAM_PASSAGES: WallLyricPassage[] = [
   },
 ]
 
-const WALL_DISK_ONE_TRACKS = [
-  "In the Flesh?",
-  "The Thin Ice",
-  "Another Brick in the Wall (Part 1)",
-  "The Happiest Days of Our Lives",
-  "Another Brick in the Wall (Part 2)",
-  "Mother",
-  "Goodbye Blue Sky",
-  "Empty Spaces",
-  "Young Lust",
-  "One of My Turns",
-  "Don't Leave Me Now",
-  "Another Brick in the Wall (Part 3)",
-  "Goodbye Cruel World",
-]
-
-const WALL_DISK_TWO_TRACKS = [
-  "Hey You",
-  "Is There Anybody Out There?",
-  "Nobody Home",
-  "Vera",
-  "Bring the Boys Back Home",
-  "Comfortably Numb",
-  "The Show Must Go On",
-  "In the Flesh",
-  "Run Like Hell",
-  "Waiting for the Worms",
-  "Stop",
-  "The Trial",
-  "Outside the Wall",
-]
-
 const WALL_ASSISTANT_LINES = [
   "Hello, is there anybody in there\njust nod if you can hear me",
-  "Hey you! with your ears against the wall\nWaiting for someone to call out would you touch me",
-  "The show must go on\nGoodbye cruel world",
+  "Hey you! with your ears against the wall",
+  "The show must go on",
   "All in all you're just another brick in the wall",
-  "All alone, or in twos\nThe ones who really love you walk up and down outside the wall",
+  "All alone, or in twos",
 ]
 
 type DemoMode = "split-footer" | "fullscreen"
@@ -282,18 +195,6 @@ interface BoxMessageEntry {
   text: string
   timestamp: Date
   palette: DemoPalette
-}
-
-interface ToolCardEntry {
-  title: string
-  rows: string[]
-  palette: DemoPalette
-}
-
-interface RenderableSnapshotEntry {
-  width: number
-  height: number
-  build: (context: RenderContext) => BoxRenderable
 }
 
 let snapshotNodeCounter = 0
@@ -504,66 +405,6 @@ function buildSimpleTextBoxSnapshot(entry: BoxMessageEntry, ctx: ScrollbackRende
     root: box,
     width: boxWidth,
     height: boxHeight,
-  }
-}
-
-function buildToolCardSnapshot(entry: ToolCardEntry, ctx: ScrollbackRenderContext): ScrollbackSnapshot {
-  const cardWidth = Math.max(24, Math.min(ctx.width, 80))
-  const bodyWidth = Math.max(1, cardWidth - 2)
-  const lines: string[] = []
-
-  entry.rows.forEach((row, index) => {
-    lines.push(...wrapText(row, bodyWidth))
-    if (index < entry.rows.length - 1) {
-      lines.push("")
-    }
-  })
-
-  const cardHeight = Math.max(3, lines.length + 2)
-
-  const card = new BoxRenderable(ctx.renderContext, {
-    id: `split-tool-card-${snapshotNodeCounter++}`,
-    position: "absolute",
-    left: 0,
-    top: 0,
-    width: cardWidth,
-    height: cardHeight,
-    border: true,
-    borderStyle: "double",
-    borderColor: entry.palette.assistantBorder,
-    backgroundColor: "transparent",
-    title: truncateToWidth(entry.title, Math.max(1, cardWidth - 4)),
-  })
-
-  const body = new TextRenderable(ctx.renderContext, {
-    id: `split-tool-card-text-${snapshotNodeCounter++}`,
-    position: "absolute",
-    left: 1,
-    top: 1,
-    width: bodyWidth,
-    height: Math.max(1, cardHeight - 2),
-    content: lines.join("\n"),
-    fg: entry.palette.messageText,
-  })
-
-  card.add(body)
-
-  return {
-    root: card,
-    width: cardWidth,
-    height: cardHeight,
-  }
-}
-
-function buildRenderableSnapshot(entry: RenderableSnapshotEntry, ctx: ScrollbackRenderContext): ScrollbackSnapshot {
-  const width = Math.max(1, Math.min(entry.width, ctx.width))
-  const height = Math.max(1, entry.height)
-  const root = entry.build(ctx.renderContext)
-
-  return {
-    root,
-    width,
-    height,
   }
 }
 
@@ -899,128 +740,6 @@ class SplitFooterDemo {
     )
   }
 
-  private publishToolCard(title: string, rows: string[]): void {
-    const paletteSnapshot: DemoPalette = { ...this.palette }
-
-    this.enqueueScrollback(
-      (ctx) =>
-        buildToolCardSnapshot(
-          {
-            title,
-            rows,
-            palette: paletteSnapshot,
-          },
-          ctx,
-        ),
-      "failed to publish tool card",
-    )
-  }
-
-  private publishRenderableSnapshot(
-    width: number,
-    height: number,
-    build: (context: RenderContext) => BoxRenderable,
-  ): void {
-    this.enqueueScrollback(
-      (ctx) => buildRenderableSnapshot({ width, height, build }, ctx),
-      "failed to publish renderable snapshot",
-    )
-  }
-
-  private publishTreeSnapshot(title: string): void {
-    const paletteSnapshot: DemoPalette = { ...this.palette }
-    const snapshotWidth = Math.max(34, Math.min(this.renderer.width, 88))
-    const snapshotHeight = 11
-
-    this.publishRenderableSnapshot(snapshotWidth, snapshotHeight, (snapshotContext) => {
-      const frame = new BoxRenderable(snapshotContext, {
-        id: `split-tree-frame-${snapshotNodeCounter++}`,
-        position: "absolute",
-        left: 0,
-        top: 0,
-        width: snapshotWidth,
-        height: snapshotHeight,
-        border: true,
-        borderStyle: "double",
-        borderColor: paletteSnapshot.assistantBorder,
-        backgroundColor: "transparent",
-        title: title,
-      })
-
-      const leftPanelWidth = Math.max(12, Math.floor((snapshotWidth - 7) * 0.5))
-      const rightPanelLeft = 2 + leftPanelWidth + 1
-      const rightPanelWidth = Math.max(8, snapshotWidth - rightPanelLeft - 2)
-
-      const leftPanel = new BoxRenderable(snapshotContext, {
-        id: `split-tree-left-${snapshotNodeCounter++}`,
-        position: "absolute",
-        left: 2,
-        top: 3,
-        width: leftPanelWidth,
-        height: 5,
-        border: true,
-        borderStyle: "single",
-        borderColor: paletteSnapshot.systemBorder,
-        backgroundColor: "transparent",
-        title: "disk 1",
-      })
-
-      const rightPanel = new BoxRenderable(snapshotContext, {
-        id: `split-tree-right-${snapshotNodeCounter++}`,
-        position: "absolute",
-        left: rightPanelLeft,
-        top: 3,
-        width: rightPanelWidth,
-        height: 5,
-        border: true,
-        borderStyle: "single",
-        borderColor: paletteSnapshot.userBorder,
-        backgroundColor: "transparent",
-        title: "disk 2",
-      })
-
-      const leftText = new TextRenderable(snapshotContext, {
-        id: `split-tree-left-text-${snapshotNodeCounter++}`,
-        position: "absolute",
-        left: 3,
-        top: 4,
-        width: Math.max(1, leftPanelWidth - 2),
-        height: 3,
-        content: "In the Flesh?\nThe Thin Ice\nAnother Brick Pt. 2",
-        fg: paletteSnapshot.messageText,
-      })
-
-      const rightText = new TextRenderable(snapshotContext, {
-        id: `split-tree-right-text-${snapshotNodeCounter++}`,
-        position: "absolute",
-        left: rightPanelLeft + 1,
-        top: 5,
-        width: Math.max(1, rightPanelWidth - 2),
-        height: 2,
-        content: "Hey You / Nobody Home\nComfortably Numb / The Trial",
-        fg: paletteSnapshot.messageText,
-      })
-
-      const footerText = new TextRenderable(snapshotContext, {
-        id: `split-tree-footer-text-${snapshotNodeCounter++}`,
-        position: "absolute",
-        left: 2,
-        top: 9,
-        width: Math.max(1, snapshotWidth - 4),
-        height: 1,
-        content: "all in all it's just another brick in the wall",
-        fg: paletteSnapshot.helpText,
-      })
-
-      frame.add(leftPanel)
-      frame.add(rightPanel)
-      frame.add(leftText)
-      frame.add(rightText)
-      frame.add(footerText)
-      return frame
-    })
-  }
-
   private getPassage(index: number): WallLyricPassage {
     const total = WALL_STREAM_PASSAGES.length
     const safeIndex = ((index % total) + total) % total
@@ -1028,17 +747,17 @@ class SplitFooterDemo {
   }
 
   private passageText(passage: WallLyricPassage): string {
-    return passage.lines.join("\n")
+    return `${passage.song}\n${passage.lines.join("\n")}`
   }
 
   private publishWelcomeMessages(): void {
     this.publishMessage(
       "system",
-      `Lyric cue pack loaded. Width ${this.renderer.width}. Use /demo for a full Disc 1 -> Disc 2 sequence.`,
+      `Lyric cue pack loaded. Width ${this.renderer.width}. Use /demo for a guided mini medley.`,
       false,
     )
 
-    this.publishMessage("system", "Stream mode now follows an ordered narrative arc, not random single lines.", false)
+    this.publishMessage("system", "Stream mode rotates through a short ordered setlist.", false)
   }
 
   private syncStreamLoop(): void {
@@ -1106,9 +825,7 @@ class SplitFooterDemo {
       [
         "Commands:",
         "/help - show this command guide",
-        "/demo - append a lyric medley",
-        "/card - append a setlist card component",
-        "/tree - append a stage-map snapshot",
+        "/demo - append a compact lyric medley",
         "/mouse on|off|toggle - toggle mouse handling",
         "/stream on|off|toggle - control stream output",
         "/speed <ms> - set stream interval",
@@ -1121,25 +838,13 @@ class SplitFooterDemo {
   }
 
   private publishDemoTranscript(): void {
-    const discOneSequence = [0, 2, 4, 5, 7]
-    const discTwoSequence = [8, 10, 11, 12]
+    const medleySequence = [0, 1, 2, 3, 4, 5, 6]
 
-    this.publishMessage("system", "Disc 1 sequence:", false)
-    discOneSequence.forEach((index) => {
+    this.publishMessage("system", "Mini medley:", false)
+    medleySequence.forEach((index) => {
       this.publishMessage("assistant", this.passageText(this.getPassage(index)))
     })
 
-    this.publishMessage("system", "Disc 2 sequence:", false)
-    discTwoSequence.forEach((index) => {
-      this.publishMessage("assistant", this.passageText(this.getPassage(index)))
-    })
-
-    this.publishToolCard("Setlist", [
-      `Disk 1 opener: ${WALL_DISK_ONE_TRACKS[0]} -> ${WALL_DISK_ONE_TRACKS[1]} -> ${WALL_DISK_ONE_TRACKS[2]}`,
-      `Disk 2 opener: ${WALL_DISK_TWO_TRACKS[0]} -> ${WALL_DISK_TWO_TRACKS[1]} -> ${WALL_DISK_TWO_TRACKS[2]}`,
-      "Finale: Outside the Wall",
-    ])
-    this.publishTreeSnapshot("snapshot: stage map")
     this.publishMessage(
       "system",
       "All alone, or in twos, the ones who really love you walk up and down outside the wall.",
@@ -1160,25 +865,6 @@ class SplitFooterDemo {
 
       case "/demo": {
         this.publishDemoTranscript()
-        return
-      }
-
-      case "/card": {
-        const currentPassage = this.getPassage(this.streamCount)
-        const nextPassage = this.getPassage(this.streamCount + 1)
-
-        this.publishToolCard("Cue card", [
-          `${currentPassage.song} -> ${nextPassage.song}`,
-          currentPassage.lines.slice(0, 2).join(" / "),
-          nextPassage.lines[0] ?? "",
-        ])
-        this.refreshStatus("tool card queued")
-        return
-      }
-
-      case "/tree": {
-        this.publishTreeSnapshot("snapshot: stage map")
-        this.refreshStatus("tree snapshot queued")
         return
       }
 

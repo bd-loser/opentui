@@ -245,6 +245,7 @@ test("special keys via keyInput events", async () => {
 test("raw \\b becomes ctrl+backspace in Windows Terminal", async () => {
   const previousWtSession = process.env.WT_SESSION
   process.env.WT_SESSION = "test-session"
+  ;(currentRenderer as any).updateRawBackspaceNormalization()
 
   try {
     const resultBackspace = await triggerInput("\b")
@@ -271,6 +272,7 @@ test("raw \\b becomes ctrl+backspace in Windows Terminal", async () => {
 test("raw DEL stays plain backspace in Windows Terminal", async () => {
   const previousWtSession = process.env.WT_SESSION
   process.env.WT_SESSION = "test-session"
+  ;(currentRenderer as any).updateRawBackspaceNormalization()
 
   try {
     const resultBackspace = await triggerInput("\x7f")
@@ -301,6 +303,7 @@ test("raw \\b becomes ctrl+backspace from Windows Terminal capability fallback",
   const rendererWithPrivateState = currentRenderer as any
   const previousCaps = rendererWithPrivateState._capabilities
   rendererWithPrivateState._capabilities = { terminal: { name: "Windows Terminal" } }
+  rendererWithPrivateState.updateRawBackspaceNormalization()
 
   try {
     const resultBackspace = await triggerInput("\b")

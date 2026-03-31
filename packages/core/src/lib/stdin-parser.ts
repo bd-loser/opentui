@@ -53,7 +53,7 @@ export interface StdinParserOptions {
   armTimeouts?: boolean
   onTimeoutFlush?: () => void
   useKittyKeyboard?: boolean
-  treatRawBackspaceAsCtrlBackspace?: boolean | (() => boolean)
+  treatRawBackspaceAsCtrlBackspace?: boolean
   protocolContext?: Partial<StdinParserProtocolContext>
   clock?: Clock
 }
@@ -501,7 +501,7 @@ export class StdinParser {
   private readonly armTimeouts: boolean
   private readonly onTimeoutFlush: (() => void) | null
   private readonly useKittyKeyboard: boolean
-  private readonly treatRawBackspaceAsCtrlBackspace: () => boolean
+  private treatRawBackspaceAsCtrlBackspace: boolean
   private readonly mouseParser = new MouseParser()
   private readonly clock: Clock
   private protocolContext: StdinParserProtocolContext
@@ -532,11 +532,7 @@ export class StdinParser {
     this.armTimeouts = options.armTimeouts ?? true
     this.onTimeoutFlush = options.onTimeoutFlush ?? null
     this.useKittyKeyboard = options.useKittyKeyboard ?? true
-    const treatRawBackspaceAsCtrlBackspace = options.treatRawBackspaceAsCtrlBackspace ?? false
-    this.treatRawBackspaceAsCtrlBackspace =
-      typeof treatRawBackspaceAsCtrlBackspace === "function"
-        ? treatRawBackspaceAsCtrlBackspace
-        : () => treatRawBackspaceAsCtrlBackspace
+    this.treatRawBackspaceAsCtrlBackspace = options.treatRawBackspaceAsCtrlBackspace ?? false
     this.clock = options.clock ?? SYSTEM_CLOCK
     this.protocolContext = {
       ...DEFAULT_PROTOCOL_CONTEXT,
@@ -556,6 +552,11 @@ export class StdinParser {
     this.protocolContext = { ...this.protocolContext, ...patch }
     this.reconcileDeferredStateWithProtocolContext()
     this.reconcileTimeoutState()
+  }
+
+  public setTreatRawBackspaceAsCtrlBackspace(treatRawBackspaceAsCtrlBackspace: boolean): void {
+    this.ensureAlive()
+    this.treatRawBackspaceAsCtrlBackspace = treatRawBackspaceAsCtrlBackspace
   }
 
   // Feeds raw stdin bytes into the parser. Converts as much as possible into
@@ -1555,7 +1556,7 @@ export class StdinParser {
         parsed.raw === "\b" &&
         parsed.name === "backspace" &&
         !parsed.ctrl &&
-        this.treatRawBackspaceAsCtrlBackspace()
+        this.treatRawBackspaceAsCtrlBackspace
       ) {
         parsed.ctrl = true
       }

@@ -19,6 +19,7 @@ type RespSnap = { type: "response"; protocol: string; sequence: string }
 type Snap = KeySnap | MouseSnap | PasteSnap | RespSnap
 
 const K_DEFAULTS = { ctrl: false, meta: false, shift: false, eventType: "press" }
+const TEST_TIMEOUT_MS = 10
 type KOpts = { raw?: string; ctrl?: boolean; meta?: boolean; shift?: boolean; eventType?: string }
 
 function k(name: string, opts: KOpts = {}): KeySnap {
@@ -77,7 +78,7 @@ function createParser(options: StdinParserOptions = {}): StdinParser {
 
 function createTimedParser(options: StdinParserOptions = {}): { parser: StdinParser; clock: ManualClock } {
   const clock = new ManualClock()
-  return { parser: new StdinParser({ armTimeouts: true, clock, ...options }), clock }
+  return { parser: new StdinParser({ armTimeouts: true, clock, timeoutMs: TEST_TIMEOUT_MS, ...options }), clock }
 }
 
 function snapshotEvent(event: StdinEvent): Snap {
@@ -1348,6 +1349,7 @@ describe("StdinParser", () => {
       parser = new StdinParser({
         armTimeouts: true,
         clock,
+        timeoutMs: TEST_TIMEOUT_MS,
         protocolContext: { explicitWidthCprActive: true },
         onTimeoutFlush: () => {
           timeoutFlushes += 1
@@ -1379,6 +1381,7 @@ describe("StdinParser", () => {
       parser = new StdinParser({
         armTimeouts: true,
         clock,
+        timeoutMs: TEST_TIMEOUT_MS,
         protocolContext: { privateCapabilityRepliesActive: true },
         onTimeoutFlush: () => {
           timeoutFlushes += 1
@@ -1659,7 +1662,21 @@ describe("StdinParser", () => {
   })
 
   describe("timeout behavior", () => {
-    test("timeout at exact boundary (9ms no fire, 10ms fires)", () => {
+    test("default timeout at exact boundary (19ms no fire, 20ms fires)", () => {
+      const clock = new ManualClock()
+      const parser = new StdinParser({ armTimeouts: true, clock })
+      try {
+        parser.push(Buffer.from("\x1b"))
+        clock.advance(19)
+        expect(snap(parser)).toEqual([])
+        clock.advance(1)
+        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("configured timeout at exact boundary (9ms no fire, 10ms fires)", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b"))
@@ -1695,6 +1712,7 @@ describe("StdinParser", () => {
       parser = new StdinParser({
         armTimeouts: true,
         clock,
+        timeoutMs: TEST_TIMEOUT_MS,
         protocolContext: { kittyKeyboardEnabled: true },
         onTimeoutFlush: () => {
           timeoutFlushes += 1
@@ -1726,6 +1744,7 @@ describe("StdinParser", () => {
       parser = new StdinParser({
         armTimeouts: true,
         clock,
+        timeoutMs: TEST_TIMEOUT_MS,
         onTimeoutFlush: () => {
           timeoutFlushes += 1
           parser.drain(() => {})

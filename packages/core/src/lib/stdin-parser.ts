@@ -95,9 +95,10 @@ interface PasteCollector {
   totalLength: number
 }
 
-// 10ms is enough to distinguish a lone ESC keypress from the start of an
-// escape sequence on all but the slowest connections.
-const DEFAULT_TIMEOUT_MS = 10
+// 20ms is to distinguish a lone ESC keypress from the start of an
+// escape sequence. Gemini/Claude uses 50ms, Codex uses 20ms, trying
+// this as a balanced default for now.
+const DEFAULT_TIMEOUT_MS = 20
 const DEFAULT_MAX_PENDING_BYTES = 64 * 1024
 const INITIAL_PENDING_CAPACITY = 256
 const ESC = 0x1b

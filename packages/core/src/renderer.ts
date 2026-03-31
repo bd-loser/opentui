@@ -767,7 +767,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const stdinParserMaxBufferBytes = config.stdinParserMaxBufferBytes ?? DEFAULT_STDIN_PARSER_MAX_BUFFER_BYTES
     this.stdinParser = new StdinParser({
-      timeoutMs: 10,
+      timeoutMs: 20,
       maxPendingBytes: stdinParserMaxBufferBytes,
       armTimeouts: true,
       onTimeoutFlush: () => {

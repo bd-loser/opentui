@@ -998,6 +998,21 @@ describe("StdinParser", () => {
       }
     })
 
+    test("partial kitty alternate-key CSI stays pending after timeout", () => {
+      const { parser, clock } = createTimedParser({ protocolContext: { kittyKeyboardEnabled: true } })
+      try {
+        parser.push(Buffer.from("\x1b[97:65;"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("6:1u"))
+        expect(snap(parser)).toEqual([k("a", { raw: "\x1b[97:65;6:1u", ctrl: true, shift: true })])
+      } finally {
+        parser.destroy()
+      }
+    })
+
     test("partial kitty CSI stays pending after timeout for higher modifier bits", () => {
       const { parser, clock } = createTimedParser({ protocolContext: { kittyKeyboardEnabled: true } })
       try {

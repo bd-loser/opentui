@@ -1552,12 +1552,7 @@ export class StdinParser {
   private emitKeyOrResponse(protocol: StdinResponseProtocol, raw: string): void {
     const parsed = parseKeypress(raw, { useKittyKeyboard: this.useKittyKeyboard })
     if (parsed) {
-      if (
-        parsed.raw === "\b" &&
-        parsed.name === "backspace" &&
-        !parsed.ctrl &&
-        this.treatRawBackspaceAsCtrlBackspace
-      ) {
+      if (parsed.raw === "\b" && parsed.name === "backspace" && !parsed.ctrl && this.treatRawBackspaceAsCtrlBackspace) {
         parsed.ctrl = true
       }
 

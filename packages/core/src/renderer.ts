@@ -1195,7 +1195,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.drainStdinParser()
       },
       useKittyKeyboard: useKittyForParsing,
-      treatRawBackspaceAsCtrlBackspace: () => this.isWindowsTerminalSession(),
+      treatRawBackspaceAsCtrlBackspace: this.isWindowsTerminalSession(),
       protocolContext: {
         kittyKeyboardEnabled: useKittyForParsing,
         privateCapabilityRepliesActive: false,
@@ -3095,6 +3095,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     })
     this.lib.setupTerminal(this.rendererPtr, this._screenMode === "alternate-screen")
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+    this.updateRawBackspaceNormalization()
 
     if (this.debugOverlay.enabled) {
       this.lib.setDebugOverlay(this.rendererPtr, true, this.debugOverlay.corner)
@@ -3214,6 +3215,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.lib.processCapabilityResponse(this.rendererPtr, sequence)
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+    this.updateRawBackspaceNormalization()
     if (this._capabilities?.terminal?.from_xtversion) {
       this.resolveXtVersionWaiters()
     }
@@ -3346,6 +3348,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const terminalName = this._capabilities?.terminal?.name?.toLowerCase()
     return terminalName === "windows terminal" || terminalName === "windows_terminal"
+  }
+
+  private updateRawBackspaceNormalization(): void {
+    this.stdinParser?.setTreatRawBackspaceAsCtrlBackspace(this.isWindowsTerminalSession())
   }
 
   private handleStdinParserFailure(error: unknown): void {

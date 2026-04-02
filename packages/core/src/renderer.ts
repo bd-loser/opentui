@@ -357,6 +357,11 @@ class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderCont
   public getSelection(): Selection | null {
     return null
   }
+  public get currentFocusedEditor(): EditBufferRenderable | null {
+    if (!this.currentFocusedRenderable) return null
+    if (!isEditBufferRenderable(this.currentFocusedRenderable)) return null
+    return this.currentFocusedRenderable
+  }
   public requestSelectionUpdate(): void {}
   public focusRenderable(renderable: Renderable): void {
     this.currentFocusedRenderable = renderable

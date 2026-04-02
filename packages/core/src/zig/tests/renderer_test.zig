@@ -1054,7 +1054,7 @@ test "renderer - commitSplitFooterSnapshot writes append before footer repaint i
     // 1) append payload is emitted in the same sync frame as repaint
     // 2) DECSTBM is active only during append when pinned
     // 3) footer repaint cursor move happens after append payload
-    _ = cli_renderer.commitSplitFooterSnapshot(snapshot, 11, false, true, 2, false);
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 11, false, true, 2, false, true, true);
 
     const output = cli_renderer.getLastOutputForTest();
     const append_index = std.mem.indexOf(u8, output, appended);
@@ -1121,7 +1121,7 @@ test "renderer - commitSplitFooterSnapshot settling phase moves footer downward"
     const appended = "settle";
     // During settling we intentionally avoid bounded DECSTBM and instead clear rows
     // that transition from footer surface to scrollback before append.
-    _ = cli_renderer.commitSplitFooterSnapshot(snapshot, 6, false, true, 3, false);
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 6, false, true, 3, false, true, true);
 
     const output = cli_renderer.getLastOutputForTest();
     const settling_clear_index = std.mem.indexOf(u8, output, "\x1b[1;1H\x1b[J");
@@ -1180,7 +1180,7 @@ test "renderer - commitSplitFooterSnapshot multiline settling enables bounded sc
     try snapshot.drawText("line-a", 0, 0, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
     try snapshot.drawText("line-b", 0, 1, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
 
-    _ = cli_renderer.commitSplitFooterSnapshot(snapshot, 6, false, true, 3, false);
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 6, false, true, 3, false, true, true);
 
     const output = cli_renderer.getLastOutputForTest();
     const expanded_region_index = std.mem.indexOf(u8, output, "\x1b[1;3r");
@@ -1263,7 +1263,7 @@ test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer
     try snapshot.drawText("SNAP", 0, 0, .{ 1.0, 0.5, 0.0, 1.0 }, .{ 0.0, 0.0, 0.0, 0.0 }, ansi.TextAttributes.BOLD);
     try snapshot.drawText("SHOT", 0, 1, .{ 0.2, 0.8, 0.9, 1.0 }, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
 
-    _ = cli_renderer.commitSplitFooterSnapshot(snapshot, 8, true, true, 2, false);
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 8, true, true, 2, false, true, true);
 
     const output = cli_renderer.getLastOutputForTest();
     const snapshot_text_index = std.mem.indexOf(u8, output, "SNAP");
@@ -1314,7 +1314,7 @@ test "renderer - commitSplitFooterSnapshot does not emit NUL padding for short r
     try snapshot.drawText("[tool:bash] Shell", 0, 0, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
     try snapshot.drawText("$ pwd", 0, 1, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
 
-    _ = cli_renderer.commitSplitFooterSnapshot(snapshot, 16, true, true, 2, false);
+    _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 16, true, true, 2, false, true, true);
 
     const output = cli_renderer.getLastOutputForTest();
     try std.testing.expect(std.mem.indexOfScalar(u8, output, 0) == null);

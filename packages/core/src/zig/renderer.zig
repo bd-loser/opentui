@@ -658,28 +658,6 @@ pub const CliRenderer = struct {
         return self.renderOffset;
     }
 
-    pub fn commitSplitFooterSnapshot(
-        self: *CliRenderer,
-        snapshot: *const OptimizedBuffer,
-        row_columns: u32,
-        start_on_new_line: bool,
-        trailing_newline: bool,
-        pinned_render_offset: u32,
-        force: bool,
-    ) u32 {
-        // Backward-compatible API: one call means one complete frame.
-        return self.commitSplitFooterSnapshotBatched(
-            snapshot,
-            row_columns,
-            start_on_new_line,
-            trailing_newline,
-            pinned_render_offset,
-            force,
-            true,
-            true,
-        );
-    }
-
     pub fn commitSplitFooterSnapshotBatched(
         self: *CliRenderer,
         snapshot: *const OptimizedBuffer,
@@ -737,16 +715,18 @@ pub const CliRenderer = struct {
             return self.renderOffset;
         }
 
-        // Defensive fallback: if caller forgot begin_frame, execute through the
-        // single-commit path instead of appending into undefined batch state.
+        // Defensive fallback: if caller forgot begin_frame, execute through a
+        // single-call frame instead of appending into undefined batch state.
         if (!self.splitBatchActive) {
-            return self.commitSplitFooterSnapshot(
+            return self.commitSplitFooterSnapshotBatched(
                 snapshot,
                 row_columns,
                 start_on_new_line,
                 trailing_newline,
                 pinned_render_offset,
                 force,
+                true,
+                true,
             );
         }
 

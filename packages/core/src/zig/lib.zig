@@ -302,11 +302,19 @@ export fn commitSplitFooterSnapshot(
     // JS passes rowColumns/startOnNewLine/trailingNewline per commit from
     // writeToScrollback or captured stdout chunking. This entrypoint is the ABI
     // boundary where that metadata enters the native split append algorithm.
-    // Preserve the original fast path for single-commit calls (begin+finalize in
-    // one invocation), but route multi-commit frames through the batched renderer
-    // path so sync/cursor framing happens exactly once per JS flush cycle.
+    // Route all commits through the batched renderer path so sync/cursor framing
+    // happens exactly once per JS flush cycle.
     if (beginFrame and finalizeFrame) {
-        return rendererPtr.commitSplitFooterSnapshot(snapshotBufferPtr, rowColumns, startOnNewLine, trailingNewline, pinnedRenderOffset, force);
+        return rendererPtr.commitSplitFooterSnapshotBatched(
+            snapshotBufferPtr,
+            rowColumns,
+            startOnNewLine,
+            trailingNewline,
+            pinnedRenderOffset,
+            force,
+            true,
+            true,
+        );
     }
 
     return rendererPtr.commitSplitFooterSnapshotBatched(

@@ -1,3 +1,6 @@
+import { readFileSync, realpathSync } from "node:fs"
+import { basename, dirname, isAbsolute } from "node:path"
+import { fileURLToPath } from "node:url"
 import { type BunPlugin } from "bun"
 import * as coreRuntime from "./index.js"
 
@@ -45,6 +48,22 @@ const exactSpecifierFilter = (specifier: string): RegExp => {
   return new RegExp(`^${escapeRegExp(specifier)}$`)
 }
 
+const exactPathFilter = (path: string): RegExp => {
+  const variants = new Set<string>([sourcePath(path), normalizeSourcePath(path)])
+
+  for (const variant of [...variants]) {
+    if (variant.startsWith("/var/")) {
+      variants.add(`/private${variant}`)
+    }
+
+    if (variant.startsWith("/private/var/")) {
+      variants.add(variant.slice("/private".length))
+    }
+  }
+
+  return new RegExp(`^(?:${[...variants].map(escapeRegExp).join("|")})(?:[?#].*)?$`)
+}
+
 export const runtimeModuleIdForSpecifier = (specifier: string): string => {
   return `${RUNTIME_MODULE_PREFIX}${encodeURIComponent(specifier)}`
 }
@@ -64,8 +83,39 @@ const sourcePath = (path: string): string => {
   return end === undefined ? path : path.slice(0, end)
 }
 
+const normalizeSourcePath = (path: string): string => {
+  const cleanPath = sourcePath(path)
+
+  try {
+    return realpathSync(cleanPath)
+  } catch {
+    return cleanPath
+  }
+}
+
 const isNodeModulesPath = (path: string): boolean => {
   return /(?:^|[/\\])node_modules(?:[/\\])/.test(path)
+}
+
+const nodeModulesPackageRootForPath = (path: string): string | null => {
+  let currentDir = dirname(path)
+
+  while (true) {
+    const parentDir = dirname(currentDir)
+    if (parentDir === currentDir) {
+      return null
+    }
+
+    if (basename(parentDir) === "node_modules") {
+      return currentDir
+    }
+
+    if (basename(dirname(parentDir)) === "node_modules" && basename(parentDir).startsWith("@")) {
+      return currentDir
+    }
+
+    currentDir = parentDir
+  }
 }
 
 const resolveRuntimePluginRewriteOptions = (
@@ -100,8 +150,6 @@ const runtimeLoaderForPath = (path: string): "js" | "ts" | "jsx" | "tsx" | null 
 
   return null
 }
-
-const runtimeSourceFilter = /\.(?:[cm]?js|[cm]?ts|jsx|tsx)(?:[?#].*)?$/
 
 const resolveImportSpecifierPatterns = [
   /(from\s+["'])([^"']+)(["'])/g,
@@ -180,6 +228,42 @@ const resolveFromParent = (specifier: string, parent: string): string | null => 
   }
 }
 
+const resolveSourcePathFromSpecifier = (specifier: string, importer: string): string | null => {
+  if (
+    specifier.startsWith("node:") ||
+    specifier.startsWith("bun:") ||
+    specifier.startsWith("http:") ||
+    specifier.startsWith("https:") ||
+    specifier.startsWith("data:") ||
+    specifier.startsWith(RUNTIME_MODULE_PREFIX)
+  ) {
+    return null
+  }
+
+  if (specifier.startsWith("file:")) {
+    return normalizeSourcePath(fileURLToPath(specifier))
+  }
+
+  if (isAbsolute(specifier)) {
+    return normalizeSourcePath(specifier)
+  }
+
+  const resolvedSpecifier = resolveFromParent(specifier, importer)
+  if (!resolvedSpecifier) {
+    return null
+  }
+
+  if (resolvedSpecifier.startsWith("file:")) {
+    return normalizeSourcePath(fileURLToPath(resolvedSpecifier))
+  }
+
+  if (isAbsolute(resolvedSpecifier)) {
+    return normalizeSourcePath(resolvedSpecifier)
+  }
+
+  return null
+}
+
 const rewriteImportsFromResolveParents = (code: string, resolveParentsByRecency: string[]): string => {
   if (resolveParentsByRecency.length === 0) {
     return code
@@ -230,6 +314,61 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
     name: "bun-plugin-opentui-runtime-modules",
     setup: (build) => {
       const resolveParentsByRecency: string[] = []
+      const installedRewriteLoaders = new Set<string>()
+      const nodeModulesBareRewritePackageRoots = new Set<string>()
+      const runtimeSpecifierRewriteNeededByPath = new Map<string, boolean>()
+
+      const installRewriteLoader = (path: string): void => {
+        const normalizedPath = normalizeSourcePath(path)
+        if (installedRewriteLoaders.has(normalizedPath)) {
+          return
+        }
+
+        installedRewriteLoaders.add(normalizedPath)
+
+        build.onLoad({ filter: exactPathFilter(normalizedPath) }, async (args) => {
+          const path = normalizeSourcePath(args.path)
+          const nodeModulesPath = isNodeModulesPath(path)
+          const shouldRewriteRuntimeSpecifiers = !nodeModulesPath || rewriteOptions.nodeModulesRuntimeSpecifiers
+          const shouldRewriteBareSpecifiers = !nodeModulesPath || rewriteOptions.nodeModulesBareSpecifiers
+          const loader = runtimeLoaderForPath(args.path)
+
+          if (!loader) {
+            throw new Error(`Unable to determine runtime loader for path: ${args.path}`)
+          }
+
+          const contents = await Bun.file(path).text()
+          const runtimeRewrittenContents = shouldRewriteRuntimeSpecifiers
+            ? rewriteRuntimeSpecifiers(contents, runtimeModuleIdsBySpecifier)
+            : contents
+
+          if (runtimeRewrittenContents !== contents && shouldRewriteBareSpecifiers) {
+            registerResolveParent(resolveParentsByRecency, path)
+          }
+
+          const transformedContents = shouldRewriteBareSpecifiers
+            ? rewriteImportsFromResolveParents(runtimeRewrittenContents, resolveParentsByRecency)
+            : runtimeRewrittenContents
+
+          return {
+            contents: transformedContents,
+            loader,
+          }
+        })
+      }
+
+      const needsRuntimeSpecifierRewrite = (path: string): boolean => {
+        const normalizedPath = normalizeSourcePath(path)
+        const cached = runtimeSpecifierRewriteNeededByPath.get(normalizedPath)
+        if (cached !== undefined) {
+          return cached
+        }
+
+        const contents = readFileSync(normalizedPath, "utf8")
+        const needsRewrite = rewriteRuntimeSpecifiers(contents, runtimeModuleIdsBySpecifier) !== contents
+        runtimeSpecifierRewriteNeededByPath.set(normalizedPath, needsRewrite)
+        return needsRewrite
+      }
 
       for (const [specifier, moduleEntry] of runtimeModules.entries()) {
         const moduleId = runtimeModuleIdsBySpecifier.get(specifier)
@@ -246,39 +385,43 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
         build.onResolve({ filter: exactSpecifierFilter(specifier) }, () => ({ path: moduleId }))
       }
 
-      build.onLoad({ filter: runtimeSourceFilter }, async (args) => {
-        const path = sourcePath(args.path)
-        const nodeModulesPath = isNodeModulesPath(path)
-        const shouldRewriteRuntimeSpecifiers = !nodeModulesPath || rewriteOptions.nodeModulesRuntimeSpecifiers
-        const shouldRewriteBareSpecifiers = !nodeModulesPath || rewriteOptions.nodeModulesBareSpecifiers
-
-        if (!shouldRewriteRuntimeSpecifiers && !shouldRewriteBareSpecifiers) {
+      build.onResolve({ filter: /.*/ }, (args) => {
+        if (runtimeModuleIdsBySpecifier.has(args.path) || args.path.startsWith(RUNTIME_MODULE_PREFIX)) {
           return undefined
         }
 
-        const loader = runtimeLoaderForPath(args.path)
-        if (!loader) {
-          throw new Error(`Unable to determine runtime loader for path: ${args.path}`)
+        const path = resolveSourcePathFromSpecifier(args.path, args.importer)
+        if (!path || !runtimeLoaderForPath(path)) {
+          return undefined
         }
 
-        const file = Bun.file(path)
-        const contents = await file.text()
-        const runtimeRewrittenContents = shouldRewriteRuntimeSpecifiers
-          ? rewriteRuntimeSpecifiers(contents, runtimeModuleIdsBySpecifier)
-          : contents
+        const nodeModulesPath = isNodeModulesPath(path)
 
-        if (runtimeRewrittenContents !== contents && shouldRewriteBareSpecifiers) {
-          registerResolveParent(resolveParentsByRecency, path)
+        if (!nodeModulesPath) {
+          installRewriteLoader(path)
+          return undefined
         }
 
-        const transformedContents = shouldRewriteBareSpecifiers
-          ? rewriteImportsFromResolveParents(runtimeRewrittenContents, resolveParentsByRecency)
-          : runtimeRewrittenContents
-
-        return {
-          contents: transformedContents,
-          loader,
+        if (!rewriteOptions.nodeModulesRuntimeSpecifiers && !rewriteOptions.nodeModulesBareSpecifiers) {
+          return undefined
         }
+
+        const packageRoot = nodeModulesPackageRootForPath(path)
+        if (rewriteOptions.nodeModulesBareSpecifiers && packageRoot && nodeModulesBareRewritePackageRoots.has(packageRoot)) {
+          installRewriteLoader(path)
+          return undefined
+        }
+
+        if (!rewriteOptions.nodeModulesRuntimeSpecifiers || !needsRuntimeSpecifierRewrite(path)) {
+          return undefined
+        }
+
+        if (rewriteOptions.nodeModulesBareSpecifiers && packageRoot) {
+          nodeModulesBareRewritePackageRoots.add(packageRoot)
+        }
+
+        installRewriteLoader(path)
+        return undefined
       })
     },
   }

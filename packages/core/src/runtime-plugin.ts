@@ -8,6 +8,11 @@ export type RuntimeModuleExports = Record<string, unknown>
 export type RuntimeModuleLoader = () => RuntimeModuleExports | Promise<RuntimeModuleExports>
 export type RuntimeModuleEntry = RuntimeModuleExports | RuntimeModuleLoader
 
+interface SourceAnalysis {
+  importSpecifiers: string[]
+  needsRuntimeSpecifierRewrite: boolean
+}
+
 export interface RuntimePluginRewriteOptions {
   nodeModulesRuntimeSpecifiers?: boolean
   nodeModulesBareSpecifiers?: boolean
@@ -83,14 +88,25 @@ const sourcePath = (path: string): string => {
   return end === undefined ? path : path.slice(0, end)
 }
 
+const normalizedSourcePathByPath = new Map<string, string>()
+
 const normalizeSourcePath = (path: string): string => {
   const cleanPath = sourcePath(path)
+  const cachedPath = normalizedSourcePathByPath.get(cleanPath)
+  if (cachedPath !== undefined) {
+    return cachedPath
+  }
+
+  let normalizedPath = cleanPath
 
   try {
-    return realpathSync(cleanPath)
+    normalizedPath = realpathSync(cleanPath)
   } catch {
-    return cleanPath
+    normalizedPath = cleanPath
   }
+
+  normalizedSourcePathByPath.set(cleanPath, normalizedPath)
+  return normalizedPath
 }
 
 const isNodeModulesPath = (path: string): boolean => {
@@ -403,7 +419,7 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
       const resolveParentsByRecency: string[] = []
       const installedRewriteLoaders = new Set<string>()
       const nodeModulesBareRewritePackageRoots = new Set<string>()
-      const runtimeSpecifierRewriteNeededByPath = new Map<string, boolean>()
+      const sourceAnalysisByPath = new Map<string, SourceAnalysis>()
       const nodeModulesRuntimeRewritePathsByPath = new Map<string, string[]>()
 
       const installRewriteLoader = (path: string): void => {
@@ -445,17 +461,22 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
         })
       }
 
-      const needsRuntimeSpecifierRewrite = (path: string): boolean => {
+      const analyzeSourcePath = (path: string): SourceAnalysis => {
         const normalizedPath = normalizeSourcePath(path)
-        const cached = runtimeSpecifierRewriteNeededByPath.get(normalizedPath)
-        if (cached !== undefined) {
-          return cached
+        const cachedAnalysis = sourceAnalysisByPath.get(normalizedPath)
+        if (cachedAnalysis) {
+          return cachedAnalysis
         }
 
         const contents = readFileSync(normalizedPath, "utf8")
-        const needsRewrite = rewriteRuntimeSpecifiers(contents, runtimeModuleIdsBySpecifier) !== contents
-        runtimeSpecifierRewriteNeededByPath.set(normalizedPath, needsRewrite)
-        return needsRewrite
+        const importSpecifiers = collectImportSpecifiers(contents)
+        const analysis = {
+          importSpecifiers,
+          needsRuntimeSpecifierRewrite: importSpecifiers.some((specifier) => runtimeModuleIdsBySpecifier.has(specifier)),
+        }
+
+        sourceAnalysisByPath.set(normalizedPath, analysis)
+        return analysis
       }
 
       const collectNodeModulesRuntimeRewritePaths = (path: string, visiting = new Set<string>()): string[] => {
@@ -477,13 +498,13 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
         visiting.add(normalizedPath)
 
         const rewritePaths = new Set<string>()
-        const contents = readFileSync(normalizedPath, "utf8")
+        const analysis = analyzeSourcePath(normalizedPath)
 
-        if (needsRuntimeSpecifierRewrite(normalizedPath)) {
+        if (analysis.needsRuntimeSpecifierRewrite) {
           rewritePaths.add(normalizedPath)
         }
 
-        for (const specifier of collectImportSpecifiers(contents)) {
+        for (const specifier of analysis.importSpecifiers) {
           const resolvedPath = resolveSourcePathFromSpecifier(specifier, normalizedPath)
           if (!resolvedPath || !isNodeModulesEsmPath(resolvedPath)) {
             continue
@@ -547,7 +568,7 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
           return undefined
         }
 
-        if (!rewriteOptions.nodeModulesRuntimeSpecifiers || !needsRuntimeSpecifierRewrite(path)) {
+        if (!rewriteOptions.nodeModulesRuntimeSpecifiers || !analyzeSourcePath(path).needsRuntimeSpecifierRewrite) {
           return undefined
         }
 

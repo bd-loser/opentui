@@ -369,6 +369,19 @@ const rewriteRuntimeSpecifiers = (code: string, runtimeModuleIdsBySpecifier: Map
   })
 }
 
+/*
+ * Exposes runtime-only modules like `@opentui/core`, `@opentui/solid`, and `solid-js` to
+ * externally loaded plugins by rewriting matching ESM imports to virtual runtime module ids.
+ *
+ * The resolver looks more complex than the rewrite itself because Bun currently breaks CJS
+ * interop when a CJS file is processed through plugin `onLoad`:
+ * https://github.com/oven-sh/bun/issues/21369
+ *
+ * That means we cannot safely blanket-rewrite every file in `node_modules`. Instead we only
+ * register exact `onLoad` handlers for ESM files that actually need runtime-module rewriting,
+ * and we recursively pre-register matching ESM descendants in `node_modules` so package-to-
+ * package ESM imports still work without touching unrelated CJS dependencies.
+ */
 export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): BunPlugin {
   const runtimeModules = new Map<string, RuntimeModuleEntry>()
   runtimeModules.set(CORE_RUNTIME_SPECIFIER, input.core ?? (coreRuntime as RuntimeModuleExports))

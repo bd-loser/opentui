@@ -203,15 +203,6 @@ describe("runtime plugin", () => {
     })
 
     const stdout = result.stdout.toString().trim()
-    const stderr = result.stderr.toString().trim()
-
-    if (stdout) {
-      console.debug(`[runtime-plugin.fixture] stdout:\n${stdout}`)
-    }
-
-    if (stderr) {
-      console.debug(`[runtime-plugin.fixture] stderr:\n${stderr}`)
-    }
 
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("core=core-value;coreTesting=true;sync=sync-value;async=async-value")
@@ -227,15 +218,6 @@ describe("runtime plugin", () => {
     })
 
     const stdout = result.stdout.toString().trim()
-    const stderr = result.stderr.toString().trim()
-
-    if (stdout) {
-      console.debug(`[runtime-plugin-resolve-roots.fixture] stdout:\n${stdout}`)
-    }
-
-    if (stderr) {
-      console.debug(`[runtime-plugin-resolve-roots.fixture] stderr:\n${stderr}`)
-    }
 
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("marker=resolved-from-external-root")
@@ -251,15 +233,6 @@ describe("runtime plugin", () => {
     })
 
     const stdout = result.stdout.toString().trim()
-    const stderr = result.stderr.toString().trim()
-
-    if (stdout) {
-      console.debug(`[runtime-plugin-node-modules-runtime-specifier.fixture] stdout:\n${stdout}`)
-    }
-
-    if (stderr) {
-      console.debug(`[runtime-plugin-node-modules-runtime-specifier.fixture] stderr:\n${stderr}`)
-    }
 
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("marker=resolved-from-node-modules-runtime-specifier")
@@ -275,15 +248,6 @@ describe("runtime plugin", () => {
     })
 
     const stdout = result.stdout.toString().trim()
-    const stderr = result.stderr.toString().trim()
-
-    if (stdout) {
-      console.debug(`[runtime-plugin-node-modules-no-bare-rewrite.fixture] stdout:\n${stdout}`)
-    }
-
-    if (stderr) {
-      console.debug(`[runtime-plugin-node-modules-no-bare-rewrite.fixture] stderr:\n${stderr}`)
-    }
 
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("errorContainsMissingBareDependency=true")
@@ -299,15 +263,6 @@ describe("runtime plugin", () => {
     })
 
     const stdout = result.stdout.toString().trim()
-    const stderr = result.stderr.toString().trim()
-
-    if (stdout) {
-      console.debug(`[runtime-plugin-path-alias.fixture] stdout:\n${stdout}`)
-    }
-
-    if (stderr) {
-      console.debug(`[runtime-plugin-path-alias.fixture] stderr:\n${stderr}`)
-    }
 
     expect(result.exitCode).toBe(0)
     expect(stdout).toContain("aliasPathCanonicalized=true")

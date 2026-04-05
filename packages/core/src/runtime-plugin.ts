@@ -102,9 +102,10 @@ const isNodeModulesPath = (path: string): boolean => {
   return /(?:^|[/\\])node_modules(?:[/\\])/.test(path)
 }
 
-const packageTypeByPackageJsonPath = new Map<string, "module" | "commonjs">()
-
-const packageTypeForPath = (path: string): "module" | "commonjs" => {
+const packageTypeForPath = (
+  path: string,
+  packageTypeByPackageJsonPath: Map<string, "module" | "commonjs">,
+): "module" | "commonjs" => {
   let currentDir = dirname(path)
 
   while (true) {
@@ -139,7 +140,10 @@ const packageTypeForPath = (path: string): "module" | "commonjs" => {
   }
 }
 
-const isNodeModulesEsmPath = (path: string): boolean => {
+const isNodeModulesEsmPath = (
+  path: string,
+  packageTypeByPackageJsonPath: Map<string, "module" | "commonjs">,
+): boolean => {
   const normalizedPath = normalizeSourcePath(path)
 
   if (!isNodeModulesPath(normalizedPath)) {
@@ -160,7 +164,7 @@ const isNodeModulesEsmPath = (path: string): boolean => {
     return false
   }
 
-  return packageTypeForPath(normalizedPath) === "module"
+  return packageTypeForPath(normalizedPath, packageTypeByPackageJsonPath) === "module"
 }
 
 const nodeModulesPackageRootForPath = (path: string): string | null => {
@@ -408,6 +412,7 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
       const resolveParentsByRecency: string[] = []
       const installedRewriteLoaders = new Set<string>()
       const nodeModulesBareRewritePackageRoots = new Set<string>()
+      const packageTypeByPackageJsonPath = new Map<string, "module" | "commonjs">()
       const sourceAnalysisByPath = new Map<string, SourceAnalysis>()
       const nodeModulesRuntimeRewritePathsByPath = new Map<string, string[]>()
 
@@ -479,7 +484,7 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
       const collectNodeModulesRuntimeRewritePaths = (path: string, visiting = new Set<string>()): string[] => {
         const normalizedPath = normalizeSourcePath(path)
 
-        if (!isNodeModulesEsmPath(normalizedPath)) {
+        if (!isNodeModulesEsmPath(normalizedPath, packageTypeByPackageJsonPath)) {
           return []
         }
 
@@ -503,7 +508,7 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
 
         for (const specifier of analysis.importSpecifiers) {
           const resolvedPath = resolveSourcePathFromSpecifier(specifier, normalizedPath)
-          if (!resolvedPath || !isNodeModulesEsmPath(resolvedPath)) {
+          if (!resolvedPath || !isNodeModulesEsmPath(resolvedPath, packageTypeByPackageJsonPath)) {
             continue
           }
 

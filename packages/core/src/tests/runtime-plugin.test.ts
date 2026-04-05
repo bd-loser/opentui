@@ -238,6 +238,70 @@ describe("runtime plugin", () => {
     expect(stdout).toContain("marker=resolved-from-node-modules-runtime-specifier")
   })
 
+  it("rewrites runtime specifiers in node_modules .mjs modules", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-node-modules-mjs.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, "..", ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain("marker=resolved-from-node-modules-mjs")
+  })
+
+  it("rewrites runtime specifiers across node_modules ESM cycles", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-node-modules-cycle.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, "..", ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain(
+      "a=resolved-from-node-modules-cycle;b=resolved-from-node-modules-cycle;aBase=resolved-from-node-modules-cycle",
+    )
+  })
+
+  it("does not keep stale node_modules package type across plugin instances", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-node-modules-package-type-cache.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, "..", ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain("marker=resolved-after-package-type-change")
+  })
+
+  it("rewrites bare imports for scoped node_modules package siblings when enabled", () => {
+    const fixturePath = join(import.meta.dir, "runtime-plugin-node-modules-scoped-package-bare-rewrite.fixture.ts")
+    const result = Bun.spawnSync([process.execPath, fixturePath], {
+      cwd: join(import.meta.dir, "..", ".."),
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    })
+
+    const stdout = result.stdout.toString().trim()
+
+    expect(result.exitCode).toBe(0)
+    expect(stdout).toContain(
+      "entry=entry-runtime-marker;scoped=scoped-runtime-marker:resolved-from-scoped-package-parent",
+    )
+  })
+
   it("does not rewrite non-runtime bare imports in node_modules modules by default", () => {
     const fixturePath = join(import.meta.dir, "runtime-plugin-node-modules-no-bare-rewrite.fixture.ts")
     const result = Bun.spawnSync([process.execPath, fixturePath], {

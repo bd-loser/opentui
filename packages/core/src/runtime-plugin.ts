@@ -1,5 +1,5 @@
-import { readFileSync, realpathSync } from "node:fs"
-import { basename, dirname, isAbsolute } from "node:path"
+import { existsSync, readFileSync, realpathSync } from "node:fs"
+import { basename, dirname, isAbsolute, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { type BunPlugin } from "bun"
 import * as coreRuntime from "./index.js"
@@ -95,6 +95,67 @@ const normalizeSourcePath = (path: string): string => {
 
 const isNodeModulesPath = (path: string): boolean => {
   return /(?:^|[/\\])node_modules(?:[/\\])/.test(path)
+}
+
+const packageTypeByPackageJsonPath = new Map<string, "module" | "commonjs">()
+
+const packageTypeForPath = (path: string): "module" | "commonjs" => {
+  let currentDir = dirname(path)
+
+  while (true) {
+    const packageJsonPath = join(currentDir, "package.json")
+    if (existsSync(packageJsonPath)) {
+      const cachedPackageType = packageTypeByPackageJsonPath.get(packageJsonPath)
+      if (cachedPackageType) {
+        return cachedPackageType
+      }
+
+      let packageType: "module" | "commonjs" = "commonjs"
+
+      try {
+        const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { type?: string }
+        if (packageJson.type === "module") {
+          packageType = "module"
+        }
+      } catch {
+        packageType = "commonjs"
+      }
+
+      packageTypeByPackageJsonPath.set(packageJsonPath, packageType)
+      return packageType
+    }
+
+    const parentDir = dirname(currentDir)
+    if (parentDir === currentDir) {
+      return "commonjs"
+    }
+
+    currentDir = parentDir
+  }
+}
+
+const isNodeModulesEsmPath = (path: string): boolean => {
+  const normalizedPath = normalizeSourcePath(path)
+
+  if (!isNodeModulesPath(normalizedPath)) {
+    return false
+  }
+
+  if (
+    normalizedPath.endsWith(".mjs") ||
+    normalizedPath.endsWith(".mts") ||
+    normalizedPath.endsWith(".ts") ||
+    normalizedPath.endsWith(".tsx") ||
+    normalizedPath.endsWith(".jsx")
+  ) {
+    return true
+  }
+
+  if (normalizedPath.endsWith(".cjs") || normalizedPath.endsWith(".cts") || !normalizedPath.endsWith(".js")) {
+    return false
+  }
+
+  return packageTypeForPath(normalizedPath) === "module"
 }
 
 const nodeModulesPackageRootForPath = (path: string): string | null => {
@@ -211,6 +272,19 @@ const rewriteImportSpecifiers = (code: string, resolveReplacement: (specifier: s
   return transformedCode
 }
 
+const collectImportSpecifiers = (code: string): string[] => {
+  const specifiers = new Set<string>()
+
+  for (const pattern of resolveImportSpecifierPatterns) {
+    code.replace(pattern, (_fullMatch, _prefix, specifier) => {
+      specifiers.add(specifier)
+      return _fullMatch
+    })
+  }
+
+  return [...specifiers]
+}
+
 const resolveFromParent = (specifier: string, parent: string): string | null => {
   try {
     const resolvedSpecifier = import.meta.resolve(specifier, parent)
@@ -317,6 +391,7 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
       const installedRewriteLoaders = new Set<string>()
       const nodeModulesBareRewritePackageRoots = new Set<string>()
       const runtimeSpecifierRewriteNeededByPath = new Map<string, boolean>()
+      const nodeModulesRuntimeRewritePathsByPath = new Map<string, string[]>()
 
       const installRewriteLoader = (path: string): void => {
         const normalizedPath = normalizeSourcePath(path)
@@ -370,6 +445,49 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
         return needsRewrite
       }
 
+      const collectNodeModulesRuntimeRewritePaths = (path: string, visiting = new Set<string>()): string[] => {
+        const normalizedPath = normalizeSourcePath(path)
+
+        if (!isNodeModulesEsmPath(normalizedPath)) {
+          return []
+        }
+
+        const cachedPaths = nodeModulesRuntimeRewritePathsByPath.get(normalizedPath)
+        if (cachedPaths) {
+          return cachedPaths
+        }
+
+        if (visiting.has(normalizedPath)) {
+          return []
+        }
+
+        visiting.add(normalizedPath)
+
+        const rewritePaths = new Set<string>()
+        const contents = readFileSync(normalizedPath, "utf8")
+
+        if (needsRuntimeSpecifierRewrite(normalizedPath)) {
+          rewritePaths.add(normalizedPath)
+        }
+
+        for (const specifier of collectImportSpecifiers(contents)) {
+          const resolvedPath = resolveSourcePathFromSpecifier(specifier, normalizedPath)
+          if (!resolvedPath || !isNodeModulesEsmPath(resolvedPath)) {
+            continue
+          }
+
+          for (const nestedPath of collectNodeModulesRuntimeRewritePaths(resolvedPath, visiting)) {
+            rewritePaths.add(nestedPath)
+          }
+        }
+
+        visiting.delete(normalizedPath)
+
+        const resolvedRewritePaths = [...rewritePaths]
+        nodeModulesRuntimeRewritePathsByPath.set(normalizedPath, resolvedRewritePaths)
+        return resolvedRewritePaths
+      }
+
       for (const [specifier, moduleEntry] of runtimeModules.entries()) {
         const moduleId = runtimeModuleIdsBySpecifier.get(specifier)
 
@@ -404,6 +522,10 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
 
         if (!rewriteOptions.nodeModulesRuntimeSpecifiers && !rewriteOptions.nodeModulesBareSpecifiers) {
           return undefined
+        }
+
+        for (const rewritePath of collectNodeModulesRuntimeRewritePaths(path)) {
+          installRewriteLoader(rewritePath)
         }
 
         const packageRoot = nodeModulesPackageRootForPath(path)

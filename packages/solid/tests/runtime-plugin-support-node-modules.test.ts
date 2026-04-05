@@ -28,6 +28,7 @@ describe("solid runtime plugin support in node_modules", () => {
     expect(stdout).toContain("coreTesting=true")
     expect(stdout).toContain("solidJs=true")
     expect(stdout).toContain("cjs=true")
+    expect(stdout).toContain("esmPackage=true")
     expect(stdout).toContain("solidStore=true")
   })
 })

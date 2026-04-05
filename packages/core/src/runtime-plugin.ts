@@ -53,8 +53,8 @@ const exactSpecifierFilter = (specifier: string): RegExp => {
   return new RegExp(`^${escapeRegExp(specifier)}$`)
 }
 
-const candidatePathFilter = (path: string): RegExp => {
-  const suffixSegments = sourcePath(path).split(/[/\\]+/).filter(Boolean).slice(-3)
+const candidatePathFilter = (targetPath: string): RegExp => {
+  const suffixSegments = sourcePath(targetPath).split(/[/\\]+/).filter(Boolean).slice(-3)
   const suffixPattern = suffixSegments.map(escapeRegExp).join("[/\\\\]")
   return new RegExp(`(?:^|[/\\\\])${suffixPattern}(?:[?#].*)?$`)
 }
@@ -413,22 +413,23 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
       const nodeModulesRuntimeRewritePathsByPath = new Map<string, string[]>()
 
       const installRewriteLoader = (path: string): void => {
-        const normalizedPath = normalizeSourcePath(path)
-        if (installedRewriteLoaders.has(normalizedPath)) {
+        const targetPath = normalizeSourcePath(path)
+        if (installedRewriteLoaders.has(targetPath)) {
           return
         }
 
-        installedRewriteLoaders.add(normalizedPath)
+        installedRewriteLoaders.add(targetPath)
 
-        // Match a short path suffix, then compare normalized paths in the callback so
-        // symlinked or aliased absolute prefixes still land on the right loader.
-        build.onLoad({ filter: candidatePathFilter(normalizedPath) }, async (args) => {
-          const path = normalizeSourcePath(args.path)
-          if (path !== normalizedPath) {
+        // The regex only identifies likely candidates. Bun may call us back with a
+        // different absolute spelling of the same file, so we normalize `args.path`
+        // and compare it to the canonical target path before loading.
+        build.onLoad({ filter: candidatePathFilter(targetPath) }, async (args) => {
+          const loadedPath = normalizeSourcePath(args.path)
+          if (loadedPath !== targetPath) {
             return undefined
           }
 
-          const nodeModulesPath = isNodeModulesPath(path)
+          const nodeModulesPath = isNodeModulesPath(loadedPath)
           const shouldRewriteRuntimeSpecifiers = !nodeModulesPath || rewriteOptions.nodeModulesRuntimeSpecifiers
           const shouldRewriteBareSpecifiers = !nodeModulesPath || rewriteOptions.nodeModulesBareSpecifiers
           const loader = runtimeLoaderForPath(args.path)
@@ -437,13 +438,13 @@ export function createRuntimePlugin(input: CreateRuntimePluginOptions = {}): Bun
             throw new Error(`Unable to determine runtime loader for path: ${args.path}`)
           }
 
-          const contents = await Bun.file(path).text()
+          const contents = await Bun.file(loadedPath).text()
           const runtimeRewrittenContents = shouldRewriteRuntimeSpecifiers
             ? rewriteRuntimeSpecifiers(contents, runtimeModuleIdsBySpecifier)
             : contents
 
           if (runtimeRewrittenContents !== contents && shouldRewriteBareSpecifiers) {
-            registerResolveParent(resolveParentsByRecency, path)
+            registerResolveParent(resolveParentsByRecency, loadedPath)
           }
 
           const transformedContents = shouldRewriteBareSpecifiers

@@ -1,11 +1,15 @@
 import {
   engine,
   PasteEvent,
+  type KeymapLayer,
+  type Renderable,
   Selection,
   Timeline,
   type CliRenderer,
   type KeyEvent,
   type TimelineOptions,
+  useKeymap as useCoreKeymap,
+  useKeymappings as useCoreKeymappings,
 } from "@opentui/core"
 import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js"
 
@@ -97,6 +101,46 @@ export const usePaste = (callback: (event: PasteEvent) => void) => {
 
   onCleanup(() => {
     keyHandler.off("paste", callback)
+  })
+}
+
+export interface UseKeymapLayer extends Omit<KeymapLayer, "target"> {
+  target?: Renderable | null | undefined | (() => Renderable | null | undefined)
+}
+
+function resolveKeymapTarget(target: UseKeymapLayer["target"]): Renderable | undefined {
+  if (typeof target === "function") {
+    return target() ?? undefined
+  }
+
+  return target ?? undefined
+}
+
+export const useKeymappings = () => {
+  const renderer = useRenderer()
+  return useCoreKeymappings(renderer)
+}
+
+export const useKeymap = (layer: UseKeymapLayer) => {
+  const manager = useKeymappings()
+  let dispose: (() => void) | undefined
+
+  onMount(() => {
+    const resolvedTarget = resolveKeymapTarget(layer.target)
+    if (layer.target !== undefined && !resolvedTarget) {
+      throw new Error("useKeymap target was not available during mount")
+    }
+
+    const resolvedLayer: KeymapLayer = {
+      ...layer,
+      target: resolvedTarget,
+    }
+
+    dispose = useCoreKeymap(manager, resolvedLayer)
+  })
+
+  onCleanup(() => {
+    dispose?.()
   })
 }
 

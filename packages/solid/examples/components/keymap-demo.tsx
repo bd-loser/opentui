@@ -1,4 +1,4 @@
-import { BoxRenderable, ConsolePosition, registerActionCommands, registerExCommands } from "@opentui/core"
+import { ConsolePosition, registerActionCommands, registerExCommands } from "@opentui/core"
 import { render, useKeymap, useKeymappings, useRenderer } from "@opentui/solid"
 import { Show, createSignal, onCleanup, onMount, type Accessor } from "solid-js"
 
@@ -15,14 +15,7 @@ function CounterPanel(props: {
   setCount: (value: number) => void
   announce: (message: string) => void
 }) {
-  let panel: BoxRenderable | undefined
-
-  const handleFocus = () => {
-    props.setFocused(props.id)
-  }
-
-  useKeymap({
-    target: () => panel,
+  const keymapRef = useKeymap({
     bindings: {
       j: () => {
         const next = props.count() + props.step
@@ -38,19 +31,9 @@ function CounterPanel(props: {
     },
   })
 
-  onMount(() => {
-    panel?.on("focused", handleFocus)
-  })
-
-  onCleanup(() => {
-    panel?.off("focused", handleFocus)
-  })
-
   return (
     <box
-      ref={(value) => {
-        panel = value
-      }}
+      ref={keymapRef}
       border
       focusable
       focused={props.focused()}
@@ -59,6 +42,7 @@ function CounterPanel(props: {
       padding={1}
       flexGrow={1}
       flexDirection="column"
+      on:focused={() => props.setFocused(props.id)}
     >
       <text fg="#e2e8f0">
         {[

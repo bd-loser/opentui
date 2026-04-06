@@ -71,6 +71,7 @@ import * as scrollboxMouseTest from "./scrollbox-mouse-test.js"
 import * as textTruncationDemo from "./text-truncation-demo.js"
 import * as grayscaleBufferDemo from "./grayscale-buffer-demo.js"
 import * as focusRestoreDemo from "./focus-restore-demo.js"
+import * as keymapDemo from "./keymap-demo.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as corePluginSlotsDemo from "./core-plugin-slots-demo.js"
 import * as wideGraphemeOverlayDemo from "./wide-grapheme-overlay-demo.js"
@@ -407,6 +408,12 @@ const examples: Example[] = [
     description: "Interactive InputElement demo with validation and multiple fields",
     run: inputExample.run,
     destroy: inputExample.destroy,
+  },
+  {
+    name: "Keymap Demo",
+    description: "Global and local keymaps with action commands, ex commands, and a ctrl+x leader extension",
+    run: keymapDemo.run,
+    destroy: keymapDemo.destroy,
   },
   {
     name: "Terminal Palette Demo",

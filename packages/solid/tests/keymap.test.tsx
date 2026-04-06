@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { Show, createSignal } from "solid-js"
+import { registerActionCommands } from "@opentui/core"
+import { Show, createSignal, onCleanup } from "solid-js"
 import { testRender, useKeymap, useKeymappings } from "../index.js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
@@ -39,13 +40,23 @@ describe("solid keymap hooks", () => {
     let setVisible!: (value: boolean) => void
 
     function GlobalBindings() {
-      useKeymap({
-        scope: "global",
-        bindings: {
-          x: () => {
+      const manager = useKeymappings()
+      const offCommands = registerActionCommands(manager, [
+        {
+          name: "global",
+          run() {
             calls.push("global")
           },
         },
+      ])
+
+      useKeymap({
+        scope: "global",
+        bindings: [{ key: "x", cmd: "global" }],
+      })
+
+      onCleanup(() => {
+        offCommands()
       })
 
       return <text>bindings</text>
@@ -81,15 +92,25 @@ describe("solid keymap hooks", () => {
     let setActive!: (value: "first" | "second") => void
 
     function App() {
+      const manager = useKeymappings()
       const [active, setActiveSignal] = createSignal<"first" | "second">("first")
       setActive = setActiveSignal
 
-      const keymapRef = useKeymap({
-        bindings: {
-          x: () => {
+      const offCommands = registerActionCommands(manager, [
+        {
+          name: "target",
+          run() {
             calls.push("target")
           },
         },
+      ])
+
+      onCleanup(() => {
+        offCommands()
+      })
+
+      const keymapRef = useKeymap({
+        bindings: [{ key: "x", cmd: "target" }],
       })
 
       return (

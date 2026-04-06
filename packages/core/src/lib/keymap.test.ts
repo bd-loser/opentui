@@ -1,8 +1,17 @@
 import { Buffer } from "node:buffer"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BoxRenderable } from "../renderables/Box.js"
+import { InputRenderable, InputRenderableEvents } from "../renderables/Input.js"
+import { TextareaRenderable } from "../renderables/Textarea.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../testing.js"
-import { registerActionCommands, registerExCommands, useKeymap, useKeymappings } from "./keymap.js"
+import {
+  compileEditBufferKeyBindings,
+  registerActionCommands,
+  registerEditBufferCommands,
+  registerExCommands,
+  useKeymap,
+  useKeymappings,
+} from "./keymap.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
@@ -62,9 +71,7 @@ describe("keymap", () => {
 
     useKeymap(manager, {
       target: parent,
-      bindings: {
-        x: "parent-action",
-      },
+      bindings: [{ key: "x", cmd: "parent-action" }],
     })
 
     child.focus()
@@ -94,9 +101,7 @@ describe("keymap", () => {
     useKeymap(manager, {
       target: parent,
       scope: "focus",
-      bindings: {
-        x: "focus-only",
-      },
+      bindings: [{ key: "x", cmd: "focus-only" }],
     })
 
     child.focus()
@@ -135,21 +140,18 @@ describe("keymap", () => {
 
     useKeymap(manager, {
       scope: "global",
-      bindings: {
-        x: "global-action",
-        y: "global-action",
-      },
+      bindings: [
+        { key: "x", cmd: "global-action" },
+        { key: "y", cmd: "global-action" },
+      ],
     })
 
     useKeymap(manager, {
       target,
-      bindings: {
-        x: "local-action",
-        y: {
-          command: "fallthrough-action",
-          fallthrough: true,
-        },
-      },
+      bindings: [
+        { key: "x", cmd: "local-action" },
+        { key: "y", cmd: "fallthrough-action", fallthrough: true },
+      ],
     })
 
     target.focus()
@@ -160,7 +162,7 @@ describe("keymap", () => {
     expect(calls).toEqual(["local", "fallthrough-local", "global"])
   })
 
-  test("stops later global listeners and focused renderables by default", () => {
+  test("consumes matched keys by default", () => {
     const manager = useKeymappings(renderer)
     const calls: string[] = []
     let laterGlobalCount = 0
@@ -187,9 +189,7 @@ describe("keymap", () => {
 
     useKeymap(manager, {
       target,
-      bindings: {
-        x: "consume",
-      },
+      bindings: [{ key: "x", cmd: "consume" }],
     })
 
     target.focus()
@@ -200,7 +200,7 @@ describe("keymap", () => {
     expect(renderableCount).toBe(0)
   })
 
-  test("can opt out of preventDefault and stopPropagation", () => {
+  test("consume false lets the focused renderable keep handling the key", () => {
     const manager = useKeymappings(renderer)
     const calls: string[] = []
     let laterGlobalCount = 0
@@ -216,17 +216,18 @@ describe("keymap", () => {
       laterGlobalCount += 1
     })
 
-    useKeymap(manager, {
-      target,
-      bindings: {
-        x: {
-          command: () => {
-            calls.push("keymap")
-          },
-          preventDefault: false,
-          stopPropagation: false,
+    registerActionCommands(manager, [
+      {
+        name: "passthrough",
+        run() {
+          calls.push("keymap")
         },
       },
+    ])
+
+    useKeymap(manager, {
+      target,
+      bindings: [{ key: "x", cmd: "passthrough", consume: false }],
     })
 
     target.focus()
@@ -237,47 +238,24 @@ describe("keymap", () => {
     expect(renderableCount).toBe(1)
   })
 
-  test("supports binding enabled predicates", () => {
-    const manager = useKeymappings(renderer)
-    const calls: string[] = []
-    let enabled = false
-
-    const target = createFocusableBox("enabled-target")
-    renderer.root.add(target)
-
-    useKeymap(manager, {
-      target,
-      bindings: {
-        x: {
-          command: () => {
-            calls.push("enabled")
-          },
-          enabled: () => enabled,
-        },
-      },
-    })
-
-    target.focus()
-    mockInput.pressKey("x")
-    enabled = true
-    mockInput.pressKey("x")
-
-    expect(calls).toEqual(["enabled"])
-  })
-
   test("supports layer enabled predicates", () => {
     const manager = useKeymappings(renderer)
     const calls: string[] = []
     let enabled = false
 
-    useKeymap(manager, {
-      scope: "global",
-      enabled: () => enabled,
-      bindings: {
-        x: () => {
+    registerActionCommands(manager, [
+      {
+        name: "layer-command",
+        run() {
           calls.push("layer")
         },
       },
+    ])
+
+    useKeymap(manager, {
+      scope: "global",
+      enabled: () => enabled,
+      bindings: [{ key: "x", cmd: "layer-command" }],
     })
 
     mockInput.pressKey("x")
@@ -287,92 +265,127 @@ describe("keymap", () => {
     expect(calls).toEqual(["layer"])
   })
 
-  test("supports custom command kinds", () => {
+  test("throws when duplicate command names are registered", () => {
     const manager = useKeymappings(renderer)
-    const values: string[] = []
 
-    manager.registerCommandKind("custom", (value, ctx) => {
-      values.push(`${String(value)}:${String(ctx.data.scope)}`)
-      return true
-    })
+    registerActionCommands(manager, [{ name: "dup", run() {} }])
 
-    const offToken = manager.registerToken({
-      token: "<custom>",
-      data: { scope: "custom" },
-    })
-    const offHook = manager.onKeyInput(({ event, setData }) => {
-      if (event.name === "x") {
-        setData("scope", "custom")
-      }
-    })
-
-    useKeymap(manager, {
-      scope: "global",
-      bindings: {
-        "<custom>x": {
-          command: { kind: "custom", value: "ran" },
-        },
-      },
-    })
-
-    mockInput.pressKey("x")
-
-    offHook()
-    offToken()
-
-    expect(values).toEqual(["ran:custom"])
+    expect(() => {
+      registerActionCommands(manager, [{ name: "dup", run() {} }])
+    }).toThrow('Keymap command "dup" is already registered')
   })
 
-  test("supports ex commands, aliases, and nargs validation", () => {
+  test("supports typed binding fields through extensions", () => {
     const manager = useKeymappings(renderer)
     const calls: string[] = []
 
+    manager.registerBindingFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
+    })
+
+    manager.onKeyInput(({ event, setData }) => {
+      if (event.name === "x") {
+        setData("vim.mode", "normal")
+      }
+    })
+
     registerActionCommands(manager, [
       {
-        name: "fallback",
+        name: "typed-field",
         run() {
-          calls.push("fallback")
+          calls.push("field")
         },
       },
     ])
-
-    registerExCommands(manager, [
-      {
-        name: "write",
-        aliases: ["w"],
-        nargs: "1",
-        run({ args }) {
-          calls.push(`write:${args.join(",")}`)
-        },
-      },
-    ])
-
-    const target = createFocusableBox("ex-target")
-    renderer.root.add(target)
 
     useKeymap(manager, {
       scope: "global",
-      bindings: {
-        x: "fallback",
-        y: ":w file.txt",
-      },
+      bindings: [{ key: "x", mode: "normal", cmd: "typed-field" }],
     })
 
-    useKeymap(manager, {
-      target,
-      bindings: {
-        x: ":write",
-      },
-    })
-
-    target.focus()
     mockInput.pressKey("x")
-    mockInput.pressKey("y")
 
-    expect(calls).toEqual(["fallback", "write:file.txt"])
+    expect(calls).toEqual(["field"])
   })
 
-  test("supports token-based leader extensions built with key hooks", () => {
+  test("supports token prefixes and typed fields together", () => {
+    const manager = useKeymappings(renderer)
+    const calls: string[] = []
+
+    manager.registerBindingFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
+    })
+
+    manager.registerToken({
+      token: "<normal>",
+      data: { "vim.mode": "normal" },
+    })
+
+    manager.onKeyInput(({ event, setData }) => {
+      if (event.name === "x") {
+        setData("vim.mode", "normal")
+      }
+    })
+
+    registerActionCommands(manager, [
+      {
+        name: "record",
+        run() {
+          calls.push("token")
+        },
+      },
+    ])
+
+    useKeymap(manager, {
+      scope: "global",
+      bindings: [
+        { key: "<normal>x", cmd: "record", fallthrough: true },
+        { key: "x", mode: "normal", cmd: "record", fallthrough: true },
+      ],
+    })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["token", "token"])
+  })
+
+  test("throws on conflicting requirements from tokens and typed fields", () => {
+    const manager = useKeymappings(renderer)
+
+    manager.registerBindingFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
+    })
+    manager.registerToken({
+      token: "<normal>",
+      data: { "vim.mode": "normal" },
+    })
+
+    expect(() => {
+      useKeymap(manager, {
+        scope: "global",
+        bindings: [{ key: "<normal>x", mode: "visual", cmd: "noop" }],
+      })
+    }).toThrow('Conflicting keymap requirement for "vim.mode"')
+  })
+
+  test("throws on unknown binding fields", () => {
+    const manager = useKeymappings(renderer)
+
+    expect(() => {
+      useKeymap(manager, {
+        scope: "global",
+        bindings: [{ key: "x", mode: "normal", cmd: "noop" }],
+      })
+    }).toThrow('Unknown keymap binding field "mode"')
+  })
+
+  test("supports leader extensions built with tokens and key hooks", () => {
     const manager = useKeymappings(renderer)
     const calls: string[] = []
     let leaderArmed = false
@@ -406,9 +419,7 @@ describe("keymap", () => {
 
     useKeymap(manager, {
       scope: "global",
-      bindings: {
-        "<leader>a": "leader-action",
-      },
+      bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })
 
     mockInput.pressKey("x", { ctrl: true })
@@ -417,41 +428,51 @@ describe("keymap", () => {
     expect(calls).toEqual(["leader"])
   })
 
-  test("allows bindings to start matching after their token is registered", () => {
+  test("supports ex commands, aliases, and nargs validation", () => {
     const manager = useKeymappings(renderer)
     const calls: string[] = []
 
     registerActionCommands(manager, [
       {
-        name: "token-action",
+        name: "fallback",
         run() {
-          calls.push("token")
+          calls.push("fallback")
         },
       },
     ])
 
+    registerExCommands(manager, [
+      {
+        name: "write",
+        aliases: ["w"],
+        nargs: "1",
+        run({ args }) {
+          calls.push(`write:${args.join(",")}`)
+        },
+      },
+    ])
+
+    const target = createFocusableBox("ex-target")
+    renderer.root.add(target)
+
     useKeymap(manager, {
       scope: "global",
-      bindings: {
-        "<late>a": "token-action",
-      },
+      bindings: [
+        { key: "x", cmd: "fallback" },
+        { key: "y", cmd: ":w file.txt" },
+      ],
     })
 
-    mockInput.pressKey("a")
-
-    manager.registerToken({
-      token: "<late>",
-      data: { prefix: "late" },
-    })
-    manager.onKeyInput(({ event, setData }) => {
-      if (event.name === "a") {
-        setData("prefix", "late")
-      }
+    useKeymap(manager, {
+      target,
+      bindings: [{ key: "x", cmd: ":write" }],
     })
 
-    mockInput.pressKey("a")
+    target.focus()
+    mockInput.pressKey("x")
+    mockInput.pressKey("y")
 
-    expect(calls).toEqual(["token"])
+    expect(calls).toEqual(["fallback", "write:file.txt"])
   })
 
   test("supports raw input hooks and stop semantics", () => {
@@ -519,16 +540,12 @@ describe("keymap", () => {
 
     useKeymap(manager, {
       target,
-      bindings: {
-        x: "local",
-      },
+      bindings: [{ key: "x", cmd: "local" }],
     })
 
     useKeymap(manager, {
       scope: "global",
-      bindings: {
-        x: "global",
-      },
+      bindings: [{ key: "x", cmd: "global" }],
     })
 
     target.destroy()
@@ -537,67 +554,129 @@ describe("keymap", () => {
     expect(calls).toEqual(["global"])
   })
 
-  test("passes the active layer target to command contexts", () => {
+  test("passes target, args, and runtime data to commands", () => {
     const manager = useKeymappings(renderer)
-    const seenTargets: string[] = []
+    const seen: Array<{ target: string; args: string; mode: string }> = []
+
+    manager.registerBindingFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
+    })
+
+    manager.onKeyInput(({ event, setData }) => {
+      if (event.name === "x") {
+        setData("vim.mode", "normal")
+      }
+    })
+
+    registerActionCommands(manager, [
+      {
+        name: "record",
+        run(ctx) {
+          seen.push({
+            target: ctx.target?.id ?? "none",
+            args: ctx.command.args.join(","),
+            mode: String(ctx.data["vim.mode"]),
+          })
+        },
+      },
+    ])
 
     const parent = createFocusableBox("ctx-parent")
     const child = createFocusableBox("ctx-child")
     parent.add(child)
     renderer.root.add(parent)
 
-    registerActionCommands(manager, [
-      {
-        name: "record-target",
-        run(ctx) {
-          if (ctx.target) {
-            seenTargets.push(ctx.target.id)
-          }
-        },
-      },
-    ])
-
     useKeymap(manager, {
       target: parent,
-      bindings: {
-        x: "record-target",
-      },
+      bindings: [{ key: "x", mode: "normal", cmd: "record one two" }],
     })
 
     child.focus()
     mockInput.pressKey("x")
 
-    expect(seenTargets).toEqual(["ctx-parent"])
+    expect(seen).toEqual([{ target: "ctx-parent", args: "one,two", mode: "normal" }])
   })
 
-  test("passes event metadata to command contexts", () => {
+  test("registerEditBufferCommands can drive textarea actions", () => {
     const manager = useKeymappings(renderer)
-    const seenScopes: string[] = []
+    registerEditBufferCommands(manager)
 
-    registerActionCommands(manager, [
-      {
-        name: "record-scope",
-        run(ctx) {
-          seenScopes.push(String(ctx.data.scope))
-        },
-      },
-    ])
-
-    manager.onKeyInput(({ event, setData }) => {
-      if (event.name === "x") {
-        setData("scope", "global")
-      }
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 4,
+      initialValue: "Line 1\nLine 2\nLine 3",
     })
+    renderer.root.add(textarea)
 
     useKeymap(manager, {
       scope: "global",
-      bindings: {
-        x: "record-scope",
-      },
+      bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
     })
 
+    textarea.focus()
+    textarea.gotoLine(1)
+    mockInput.pressKey("d", { ctrl: true })
+
+    expect(textarea.plainText).toBe("Line 1\nLine 3")
+  })
+
+  test("registerEditBufferCommands supports submit on input renderables", () => {
+    const manager = useKeymappings(renderer)
+    registerEditBufferCommands(manager)
+
+    let submitted = 0
+    const input = new InputRenderable(renderer, {
+      width: 20,
+      value: "Hello",
+    })
+    input.on(InputRenderableEvents.ENTER, () => {
+      submitted += 1
+    })
+    renderer.root.add(input)
+
+    useKeymap(manager, {
+      scope: "global",
+      bindings: [{ key: "x", cmd: "submit" }],
+    })
+
+    input.focus()
     mockInput.pressKey("x")
 
-    expect(seenScopes).toEqual(["global"])
+    expect(submitted).toBe(1)
+    expect(input.value).toBe("Hello")
+  })
+
+  test("compileEditBufferKeyBindings normalizes simple config", () => {
+    const bindings = compileEditBufferKeyBindings([
+      { key: "ctrl+d", cmd: "delete-line" },
+      { key: "enter", cmd: "submit" },
+      { key: { name: "left", shift: true }, cmd: "select-left" },
+    ])
+
+    expect(bindings).toEqual([
+      { name: "d", ctrl: true, shift: undefined, meta: undefined, super: undefined, action: "delete-line" },
+      { name: "return", ctrl: undefined, shift: undefined, meta: undefined, super: undefined, action: "submit" },
+      { name: "left", ctrl: undefined, shift: true, meta: undefined, super: undefined, action: "select-left" },
+    ])
+  })
+
+  test("compileEditBufferKeyBindings rejects unsupported config", () => {
+    expect(() => compileEditBufferKeyBindings([{ key: "<leader>x", cmd: "delete-line" }])).toThrow(
+      'Unknown keymap token "<leader>"',
+    )
+
+    expect(() => compileEditBufferKeyBindings([{ key: "x", mode: "normal", cmd: "delete-line" }])).toThrow(
+      'Edit-buffer key bindings do not support the extra field "mode"',
+    )
+
+    expect(() => compileEditBufferKeyBindings([{ key: "x", cmd: "delete-line now" }])).toThrow(
+      'Edit-buffer command "delete-line now" cannot include arguments',
+    )
+
+    expect(() => compileEditBufferKeyBindings([{ key: "x", cmd: "missing-command" }])).toThrow(
+      'Unknown edit-buffer command "missing-command"',
+    )
   })
 })

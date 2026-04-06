@@ -15,20 +15,39 @@ function CounterPanel(props: {
   setCount: (value: number) => void
   announce: (message: string) => void
 }) {
-  const keymapRef = useKeymap({
-    bindings: {
-      j: () => {
+  const manager = useKeymappings()
+  const incrementCommand = `${props.id}.increment`
+  const decrementCommand = `${props.id}.decrement`
+
+  const offCommands = registerActionCommands(manager, [
+    {
+      name: incrementCommand,
+      run() {
         const next = props.count() + props.step
         props.setCount(next)
         props.announce(`${props.label} increased to ${next}`)
       },
-      k: () => {
+    },
+    {
+      name: decrementCommand,
+      run() {
         const next = props.count() - props.step
         props.setCount(next)
         props.announce(`${props.label} decreased to ${next}`)
       },
-      enter: `:announce ${props.label} confirmed`,
     },
+  ])
+
+  const keymapRef = useKeymap({
+    bindings: [
+      { key: "j", cmd: incrementCommand },
+      { key: "k", cmd: decrementCommand },
+      { key: "enter", cmd: `:announce ${props.label} confirmed` },
+    ],
+  })
+
+  onCleanup(() => {
+    offCommands()
   })
 
   return (
@@ -175,14 +194,14 @@ export default function KeymapDemo() {
 
   useKeymap({
     scope: "global",
-    bindings: {
-      tab: "focus-next",
-      "shift+tab": "focus-prev",
-      "?": "toggle-help",
-      "ctrl+r": ":reset",
-      "<leader>s": ":announce Saved via leader",
-      "<leader>h": "toggle-help",
-    },
+    bindings: [
+      { key: "tab", cmd: "focus-next" },
+      { key: "shift+tab", cmd: "focus-prev" },
+      { key: "?", cmd: "toggle-help" },
+      { key: "ctrl+r", cmd: ":reset" },
+      { key: "<leader>s", cmd: ":announce Saved via leader" },
+      { key: "<leader>h", cmd: "toggle-help" },
+    ],
   })
 
   onMount(() => {

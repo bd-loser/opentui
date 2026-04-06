@@ -48,6 +48,7 @@ export type NonStyledProps =
 /** Solid-specific props for all components */
 export type ElementProps<TRenderable = unknown> = {
   ref?: Ref<TRenderable>
+  [eventName: `on:${string}`]: ((...args: any[]) => void) | undefined
 }
 
 /** Base type for any renderable constructor */

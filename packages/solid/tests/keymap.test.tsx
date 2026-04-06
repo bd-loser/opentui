@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import type { BoxRenderable } from "@opentui/core"
 import { Show, createSignal } from "solid-js"
 import { testRender, useKeymap, useKeymappings } from "../index.js"
 
@@ -77,21 +76,15 @@ describe("solid keymap hooks", () => {
     expect(calls).toEqual(["global"])
   })
 
-  test("useKeymap registers target bindings through a renderable ref", async () => {
+  test("useKeymap can bind local keymaps through its returned ref", async () => {
     const calls: string[] = []
-    let setFirstFocused!: (value: boolean) => void
-    let setSecondFocused!: (value: boolean) => void
+    let setActive!: (value: "first" | "second") => void
 
     function App() {
-      const [firstFocused, setFirstFocusedSignal] = createSignal(true)
-      const [secondFocused, setSecondFocusedSignal] = createSignal(false)
-      setFirstFocused = setFirstFocusedSignal
-      setSecondFocused = setSecondFocusedSignal
+      const [active, setActiveSignal] = createSignal<"first" | "second">("first")
+      setActive = setActiveSignal
 
-      let target: BoxRenderable | undefined
-
-      useKeymap({
-        target: () => target,
+      const keymapRef = useKeymap({
         bindings: {
           x: () => {
             calls.push("target")
@@ -101,8 +94,8 @@ describe("solid keymap hooks", () => {
 
       return (
         <box width={20} height={6}>
-          <box ref={(value) => (target = value)} width={8} height={3} focusable focused={firstFocused()} />
-          <box width={8} height={3} focusable focused={secondFocused()} />
+          <box ref={keymapRef} width={8} height={3} focusable focused={active() === "first"} />
+          <box width={8} height={3} focusable focused={active() === "second"} />
         </box>
       )
     }
@@ -112,8 +105,7 @@ describe("solid keymap hooks", () => {
     testSetup.mockInput.pressKey("x")
     expect(calls).toEqual(["target"])
 
-    setFirstFocused(false)
-    setSecondFocused(true)
+    setActive("second")
     await Bun.sleep(0)
 
     testSetup.mockInput.pressKey("x")

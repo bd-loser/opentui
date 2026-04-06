@@ -108,6 +108,8 @@ export interface UseKeymapLayer extends Omit<KeymapLayer, "target"> {
   target?: Renderable | null | undefined | (() => Renderable | null | undefined)
 }
 
+export type KeymapRef<TRenderable extends Renderable = Renderable> = (value: TRenderable) => void
+
 function resolveKeymapTarget(target: UseKeymapLayer["target"]): Renderable | undefined {
   if (typeof target === "function") {
     return target() ?? undefined
@@ -121,27 +123,77 @@ export const useKeymappings = () => {
   return useCoreKeymappings(renderer)
 }
 
-export const useKeymap = (layer: UseKeymapLayer) => {
+export const useKeymap = <TRenderable extends Renderable = Renderable>(layer: UseKeymapLayer): KeymapRef<TRenderable> => {
   const manager = useKeymappings()
   let dispose: (() => void) | undefined
+  let mounted = false
+  let registered = false
+  let registeredScope: KeymapLayer["scope"] | undefined
+  let refTarget: Renderable | undefined
+
+  const register = (): void => {
+    if (registered) {
+      return
+    }
+
+    const explicitTarget = resolveKeymapTarget(layer.target)
+    const resolvedTarget = explicitTarget ?? refTarget
+    const resolvedScope = layer.scope ?? (resolvedTarget ? "focus-within" : "global")
+
+    if (resolvedScope !== "global" && !resolvedTarget) {
+      return
+    }
+
+    const resolvedLayer: KeymapLayer = {
+      ...layer,
+      scope: resolvedScope,
+      target: resolvedTarget,
+    }
+
+    dispose = useCoreKeymap(manager, resolvedLayer)
+    registered = true
+    registeredScope = resolvedScope
+  }
+
+  const ref: KeymapRef<TRenderable> = (value) => {
+    refTarget = value
+
+    if (mounted) {
+      if (registered && layer.target === undefined && layer.scope === undefined && registeredScope === "global") {
+        dispose?.()
+        dispose = undefined
+        registered = false
+        registeredScope = undefined
+      }
+
+      register()
+    }
+  }
 
   onMount(() => {
+    mounted = true
     const resolvedTarget = resolveKeymapTarget(layer.target)
     if (layer.target !== undefined && !resolvedTarget) {
       throw new Error("useKeymap target was not available during mount")
     }
 
-    const resolvedLayer: KeymapLayer = {
-      ...layer,
-      target: resolvedTarget,
+    const resolvedScope = layer.scope ?? (resolvedTarget || refTarget ? "focus-within" : "global")
+    if (resolvedScope !== "global" && !resolvedTarget && !refTarget) {
+      throw new Error('useKeymap local bindings need a target or the returned ref callback attached to a renderable')
     }
 
-    dispose = useCoreKeymap(manager, resolvedLayer)
+    register()
   })
 
   onCleanup(() => {
     dispose?.()
+    dispose = undefined
+    mounted = false
+    registered = false
+    registeredScope = undefined
   })
+
+  return ref
 }
 
 /**

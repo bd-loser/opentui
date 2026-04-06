@@ -977,6 +977,7 @@ pub const CliRenderer = struct {
         const snapshot_has_content = snapshot.width > 0 and snapshot.height > 0;
         const normalized_row_columns = @min(row_columns, snapshot.width);
         const starts_mid_line = previousOutputColumn > 0 and start_on_new_line;
+        const starts_wrapped_line = previousOutputColumn >= self.width;
         const previousFooterTopLine: u32 = @max(previousRenderOffset + 1, @as(u32, 1));
 
         if (snapshot_has_content) {
@@ -985,7 +986,15 @@ pub const CliRenderer = struct {
             if (starts_mid_line) {
                 self.splitScrollback.noteNewline();
             }
-            self.splitScrollback.publishSnapshotRows(snapshot.height, normalized_row_columns, self.width, trailing_newline);
+
+            var row: u32 = 0;
+            while (row < snapshot.height) : (row += 1) {
+                self.splitScrollback.publishRow(
+                    snapshotRowEnd(snapshot, row, normalized_row_columns),
+                    self.width,
+                    row + 1 < snapshot.height or trailing_newline,
+                );
+            }
         }
 
         const next_render_offset = self.splitScrollback.renderOffset(pinned_render_offset);
@@ -1021,10 +1030,13 @@ pub const CliRenderer = struct {
                 }
 
                 moveToSplitOutputCursor(writer, previousRenderOffset, previousOutputColumn, self.width);
-                if (starts_mid_line) {
+                if (starts_mid_line or starts_wrapped_line) {
                     // The prior commit left output cursor mid-row and caller asked
-                    // for newline anchoring. Emit CRLF before payload to preserve
-                    // logical row boundaries across commit chunks.
+                    // for newline anchoring. When the prior commit exactly filled the
+                    // row, we also need a CRLF here because moving the cursor back to
+                    // the last column loses the terminal's pending autowrap state.
+                    // Emit CRLF before payload to preserve logical row boundaries
+                    // across commit chunks.
                     writer.writeAll("\r\n") catch {};
                 }
 

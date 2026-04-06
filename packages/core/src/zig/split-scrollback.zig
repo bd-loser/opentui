@@ -37,12 +37,14 @@ pub const SplitScrollback = struct {
 
         var row: u32 = 0;
         while (row < row_count) : (row += 1) {
-            self.publishColumns(row_columns, terminal_width);
+            self.publishRow(row_columns, terminal_width, row + 1 < row_count or trailing_newline);
+        }
+    }
 
-            const is_last_row = row + 1 >= row_count;
-            if (!is_last_row or trailing_newline) {
-                self.noteNewline();
-            }
+    pub fn publishRow(self: *SplitScrollback, columns: u32, width: u32, trailing_newline: bool) void {
+        self.publishColumns(columns, width);
+        if (trailing_newline) {
+            self.noteNewline();
         }
     }
 

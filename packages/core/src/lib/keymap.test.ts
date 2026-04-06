@@ -265,6 +265,31 @@ describe("keymap", () => {
     expect(calls).toEqual(["layer"])
   })
 
+  test("supports object shorthand bindings", () => {
+    const manager = useKeymappings(renderer)
+    const calls: string[] = []
+
+    registerActionCommands(manager, [
+      {
+        name: "shorthand",
+        run() {
+          calls.push("shorthand")
+        },
+      },
+    ])
+
+    useKeymap(manager, {
+      scope: "global",
+      bindings: {
+        x: "shorthand",
+      },
+    })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["shorthand"])
+  })
+
   test("throws when duplicate command names are registered", () => {
     const manager = useKeymappings(renderer)
 
@@ -659,6 +684,18 @@ describe("keymap", () => {
       { name: "d", ctrl: true, shift: undefined, meta: undefined, super: undefined, action: "delete-line" },
       { name: "return", ctrl: undefined, shift: undefined, meta: undefined, super: undefined, action: "submit" },
       { name: "left", ctrl: undefined, shift: true, meta: undefined, super: undefined, action: "select-left" },
+    ])
+  })
+
+  test("compileEditBufferKeyBindings supports object shorthand", () => {
+    const bindings = compileEditBufferKeyBindings({
+      "ctrl+d": "delete-line",
+      enter: "submit",
+    })
+
+    expect(bindings).toEqual([
+      { name: "d", ctrl: true, shift: undefined, meta: undefined, super: undefined, action: "delete-line" },
+      { name: "return", ctrl: undefined, shift: undefined, meta: undefined, super: undefined, action: "submit" },
     ])
   })
 

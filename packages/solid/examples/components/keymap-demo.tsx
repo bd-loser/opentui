@@ -39,11 +39,11 @@ function CounterPanel(props: {
   ])
 
   const keymapRef = useKeymap({
-    bindings: [
-      { key: "j", cmd: incrementCommand },
-      { key: "k", cmd: decrementCommand },
-      { key: "enter", cmd: `:announce ${props.label} confirmed` },
-    ],
+    bindings: {
+      j: incrementCommand,
+      k: decrementCommand,
+      enter: `:announce ${props.label} confirmed`,
+    },
   })
 
   onCleanup(() => {
@@ -194,14 +194,14 @@ export default function KeymapDemo() {
 
   useKeymap({
     scope: "global",
-    bindings: [
-      { key: "tab", cmd: "focus-next" },
-      { key: "shift+tab", cmd: "focus-prev" },
-      { key: "?", cmd: "toggle-help" },
-      { key: "ctrl+r", cmd: ":reset" },
-      { key: "<leader>s", cmd: ":announce Saved via leader" },
-      { key: "<leader>h", cmd: "toggle-help" },
-    ],
+    bindings: {
+      tab: "focus-next",
+      "shift+tab": "focus-prev",
+      "?": "toggle-help",
+      "ctrl+r": ":reset",
+      "<leader>s": ":announce Saved via leader",
+      "<leader>h": "toggle-help",
+    },
   })
 
   onMount(() => {

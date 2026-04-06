@@ -26,12 +26,16 @@ export type KeymapBindingInput = {
   fallthrough?: boolean
 } & Record<string, unknown>
 
+export type KeymapBindingShorthand = Record<string, string>
+
+export type KeymapBindings = KeymapBindingInput[] | KeymapBindingShorthand
+
 export interface KeymapLayer {
   target?: Renderable
   scope?: "global" | "focus" | "focus-within"
   priority?: number
   enabled?: KeymapEnabled
-  bindings: KeymapBindingInput[]
+  bindings: KeymapBindings
 }
 
 export interface KeymapResolvedCommand {
@@ -399,6 +403,23 @@ function normalizeCommandName(name: string): string {
   return trimmed
 }
 
+function normalizeBindingInputs(bindings: KeymapBindings): KeymapBindingInput[] {
+  if (Array.isArray(bindings)) {
+    return bindings
+  }
+
+  const normalized: KeymapBindingInput[] = []
+  for (const [key, cmd] of Object.entries(bindings)) {
+    if (typeof cmd !== "string") {
+      throw new Error(`Invalid keymap binding for "${key}": shorthand bindings must map to string commands`)
+    }
+
+    normalized.push({ key, cmd })
+  }
+
+  return normalized
+}
+
 function validateCommandArgs(command: ExCommand, args: string[]): boolean {
   if (!command.nargs) {
     return true
@@ -658,10 +679,10 @@ class KeymapManagerImpl implements KeymapManager {
     return "global"
   }
 
-  private compileBindings(bindings: KeymapBindingInput[]): Map<string, CompiledBinding[]> {
+  private compileBindings(bindings: KeymapBindings): Map<string, CompiledBinding[]> {
     const compiled = new Map<string, CompiledBinding[]>()
 
-    for (const binding of bindings) {
+    for (const binding of normalizeBindingInputs(bindings)) {
       const { stroke, requires } = parseKeyLike(binding.key, this.tokens)
       const mergedRequires: KeymapEventData = { ...requires }
 
@@ -1140,8 +1161,8 @@ export function registerEditBufferCommands(manager: KeymapManager): () => void {
   ])
 }
 
-export function compileEditBufferKeyBindings(bindings: KeymapBindingInput[]): EditBufferKeyBinding[] {
-  return bindings.map((binding) => {
+export function compileEditBufferKeyBindings(bindings: KeymapBindings): EditBufferKeyBinding[] {
+  return normalizeBindingInputs(bindings).map((binding) => {
     for (const [fieldName, value] of Object.entries(binding)) {
       if (RESERVED_BINDING_FIELDS.has(fieldName)) {
         continue

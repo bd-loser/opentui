@@ -245,14 +245,14 @@ function registerKeymaps(renderer: CliRenderer): void {
   disposers.push(
     useKeymap(manager, {
       scope: "global",
-      bindings: [
-        { key: "tab", cmd: "focus-next" },
-        { key: "shift+tab", cmd: "focus-prev" },
-        { key: "?", cmd: "toggle-help" },
-        { key: "ctrl+r", cmd: ":reset" },
-        { key: "<leader>s", cmd: ":announce Saved via leader" },
-        { key: "<leader>h", cmd: "toggle-help" },
-      ],
+      bindings: {
+        tab: "focus-next",
+        "shift+tab": "focus-prev",
+        "?": "toggle-help",
+        "ctrl+r": ":reset",
+        "<leader>s": ":announce Saved via leader",
+        "<leader>h": "toggle-help",
+      },
     }),
   )
 
@@ -260,11 +260,11 @@ function registerKeymaps(renderer: CliRenderer): void {
     disposers.push(
       useKeymap(manager, {
         target: alphaPanel,
-        bindings: [
-          { key: "j", cmd: "alpha-up" },
-          { key: "k", cmd: "alpha-down" },
-          { key: "enter", cmd: ":announce Alpha confirmed" },
-        ],
+        bindings: {
+          j: "alpha-up",
+          k: "alpha-down",
+          enter: ":announce Alpha confirmed",
+        },
       }),
     )
   }
@@ -273,11 +273,11 @@ function registerKeymaps(renderer: CliRenderer): void {
     disposers.push(
       useKeymap(manager, {
         target: betaPanel,
-        bindings: [
-          { key: "j", cmd: "beta-up" },
-          { key: "k", cmd: "beta-down" },
-          { key: "enter", cmd: ":announce Beta confirmed" },
-        ],
+        bindings: {
+          j: "beta-up",
+          k: "beta-down",
+          enter: ":announce Beta confirmed",
+        },
       }),
     )
   }

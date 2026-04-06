@@ -52,7 +52,9 @@ describe("solid keymap hooks", () => {
 
       useKeymap({
         scope: "global",
-        bindings: [{ key: "x", cmd: "global" }],
+        bindings: {
+          x: "global",
+        },
       })
 
       onCleanup(() => {

@@ -1,0 +1,57 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { createTestRenderer, type MockInput, type TestRenderer } from "../../../testing.js"
+import { getKeymapManager } from "../index.js"
+import { registerLeader } from "./leader.js"
+
+let renderer: TestRenderer
+let mockInput: MockInput
+
+describe("leader addon", () => {
+  beforeEach(async () => {
+    const testSetup = await createTestRenderer({ width: 40, height: 10, kittyKeyboard: true })
+    renderer = testSetup.renderer
+    mockInput = testSetup.mockInput
+  })
+
+  afterEach(() => {
+    renderer?.destroy()
+  })
+
+  test("cancels the armed state on escape", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "leader-action",
+        run() {
+          calls.push("leader")
+        },
+      },
+      {
+        name: "plain-action",
+        run() {
+          calls.push("plain")
+        },
+      },
+    ])
+
+    registerLeader(manager, {
+      trigger: { name: "x", ctrl: true },
+    })
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [
+        { key: "<leader>a", cmd: "leader-action" },
+        { key: "a", cmd: "plain-action" },
+      ],
+    })
+
+    mockInput.pressKey("x", { ctrl: true })
+    mockInput.pressEscape()
+    mockInput.pressKey("a")
+
+    expect(calls).toEqual(["plain"])
+  })
+})

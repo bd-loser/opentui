@@ -41,6 +41,7 @@ This page covers the options that most apps set directly.
 | `consoleMode`         | `ConsoleMode`                  | `"console-overlay"`  | How the built-in console overlay behaves ([details](#console-mode))                     |
 | `exitOnCtrlC`         | `boolean`                      | `true`               | Call `renderer.destroy()` when Ctrl+C is pressed                                        |
 | `exitSignals`         | `NodeJS.Signals[]`             | see below            | Signals that trigger cleanup ([details](/docs/core-concepts/lifecycle#signal-handling)) |
+| `clearOnShutdown`     | `boolean`                      | `true`               | Clear the renderer-owned region on `suspend()` and `destroy()`                          |
 | `targetFps`           | `number`                       | `30`                 | Target frames per second for the render loop                                            |
 | `maxFps`              | `number`                       | `60`                 | Maximum FPS cap for immediate re-renders                                                |
 | `useMouse`            | `boolean`                      | `true`               | Enable mouse input                                                                      |
@@ -193,6 +194,16 @@ renderer.pause() // Pause rendering (use start() or requestLive() to run it agai
 
 renderer.suspend() // Fully suspend (disables mouse, input, and raw mode)
 renderer.resume() // Resume from suspended state
+```
+
+By default, suspending or destroying clears the region OpenTUI owns on the main screen. If you want to keep that
+content visible after shutdown, set `clearOnShutdown: false`:
+
+```typescript
+const renderer = await createCliRenderer({
+  screenMode: "split-footer",
+  clearOnShutdown: false,
+})
 ```
 
 ## Key properties

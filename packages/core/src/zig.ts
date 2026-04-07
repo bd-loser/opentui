@@ -150,12 +150,32 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "bool"],
       returns: "void",
     },
+    setClearOnShutdown: {
+      args: ["ptr", "bool"],
+      returns: "void",
+    },
     setBackgroundColor: {
       args: ["ptr", "ptr"],
       returns: "void",
     },
     setRenderOffset: {
       args: ["ptr", "u32"],
+      returns: "void",
+    },
+    resetSplitScrollback: {
+      args: ["ptr", "u32", "u32"],
+      returns: "u32",
+    },
+    syncSplitScrollback: {
+      args: ["ptr", "u32"],
+      returns: "u32",
+    },
+    setPendingSplitFooterTransition: {
+      args: ["ptr", "u8", "u32", "u32", "u32", "u32"],
+      returns: "void",
+    },
+    clearPendingSplitFooterTransition: {
+      args: ["ptr"],
       returns: "void",
     },
     updateStats: {
@@ -169,6 +189,17 @@ function getOpenTUILib(libPath?: string) {
     render: {
       args: ["ptr", "bool"],
       returns: "void",
+    },
+    repaintSplitFooter: {
+      args: ["ptr", "u32", "bool"],
+      returns: "u32",
+    },
+    // Single FFI entrypoint for split commit append. beginFrame/finalizeFrame let
+    // native code decide whether this call is a standalone commit or part of a
+    // larger batched frame envelope.
+    commitSplitFooterSnapshot: {
+      args: ["ptr", "ptr", "u32", "bool", "bool", "u32", "bool", "bool", "bool"],
+      returns: "u32",
     },
     getNextBuffer: {
       args: ["ptr"],
@@ -662,6 +693,10 @@ function getOpenTUILib(libPath?: string) {
     },
     textBufferViewSetWrapMode: {
       args: ["ptr", "u8"],
+      returns: "void",
+    },
+    textBufferViewSetFirstLineOffset: {
+      args: ["ptr", "u32"],
       returns: "void",
     },
     textBufferViewSetViewportSize: {
@@ -1383,11 +1418,37 @@ export interface RenderLib {
   setTerminalEnvVar: (renderer: Pointer, key: string, value: string) => boolean
   destroyRenderer: (renderer: Pointer) => void
   setUseThread: (renderer: Pointer, useThread: boolean) => void
+  setClearOnShutdown: (renderer: Pointer, clear: boolean) => void
   setBackgroundColor: (renderer: Pointer, color: RGBA) => void
   setRenderOffset: (renderer: Pointer, offset: number) => void
+  resetSplitScrollback: (renderer: Pointer, seedRows: number, pinnedRenderOffset: number) => number
+  syncSplitScrollback: (renderer: Pointer, pinnedRenderOffset: number) => number
+  setPendingSplitFooterTransition: (
+    renderer: Pointer,
+    mode: number,
+    sourceTopLine: number,
+    sourceHeight: number,
+    targetTopLine: number,
+    targetHeight: number,
+  ) => void
+  clearPendingSplitFooterTransition: (renderer: Pointer) => void
   updateStats: (renderer: Pointer, time: number, fps: number, frameCallbackTime: number) => void
   updateMemoryStats: (renderer: Pointer, heapUsed: number, heapTotal: number, arrayBuffers: number) => void
   render: (renderer: Pointer, force: boolean) => void
+  repaintSplitFooter: (renderer: Pointer, pinnedRenderOffset: number, force: boolean) => number
+  commitSplitFooterSnapshot: (
+    renderer: Pointer,
+    snapshot: OptimizedBuffer,
+    rowColumns: number,
+    startOnNewLine: boolean,
+    trailingNewline: boolean,
+    pinnedRenderOffset: number,
+    force: boolean,
+    // beginFrame/finalizeFrame mark commit boundaries when one JS flush contains
+    // multiple stdout snapshots. Defaults preserve old one-call behavior.
+    beginFrame?: boolean,
+    finalizeFrame?: boolean,
+  ) => number
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
   createOptimizedBuffer: (
@@ -1637,6 +1698,7 @@ export interface RenderLib {
   textBufferViewResetLocalSelection: (view: Pointer) => void
   textBufferViewSetWrapWidth: (view: Pointer, width: number) => void
   textBufferViewSetWrapMode: (view: Pointer, mode: "none" | "char" | "word") => void
+  textBufferViewSetFirstLineOffset: (view: Pointer, offset: number) => void
   textBufferViewSetViewportSize: (view: Pointer, width: number, height: number) => void
   textBufferViewSetViewport: (view: Pointer, x: number, y: number, width: number, height: number) => void
   textBufferViewGetLineInfo: (view: Pointer) => LineInfo
@@ -2020,12 +2082,46 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setUseThread(renderer, useThread)
   }
 
+  public setClearOnShutdown(renderer: Pointer, clear: boolean) {
+    this.opentui.symbols.setClearOnShutdown(renderer, clear)
+  }
+
   public setBackgroundColor(renderer: Pointer, color: RGBA) {
     this.opentui.symbols.setBackgroundColor(renderer, color.buffer)
   }
 
   public setRenderOffset(renderer: Pointer, offset: number) {
     this.opentui.symbols.setRenderOffset(renderer, offset)
+  }
+
+  public resetSplitScrollback(renderer: Pointer, seedRows: number, pinnedRenderOffset: number): number {
+    return this.opentui.symbols.resetSplitScrollback(renderer, seedRows, pinnedRenderOffset)
+  }
+
+  public syncSplitScrollback(renderer: Pointer, pinnedRenderOffset: number): number {
+    return this.opentui.symbols.syncSplitScrollback(renderer, pinnedRenderOffset)
+  }
+
+  public setPendingSplitFooterTransition(
+    renderer: Pointer,
+    mode: number,
+    sourceTopLine: number,
+    sourceHeight: number,
+    targetTopLine: number,
+    targetHeight: number,
+  ): void {
+    this.opentui.symbols.setPendingSplitFooterTransition(
+      renderer,
+      mode,
+      sourceTopLine,
+      sourceHeight,
+      targetTopLine,
+      targetHeight,
+    )
+  }
+
+  public clearPendingSplitFooterTransition(renderer: Pointer): void {
+    this.opentui.symbols.clearPendingSplitFooterTransition(renderer)
   }
 
   public updateStats(renderer: Pointer, time: number, fps: number, frameCallbackTime: number) {
@@ -2417,6 +2513,34 @@ class FFIRenderLib implements RenderLib {
 
   public render(renderer: Pointer, force: boolean) {
     this.opentui.symbols.render(renderer, force)
+  }
+
+  public repaintSplitFooter(renderer: Pointer, pinnedRenderOffset: number, force: boolean): number {
+    return this.opentui.symbols.repaintSplitFooter(renderer, pinnedRenderOffset, force)
+  }
+
+  public commitSplitFooterSnapshot(
+    renderer: Pointer,
+    snapshot: OptimizedBuffer,
+    rowColumns: number,
+    startOnNewLine: boolean,
+    trailingNewline: boolean,
+    pinnedRenderOffset: number,
+    force: boolean,
+    beginFrame: boolean = true,
+    finalizeFrame: boolean = true,
+  ): number {
+    return this.opentui.symbols.commitSplitFooterSnapshot(
+      renderer,
+      snapshot.ptr,
+      rowColumns,
+      startOnNewLine,
+      trailingNewline,
+      pinnedRenderOffset,
+      force,
+      beginFrame,
+      finalizeFrame,
+    )
   }
 
   public createOptimizedBuffer(
@@ -2874,6 +2998,10 @@ class FFIRenderLib implements RenderLib {
   public textBufferViewSetWrapMode(view: Pointer, mode: "none" | "char" | "word"): void {
     const modeValue = mode === "none" ? 0 : mode === "char" ? 1 : 2
     this.opentui.symbols.textBufferViewSetWrapMode(view, modeValue)
+  }
+
+  public textBufferViewSetFirstLineOffset(view: Pointer, offset: number): void {
+    this.opentui.symbols.textBufferViewSetFirstLineOffset(view, offset)
   }
 
   public textBufferViewSetViewportSize(view: Pointer, width: number, height: number): void {

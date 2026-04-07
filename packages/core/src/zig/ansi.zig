@@ -13,6 +13,7 @@ pub const ANSI = struct {
     pub const clear = "\x1b[2J";
     pub const home = "\x1b[H";
     pub const clearAndHome = "\x1b[H\x1b[2J";
+    pub const eraseToEndOfLine = "\x1b[K";
     pub const hideCursor = "\x1b[?25l";
     pub const showCursor = "\x1b[?25h";
     pub const defaultCursorStyle = "\x1b[0 q";

@@ -37,6 +37,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected _scrollX: number = 0
   protected _scrollY: number = 0
   protected _truncate: boolean = false
+  protected _firstLineOffset: number = 0
 
   protected textBuffer: TextBuffer
   protected textBufferView: TextBufferView
@@ -73,11 +74,13 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
     this.textBufferView = TextBufferView.create(this.textBuffer)
+    this._firstLineOffset = ctx.claimFirstLineOffset?.(this) ?? 0
 
     this._textBufferSyntaxStyle = SyntaxStyle.create()
     this.textBuffer.setSyntaxStyle(this._textBufferSyntaxStyle)
 
     this.textBufferView.setWrapMode(this._wrapMode)
+    this.textBufferView.setFirstLineOffset(this._firstLineOffset)
     this.setupMeasureFunc()
 
     this.textBuffer.setDefaultFg(this._defaultFg)

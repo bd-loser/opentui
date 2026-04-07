@@ -92,6 +92,7 @@ export interface RenderContext extends EventEmitter {
   currentFocusedEditor: EditBufferRenderable | null
   focusRenderable: (renderable: Renderable) => void
   blurRenderable: (renderable: Renderable) => void
+  claimFirstLineOffset?: (renderable?: Renderable) => number
   registerLifecyclePass: (renderable: Renderable) => void
   unregisterLifecyclePass: (renderable: Renderable) => void
   getLifecyclePasses: () => Set<Renderable>

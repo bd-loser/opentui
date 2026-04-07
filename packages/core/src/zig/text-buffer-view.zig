@@ -120,6 +120,7 @@ pub const UnifiedTextBufferView = struct {
     viewport: ?Viewport,
     wrap_width: ?u32,
     wrap_mode: WrapMode,
+    first_line_offset: u32,
     virtual_lines: std.ArrayListUnmanaged(VirtualLine),
     virtual_lines_dirty: bool,
     cached_line_starts: std.ArrayListUnmanaged(u32),
@@ -145,6 +146,7 @@ pub const UnifiedTextBufferView = struct {
     // code paths clear dirty (e.g., updateVirtualLines).
     cached_measure_width: ?u32,
     cached_measure_wrap_mode: WrapMode,
+    cached_measure_first_line_offset: u32,
     cached_measure_result: ?MeasureResult,
     cached_measure_epoch: u64,
     cached_measure_buffer: ?*UnifiedTextBuffer,
@@ -176,6 +178,7 @@ pub const UnifiedTextBufferView = struct {
             .viewport = null,
             .wrap_width = null,
             .wrap_mode = .none,
+            .first_line_offset = 0,
             .virtual_lines = .{},
             .virtual_lines_dirty = true,
             .cached_line_starts = .{},
@@ -194,6 +197,7 @@ pub const UnifiedTextBufferView = struct {
             .ellipsis_mem_id = ellipsis_mem_id,
             .cached_measure_width = null,
             .cached_measure_wrap_mode = .none,
+            .cached_measure_first_line_offset = 0,
             .cached_measure_result = null,
             .cached_measure_epoch = 0,
             .cached_measure_buffer = null,
@@ -265,6 +269,14 @@ pub const UnifiedTextBufferView = struct {
     pub fn setWrapMode(self: *Self, mode: WrapMode) void {
         if (self.wrap_mode != mode) {
             self.wrap_mode = mode;
+            self.virtual_lines_dirty = true;
+            self.truncation_applied = false;
+        }
+    }
+
+    pub fn setFirstLineOffset(self: *Self, offset: u32) void {
+        if (self.first_line_offset != offset) {
+            self.first_line_offset = offset;
             self.virtual_lines_dirty = true;
             self.truncation_applied = false;
         }
@@ -344,6 +356,7 @@ pub const UnifiedTextBufferView = struct {
             self.text_buffer,
             self.wrap_mode,
             self.wrap_width,
+            self.first_line_offset,
             virtual_allocator,
             output,
         );
@@ -885,7 +898,10 @@ pub const UnifiedTextBufferView = struct {
         if (self.cached_measure_result) |result| {
             if (self.cached_measure_epoch == epoch and self.cached_measure_buffer == self.text_buffer) {
                 if (self.cached_measure_width) |cached_width| {
-                    if (cached_width == width and self.cached_measure_wrap_mode == self.wrap_mode) {
+                    if (cached_width == width and
+                        self.cached_measure_wrap_mode == self.wrap_mode and
+                        self.cached_measure_first_line_offset == self.first_line_offset)
+                    {
                         return result;
                     }
                 }
@@ -908,6 +924,7 @@ pub const UnifiedTextBufferView = struct {
 
             self.cached_measure_width = width;
             self.cached_measure_wrap_mode = self.wrap_mode;
+            self.cached_measure_first_line_offset = self.first_line_offset;
             self.cached_measure_result = result;
             self.cached_measure_epoch = epoch;
             self.cached_measure_buffer = self.text_buffer;
@@ -946,6 +963,7 @@ pub const UnifiedTextBufferView = struct {
             self.text_buffer,
             self.wrap_mode,
             wrap_width_for_measure,
+            self.first_line_offset,
             measure_allocator,
             output,
         );
@@ -963,6 +981,7 @@ pub const UnifiedTextBufferView = struct {
 
         self.cached_measure_width = width;
         self.cached_measure_wrap_mode = self.wrap_mode;
+        self.cached_measure_first_line_offset = self.first_line_offset;
         self.cached_measure_result = result;
         self.cached_measure_epoch = epoch;
         self.cached_measure_buffer = self.text_buffer;
@@ -975,6 +994,7 @@ pub const UnifiedTextBufferView = struct {
         text_buffer: *UnifiedTextBuffer,
         wrap_mode: WrapMode,
         wrap_width: ?u32,
+        first_line_offset: u32,
         allocator: Allocator,
         output: VirtualLineOutput,
     ) void {
@@ -1039,6 +1059,8 @@ pub const UnifiedTextBufferView = struct {
                 output: VirtualLineOutput,
                 wrap_mode: WrapMode,
                 wrap_w: u32,
+                first_line_offset: u32,
+                first_line_pending: bool,
                 global_char_offset: u32 = 0,
                 line_idx: u32 = 0,
                 line_col_offset: u32 = 0,
@@ -1051,6 +1073,14 @@ pub const UnifiedTextBufferView = struct {
                 last_wrap_chunk_count: u32 = 0,
                 last_wrap_line_position: u32 = 0,
                 last_wrap_global_offset: u32 = 0,
+
+                fn lineWrapWidth(wctx: *@This()) u32 {
+                    if (!wctx.first_line_pending or wctx.first_line_offset == 0 or wctx.first_line_offset >= wctx.wrap_w) {
+                        return wctx.wrap_w;
+                    }
+
+                    return wctx.wrap_w - wctx.first_line_offset;
+                }
 
                 fn commitVirtualLine(wctx: *@This()) void {
                     wctx.current_vline.width_cols = wctx.line_position;
@@ -1068,6 +1098,7 @@ pub const UnifiedTextBufferView = struct {
                     wctx.current_vline = VirtualLine.init();
                     wctx.current_vline.col_offset = wctx.global_char_offset;
                     wctx.line_position = 0;
+                    wctx.first_line_pending = false;
 
                     wctx.last_wrap_chunk_count = 0;
                     wctx.last_wrap_line_position = 0;
@@ -1106,8 +1137,9 @@ pub const UnifiedTextBufferView = struct {
                         var wrap_idx: usize = 0;
 
                         while (char_offset < chunk.width) {
+                            const line_wrap_w = wctx.lineWrapWidth();
                             const remaining_in_chunk = chunk.width - char_offset;
-                            const remaining_on_line = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
+                            const remaining_on_line = if (wctx.line_position < line_wrap_w) line_wrap_w - wctx.line_position else 0;
 
                             var last_wrap_that_fits: ?u32 = null;
                             var saved_wrap_idx = wrap_idx;
@@ -1138,7 +1170,7 @@ pub const UnifiedTextBufferView = struct {
 
                             if (remaining_in_chunk <= remaining_on_line) {
                                 if (last_wrap_that_fits) |boundary_w| {
-                                    const would_fill_line = wctx.line_position + remaining_in_chunk >= wctx.wrap_w;
+                                    const would_fill_line = wctx.line_position + remaining_in_chunk >= line_wrap_w;
                                     if (would_fill_line and boundary_w < remaining_in_chunk) {
                                         to_add = boundary_w;
                                         has_wrap_after = true;
@@ -1225,7 +1257,7 @@ pub const UnifiedTextBufferView = struct {
                                     byte_offset = pos_result.byte_offset;
                                 }
                                 const remaining_bytes = chunk_bytes[byte_offset..];
-                                const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.wrap_w, wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
+                                const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.lineWrapWidth(), wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
                                 to_add = wrap_result.columns_used;
                                 byte_offset += wrap_result.byte_offset;
                                 if (to_add == 0) {
@@ -1253,7 +1285,7 @@ pub const UnifiedTextBufferView = struct {
                                     wctx.last_wrap_global_offset = offset_before_add + wrap_pos_in_added;
                                 }
 
-                                if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
+                                if (wctx.line_position >= line_wrap_w and char_offset < chunk.width) {
                                     if (has_wrap_after or wctx.last_wrap_chunk_count > 0) {
                                         commitVirtualLine(wctx);
                                     }
@@ -1267,7 +1299,8 @@ pub const UnifiedTextBufferView = struct {
                         var char_offset: u32 = 0;
 
                         while (char_offset < chunk.width) {
-                            const remaining_width = if (wctx.line_position < wctx.wrap_w) wctx.wrap_w - wctx.line_position else 0;
+                            const line_wrap_w = wctx.lineWrapWidth();
+                            const remaining_width = if (wctx.line_position < line_wrap_w) line_wrap_w - wctx.line_position else 0;
 
                             if (remaining_width == 0) {
                                 if (wctx.line_position > 0) {
@@ -1316,7 +1349,7 @@ pub const UnifiedTextBufferView = struct {
                             char_offset += wrap_result.columns_used;
                             byte_offset += wrap_result.byte_offset;
 
-                            if (wctx.line_position >= wctx.wrap_w and char_offset < chunk.width) {
+                            if (wctx.line_position >= line_wrap_w and char_offset < chunk.width) {
                                 commitVirtualLine(wctx);
                             }
                         }
@@ -1346,6 +1379,7 @@ pub const UnifiedTextBufferView = struct {
                     wctx.line_idx += 1;
                     wctx.line_col_offset = 0;
                     wctx.line_position = 0;
+                    wctx.first_line_pending = false;
                     wctx.current_vline = VirtualLine.init();
                     wctx.current_vline.col_offset = wctx.global_char_offset;
                     wctx.last_wrap_chunk_count = 0;
@@ -1363,6 +1397,8 @@ pub const UnifiedTextBufferView = struct {
                 .output = output,
                 .wrap_mode = wrap_mode,
                 .wrap_w = wrap_w,
+                .first_line_offset = first_line_offset,
+                .first_line_pending = first_line_offset > 0,
             };
 
             text_buffer.walkLinesAndSegments(&wrap_ctx, WrapContext.segment_callback, WrapContext.line_end_callback);

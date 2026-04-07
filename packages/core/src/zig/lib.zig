@@ -209,6 +209,10 @@ export fn setUseThread(rendererPtr: *renderer.CliRenderer, useThread: bool) void
     rendererPtr.setUseThread(useThread);
 }
 
+export fn setClearOnShutdown(rendererPtr: *renderer.CliRenderer, clear: bool) void {
+    rendererPtr.setClearOnShutdown(clear);
+}
+
 export fn destroyRenderer(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.destroy();
 }
@@ -219,6 +223,35 @@ export fn setBackgroundColor(rendererPtr: *renderer.CliRenderer, color: [*]const
 
 export fn setRenderOffset(rendererPtr: *renderer.CliRenderer, offset: u32) void {
     rendererPtr.setRenderOffset(offset);
+}
+
+export fn resetSplitScrollback(rendererPtr: *renderer.CliRenderer, seedRows: u32, pinnedRenderOffset: u32) u32 {
+    return rendererPtr.resetSplitScrollback(seedRows, pinnedRenderOffset);
+}
+
+export fn syncSplitScrollback(rendererPtr: *renderer.CliRenderer, pinnedRenderOffset: u32) u32 {
+    return rendererPtr.syncSplitScrollback(pinnedRenderOffset);
+}
+
+export fn setPendingSplitFooterTransition(
+    rendererPtr: *renderer.CliRenderer,
+    mode: u8,
+    sourceTopLine: u32,
+    sourceHeight: u32,
+    targetTopLine: u32,
+    targetHeight: u32,
+) void {
+    rendererPtr.setPendingSplitFooterTransition(
+        @enumFromInt(mode),
+        sourceTopLine,
+        sourceHeight,
+        targetTopLine,
+        targetHeight,
+    );
+}
+
+export fn clearPendingSplitFooterTransition(rendererPtr: *renderer.CliRenderer) void {
+    rendererPtr.clearPendingSplitFooterTransition();
 }
 
 export fn updateStats(rendererPtr: *renderer.CliRenderer, time: f64, fps: u32, frameCallbackTime: f64) void {
@@ -266,6 +299,55 @@ export fn getBufferHeight(bufferPtr: *buffer.OptimizedBuffer) u32 {
 
 export fn render(rendererPtr: *renderer.CliRenderer, force: bool) void {
     rendererPtr.render(force);
+}
+
+export fn repaintSplitFooter(
+    rendererPtr: *renderer.CliRenderer,
+    pinnedRenderOffset: u32,
+    force: bool,
+) u32 {
+    return rendererPtr.repaintSplitFooter(pinnedRenderOffset, force);
+}
+
+export fn commitSplitFooterSnapshot(
+    rendererPtr: *renderer.CliRenderer,
+    snapshotBufferPtr: *buffer.OptimizedBuffer,
+    rowColumns: u32,
+    startOnNewLine: bool,
+    trailingNewline: bool,
+    pinnedRenderOffset: u32,
+    force: bool,
+    beginFrame: bool,
+    finalizeFrame: bool,
+) u32 {
+    // JS passes rowColumns/startOnNewLine/trailingNewline per commit from
+    // writeToScrollback or captured stdout chunking. This entrypoint is the ABI
+    // boundary where that metadata enters the native split append algorithm.
+    // Route all commits through the batched renderer path so sync/cursor framing
+    // happens exactly once per JS flush cycle.
+    if (beginFrame and finalizeFrame) {
+        return rendererPtr.commitSplitFooterSnapshotBatched(
+            snapshotBufferPtr,
+            rowColumns,
+            startOnNewLine,
+            trailingNewline,
+            pinnedRenderOffset,
+            force,
+            true,
+            true,
+        );
+    }
+
+    return rendererPtr.commitSplitFooterSnapshotBatched(
+        snapshotBufferPtr,
+        rowColumns,
+        startOnNewLine,
+        trailingNewline,
+        pinnedRenderOffset,
+        force,
+        beginFrame,
+        finalizeFrame,
+    );
 }
 
 export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8, idPtr: [*]const u8, idLen: usize) ?*buffer.OptimizedBuffer {
@@ -971,6 +1053,10 @@ export fn textBufferViewSetWrapMode(view: *text_buffer_view.UnifiedTextBufferVie
         else => .none,
     };
     view.setWrapMode(wrapMode);
+}
+
+export fn textBufferViewSetFirstLineOffset(view: *text_buffer_view.UnifiedTextBufferView, offset: u32) void {
+    view.setFirstLineOffset(offset);
 }
 
 export fn textBufferViewSetViewportSize(view: *text_buffer_view.UnifiedTextBufferView, width: u32, height: u32) void {

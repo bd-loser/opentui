@@ -107,6 +107,8 @@ skip_explicit_width_query: bool = false,
 graphics_query_pending: bool = false,
 capability_queries_pending: bool = false,
 theme_queries_pending: bool = false,
+startup_cursor_query_pending: bool = false,
+startup_cursor_query_captured: bool = false,
 
 state: struct {
     alt_screen: bool = false,
@@ -231,6 +233,8 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.graphics_query_pending = !self.skip_graphics_query;
     self.capability_queries_pending = false;
     self.theme_queries_pending = false;
+    self.startup_cursor_query_pending = true;
+    self.startup_cursor_query_captured = false;
 
     try self.setColorSchemeUpdates(tty, true);
     try tty.writeAll(ansi.ANSI.colorSchemeRequest);
@@ -247,6 +251,9 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     try tty.writeAll(ansi.ANSI.xtversion ++
         ansi.ANSI.hideCursor ++
         ansi.ANSI.saveCursorState);
+
+    // Capture the current cursor position before temporary home-position queries.
+    try tty.writeAll(ansi.ANSI.cursorPositionRequest);
 
     if (self.in_tmux) {
         try tty.writeAll(ansi.ANSI.capabilityQueriesTmux);
@@ -714,24 +721,55 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         self.caps.bracketed_paste = true;
     }
 
-    // Explicit width detection - cursor position report [1;NR where N >= 2 means explicit width supported
-    // We look for ESC[1; followed by a digit >= 2
-    // This handles cases where the cursor isn't at exact home position when queries are sent
-    if (std.mem.indexOf(u8, response, "\x1b[1;")) |pos| {
-        const after = response[pos + 4 ..];
-        if (after.len > 0) {
-            var end: usize = 0;
-            while (end < after.len and after[end] >= '0' and after[end] <= '9') : (end += 1) {}
-            if (end > 0 and end < after.len and after[end] == 'R') {
-                const col = std.fmt.parseInt(u16, after[0..end], 10) catch 0;
-                if (col >= 2) {
-                    self.caps.explicit_width = true;
-                }
-                if (col >= 3) {
-                    self.caps.scaled_text = true;
-                }
+    // Parse cursor position reports: ESC[row;colR
+    // The first report after queryTerminalSend is the pre-home cursor position.
+    var scan_pos: usize = 0;
+    while (scan_pos < response.len) {
+        const esc_rel = std.mem.indexOf(u8, response[scan_pos..], "\x1b[") orelse break;
+        const esc = scan_pos + esc_rel;
+        var pos = esc + 2;
+
+        const row_start = pos;
+        while (pos < response.len and response[pos] >= '0' and response[pos] <= '9') : (pos += 1) {}
+        if (pos == row_start or pos >= response.len or response[pos] != ';') {
+            scan_pos = esc + 2;
+            continue;
+        }
+
+        const row = std.fmt.parseInt(u16, response[row_start..pos], 10) catch {
+            scan_pos = pos + 1;
+            continue;
+        };
+
+        pos += 1;
+        const col_start = pos;
+        while (pos < response.len and response[pos] >= '0' and response[pos] <= '9') : (pos += 1) {}
+        if (pos == col_start or pos >= response.len or response[pos] != 'R') {
+            scan_pos = col_start;
+            continue;
+        }
+
+        const col = std.fmt.parseInt(u16, response[col_start..pos], 10) catch {
+            scan_pos = pos + 1;
+            continue;
+        };
+
+        if (self.startup_cursor_query_pending and !self.startup_cursor_query_captured and row >= 1 and col >= 1) {
+            self.setCursorPosition(col, row, self.state.cursor.visible);
+            self.startup_cursor_query_captured = true;
+            self.startup_cursor_query_pending = false;
+        }
+
+        if (row == 1) {
+            if (col >= 2) {
+                self.caps.explicit_width = true;
+            }
+            if (col >= 3) {
+                self.caps.scaled_text = true;
             }
         }
+
+        scan_pos = pos + 1;
     }
 
     // Parse xtversion response: ESC P > | name version ESC \

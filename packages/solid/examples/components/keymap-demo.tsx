@@ -1,5 +1,5 @@
 import { ConsolePosition } from "@opentui/core"
-import { registerExCommands } from "@opentui/core/extras"
+import { registerExCommands, registerTimedLeader } from "@opentui/core/extras"
 import { render, useKeymap, useKeymappings, useRenderer } from "@opentui/solid"
 import { Show, createSignal, onCleanup, onMount, type Accessor } from "solid-js"
 
@@ -111,17 +111,6 @@ export default function KeymapDemo() {
     focusPanel(activePanel() === "beta" ? "alpha" : "beta")
   }
 
-  let leaderTimeout: ReturnType<typeof setTimeout> | undefined
-
-  const clearLeaderTimeout = () => {
-    if (!leaderTimeout) {
-      return
-    }
-
-    clearTimeout(leaderTimeout)
-    leaderTimeout = undefined
-  }
-
   const offActions = manager.registerCommands([
     {
       name: "focus-next",
@@ -168,29 +157,15 @@ export default function KeymapDemo() {
     },
   ])
 
-  const offToken = manager.registerToken({
-    token: "<leader>",
-    data: { prefix: "leader" },
-  })
-
-  const offLeaderHook = manager.onKeyInput(({ event, consume, setData }) => {
-    if (!leaderArmed()) {
-      if (event.ctrl && event.name === "x") {
-        setLeaderArmed(true)
-        setLastAction("Leader armed: press s or h")
-        clearLeaderTimeout()
-        leaderTimeout = setTimeout(() => {
-          leaderTimeout = undefined
-          setLeaderArmed(false)
-        }, 1500)
-        consume()
-      }
-      return
-    }
-
-    clearLeaderTimeout()
-    setLeaderArmed(false)
-    setData("prefix", "leader")
+  const offLeader = registerTimedLeader(manager, {
+    trigger: { name: "x", ctrl: true },
+    onArm() {
+      setLeaderArmed(true)
+      setLastAction("Leader armed: press s or h")
+    },
+    onDisarm() {
+      setLeaderArmed(false)
+    },
   })
 
   useKeymap({
@@ -210,9 +185,7 @@ export default function KeymapDemo() {
   })
 
   onCleanup(() => {
-    clearLeaderTimeout()
-    offLeaderHook()
-    offToken()
+    offLeader()
     offEx()
     offActions()
   })

@@ -5,7 +5,7 @@ import {
   TextRenderable,
   type CliRenderer,
 } from "../index.js"
-import { getKeymapManager, registerExCommands } from "../extras.js"
+import { getKeymapManager, registerExCommands, registerTimedLeader } from "../extras.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let root: BoxRenderable | null = null
@@ -21,7 +21,6 @@ let helpVisible = true
 let leaderArmed = false
 let lastAction = "Click a panel or press Tab to start."
 let logLines: string[] = []
-let leaderTimeout: ReturnType<typeof setTimeout> | undefined
 let disposers: Array<() => void> = []
 
 function addLog(message: string): void {
@@ -100,28 +99,6 @@ function setStatus(renderer: CliRenderer, message: string): void {
   lastAction = message
   addLog(message)
   renderAll(renderer)
-}
-
-function clearLeaderTimer(): void {
-  if (!leaderTimeout) {
-    return
-  }
-
-  clearTimeout(leaderTimeout)
-  leaderTimeout = undefined
-}
-
-function armLeader(renderer: CliRenderer): void {
-  clearLeaderTimer()
-  leaderArmed = true
-  lastAction = "Leader armed: press s or h"
-  renderStatus(renderer)
-
-  leaderTimeout = setTimeout(() => {
-    leaderArmed = false
-    leaderTimeout = undefined
-    renderStatus(renderer)
-  }, 1500)
 }
 
 function moveFocus(renderer: CliRenderer, direction: 1 | -1): void {
@@ -216,26 +193,17 @@ function registerKeymaps(renderer: CliRenderer): void {
   )
 
   disposers.push(
-    manager.registerToken({
-      token: "<leader>",
-      data: { prefix: "leader" },
-    }),
-  )
-
-  disposers.push(
-    manager.onKeyInput(({ event, consume, setData }) => {
-      if (!leaderArmed) {
-        if (event.ctrl && event.name === "x") {
-          armLeader(renderer)
-          consume()
-        }
-        return
-      }
-
-      leaderArmed = false
-      clearLeaderTimer()
-      setData("prefix", "leader")
-      renderStatus(renderer)
+    registerTimedLeader(manager, {
+      trigger: { name: "x", ctrl: true },
+      onArm() {
+        leaderArmed = true
+        lastAction = "Leader armed: press s or h"
+        renderStatus(renderer)
+      },
+      onDisarm() {
+        leaderArmed = false
+        renderStatus(renderer)
+      },
     }),
   )
 
@@ -289,7 +257,6 @@ export function run(renderer: CliRenderer): void {
   leaderArmed = false
   lastAction = "Click a panel or press Tab to start."
   logLines = []
-  clearLeaderTimer()
 
   root = new BoxRenderable(renderer, {
     id: "keymap-demo-root",
@@ -401,7 +368,6 @@ export function run(renderer: CliRenderer): void {
 }
 
 export function destroy(_renderer: CliRenderer): void {
-  clearLeaderTimer()
   leaderArmed = false
 
   while (disposers.length > 0) {

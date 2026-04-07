@@ -323,7 +323,7 @@ function normalizeKeyStroke(input: KeyStroke): ParsedKeyStroke {
   }
 }
 
-function normalizeEventKeyStroke(event: KeyEvent): ParsedKeyStroke {
+export function normalizeEventKeyStroke(event: KeyEvent): ParsedKeyStroke {
   return {
     name: normalizeKeyName(event.name),
     ctrl: event.ctrl,

@@ -326,7 +326,7 @@ describe("keymap", () => {
     expect(calls).toEqual(["field"])
   })
 
-  test("supports token prefixes and typed fields together", () => {
+  test("supports key-sequence prefixes and typed fields together", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
@@ -337,13 +337,14 @@ describe("keymap", () => {
     })
 
     manager.registerToken({
-      token: "<normal>",
-      data: { "vim.mode": "normal" },
+      token: "<leader>",
+      data: { prefix: "leader" },
     })
 
     manager.onKeyInput(({ event, setData }) => {
       if (event.name === "x") {
         setData("vim.mode", "normal")
+        setData("prefix", "leader")
       }
     })
 
@@ -351,7 +352,7 @@ describe("keymap", () => {
       {
         name: "record",
         run() {
-          calls.push("token")
+          calls.push("binding")
         },
       },
     ])
@@ -359,33 +360,32 @@ describe("keymap", () => {
     manager.registerLayer({
       scope: "global",
       bindings: [
-        { key: "<normal>x", cmd: "record", fallthrough: true },
+        { key: "<leader>x", cmd: "record", fallthrough: true },
         { key: "x", mode: "normal", cmd: "record", fallthrough: true },
       ],
     })
 
     mockInput.pressKey("x")
 
-    expect(calls).toEqual(["token", "token"])
+    expect(calls).toEqual(["binding", "binding"])
   })
 
-  test("throws on conflicting requirements from tokens and typed fields", () => {
+  test("throws on conflicting requirements from typed fields", () => {
     const manager = getKeymapManager(renderer)
 
     manager.registerBindingFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
       },
-    })
-    manager.registerToken({
-      token: "<normal>",
-      data: { "vim.mode": "normal" },
+      state(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
     })
 
     expect(() => {
       manager.registerLayer({
         scope: "global",
-        bindings: [{ key: "<normal>x", mode: "visual", cmd: "noop" }],
+        bindings: [{ key: "x", mode: "normal", state: "visual", cmd: "noop" }],
       })
     }).toThrow('Conflicting keymap requirement for "vim.mode"')
   })

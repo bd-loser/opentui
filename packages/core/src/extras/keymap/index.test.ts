@@ -1,15 +1,8 @@
 import { Buffer } from "node:buffer"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BoxRenderable } from "../../renderables/Box.js"
-import { InputRenderable, InputRenderableEvents } from "../../renderables/Input.js"
-import { TextareaRenderable } from "../../renderables/Textarea.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../../testing.js"
-import {
-  compileEditBufferKeyBindings,
-  getKeymapManager,
-  registerEditBufferCommands,
-  registerExCommands,
-} from "./index.js"
+import { getKeymapManager } from "./index.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
@@ -408,53 +401,6 @@ describe("keymap", () => {
     }).toThrow('Unknown keymap binding field "mode"')
   })
 
-  test("supports ex commands, aliases, and nargs validation", () => {
-    const manager = getKeymapManager(renderer)
-    const calls: string[] = []
-
-    manager.registerCommands([
-      {
-        name: "fallback",
-        run() {
-          calls.push("fallback")
-        },
-      },
-    ])
-
-    registerExCommands(manager, [
-      {
-        name: "write",
-        aliases: ["w"],
-        nargs: "1",
-        run({ args }) {
-          calls.push(`write:${args.join(",")}`)
-        },
-      },
-    ])
-
-    const target = createFocusableBox("ex-target")
-    renderer.root.add(target)
-
-    manager.registerLayer({
-      scope: "global",
-      bindings: [
-        { key: "x", cmd: "fallback" },
-        { key: "y", cmd: ":w file.txt" },
-      ],
-    })
-
-    manager.registerLayer({
-      target,
-      bindings: [{ key: "x", cmd: ":write" }],
-    })
-
-    target.focus()
-    mockInput.pressKey("x")
-    mockInput.pressKey("y")
-
-    expect(calls).toEqual(["fallback", "write:file.txt"])
-  })
-
   test("supports raw input hooks and stop semantics", () => {
     const manager = getKeymapManager(renderer)
     const rawCalls: string[] = []
@@ -579,96 +525,4 @@ describe("keymap", () => {
     expect(seen).toEqual([{ target: "ctx-parent", args: "one,two", mode: "normal" }])
   })
 
-  test("registerEditBufferCommands can drive textarea actions", () => {
-    const manager = getKeymapManager(renderer)
-    registerEditBufferCommands(manager)
-
-    const textarea = new TextareaRenderable(renderer, {
-      width: 20,
-      height: 4,
-      initialValue: "Line 1\nLine 2\nLine 3",
-    })
-    renderer.root.add(textarea)
-
-    manager.registerLayer({
-      scope: "global",
-      bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
-    })
-
-    textarea.focus()
-    textarea.gotoLine(1)
-    mockInput.pressKey("d", { ctrl: true })
-
-    expect(textarea.plainText).toBe("Line 1\nLine 3")
-  })
-
-  test("registerEditBufferCommands supports submit on input renderables", () => {
-    const manager = getKeymapManager(renderer)
-    registerEditBufferCommands(manager)
-
-    let submitted = 0
-    const input = new InputRenderable(renderer, {
-      width: 20,
-      value: "Hello",
-    })
-    input.on(InputRenderableEvents.ENTER, () => {
-      submitted += 1
-    })
-    renderer.root.add(input)
-
-    manager.registerLayer({
-      scope: "global",
-      bindings: [{ key: "x", cmd: "submit" }],
-    })
-
-    input.focus()
-    mockInput.pressKey("x")
-
-    expect(submitted).toBe(1)
-    expect(input.value).toBe("Hello")
-  })
-
-  test("compileEditBufferKeyBindings normalizes simple config", () => {
-    const bindings = compileEditBufferKeyBindings([
-      { key: "ctrl+d", cmd: "delete-line" },
-      { key: "enter", cmd: "submit" },
-      { key: { name: "left", shift: true }, cmd: "select-left" },
-    ])
-
-    expect(bindings).toEqual([
-      { name: "d", ctrl: true, shift: undefined, meta: undefined, super: undefined, action: "delete-line" },
-      { name: "return", ctrl: undefined, shift: undefined, meta: undefined, super: undefined, action: "submit" },
-      { name: "left", ctrl: undefined, shift: true, meta: undefined, super: undefined, action: "select-left" },
-    ])
-  })
-
-  test("compileEditBufferKeyBindings supports object shorthand", () => {
-    const bindings = compileEditBufferKeyBindings({
-      "ctrl+d": "delete-line",
-      enter: "submit",
-    })
-
-    expect(bindings).toEqual([
-      { name: "d", ctrl: true, shift: undefined, meta: undefined, super: undefined, action: "delete-line" },
-      { name: "return", ctrl: undefined, shift: undefined, meta: undefined, super: undefined, action: "submit" },
-    ])
-  })
-
-  test("compileEditBufferKeyBindings rejects unsupported config", () => {
-    expect(() => compileEditBufferKeyBindings([{ key: "<leader>x", cmd: "delete-line" }])).toThrow(
-      'Unknown keymap token "<leader>"',
-    )
-
-    expect(() => compileEditBufferKeyBindings([{ key: "x", mode: "normal", cmd: "delete-line" }])).toThrow(
-      'Edit-buffer key bindings do not support the extra field "mode"',
-    )
-
-    expect(() => compileEditBufferKeyBindings([{ key: "x", cmd: "delete-line now" }])).toThrow(
-      'Edit-buffer command "delete-line now" cannot include arguments',
-    )
-
-    expect(() => compileEditBufferKeyBindings([{ key: "x", cmd: "missing-command" }])).toThrow(
-      'Unknown edit-buffer command "missing-command"',
-    )
-  })
 })

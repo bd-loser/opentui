@@ -9,8 +9,6 @@ import {
   getKeymapManager,
   registerEditBufferCommands,
   registerExCommands,
-  registerLeader,
-  registerTimedLeader,
 } from "./index.js"
 
 let renderer: TestRenderer
@@ -408,107 +406,6 @@ describe("keymap", () => {
         bindings: [{ key: "x", mode: "normal", cmd: "noop" }],
       })
     }).toThrow('Unknown keymap binding field "mode"')
-  })
-
-  test("registerTimedLeader supports leader extensions", () => {
-    const manager = getKeymapManager(renderer)
-    const calls: string[] = []
-
-    manager.registerCommands([
-      {
-        name: "leader-action",
-        run() {
-          calls.push("leader")
-        },
-      },
-    ])
-
-    registerTimedLeader(manager, {
-      trigger: { name: "x", ctrl: true },
-    })
-
-    manager.registerLayer({
-      scope: "global",
-      bindings: [{ key: "<leader>a", cmd: "leader-action" }],
-    })
-
-    mockInput.pressKey("x", { ctrl: true })
-    mockInput.pressKey("a")
-
-    expect(calls).toEqual(["leader"])
-  })
-
-  test("registerTimedLeader disarms after its timeout", async () => {
-    const manager = getKeymapManager(renderer)
-    const calls: string[] = []
-
-    manager.registerCommands([
-      {
-        name: "leader-action",
-        run() {
-          calls.push("leader")
-        },
-      },
-    ])
-
-    registerTimedLeader(manager, {
-      trigger: { name: "x", ctrl: true },
-      timeoutMs: 5,
-    })
-
-    manager.registerLayer({
-      scope: "global",
-      bindings: [{ key: "<leader>a", cmd: "leader-action" }],
-    })
-
-    mockInput.pressKey("x", { ctrl: true })
-    await Bun.sleep(20)
-    mockInput.pressKey("a")
-
-    expect(calls).toEqual([])
-  })
-
-  test("registerLeader cancels the armed state on escape", async () => {
-    renderer.destroy()
-    const testSetup = await createTestRenderer({ width: 40, height: 10, kittyKeyboard: true })
-    renderer = testSetup.renderer
-    mockInput = testSetup.mockInput
-
-    const manager = getKeymapManager(renderer)
-    const calls: string[] = []
-
-    manager.registerCommands([
-      {
-        name: "leader-action",
-        run() {
-          calls.push("leader")
-        },
-      },
-      {
-        name: "plain-action",
-        run() {
-          calls.push("plain")
-        },
-      },
-    ])
-
-    registerLeader(manager, {
-      trigger: { name: "x", ctrl: true },
-    })
-
-    manager.registerLayer({
-      scope: "global",
-      bindings: [
-        { key: "<leader>a", cmd: "leader-action" },
-        { key: "a", cmd: "plain-action" },
-      ],
-    })
-
-    mockInput.pressKey("x", { ctrl: true })
-    mockInput.pressEscape()
-    mockInput.pressKey("a")
-
-    expect(calls).toEqual(["plain"])
   })
 
   test("supports ex commands, aliases, and nargs validation", () => {

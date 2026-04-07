@@ -1,17 +1,15 @@
 import { Buffer } from "node:buffer"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { BoxRenderable } from "../renderables/Box.js"
-import { InputRenderable, InputRenderableEvents } from "../renderables/Input.js"
-import { TextareaRenderable } from "../renderables/Textarea.js"
-import { createTestRenderer, type MockInput, type TestRenderer } from "../testing.js"
+import { BoxRenderable } from "../../renderables/Box.js"
+import { InputRenderable, InputRenderableEvents } from "../../renderables/Input.js"
+import { TextareaRenderable } from "../../renderables/Textarea.js"
+import { createTestRenderer, type MockInput, type TestRenderer } from "../../testing.js"
 import {
   compileEditBufferKeyBindings,
-  registerActionCommands,
+  getKeymapManager,
   registerEditBufferCommands,
   registerExCommands,
-  useKeymap,
-  useKeymappings,
-} from "./keymap.js"
+} from "./index.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
@@ -37,22 +35,22 @@ describe("keymap", () => {
   })
 
   test("returns the same manager for the same renderer", () => {
-    const first = useKeymappings(renderer)
-    const second = useKeymappings(renderer)
+    const first = getKeymapManager(renderer)
+    const second = getKeymapManager(renderer)
 
     expect(first).toBe(second)
   })
 
   test("creates a fresh manager after manual destroy", () => {
-    const first = useKeymappings(renderer)
+    const first = getKeymapManager(renderer)
     first.destroy()
 
-    const second = useKeymappings(renderer)
+    const second = getKeymapManager(renderer)
     expect(second).not.toBe(first)
   })
 
   test("matches a target layer by default with focus-within semantics", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
     const parent = createFocusableBox("parent")
@@ -60,7 +58,7 @@ describe("keymap", () => {
     parent.add(child)
     renderer.root.add(parent)
 
-    registerActionCommands(manager, [
+    manager.registerCommands([
       {
         name: "parent-action",
         run() {
@@ -69,7 +67,7 @@ describe("keymap", () => {
       },
     ])
 
-    useKeymap(manager, {
+    manager.registerLayer({
       target: parent,
       bindings: [{ key: "x", cmd: "parent-action" }],
     })
@@ -81,7 +79,7 @@ describe("keymap", () => {
   })
 
   test("does not match focus-only layers for focused descendants", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
     const parent = createFocusableBox("focus-parent")
@@ -89,7 +87,7 @@ describe("keymap", () => {
     parent.add(child)
     renderer.root.add(parent)
 
-    registerActionCommands(manager, [
+    manager.registerCommands([
       {
         name: "focus-only",
         run() {
@@ -98,7 +96,7 @@ describe("keymap", () => {
       },
     ])
 
-    useKeymap(manager, {
+    manager.registerLayer({
       target: parent,
       scope: "focus",
       bindings: [{ key: "x", cmd: "focus-only" }],
@@ -111,13 +109,13 @@ describe("keymap", () => {
   })
 
   test("prefers local layers over global ones and supports fallthrough", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
     const target = createFocusableBox("target")
     renderer.root.add(target)
 
-    registerActionCommands(manager, [
+    manager.registerCommands([
       {
         name: "global-action",
         run() {
@@ -138,7 +136,7 @@ describe("keymap", () => {
       },
     ])
 
-    useKeymap(manager, {
+    manager.registerLayer({
       scope: "global",
       bindings: [
         { key: "x", cmd: "global-action" },
@@ -146,7 +144,7 @@ describe("keymap", () => {
       ],
     })
 
-    useKeymap(manager, {
+    manager.registerLayer({
       target,
       bindings: [
         { key: "x", cmd: "local-action" },
@@ -163,7 +161,7 @@ describe("keymap", () => {
   })
 
   test("consumes matched keys by default", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const calls: string[] = []
     let laterGlobalCount = 0
     let renderableCount = 0
@@ -178,7 +176,7 @@ describe("keymap", () => {
       laterGlobalCount += 1
     })
 
-    registerActionCommands(manager, [
+    manager.registerCommands([
       {
         name: "consume",
         run() {
@@ -187,7 +185,7 @@ describe("keymap", () => {
       },
     ])
 
-    useKeymap(manager, {
+    manager.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "consume" }],
     })
@@ -201,7 +199,7 @@ describe("keymap", () => {
   })
 
   test("consume false lets the focused renderable keep handling the key", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const calls: string[] = []
     let laterGlobalCount = 0
     let renderableCount = 0
@@ -216,7 +214,7 @@ describe("keymap", () => {
       laterGlobalCount += 1
     })
 
-    registerActionCommands(manager, [
+    manager.registerCommands([
       {
         name: "passthrough",
         run() {
@@ -225,7 +223,7 @@ describe("keymap", () => {
       },
     ])
 
-    useKeymap(manager, {
+    manager.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "passthrough", consume: false }],
     })
@@ -239,11 +237,11 @@ describe("keymap", () => {
   })
 
   test("supports layer enabled predicates", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const calls: string[] = []
     let enabled = false
 
-    registerActionCommands(manager, [
+    manager.registerCommands([
       {
         name: "layer-command",
         run() {
@@ -252,7 +250,7 @@ describe("keymap", () => {
       },
     ])
 
-    useKeymap(manager, {
+    manager.registerLayer({
       scope: "global",
       enabled: () => enabled,
       bindings: [{ key: "x", cmd: "layer-command" }],
@@ -266,10 +264,10 @@ describe("keymap", () => {
   })
 
   test("supports object shorthand bindings", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
-    registerActionCommands(manager, [
+    manager.registerCommands([
       {
         name: "shorthand",
         run() {
@@ -278,7 +276,7 @@ describe("keymap", () => {
       },
     ])
 
-    useKeymap(manager, {
+    manager.registerLayer({
       scope: "global",
       bindings: {
         x: "shorthand",
@@ -291,17 +289,17 @@ describe("keymap", () => {
   })
 
   test("throws when duplicate command names are registered", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
 
-    registerActionCommands(manager, [{ name: "dup", run() {} }])
+    manager.registerCommands([{ name: "dup", run() {} }])
 
     expect(() => {
-      registerActionCommands(manager, [{ name: "dup", run() {} }])
+      manager.registerCommands([{ name: "dup", run() {} }])
     }).toThrow('Keymap command "dup" is already registered')
   })
 
   test("supports typed binding fields through extensions", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
     manager.registerBindingFields({
@@ -316,7 +314,7 @@ describe("keymap", () => {
       }
     })
 
-    registerActionCommands(manager, [
+    manager.registerCommands([
       {
         name: "typed-field",
         run() {
@@ -325,7 +323,7 @@ describe("keymap", () => {
       },
     ])
 
-    useKeymap(manager, {
+    manager.registerLayer({
       scope: "global",
       bindings: [{ key: "x", mode: "normal", cmd: "typed-field" }],
     })
@@ -336,7 +334,7 @@ describe("keymap", () => {
   })
 
   test("supports token prefixes and typed fields together", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
     manager.registerBindingFields({
@@ -356,7 +354,7 @@ describe("keymap", () => {
       }
     })
 
-    registerActionCommands(manager, [
+    manager.registerCommands([
       {
         name: "record",
         run() {
@@ -365,7 +363,7 @@ describe("keymap", () => {
       },
     ])
 
-    useKeymap(manager, {
+    manager.registerLayer({
       scope: "global",
       bindings: [
         { key: "<normal>x", cmd: "record", fallthrough: true },
@@ -379,7 +377,7 @@ describe("keymap", () => {
   })
 
   test("throws on conflicting requirements from tokens and typed fields", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
 
     manager.registerBindingFields({
       mode(value, ctx) {
@@ -392,7 +390,7 @@ describe("keymap", () => {
     })
 
     expect(() => {
-      useKeymap(manager, {
+      manager.registerLayer({
         scope: "global",
         bindings: [{ key: "<normal>x", mode: "visual", cmd: "noop" }],
       })
@@ -400,10 +398,10 @@ describe("keymap", () => {
   })
 
   test("throws on unknown binding fields", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
 
     expect(() => {
-      useKeymap(manager, {
+      manager.registerLayer({
         scope: "global",
         bindings: [{ key: "x", mode: "normal", cmd: "noop" }],
       })
@@ -411,11 +409,11 @@ describe("keymap", () => {
   })
 
   test("supports leader extensions built with tokens and key hooks", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const calls: string[] = []
     let leaderArmed = false
 
-    registerActionCommands(manager, [
+    manager.registerCommands([
       {
         name: "leader-action",
         run() {
@@ -442,7 +440,7 @@ describe("keymap", () => {
       setData("prefix", "leader")
     })
 
-    useKeymap(manager, {
+    manager.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })
@@ -454,10 +452,10 @@ describe("keymap", () => {
   })
 
   test("supports ex commands, aliases, and nargs validation", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
-    registerActionCommands(manager, [
+    manager.registerCommands([
       {
         name: "fallback",
         run() {
@@ -480,7 +478,7 @@ describe("keymap", () => {
     const target = createFocusableBox("ex-target")
     renderer.root.add(target)
 
-    useKeymap(manager, {
+    manager.registerLayer({
       scope: "global",
       bindings: [
         { key: "x", cmd: "fallback" },
@@ -488,7 +486,7 @@ describe("keymap", () => {
       ],
     })
 
-    useKeymap(manager, {
+    manager.registerLayer({
       target,
       bindings: [{ key: "x", cmd: ":write" }],
     })
@@ -501,7 +499,7 @@ describe("keymap", () => {
   })
 
   test("supports raw input hooks and stop semantics", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const rawCalls: string[] = []
     const keyCalls: string[] = []
 
@@ -526,7 +524,7 @@ describe("keymap", () => {
     renderer = testSetup.renderer
     mockInput = testSetup.mockInput
 
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const events: string[] = []
 
     manager.onKeyInput(
@@ -542,10 +540,10 @@ describe("keymap", () => {
   })
 
   test("ignores destroyed target layers and lets lower layers continue", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
-    registerActionCommands(manager, [
+    manager.registerCommands([
       {
         name: "local",
         run() {
@@ -563,12 +561,12 @@ describe("keymap", () => {
     const target = createFocusableBox("destroy-target")
     renderer.root.add(target)
 
-    useKeymap(manager, {
+    manager.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "local" }],
     })
 
-    useKeymap(manager, {
+    manager.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "global" }],
     })
@@ -580,7 +578,7 @@ describe("keymap", () => {
   })
 
   test("passes target, args, and runtime data to commands", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     const seen: Array<{ target: string; args: string; mode: string }> = []
 
     manager.registerBindingFields({
@@ -595,7 +593,7 @@ describe("keymap", () => {
       }
     })
 
-    registerActionCommands(manager, [
+    manager.registerCommands([
       {
         name: "record",
         run(ctx) {
@@ -613,7 +611,7 @@ describe("keymap", () => {
     parent.add(child)
     renderer.root.add(parent)
 
-    useKeymap(manager, {
+    manager.registerLayer({
       target: parent,
       bindings: [{ key: "x", mode: "normal", cmd: "record one two" }],
     })
@@ -625,7 +623,7 @@ describe("keymap", () => {
   })
 
   test("registerEditBufferCommands can drive textarea actions", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     registerEditBufferCommands(manager)
 
     const textarea = new TextareaRenderable(renderer, {
@@ -635,7 +633,7 @@ describe("keymap", () => {
     })
     renderer.root.add(textarea)
 
-    useKeymap(manager, {
+    manager.registerLayer({
       scope: "global",
       bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
     })
@@ -648,7 +646,7 @@ describe("keymap", () => {
   })
 
   test("registerEditBufferCommands supports submit on input renderables", () => {
-    const manager = useKeymappings(renderer)
+    const manager = getKeymapManager(renderer)
     registerEditBufferCommands(manager)
 
     let submitted = 0
@@ -661,7 +659,7 @@ describe("keymap", () => {
     })
     renderer.root.add(input)
 
-    useKeymap(manager, {
+    manager.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
     })

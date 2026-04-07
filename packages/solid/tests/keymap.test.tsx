@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { registerActionCommands } from "@opentui/core/extras"
 import { Show, createSignal, onCleanup } from "solid-js"
 import { testRender, useKeymap, useKeymappings } from "../index.js"
 
@@ -41,7 +40,7 @@ describe("solid keymap hooks", () => {
 
     function GlobalBindings() {
       const manager = useKeymappings()
-      const offCommands = registerActionCommands(manager, [
+      const offCommands = manager.registerCommands([
         {
           name: "global",
           run() {
@@ -98,7 +97,7 @@ describe("solid keymap hooks", () => {
       const [active, setActiveSignal] = createSignal<"first" | "second">("first")
       setActive = setActiveSignal
 
-      const offCommands = registerActionCommands(manager, [
+      const offCommands = manager.registerCommands([
         {
           name: "target",
           run() {

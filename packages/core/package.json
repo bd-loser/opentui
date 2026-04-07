@@ -71,6 +71,10 @@
       "types": "./src/testing.ts",
       "import": "./src/testing.ts"
     },
+    "./extras": {
+      "types": "./src/extras.ts",
+      "import": "./src/extras.ts"
+    },
     "./runtime-plugin": {
       "types": "./src/runtime-plugin.ts",
       "import": "./src/runtime-plugin.ts"

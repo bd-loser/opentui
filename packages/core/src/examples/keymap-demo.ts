@@ -1,14 +1,11 @@
 import {
   BoxRenderable,
   createCliRenderer,
-  registerActionCommands,
-  registerExCommands,
   RenderableEvents,
   TextRenderable,
   type CliRenderer,
-  useKeymap,
-  useKeymappings,
 } from "../index.js"
+import { registerActionCommands, registerExCommands, useKeymap, useKeymappings } from "../extras.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let root: BoxRenderable | null = null

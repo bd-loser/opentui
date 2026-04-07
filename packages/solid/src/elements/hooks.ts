@@ -1,16 +1,14 @@
 import {
   engine,
   PasteEvent,
-  type KeymapLayer,
   type Renderable,
   Selection,
   Timeline,
   type CliRenderer,
   type KeyEvent,
   type TimelineOptions,
-  useKeymap as useCoreKeymap,
-  useKeymappings as useCoreKeymappings,
 } from "@opentui/core"
+import { type KeymapLayer, useKeymap as useCoreKeymap, useKeymappings as useCoreKeymappings } from "@opentui/core/extras"
 import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js"
 
 export const RendererContext = createContext<CliRenderer>()

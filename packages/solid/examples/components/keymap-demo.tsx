@@ -1,4 +1,5 @@
-import { ConsolePosition, registerActionCommands, registerExCommands } from "@opentui/core"
+import { ConsolePosition } from "@opentui/core"
+import { registerActionCommands, registerExCommands } from "@opentui/core/extras"
 import { render, useKeymap, useKeymappings, useRenderer } from "@opentui/solid"
 import { Show, createSignal, onCleanup, onMount, type Accessor } from "solid-js"
 

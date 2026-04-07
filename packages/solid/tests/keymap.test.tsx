@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { registerActionCommands } from "@opentui/core"
+import { registerActionCommands } from "@opentui/core/extras"
 import { Show, createSignal, onCleanup } from "solid-js"
 import { testRender, useKeymap, useKeymappings } from "../index.js"
 

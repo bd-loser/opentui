@@ -2,8 +2,8 @@ import type { Renderable } from "../Renderable.js"
 import type { EditBufferRenderable } from "../renderables/EditBufferRenderable.js"
 import type { KeyBinding as EditBufferKeyBinding, TextareaAction } from "../renderables/Textarea.js"
 import type { CliRenderer } from "../renderer.js"
-import type { KeyEvent } from "./KeyHandler.js"
-import { defaultKeyAliases, getKeyBindingKey } from "./keymapping.js"
+import type { KeyEvent } from "../lib/KeyHandler.js"
+import { defaultKeyAliases, getKeyBindingKey } from "../lib/keymapping.js"
 
 export type KeymapEnabled = boolean | (() => boolean)
 

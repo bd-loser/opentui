@@ -197,6 +197,7 @@ if (buildLib) {
     packageJson.module,
     "src/3d.ts",
     "src/testing.ts",
+    "src/extras.ts",
     "src/runtime-plugin.ts",
     "src/runtime-plugin-support.ts",
   ]
@@ -258,6 +259,7 @@ if (buildLib) {
     "dist/index.js",
     "dist/3d.js",
     "dist/testing.js",
+    "dist/extras.js",
     "dist/runtime-plugin.js",
     "dist/runtime-plugin-support.js",
     "dist/lib/tree-sitter/parser.worker.js",
@@ -340,6 +342,11 @@ if (buildLib) {
       import: "./testing.js",
       require: "./testing.js",
       types: "./testing.d.ts",
+    },
+    "./extras": {
+      import: "./extras.js",
+      require: "./extras.js",
+      types: "./extras.d.ts",
     },
     "./runtime-plugin": {
       import: "./runtime-plugin.js",

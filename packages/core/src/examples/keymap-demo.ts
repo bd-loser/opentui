@@ -5,7 +5,7 @@ import {
   TextRenderable,
   type CliRenderer,
 } from "../index.js"
-import { registerActionCommands, registerExCommands, useKeymap, useKeymappings } from "../extras.js"
+import { getKeymapManager, registerExCommands } from "../extras.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let root: BoxRenderable | null = null
@@ -138,10 +138,10 @@ function moveFocus(renderer: CliRenderer, direction: 1 | -1): void {
 }
 
 function registerKeymaps(renderer: CliRenderer): void {
-  const manager = useKeymappings(renderer)
+  const manager = getKeymapManager(renderer)
 
   disposers.push(
-    registerActionCommands(manager, [
+    manager.registerCommands([
       {
         name: "focus-next",
         run() {
@@ -240,7 +240,7 @@ function registerKeymaps(renderer: CliRenderer): void {
   )
 
   disposers.push(
-    useKeymap(manager, {
+    manager.registerLayer({
       scope: "global",
       bindings: {
         tab: "focus-next",
@@ -255,7 +255,7 @@ function registerKeymaps(renderer: CliRenderer): void {
 
   if (alphaPanel) {
     disposers.push(
-      useKeymap(manager, {
+      manager.registerLayer({
         target: alphaPanel,
         bindings: {
           j: "alpha-up",
@@ -268,7 +268,7 @@ function registerKeymaps(renderer: CliRenderer): void {
 
   if (betaPanel) {
     disposers.push(
-      useKeymap(manager, {
+      manager.registerLayer({
         target: betaPanel,
         bindings: {
           j: "beta-up",

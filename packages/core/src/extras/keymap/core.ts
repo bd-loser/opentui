@@ -1,9 +1,7 @@
-import type { Renderable } from "../Renderable.js"
-import type { EditBufferRenderable } from "../renderables/EditBufferRenderable.js"
-import type { KeyBinding as EditBufferKeyBinding, TextareaAction } from "../renderables/Textarea.js"
-import type { CliRenderer } from "../renderer.js"
-import type { KeyEvent } from "../lib/KeyHandler.js"
-import { defaultKeyAliases, getKeyBindingKey } from "../lib/keymapping.js"
+import type { Renderable } from "../../Renderable.js"
+import type { CliRenderer } from "../../renderer.js"
+import type { KeyEvent } from "../../lib/KeyHandler.js"
+import { defaultKeyAliases, getKeyBindingKey } from "../../lib/keymapping.js"
 
 export type KeymapEnabled = boolean | (() => boolean)
 
@@ -152,7 +150,7 @@ interface RegisteredRawHook {
 
 const keymapManagersByRenderer = new WeakMap<CliRenderer, KeymapManagerImpl>()
 
-const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "consume", "fallthrough"])
+export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "consume", "fallthrough"])
 
 function resolveEnabled(enabled: KeymapEnabled | undefined): boolean {
   if (enabled === undefined) {
@@ -343,7 +341,7 @@ function mergeRequirement(target: KeymapEventData, name: string, value: unknown,
   target[name] = value
 }
 
-function parseCommandInput(input: string): KeymapResolvedCommand {
+export function parseCommandInput(input: string): KeymapResolvedCommand {
   const trimmed = input.trim()
   if (!trimmed) {
     throw new Error('Invalid keymap command: command cannot be empty')
@@ -362,7 +360,13 @@ function parseCommandInput(input: string): KeymapResolvedCommand {
   }
 }
 
-function parseKeyLike(key: KeyLike, tokens: Map<string, RegisteredToken>): { stroke: ParsedKeyStroke; requires: KeymapEventData } {
+export function parseKeyLike(
+  key: KeyLike,
+  tokens: ReadonlyMap<string, KeymapToken>,
+): {
+  stroke: KeyStroke & { ctrl: boolean; shift: boolean; meta: boolean; super: boolean }
+  requires: KeymapEventData
+} {
   if (typeof key !== "string") {
     return {
       stroke: normalizeKeyStroke(key),
@@ -379,7 +383,7 @@ function parseKeyLike(key: KeyLike, tokens: Map<string, RegisteredToken>): { str
       throw new Error(`Unknown keymap token "${tokenName}"`)
     }
 
-    for (const [name, value] of Object.entries(token.data)) {
+    for (const [name, value] of Object.entries(token.data ?? {})) {
       mergeRequirement(requires, name, value, `token ${tokenName}`)
     }
   }
@@ -390,7 +394,7 @@ function parseKeyLike(key: KeyLike, tokens: Map<string, RegisteredToken>): { str
   }
 }
 
-function normalizeCommandName(name: string): string {
+export function normalizeCommandName(name: string): string {
   const trimmed = name.trim()
   if (!trimmed) {
     throw new Error('Invalid keymap command name: name cannot be empty')
@@ -403,7 +407,7 @@ function normalizeCommandName(name: string): string {
   return trimmed
 }
 
-function normalizeBindingInputs(bindings: KeymapBindings): KeymapBindingInput[] {
+export function normalizeBindingInputs(bindings: KeymapBindings): KeymapBindingInput[] {
   if (Array.isArray(bindings)) {
     return bindings
   }
@@ -418,35 +422,6 @@ function normalizeBindingInputs(bindings: KeymapBindings): KeymapBindingInput[] 
   }
 
   return normalized
-}
-
-function validateCommandArgs(command: ExCommand, args: string[]): boolean {
-  if (!command.nargs) {
-    return true
-  }
-
-  const count = args.length
-  if (command.nargs === "0") {
-    return count === 0
-  }
-
-  if (command.nargs === "1") {
-    return count === 1
-  }
-
-  if (command.nargs === "?") {
-    return count <= 1
-  }
-
-  if (command.nargs === "*") {
-    return true
-  }
-
-  if (command.nargs === "+") {
-    return count >= 1
-  }
-
-  return true
 }
 
 class KeymapManagerImpl implements KeymapManager {
@@ -974,7 +949,7 @@ class KeymapManagerImpl implements KeymapManager {
   }
 }
 
-export function useKeymappings(renderer: CliRenderer): KeymapManager {
+export function getKeymapManager(renderer: CliRenderer): KeymapManager {
   const existing = keymapManagersByRenderer.get(renderer)
   if (existing) {
     if (existing.isDestroyed) {
@@ -993,209 +968,4 @@ export function useKeymappings(renderer: CliRenderer): KeymapManager {
   })
 
   return manager
-}
-
-export function useKeymap(manager: KeymapManager, layer: KeymapLayer): () => void {
-  return manager.registerLayer(layer)
-}
-
-export function registerCommands(manager: KeymapManager, commands: KeymapCommand[]): () => void {
-  return manager.registerCommands(commands)
-}
-
-export function registerActionCommands(manager: KeymapManager, commands: ActionCommand[]): () => void {
-  return manager.registerCommands(commands)
-}
-
-function normalizeExCommandName(name: string): string {
-  const normalized = normalizeCommandName(name)
-  if (normalized.startsWith(":")) {
-    return normalized
-  }
-
-  return `:${normalized}`
-}
-
-export function registerExCommands(manager: KeymapManager, commands: ExCommand[]): () => void {
-  const registrations: KeymapCommand[] = []
-
-  for (const command of commands) {
-    const names = [command.name, ...(command.aliases ?? [])]
-    for (const name of names) {
-      const normalizedName = normalizeExCommandName(name)
-      registrations.push({
-        name: normalizedName,
-        run(ctx) {
-          if (!validateCommandArgs(command, ctx.command.args)) {
-            return false
-          }
-
-          return command.run({
-            ...ctx,
-            raw: ctx.command.input,
-            args: ctx.command.args,
-          })
-        },
-      })
-    }
-  }
-
-  return manager.registerCommands(registrations)
-}
-
-export const editBufferCommandNames = [
-  "move-left",
-  "move-right",
-  "move-up",
-  "move-down",
-  "select-left",
-  "select-right",
-  "select-up",
-  "select-down",
-  "line-home",
-  "line-end",
-  "select-line-home",
-  "select-line-end",
-  "visual-line-home",
-  "visual-line-end",
-  "select-visual-line-home",
-  "select-visual-line-end",
-  "buffer-home",
-  "buffer-end",
-  "select-buffer-home",
-  "select-buffer-end",
-  "delete-line",
-  "delete-to-line-end",
-  "delete-to-line-start",
-  "backspace",
-  "delete",
-  "newline",
-  "undo",
-  "redo",
-  "word-forward",
-  "word-backward",
-  "select-word-forward",
-  "select-word-backward",
-  "delete-word-forward",
-  "delete-word-backward",
-  "select-all",
-  "submit",
-] as const satisfies readonly TextareaAction[]
-
-export type EditBufferCommandName = (typeof editBufferCommandNames)[number]
-
-const editBufferCommandNameSet = new Set<string>(editBufferCommandNames)
-
-function withFocusedEditor(
-  ctx: KeymapCommandContext,
-  run: (editor: EditBufferRenderable) => boolean,
-): boolean {
-  const editor = ctx.renderer.currentFocusedEditor
-  if (!editor || editor.isDestroyed) {
-    return false
-  }
-
-  return run(editor)
-}
-
-function hasSubmit(editor: EditBufferRenderable): editor is EditBufferRenderable & { submit: () => boolean } {
-  return typeof (editor as { submit?: unknown }).submit === "function"
-}
-
-function createEditBufferCommand(
-  name: EditBufferCommandName,
-  run: (editor: EditBufferRenderable) => boolean,
-): KeymapCommand {
-  return {
-    name,
-    run(ctx) {
-      return withFocusedEditor(ctx, run)
-    },
-  }
-}
-
-export function registerEditBufferCommands(manager: KeymapManager): () => void {
-  return manager.registerCommands([
-    createEditBufferCommand("move-left", (editor) => editor.moveCursorLeft()),
-    createEditBufferCommand("move-right", (editor) => editor.moveCursorRight()),
-    createEditBufferCommand("move-up", (editor) => editor.moveCursorUp()),
-    createEditBufferCommand("move-down", (editor) => editor.moveCursorDown()),
-    createEditBufferCommand("select-left", (editor) => editor.moveCursorLeft({ select: true })),
-    createEditBufferCommand("select-right", (editor) => editor.moveCursorRight({ select: true })),
-    createEditBufferCommand("select-up", (editor) => editor.moveCursorUp({ select: true })),
-    createEditBufferCommand("select-down", (editor) => editor.moveCursorDown({ select: true })),
-    createEditBufferCommand("line-home", (editor) => editor.gotoLineHome()),
-    createEditBufferCommand("line-end", (editor) => editor.gotoLineEnd()),
-    createEditBufferCommand("select-line-home", (editor) => editor.gotoLineHome({ select: true })),
-    createEditBufferCommand("select-line-end", (editor) => editor.gotoLineEnd({ select: true })),
-    createEditBufferCommand("visual-line-home", (editor) => editor.gotoVisualLineHome()),
-    createEditBufferCommand("visual-line-end", (editor) => editor.gotoVisualLineEnd()),
-    createEditBufferCommand("select-visual-line-home", (editor) => editor.gotoVisualLineHome({ select: true })),
-    createEditBufferCommand("select-visual-line-end", (editor) => editor.gotoVisualLineEnd({ select: true })),
-    createEditBufferCommand("buffer-home", (editor) => editor.gotoBufferHome()),
-    createEditBufferCommand("buffer-end", (editor) => editor.gotoBufferEnd()),
-    createEditBufferCommand("select-buffer-home", (editor) => editor.gotoBufferHome({ select: true })),
-    createEditBufferCommand("select-buffer-end", (editor) => editor.gotoBufferEnd({ select: true })),
-    createEditBufferCommand("delete-line", (editor) => editor.deleteLine()),
-    createEditBufferCommand("delete-to-line-end", (editor) => editor.deleteToLineEnd()),
-    createEditBufferCommand("delete-to-line-start", (editor) => editor.deleteToLineStart()),
-    createEditBufferCommand("backspace", (editor) => editor.deleteCharBackward()),
-    createEditBufferCommand("delete", (editor) => editor.deleteChar()),
-    createEditBufferCommand("newline", (editor) => editor.newLine()),
-    createEditBufferCommand("undo", (editor) => editor.undo()),
-    createEditBufferCommand("redo", (editor) => editor.redo()),
-    createEditBufferCommand("word-forward", (editor) => editor.moveWordForward()),
-    createEditBufferCommand("word-backward", (editor) => editor.moveWordBackward()),
-    createEditBufferCommand("select-word-forward", (editor) => editor.moveWordForward({ select: true })),
-    createEditBufferCommand("select-word-backward", (editor) => editor.moveWordBackward({ select: true })),
-    createEditBufferCommand("delete-word-forward", (editor) => editor.deleteWordForward()),
-    createEditBufferCommand("delete-word-backward", (editor) => editor.deleteWordBackward()),
-    createEditBufferCommand("select-all", (editor) => editor.selectAll()),
-    createEditBufferCommand("submit", (editor) => {
-      if (!hasSubmit(editor)) {
-        return false
-      }
-
-      return editor.submit()
-    }),
-  ])
-}
-
-export function compileEditBufferKeyBindings(bindings: KeymapBindings): EditBufferKeyBinding[] {
-  return normalizeBindingInputs(bindings).map((binding) => {
-    for (const [fieldName, value] of Object.entries(binding)) {
-      if (RESERVED_BINDING_FIELDS.has(fieldName)) {
-        continue
-      }
-
-      if (value === undefined) {
-        continue
-      }
-
-      throw new Error(`Edit-buffer key bindings do not support the extra field "${fieldName}"`)
-    }
-
-    const { stroke, requires } = parseKeyLike(binding.key, new Map())
-    if (Object.keys(requires).length > 0) {
-      throw new Error('Edit-buffer key bindings do not support key tokens')
-    }
-
-    const command = parseCommandInput(binding.cmd)
-    if (command.args.length > 0) {
-      throw new Error(`Edit-buffer command "${binding.cmd}" cannot include arguments`)
-    }
-
-    if (!editBufferCommandNameSet.has(command.name)) {
-      throw new Error(`Unknown edit-buffer command "${command.name}"`)
-    }
-
-    return {
-      name: stroke.name,
-      ctrl: stroke.ctrl || undefined,
-      shift: stroke.shift || undefined,
-      meta: stroke.meta || undefined,
-      super: stroke.super || undefined,
-      action: command.name as TextareaAction,
-    }
-  })
 }

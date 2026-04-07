@@ -8,7 +8,7 @@ import {
   type KeyEvent,
   type TimelineOptions,
 } from "@opentui/core"
-import { type KeymapLayer, useKeymap as useCoreKeymap, useKeymappings as useCoreKeymappings } from "@opentui/core/extras"
+import { getKeymapManager, type KeymapLayer } from "@opentui/core/extras"
 import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js"
 
 export const RendererContext = createContext<CliRenderer>()
@@ -118,7 +118,7 @@ function resolveKeymapTarget(target: UseKeymapLayer["target"]): Renderable | und
 
 export const useKeymappings = () => {
   const renderer = useRenderer()
-  return useCoreKeymappings(renderer)
+  return getKeymapManager(renderer)
 }
 
 export const useKeymap = <TRenderable extends Renderable = Renderable>(layer: UseKeymapLayer): KeymapRef<TRenderable> => {
@@ -148,7 +148,7 @@ export const useKeymap = <TRenderable extends Renderable = Renderable>(layer: Us
       target: resolvedTarget,
     }
 
-    dispose = useCoreKeymap(manager, resolvedLayer)
+    dispose = manager.registerLayer(resolvedLayer)
     registered = true
     registeredScope = resolvedScope
   }

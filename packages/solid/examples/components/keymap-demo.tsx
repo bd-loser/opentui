@@ -1,5 +1,5 @@
 import { ConsolePosition } from "@opentui/core"
-import { registerActionCommands, registerExCommands } from "@opentui/core/extras"
+import { registerExCommands } from "@opentui/core/extras"
 import { render, useKeymap, useKeymappings, useRenderer } from "@opentui/solid"
 import { Show, createSignal, onCleanup, onMount, type Accessor } from "solid-js"
 
@@ -20,7 +20,7 @@ function CounterPanel(props: {
   const incrementCommand = `${props.id}.increment`
   const decrementCommand = `${props.id}.decrement`
 
-  const offCommands = registerActionCommands(manager, [
+  const offCommands = manager.registerCommands([
     {
       name: incrementCommand,
       run() {
@@ -122,7 +122,7 @@ export default function KeymapDemo() {
     leaderTimeout = undefined
   }
 
-  const offActions = registerActionCommands(manager, [
+  const offActions = manager.registerCommands([
     {
       name: "focus-next",
       run() {

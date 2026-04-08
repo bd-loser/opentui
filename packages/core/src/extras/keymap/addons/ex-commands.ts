@@ -1,4 +1,5 @@
-import { normalizeCommandName, type ExCommand, type KeymapCommand, type KeymapManager } from "../core.js"
+import type { ExCommand, KeymapCommand, KeymapManager } from "../core.js"
+import { normalizeCommandName } from "../utils.js"
 
 function normalizeExCommandName(name: string): string {
   const normalized = normalizeCommandName(name)

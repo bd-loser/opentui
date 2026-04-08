@@ -28,6 +28,7 @@ export {
   compileEditBufferKeyBindings,
   editBufferCommandNames,
   registerEditBufferCommands,
+  registerEditBufferKeymap,
 } from "./addons/edit-buffer.js"
 export { registerLeader } from "./addons/leader.js"
 export { registerTimedLeader } from "./addons/timed-leader.js"

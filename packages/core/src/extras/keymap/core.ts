@@ -113,6 +113,7 @@ export interface KeymapManager {
   clearPendingSequence(): void
   popPendingSequence(): boolean
   getActiveKeys(): readonly KeymapActiveKey[]
+  onPendingSequenceChange(fn: (sequence: readonly ParsedKeyStroke[]) => void): () => void
   registerLayer(layer: KeymapLayer): () => void
   registerToken(token: KeymapToken): () => void
   registerBindingFields(fields: Record<string, KeymapBindingFieldCompiler>): () => void
@@ -557,6 +558,7 @@ class KeymapManagerImpl implements KeymapManager {
   private bindingFields = new Map<string, KeymapBindingFieldCompiler>()
   private keyHooks: RegisteredKeyHook[] = []
   private rawHooks: RegisteredRawHook[] = []
+  private pendingSequenceListeners: Array<(sequence: readonly ParsedKeyStroke[]) => void> = []
   private commands = new Map<string, KeymapCommand>()
   private data: KeymapEventData = {}
   private pendingSequence: PendingSequenceState | null = null
@@ -593,15 +595,16 @@ class KeymapManagerImpl implements KeymapManager {
       return
     }
 
+    this.setPendingSequence(null)
     this.destroyed = true
     this.layers = []
     this.tokens.clear()
     this.bindingFields.clear()
     this.keyHooks = []
     this.rawHooks = []
+    this.pendingSequenceListeners = []
     this.commands.clear()
     this.data = {}
-    this.pendingSequence = null
 
     this.renderer.keyInput.off("keypress", this.keypressListener)
     this.renderer.keyInput.off("keyrelease", this.keyreleaseListener)
@@ -613,10 +616,12 @@ class KeymapManagerImpl implements KeymapManager {
 
     if (value === undefined) {
       delete this.data[name]
+      this.resolvePendingSequence()
       return
     }
 
     this.data[name] = value
+    this.resolvePendingSequence()
   }
 
   public getData(name: string): unknown {
@@ -637,7 +642,7 @@ class KeymapManagerImpl implements KeymapManager {
 
   public clearPendingSequence(): void {
     this.assertNotDestroyed()
-    this.pendingSequence = null
+    this.setPendingSequence(null)
   }
 
   public popPendingSequence(): boolean {
@@ -649,21 +654,21 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     if (pending.sequence.length <= 1) {
-      this.pendingSequence = null
+      this.setPendingSequence(null)
       return true
     }
 
     const parent = pending.node.parent
     if (!parent || !parent.stroke) {
-      this.pendingSequence = null
+      this.setPendingSequence(null)
       return true
     }
 
-    this.pendingSequence = {
+    this.setPendingSequence({
       layer: pending.layer,
       node: parent,
       sequence: pending.sequence.slice(0, -1).map(cloneStroke),
-    }
+    })
     return true
   }
 
@@ -680,6 +685,16 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     return this.collectActiveKeysAtRoot(activeLayers)
+  }
+
+  public onPendingSequenceChange(fn: (sequence: readonly ParsedKeyStroke[]) => void): () => void {
+    this.assertNotDestroyed()
+
+    this.pendingSequenceListeners = [...this.pendingSequenceListeners, fn]
+
+    return () => {
+      this.pendingSequenceListeners = this.pendingSequenceListeners.filter((candidate) => candidate !== fn)
+    }
   }
 
   public registerLayer(layer: KeymapLayer): () => void {
@@ -705,7 +720,7 @@ class KeymapManagerImpl implements KeymapManager {
     return () => {
       this.layers = this.layers.filter((candidate) => candidate !== registeredLayer)
       if (this.pendingSequence?.layer === registeredLayer) {
-        this.pendingSequence = null
+        this.setPendingSequence(null)
       }
     }
   }
@@ -1040,23 +1055,23 @@ class KeymapManagerImpl implements KeymapManager {
   ): void {
     const nextNode = this.getReachableChild(pending.node, stroke)
     if (!nextNode) {
-      this.pendingSequence = null
+      this.setPendingSequence(null)
       return
     }
 
     if (nextNode.children.size > 0) {
-      this.pendingSequence = {
+      this.setPendingSequence({
         layer: pending.layer,
         node: nextNode,
         sequence: [...pending.sequence, cloneStroke(stroke)],
-      }
+      })
       event.preventDefault()
       event.stopPropagation()
       return
     }
 
     this.runBindings(pending.layer, nextNode.bindings, event, focused)
-    this.pendingSequence = null
+    this.setPendingSequence(null)
   }
 
   private dispatchFromRoot(
@@ -1076,11 +1091,11 @@ class KeymapManagerImpl implements KeymapManager {
       }
 
       if (nextNode.children.size > 0) {
-        this.pendingSequence = {
+        this.setPendingSequence({
           layer,
           node: nextNode,
           sequence: [cloneStroke(stroke)],
-        }
+        })
         event.preventDefault()
         event.stopPropagation()
         return
@@ -1306,6 +1321,77 @@ class KeymapManagerImpl implements KeymapManager {
     return true
   }
 
+  private setPendingSequence(next: PendingSequenceState | null): void {
+    const normalizedNext = next
+      ? {
+          layer: next.layer,
+          node: next.node,
+          sequence: next.sequence.map(cloneStroke),
+        }
+      : null
+
+    if (this.isSamePendingSequence(this.pendingSequence, normalizedNext)) {
+      return
+    }
+
+    this.pendingSequence = normalizedNext
+    this.notifyPendingSequenceChange()
+  }
+
+  private isSamePendingSequence(current: PendingSequenceState | null, next: PendingSequenceState | null): boolean {
+    if (current === next) {
+      return true
+    }
+
+    if (!current || !next) {
+      return false
+    }
+
+    if (current.layer !== next.layer || current.node !== next.node) {
+      return false
+    }
+
+    if (current.sequence.length !== next.sequence.length) {
+      return false
+    }
+
+    for (let index = 0; index < current.sequence.length; index += 1) {
+      const currentStroke = current.sequence[index]
+      const nextStroke = next.sequence[index]
+      if (!currentStroke || !nextStroke) {
+        return false
+      }
+
+      if (
+        currentStroke.name !== nextStroke.name ||
+        currentStroke.ctrl !== nextStroke.ctrl ||
+        currentStroke.shift !== nextStroke.shift ||
+        currentStroke.meta !== nextStroke.meta ||
+        currentStroke.super !== nextStroke.super
+      ) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  private notifyPendingSequenceChange(): void {
+    if (this.pendingSequenceListeners.length === 0) {
+      return
+    }
+
+    const sequence = this.pendingSequence ? this.pendingSequence.sequence.map(cloneStroke) : []
+    const listeners = [...this.pendingSequenceListeners]
+    for (const listener of listeners) {
+      try {
+        listener(sequence)
+      } catch (error) {
+        console.error("[Keymap] Error in pending sequence hook:", error)
+      }
+    }
+  }
+
   private pruneDestroyedLayers(): void {
     const nextLayers = this.layers.filter((layer) => {
       if (!layer.target) {
@@ -1318,7 +1404,7 @@ class KeymapManagerImpl implements KeymapManager {
     if (nextLayers.length !== this.layers.length) {
       this.layers = nextLayers
       if (this.pendingSequence && !this.layers.includes(this.pendingSequence.layer)) {
-        this.pendingSequence = null
+        this.setPendingSequence(null)
       }
     }
   }
@@ -1376,17 +1462,17 @@ class KeymapManagerImpl implements KeymapManager {
 
     const layers = activeLayers ?? this.getActiveLayers(this.getFocusedRenderable())
     if (!layers.includes(this.pendingSequence.layer)) {
-      this.pendingSequence = null
+      this.setPendingSequence(null)
       return undefined
     }
 
     if (!resolveEnabled(this.pendingSequence.layer.enabled)) {
-      this.pendingSequence = null
+      this.setPendingSequence(null)
       return undefined
     }
 
     if (!this.nodeHasReachableBindings(this.pendingSequence.node)) {
-      this.pendingSequence = null
+      this.setPendingSequence(null)
       return undefined
     }
 

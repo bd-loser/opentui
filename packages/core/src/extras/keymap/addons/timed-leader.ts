@@ -1,4 +1,4 @@
-import { parseKeyLike, type KeymapManager } from "../core.js"
+import { parseKeyLike, type KeymapManager, type ParsedKeyStroke } from "../core.js"
 import { registerLeader, type LeaderOptions } from "./leader.js"
 
 export interface TimedLeaderOptions extends LeaderOptions {
@@ -7,9 +7,8 @@ export interface TimedLeaderOptions extends LeaderOptions {
   onDisarm?: () => void
 }
 
-function startsWithTrigger(manager: KeymapManager, trigger: ReturnType<typeof parseKeyLike>): boolean {
-  const pending = manager.getPendingSequence()
-  const head = pending[0]
+function startsWithTrigger(sequence: readonly ParsedKeyStroke[], trigger: ParsedKeyStroke): boolean {
+  const head = sequence[0]
   if (!head) {
     return false
   }
@@ -28,7 +27,6 @@ export function registerTimedLeader(manager: KeymapManager, options: TimedLeader
   const timeoutMs = options.timeoutMs ?? 1500
 
   let armed = false
-  let disposed = false
   let timeout: ReturnType<typeof setTimeout> | undefined
 
   const clearTimer = (): void => {
@@ -43,17 +41,12 @@ export function registerTimedLeader(manager: KeymapManager, options: TimedLeader
   const scheduleTimeout = (): void => {
     clearTimer()
     timeout = setTimeout(() => {
-      if (disposed) {
-        return
-      }
-
       manager.clearPendingSequence()
-      syncArmedState()
     }, timeoutMs)
   }
 
-  const syncArmedState = (): void => {
-    const nextArmed = startsWithTrigger(manager, trigger)
+  const syncArmedState = (sequence: readonly ParsedKeyStroke[]): void => {
+    const nextArmed = startsWithTrigger(sequence, trigger)
     if (nextArmed) {
       scheduleTimeout()
     } else {
@@ -73,37 +66,16 @@ export function registerTimedLeader(manager: KeymapManager, options: TimedLeader
     options.onDisarm?.()
   }
 
-  const syncLater = (): void => {
-    queueMicrotask(() => {
-      if (disposed) {
-        return
-      }
-
-      syncArmedState()
-    })
-  }
-
   const offLeader = registerLeader(manager, options)
-  const offHook = manager.onKeyInput(() => {
-    syncLater()
+  const offPendingSequenceChange = manager.onPendingSequenceChange((sequence) => {
+    syncArmedState(sequence)
   })
-
-  const handleDestroy = (): void => {
-    dispose()
-  }
-
-  manager.renderer.once("destroy", handleDestroy)
+  syncArmedState(manager.getPendingSequence())
 
   const dispose = (): void => {
-    if (disposed) {
-      return
-    }
-
-    disposed = true
     clearTimer()
-    offHook()
+    offPendingSequenceChange()
     offLeader()
-    manager.renderer.off("destroy", handleDestroy)
 
     if (!armed) {
       return

@@ -8,6 +8,7 @@ import {
   type KeymapBindings,
   type KeymapCommand,
   type KeymapCommandContext,
+  type KeymapLayer,
   type KeymapManager,
 } from "../core.js"
 
@@ -53,6 +54,7 @@ export const editBufferCommandNames = [
 export type EditBufferCommandName = (typeof editBufferCommandNames)[number]
 
 const editBufferCommandNameSet = new Set<string>(editBufferCommandNames)
+const editBufferCommandRegistrations = new WeakMap<KeymapManager, { count: number; dispose: () => void }>()
 
 function withFocusedEditor(ctx: KeymapCommandContext, run: (editor: EditBufferRenderable) => boolean): boolean {
   const editor = ctx.renderer.currentFocusedEditor
@@ -79,8 +81,8 @@ function createEditBufferCommand(
   }
 }
 
-export function registerEditBufferCommands(manager: KeymapManager): () => void {
-  return manager.registerCommands([
+function createEditBufferCommands(): KeymapCommand[] {
+  return [
     createEditBufferCommand("move-left", (editor) => editor.moveCursorLeft()),
     createEditBufferCommand("move-right", (editor) => editor.moveCursorRight()),
     createEditBufferCommand("move-up", (editor) => editor.moveCursorUp()),
@@ -123,7 +125,87 @@ export function registerEditBufferCommands(manager: KeymapManager): () => void {
 
       return editor.submit()
     }),
-  ])
+  ]
+}
+
+function retainEditBufferCommandRegistration(manager: KeymapManager): () => void {
+  const existing = editBufferCommandRegistrations.get(manager)
+  if (existing) {
+    existing.count += 1
+    return () => {
+      const current = editBufferCommandRegistrations.get(manager)
+      if (current !== existing) {
+        return
+      }
+
+      current.count -= 1
+      if (current.count > 0) {
+        return
+      }
+
+      current.dispose()
+      editBufferCommandRegistrations.delete(manager)
+    }
+  }
+
+  const dispose = manager.registerCommands(createEditBufferCommands())
+  const registration = { count: 1, dispose }
+  editBufferCommandRegistrations.set(manager, registration)
+
+  return () => {
+    const current = editBufferCommandRegistrations.get(manager)
+    if (current !== registration) {
+      return
+    }
+
+    registration.count -= 1
+    if (registration.count > 0) {
+      return
+    }
+
+    registration.dispose()
+    editBufferCommandRegistrations.delete(manager)
+  }
+}
+
+function validateEditBufferCommandInput(input: string): void {
+  const command = parseCommandInput(input)
+  if (command.args.length > 0) {
+    throw new Error(`Edit-buffer command "${input}" cannot include arguments`)
+  }
+
+  if (!editBufferCommandNameSet.has(command.name)) {
+    throw new Error(`Unknown edit-buffer command "${command.name}"`)
+  }
+}
+
+function validateEditBufferKeymapBindings(bindings: KeymapBindings): void {
+  for (const binding of normalizeBindingInputs(bindings)) {
+    validateEditBufferCommandInput(binding.cmd)
+  }
+}
+
+export function registerEditBufferCommands(manager: KeymapManager): () => void {
+  return retainEditBufferCommandRegistration(manager)
+}
+
+export function registerEditBufferKeymap(manager: KeymapManager, layer: KeymapLayer): () => void {
+  validateEditBufferKeymapBindings(layer.bindings)
+
+  const offLayer = manager.registerLayer(layer)
+  let offCommands: (() => void) | undefined
+
+  try {
+    offCommands = registerEditBufferCommands(manager)
+  } catch (error) {
+    offLayer()
+    throw error
+  }
+
+  return () => {
+    offLayer()
+    offCommands?.()
+  }
 }
 
 export function compileEditBufferKeyBindings(bindings: KeymapBindings): EditBufferKeyBinding[] {
@@ -142,22 +224,16 @@ export function compileEditBufferKeyBindings(bindings: KeymapBindings): EditBuff
 
     const strokes = parseKeySequenceLike(binding.key, new Map())
     if (strokes.length !== 1) {
-      throw new Error("Edit-buffer key bindings must resolve to exactly one key stroke")
+      throw new Error("Edit-buffer key bindings only support a single key stroke")
     }
 
     const [stroke] = strokes
     if (!stroke) {
-      throw new Error("Edit-buffer key bindings must resolve to exactly one key stroke")
+      throw new Error("Edit-buffer key bindings only support a single key stroke")
     }
 
+    validateEditBufferCommandInput(binding.cmd)
     const command = parseCommandInput(binding.cmd)
-    if (command.args.length > 0) {
-      throw new Error(`Edit-buffer command "${binding.cmd}" cannot include arguments`)
-    }
-
-    if (!editBufferCommandNameSet.has(command.name)) {
-      throw new Error(`Unknown edit-buffer command "${command.name}"`)
-    }
 
     return {
       name: stroke.name,

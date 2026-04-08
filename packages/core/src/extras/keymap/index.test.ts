@@ -373,6 +373,34 @@ describe("keymap", () => {
     expect(manager.getPendingSequence()).toEqual([])
   })
 
+  test("notifies pending sequence changes synchronously", () => {
+    const manager = getKeymapManager(renderer)
+    const changes: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "delete-ca",
+        run() {},
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "dca", cmd: "delete-ca" }],
+    })
+
+    manager.onPendingSequenceChange((sequence) => {
+      changes.push(sequence.map((stroke) => stroke.name).join(""))
+    })
+
+    mockInput.pressKey("d")
+    mockInput.pressKey("c")
+    manager.popPendingSequence()
+    manager.clearPendingSequence()
+
+    expect(changes).toEqual(["d", "dc", "d", ""])
+  })
+
   test("supports token aliases inside longer sequences", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []

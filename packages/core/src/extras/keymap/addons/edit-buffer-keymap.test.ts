@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { InputRenderable, InputRenderableEvents } from "../../../renderables/Input.js"
 import { TextareaRenderable } from "../../../renderables/Textarea.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../../../testing.js"
 import { getKeymapManager } from "../index.js"
@@ -16,6 +17,28 @@ describe("edit buffer keymap addon", () => {
 
   afterEach(() => {
     renderer?.destroy()
+  })
+
+  test("registerEditBufferKeymap can drive textarea actions", () => {
+    const manager = getKeymapManager(renderer)
+
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 4,
+      initialValue: "Line 1\nLine 2\nLine 3",
+    })
+    renderer.root.add(textarea)
+
+    registerEditBufferKeymap(manager, {
+      scope: "global",
+      bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
+    })
+
+    textarea.focus()
+    textarea.gotoLine(1)
+    mockInput.pressKey("d", { ctrl: true })
+
+    expect(textarea.plainText).toBe("Line 1\nLine 3")
   })
 
   test("registerEditBufferKeymap supports sequence bindings", () => {
@@ -39,6 +62,61 @@ describe("edit buffer keymap addon", () => {
     mockInput.pressKey("d")
 
     expect(textarea.plainText).toBe("Line 1\nLine 3")
+  })
+
+  test("registerEditBufferKeymap supports submit on input renderables", () => {
+    const manager = getKeymapManager(renderer)
+
+    let submitted = 0
+    const input = new InputRenderable(renderer, {
+      width: 20,
+      value: "Hello",
+    })
+    input.on(InputRenderableEvents.ENTER, () => {
+      submitted += 1
+    })
+    renderer.root.add(input)
+
+    registerEditBufferKeymap(manager, {
+      scope: "global",
+      bindings: [{ key: "x", cmd: "submit" }],
+    })
+
+    input.focus()
+    mockInput.pressKey("x")
+
+    expect(submitted).toBe(1)
+    expect(input.value).toBe("Hello")
+  })
+
+  test("registerEditBufferKeymap keeps shared commands alive across layers", () => {
+    const manager = getKeymapManager(renderer)
+    const offFirst = registerEditBufferKeymap(manager, {
+      scope: "global",
+      bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
+    })
+    const offSecond = registerEditBufferKeymap(manager, {
+      scope: "global",
+      bindings: [{ key: "x", cmd: "submit" }],
+    })
+
+    let submitted = 0
+    const input = new InputRenderable(renderer, {
+      width: 20,
+      value: "Hello",
+    })
+    input.on(InputRenderableEvents.ENTER, () => {
+      submitted += 1
+    })
+    renderer.root.add(input)
+
+    offFirst()
+    input.focus()
+    mockInput.pressKey("x")
+
+    expect(submitted).toBe(1)
+
+    offSecond()
   })
 
   test("compileEditBufferKeyBindings normalizes simple config", () => {

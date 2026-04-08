@@ -28,10 +28,8 @@ export type {
   KeyStroke,
 } from "./core.js"
 export { registerExCommands } from "./addons/ex-commands.js"
-export { editBufferCommandNames, registerEditBufferCommands } from "./addons/edit-buffer-commands.js"
 export { compileEditBufferKeyBindings, registerEditBufferKeymap } from "./addons/edit-buffer-keymap.js"
 export { registerLeader } from "./addons/leader.js"
 export { registerTimedLeader } from "./addons/timed-leader.js"
-export type { EditBufferCommandName } from "./addons/edit-buffer-commands.js"
 export type { LeaderOptions } from "./addons/leader.js"
 export type { TimedLeaderOptions } from "./addons/timed-leader.js"

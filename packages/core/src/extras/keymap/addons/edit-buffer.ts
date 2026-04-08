@@ -3,7 +3,7 @@ import type { KeyBinding as EditBufferKeyBinding, TextareaAction } from "../../.
 import {
   normalizeBindingInputs,
   parseCommandInput,
-  parseKeyLike,
+  parseKeySequenceLike,
   RESERVED_BINDING_FIELDS,
   type KeymapBindings,
   type KeymapCommand,
@@ -54,10 +54,7 @@ export type EditBufferCommandName = (typeof editBufferCommandNames)[number]
 
 const editBufferCommandNameSet = new Set<string>(editBufferCommandNames)
 
-function withFocusedEditor(
-  ctx: KeymapCommandContext,
-  run: (editor: EditBufferRenderable) => boolean,
-): boolean {
+function withFocusedEditor(ctx: KeymapCommandContext, run: (editor: EditBufferRenderable) => boolean): boolean {
   const editor = ctx.renderer.currentFocusedEditor
   if (!editor || editor.isDestroyed) {
     return false
@@ -143,9 +140,14 @@ export function compileEditBufferKeyBindings(bindings: KeymapBindings): EditBuff
       throw new Error(`Edit-buffer key bindings do not support the extra field "${fieldName}"`)
     }
 
-    const { stroke, requires } = parseKeyLike(binding.key, new Map())
-    if (Object.keys(requires).length > 0) {
-      throw new Error('Edit-buffer key bindings do not support key tokens')
+    const strokes = parseKeySequenceLike(binding.key, new Map())
+    if (strokes.length !== 1) {
+      throw new Error("Edit-buffer key bindings must resolve to exactly one key stroke")
+    }
+
+    const [stroke] = strokes
+    if (!stroke) {
+      throw new Error("Edit-buffer key bindings must resolve to exactly one key stroke")
     }
 
     const command = parseCommandInput(binding.cmd)

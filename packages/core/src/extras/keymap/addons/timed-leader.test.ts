@@ -48,6 +48,7 @@ describe("timed leader addon", () => {
   test("disarms after its timeout", async () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
+    const states: string[] = []
 
     manager.registerCommands([
       {
@@ -61,6 +62,12 @@ describe("timed leader addon", () => {
     registerTimedLeader(manager, {
       trigger: { name: "x", ctrl: true },
       timeoutMs: 5,
+      onArm() {
+        states.push("armed")
+      },
+      onDisarm() {
+        states.push("disarmed")
+      },
     })
 
     manager.registerLayer({
@@ -73,5 +80,6 @@ describe("timed leader addon", () => {
     mockInput.pressKey("a")
 
     expect(calls).toEqual([])
+    expect(states).toEqual(["armed", "disarmed"])
   })
 })

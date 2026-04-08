@@ -8,6 +8,7 @@ export type {
   KeymapBindingInput,
   KeymapBindingShorthand,
   KeymapBindings,
+  KeymapActiveKey,
   KeymapCommand,
   KeymapCommandContext,
   KeymapCommandResult,
@@ -19,10 +20,15 @@ export type {
   KeymapRawInputContext,
   KeymapResolvedCommand,
   KeymapToken,
+  ParsedKeyStroke,
   KeyStroke,
 } from "./core.js"
 export { registerExCommands } from "./addons/ex-commands.js"
-export { compileEditBufferKeyBindings, editBufferCommandNames, registerEditBufferCommands } from "./addons/edit-buffer.js"
+export {
+  compileEditBufferKeyBindings,
+  editBufferCommandNames,
+  registerEditBufferCommands,
+} from "./addons/edit-buffer.js"
 export { registerLeader } from "./addons/leader.js"
 export { registerTimedLeader } from "./addons/timed-leader.js"
 export type { EditBufferCommandName } from "./addons/edit-buffer.js"

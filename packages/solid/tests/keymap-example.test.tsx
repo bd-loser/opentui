@@ -21,9 +21,27 @@ describe("solid keymap example", () => {
     testSetup = await testRender(() => <KeymapDemo />, { width: 60, height: 20 })
     await testSetup.renderOnce()
 
-    testSetup.mockInput.pressKey("j")
+    let frame = testSetup.captureCharFrame()
+    expect(frame).toContain("Which Key")
+
+    testSetup.mockInput.pressEnter()
     await testSetup.renderOnce()
-    expect(testSetup.captureCharFrame()).toContain("Count: 1")
+    frame = testSetup.captureCharFrame()
+    expect(frame).toContain("Ex command:")
+    expect(frame).toContain("wrote")
+    expect(frame).toContain("alpha-panel.txt")
+
+    testSetup.mockInput.pressKey("x", { ctrl: true })
+    await testSetup.renderOnce()
+    frame = testSetup.captureCharFrame()
+    expect(frame).toContain("Prefix: ctrl+x")
+    expect(frame).toContain("s -> :w session.log")
+
+    testSetup.mockInput.pressKey("s")
+    await testSetup.renderOnce()
+    frame = testSetup.captureCharFrame()
+    expect(frame).toContain("session.log")
+    expect(frame).toContain("wrote")
 
     testSetup.mockInput.pressTab()
     await testSetup.renderOnce()
@@ -31,15 +49,10 @@ describe("solid keymap example", () => {
     await testSetup.renderOnce()
     expect(testSetup.captureCharFrame()).toContain("Count: 5")
 
-    testSetup.mockInput.pressKey("x", { ctrl: true })
-    testSetup.mockInput.pressKey("s")
-    await testSetup.renderOnce()
-    expect(testSetup.captureCharFrame()).toContain("Ex command: Saved via leader")
-
     testSetup.mockInput.pressKey("r", { ctrl: true })
     await testSetup.renderOnce()
-    const frame = testSetup.captureCharFrame()
+    frame = testSetup.captureCharFrame()
     expect(frame).toContain("Count: 0")
-    expect(frame).toContain("Counters reset through :reset")
+    expect(frame).toContain("reset through :reset")
   })
 })

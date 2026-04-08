@@ -1,15 +1,51 @@
 import { ConsolePosition } from "@opentui/core"
-import { registerExCommands, registerTimedLeader } from "@opentui/core/extras"
+import { registerExCommands, registerTimedLeader, type ParsedKeyStroke } from "@opentui/core/extras"
 import { render, useKeymap, useKeymappings, useRenderer } from "@opentui/solid"
-import { Show, createSignal, onCleanup, onMount, type Accessor } from "solid-js"
+import { createMemo, createSignal, onCleanup, onMount, type Accessor } from "solid-js"
 
 type PanelId = "alpha" | "beta"
+
+interface FocusableRenderable {
+  focus(): void
+}
+
+function formatStroke(stroke: ParsedKeyStroke): string {
+  const parts: string[] = []
+  if (stroke.ctrl) {
+    parts.push("ctrl")
+  }
+
+  if (stroke.shift) {
+    parts.push("shift")
+  }
+
+  if (stroke.meta) {
+    parts.push("meta")
+  }
+
+  if (stroke.super) {
+    parts.push("super")
+  }
+
+  parts.push(stroke.name === "return" ? "enter" : stroke.name)
+  return parts.join("+")
+}
+
+function formatSequence(sequence: readonly ParsedKeyStroke[]): string {
+  if (sequence.length === 0) {
+    return "<root>"
+  }
+
+  return sequence.map((stroke) => formatStroke(stroke)).join(" ")
+}
 
 function CounterPanel(props: {
   id: PanelId
   label: string
+  saveTarget: string
   step: number
   color: string
+  setRef?: (value: FocusableRenderable) => void
   count: Accessor<number>
   focused: Accessor<boolean>
   setFocused: (id: PanelId) => void
@@ -43,7 +79,7 @@ function CounterPanel(props: {
     bindings: {
       j: incrementCommand,
       k: decrementCommand,
-      enter: `:announce ${props.label} confirmed`,
+      enter: `:w ${props.saveTarget}`,
     },
   })
 
@@ -53,7 +89,10 @@ function CounterPanel(props: {
 
   return (
     <box
-      ref={keymapRef}
+      ref={(value: FocusableRenderable) => {
+        keymapRef(value)
+        props.setRef?.(value)
+      }}
       border
       focusable
       focused={props.focused()}
@@ -64,13 +103,13 @@ function CounterPanel(props: {
       flexDirection="column"
       on:focused={() => props.setFocused(props.id)}
     >
-      <text fg="#e2e8f0">
+      <text fg="#e2e8f0" height={5}>
         {[
           `${props.label} Panel`,
           `Count: ${props.count()}`,
           `j: +${props.step}`,
           `k: -${props.step}`,
-          `enter: :announce ${props.label} confirmed`,
+          `enter: :w ${props.saveTarget}`,
         ].join("\n")}
       </text>
     </box>
@@ -80,6 +119,7 @@ function CounterPanel(props: {
 export default function KeymapDemo() {
   const renderer = useRenderer()
   const manager = useKeymappings()
+  let alphaPanelRef: FocusableRenderable | undefined
 
   const [activePanel, setActivePanel] = createSignal<PanelId>("alpha")
   const [alphaCount, setAlphaCount] = createSignal(0)
@@ -87,6 +127,7 @@ export default function KeymapDemo() {
   const [helpVisible, setHelpVisible] = createSignal(true)
   const [leaderArmed, setLeaderArmed] = createSignal(false)
   const [lastAction, setLastAction] = createSignal("Press Tab to start.")
+  const [sequenceVersion, setSequenceVersion] = createSignal(0)
   const [logs, setLogs] = createSignal<string[]>([
     "Tab switches focus. j/k act on the focused panel.",
     "ctrl+x arms the leader extension.",
@@ -94,11 +135,17 @@ export default function KeymapDemo() {
 
   const announce = (message: string) => {
     setLastAction(message)
-    setLogs((current) => [message, ...current].slice(0, 4))
+    setLogs((current) => [message, ...current].slice(0, 6))
+    setSequenceVersion((value) => value + 1)
+  }
+
+  const setFocusedPanel = (id: PanelId) => {
+    setActivePanel(id)
+    setSequenceVersion((value) => value + 1)
   }
 
   const focusPanel = (id: PanelId) => {
-    setActivePanel(id)
+    setFocusedPanel(id)
     announce(`Focused ${id === "alpha" ? "Alpha" : "Beta"} panel`)
   }
 
@@ -148,11 +195,11 @@ export default function KeymapDemo() {
       },
     },
     {
-      name: "announce",
-      aliases: ["echo"],
-      nargs: "+",
-      run({ args }) {
-        announce(`Ex command: ${args.join(" ")}`)
+      name: "write",
+      aliases: ["w"],
+      nargs: "1",
+      run({ raw, args }) {
+        announce(`Ex command: ${raw} -> wrote ${args[0]}`)
       },
     },
   ])
@@ -168,6 +215,10 @@ export default function KeymapDemo() {
     },
   })
 
+  const offPendingSequence = manager.onPendingSequenceChange(() => {
+    setSequenceVersion((value) => value + 1)
+  })
+
   useKeymap({
     scope: "global",
     bindings: {
@@ -175,16 +226,70 @@ export default function KeymapDemo() {
       "shift+tab": "focus-prev",
       "?": "toggle-help",
       "ctrl+r": ":reset",
-      "<leader>s": ":announce Saved via leader",
+      "<leader>s": ":w session.log",
       "<leader>h": "toggle-help",
     },
   })
 
+  const whichKeyText = createMemo(() => {
+    activePanel()
+    sequenceVersion()
+
+    const activeKeys = [...manager.getActiveKeys()].sort((left, right) => {
+      return formatStroke(left.stroke).localeCompare(formatStroke(right.stroke))
+    })
+
+    const lines = ["Which Key", `Prefix: ${formatSequence(manager.getPendingSequence())}`]
+
+    if (activeKeys.length === 0) {
+      lines.push("(no active keys)")
+    } else {
+      for (const activeKey of activeKeys.slice(0, 8)) {
+        const commandList = activeKey.commands.map((command) => command.input).join(" | ")
+        lines.push(`${formatStroke(activeKey.stroke)} -> ${commandList}`)
+      }
+    }
+
+    lines.push("", "Ex commands", ":reset / :r", ":write <file> / :w <file>")
+
+    return lines.join("\n")
+  })
+
+  const detailsText = createMemo(() => {
+    const lines = [
+      `Focused: ${activePanel() === "alpha" ? "Alpha" : "Beta"}`,
+      `Leader: ${leaderArmed() ? "armed (ctrl+x)" : "idle"}`,
+      `Last action: ${lastAction()}`,
+    ]
+
+    if (helpVisible()) {
+      lines.push(
+        "",
+        "Global keymaps:",
+        "tab / shift+tab: move focus",
+        "?: toggle help | ctrl+r: :reset",
+        "enter on a panel: :w alpha-panel.txt / beta-panel.txt",
+        "ctrl+x then s: :w session.log",
+        "ctrl+x then h: toggle help",
+      )
+    }
+
+    const recentLogs = logs().slice(0, 4)
+    if (recentLogs.length > 0) {
+      lines.push("", "Recent log:", ...recentLogs)
+    }
+
+    return lines.join("\n")
+  })
+
   onMount(() => {
     renderer.setBackgroundColor("#0f172a")
+    alphaPanelRef?.focus()
+    announce("Focused Alpha panel")
   })
 
   onCleanup(() => {
+    offPendingSequence()
     offLeader()
     offEx()
     offActions()
@@ -192,54 +297,55 @@ export default function KeymapDemo() {
 
   return (
     <box flexDirection="column" flexGrow={1} padding={1} backgroundColor="#0f172a">
-      <text fg="#f8fafc">Keymap Demo</text>
-      <text fg="#94a3b8">
-        Shows useKeymappings + useKeymap with global bindings, local panel bindings, and a ctrl+x leader extension.
+      <text fg="#f8fafc" height={1}>
+        Keymap Demo
+      </text>
+      <text fg="#94a3b8" height={2}>
+        Shows useKeymappings + useKeymap with global bindings, local panel bindings, which-key hints, and a ctrl+x
+        leader extension.
       </text>
 
       <box flexDirection="row" gap={1} height={7}>
         <CounterPanel
           id="alpha"
           label="Alpha"
+          saveTarget="alpha-panel.txt"
           step={1}
           color="#38bdf8"
+          setRef={(value) => {
+            alphaPanelRef = value
+          }}
           count={alphaCount}
           focused={() => activePanel() === "alpha"}
-          setFocused={setActivePanel}
+          setFocused={setFocusedPanel}
           setCount={setAlphaCount}
           announce={announce}
         />
         <CounterPanel
           id="beta"
           label="Beta"
+          saveTarget="beta-panel.txt"
           step={5}
           color="#34d399"
           count={betaCount}
           focused={() => activePanel() === "beta"}
-          setFocused={setActivePanel}
+          setFocused={setFocusedPanel}
           setCount={setBetaCount}
           announce={announce}
         />
       </box>
 
-      <box border borderColor="#475569" padding={1} marginTop={1} flexGrow={1} flexDirection="column">
-        <text fg="#f8fafc">
-          Focused: {activePanel() === "alpha" ? "Alpha" : "Beta"} | Leader: {leaderArmed() ? "armed (ctrl+x)" : "idle"}
-        </text>
-        <text fg="#f8fafc">Last action: {lastAction()}</text>
-        <Show when={helpVisible()}>
-          <text fg="#cbd5e1">
-            {[
-              "",
-              "Global keymaps:",
-              "tab / shift+tab: move focus",
-              "?: toggle help | ctrl+r: :reset",
-              "ctrl+x then s: :announce Saved via leader",
-              "ctrl+x then h: toggle help",
-            ].join("\n")}
+      <box border borderColor="#475569" padding={1} marginTop={1} flexGrow={1} flexDirection="row" gap={2}>
+        <box flexGrow={1} flexDirection="column">
+          <text fg="#f8fafc" height={12}>
+            {detailsText()}
           </text>
-        </Show>
-        <text fg="#fbbf24">{"\nRecent log:\n" + logs().join("\n")}</text>
+        </box>
+        <box width={28}>
+          <text fg="#cbd5e1" height={12}>
+            {whichKeyText()}
+          </text>
+        </box>
       </box>
     </box>
   )

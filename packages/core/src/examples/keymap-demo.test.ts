@@ -20,12 +20,28 @@ describe("keymap demo example", () => {
     run(testSetup.renderer)
     await testSetup.renderOnce()
 
+    let frame = testSetup.captureCharFrame()
     expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-alpha")
+    expect(frame).toContain("Which Key")
 
-    testSetup.mockInput.pressKey("j")
+    testSetup.mockInput.pressEnter()
     await testSetup.renderOnce()
+    frame = testSetup.captureCharFrame()
+    expect(frame).toContain("Ex command:")
+    expect(frame).toContain("wrote")
+    expect(frame).toContain("alpha-panel.txt")
 
-    expect(testSetup.captureCharFrame()).toContain("Count: 1")
+    testSetup.mockInput.pressKey("x", { ctrl: true })
+    await testSetup.renderOnce()
+    frame = testSetup.captureCharFrame()
+    expect(frame).toContain("Prefix: ctrl+x")
+    expect(frame).toContain("s -> :w session.log")
+
+    testSetup.mockInput.pressKey("s")
+    await testSetup.renderOnce()
+    frame = testSetup.captureCharFrame()
+    expect(frame).toContain("session.log")
+    expect(frame).toContain("wrote")
 
     testSetup.mockInput.pressTab()
     await testSetup.renderOnce()
@@ -37,17 +53,11 @@ describe("keymap demo example", () => {
 
     expect(testSetup.captureCharFrame()).toContain("Count: 5")
 
-    testSetup.mockInput.pressKey("x", { ctrl: true })
-    testSetup.mockInput.pressKey("s")
-    await testSetup.renderOnce()
-
-    expect(testSetup.captureCharFrame()).toContain("Ex command: Saved via leader")
-
     testSetup.mockInput.pressKey("r", { ctrl: true })
     await testSetup.renderOnce()
 
-    const frame = testSetup.captureCharFrame()
+    frame = testSetup.captureCharFrame()
     expect(frame).toContain("Count: 0")
-    expect(frame).toContain("Counters reset through :reset")
+    expect(frame).toContain("reset through :reset")
   })
 })

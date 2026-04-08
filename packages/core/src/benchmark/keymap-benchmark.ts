@@ -8,12 +8,15 @@ import { getKeymapManager, type KeymapManager } from "../extras/keymap/index.js"
 const DEFAULT_ITERATIONS = 20_000
 const DEFAULT_WARMUP = 2_000
 const DEFAULT_ROUNDS = 5
+const DEFAULT_MIN_SAMPLE_MS = 250
 const KEY_POOL = "abcdefghijklmnopqrstuvwxyz0123456789"
 
 interface BenchmarkArgs {
   iterations: number
   warmupIterations: number
   rounds: number
+  minSampleMs: number
+  scenarioNames?: Set<string>
   jsonPath?: string
 }
 
@@ -47,6 +50,7 @@ interface BenchmarkResult {
   iterations: number
   warmupIterations: number
   rounds: number
+  measuredIterations: number
   medianDurationMs: number
   bestDurationMs: number
   medianOpsPerSecond: number
@@ -70,6 +74,8 @@ function parseArgs(argv: string[]): BenchmarkArgs {
   let iterations = DEFAULT_ITERATIONS
   let warmupIterations = DEFAULT_WARMUP
   let rounds = DEFAULT_ROUNDS
+  let minSampleMs = DEFAULT_MIN_SAMPLE_MS
+  let scenarioNames: Set<string> | undefined
   let jsonPath: string | undefined
 
   for (const arg of argv) {
@@ -88,6 +94,22 @@ function parseArgs(argv: string[]): BenchmarkArgs {
       continue
     }
 
+    if (arg.startsWith("--min-sample-ms=")) {
+      minSampleMs = parseNumberArg(arg.slice("--min-sample-ms=".length), DEFAULT_MIN_SAMPLE_MS)
+      continue
+    }
+
+    if (arg.startsWith("--scenario=")) {
+      const names = arg
+        .slice("--scenario=".length)
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean)
+
+      scenarioNames = new Set(names)
+      continue
+    }
+
     if (arg.startsWith("--json=")) {
       jsonPath = arg.slice("--json=".length)
     }
@@ -97,6 +119,8 @@ function parseArgs(argv: string[]): BenchmarkArgs {
     iterations,
     warmupIterations,
     rounds,
+    minSampleMs,
+    scenarioNames,
     jsonPath,
   }
 }
@@ -127,6 +151,22 @@ function median(values: number[]): number {
   }
 
   return (previous + value) / 2
+}
+
+function roundIterations(value: number): number {
+  if (value <= 1_000) {
+    return Math.max(1, Math.ceil(value))
+  }
+
+  if (value <= 10_000) {
+    return Math.ceil(value / 10) * 10
+  }
+
+  if (value <= 100_000) {
+    return Math.ceil(value / 100) * 100
+  }
+
+  return Math.ceil(value / 1_000) * 1_000
 }
 
 function createFocusableBox(renderer: TestRenderer, id: string): BoxRenderable {
@@ -499,17 +539,35 @@ async function runScenario(scenario: BenchmarkScenario, args: BenchmarkArgs): Pr
       instance.runIteration()
     }
 
+    let measuredIterations = args.iterations
+    const calibrationStart = nowNs()
+    for (let iteration = 0; iteration < measuredIterations; iteration += 1) {
+      instance.runIteration()
+    }
+    const calibrationDurationMs = nsToMs(nowNs() - calibrationStart)
+
+    if (calibrationDurationMs > 0 && calibrationDurationMs < args.minSampleMs) {
+      const scaledIterations = (measuredIterations * args.minSampleMs) / calibrationDurationMs
+      measuredIterations = roundIterations(scaledIterations)
+    }
+
+    if (measuredIterations !== args.iterations) {
+      for (let iteration = 0; iteration < Math.min(measuredIterations, args.warmupIterations); iteration += 1) {
+        instance.runIteration()
+      }
+    }
+
     const samples: BenchmarkSample[] = []
     for (let round = 0; round < args.rounds; round += 1) {
       const start = nowNs()
-      for (let iteration = 0; iteration < args.iterations; iteration += 1) {
+      for (let iteration = 0; iteration < measuredIterations; iteration += 1) {
         instance.runIteration()
       }
       const durationMs = nsToMs(nowNs() - start)
       samples.push({
         round: round + 1,
         durationMs,
-        opsPerSecond: (args.iterations * 1000) / durationMs,
+        opsPerSecond: (measuredIterations * 1000) / durationMs,
       })
     }
 
@@ -522,6 +580,7 @@ async function runScenario(scenario: BenchmarkScenario, args: BenchmarkArgs): Pr
       iterations: args.iterations,
       warmupIterations: args.warmupIterations,
       rounds: args.rounds,
+      measuredIterations,
       medianDurationMs: median(durations),
       bestDurationMs: Math.min(...durations),
       medianOpsPerSecond: median(opsPerSecond),
@@ -538,13 +597,14 @@ function formatNumber(value: number): string {
 
 function printResults(results: BenchmarkResult[], args: BenchmarkArgs): void {
   console.log(
-    `keymap-benchmark iters=${args.iterations} warmup=${args.warmupIterations} rounds=${args.rounds} scenarios=${results.length}`,
+    `keymap-benchmark iters=${args.iterations} warmup=${args.warmupIterations} rounds=${args.rounds} min_sample_ms=${args.minSampleMs} scenarios=${results.length}`,
   )
   console.log("")
 
-  const header = ["scenario", "median ms", "best ms", "median ops/sec"]
+  const header = ["scenario", "iters", "median ms", "best ms", "median ops/sec"]
   const rows = results.map((result) => [
     result.name,
+    String(result.measuredIterations),
     formatNumber(result.medianDurationMs),
     formatNumber(result.bestDurationMs),
     formatNumber(result.medianOpsPerSecond),
@@ -604,7 +664,15 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2))
   const results: BenchmarkResult[] = []
 
-  for (const scenario of scenarios) {
+  const selectedScenarios = args.scenarioNames
+    ? scenarios.filter((scenario) => args.scenarioNames!.has(scenario.name))
+    : scenarios
+
+  if (selectedScenarios.length === 0) {
+    throw new Error("No benchmark scenarios matched the provided --scenario filter")
+  }
+
+  for (const scenario of selectedScenarios) {
     results.push(await runScenario(scenario, args))
   }
 

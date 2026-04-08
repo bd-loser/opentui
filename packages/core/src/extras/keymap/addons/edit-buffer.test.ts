@@ -3,7 +3,7 @@ import { InputRenderable, InputRenderableEvents } from "../../../renderables/Inp
 import { TextareaRenderable } from "../../../renderables/Textarea.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../../../testing.js"
 import { getKeymapManager } from "../index.js"
-import { compileEditBufferKeyBindings, registerEditBufferCommands } from "./edit-buffer.js"
+import { compileEditBufferKeyBindings, registerEditBufferCommands, registerEditBufferKeymap } from "./edit-buffer.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
@@ -68,6 +68,56 @@ describe("edit buffer addon", () => {
     expect(input.value).toBe("Hello")
   })
 
+  test("registerEditBufferCommands is idempotent for the same manager", () => {
+    const manager = getKeymapManager(renderer)
+    const offFirst = registerEditBufferCommands(manager)
+    const offSecond = registerEditBufferCommands(manager)
+
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 4,
+      initialValue: "Line 1\nLine 2\nLine 3",
+    })
+    renderer.root.add(textarea)
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
+    })
+
+    textarea.focus()
+    textarea.gotoLine(1)
+    offFirst()
+    mockInput.pressKey("d", { ctrl: true })
+
+    expect(textarea.plainText).toBe("Line 1\nLine 3")
+
+    offSecond()
+  })
+
+  test("registerEditBufferKeymap supports sequence bindings", () => {
+    const manager = getKeymapManager(renderer)
+
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 4,
+      initialValue: "Line 1\nLine 2\nLine 3",
+    })
+    renderer.root.add(textarea)
+
+    registerEditBufferKeymap(manager, {
+      scope: "global",
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
+
+    textarea.focus()
+    textarea.gotoLine(1)
+    mockInput.pressKey("d")
+    mockInput.pressKey("d")
+
+    expect(textarea.plainText).toBe("Line 1\nLine 3")
+  })
+
   test("compileEditBufferKeyBindings normalizes simple config", () => {
     const bindings = compileEditBufferKeyBindings([
       { key: "ctrl+d", cmd: "delete-line" },
@@ -100,7 +150,7 @@ describe("edit buffer addon", () => {
     )
 
     expect(() => compileEditBufferKeyBindings([{ key: "dd", cmd: "delete-line" }])).toThrow(
-      "Edit-buffer key bindings must resolve to exactly one key stroke",
+      "Edit-buffer key bindings only support a single key stroke",
     )
 
     expect(() => compileEditBufferKeyBindings([{ key: "x", mode: "normal", cmd: "delete-line" }])).toThrow(

@@ -1,7 +1,6 @@
 import { RenderableEvents, type Renderable } from "../../Renderable.js"
 import type { CliRenderer } from "../../renderer.js"
 import type { KeyEvent } from "../../lib/KeyHandler.js"
-import { getKeyBindingKey } from "../../lib/keymapping.js"
 import {
   cloneStroke,
   createParsedKeyPart,
@@ -150,7 +149,7 @@ export interface KeymapManager {
 interface CompiledBinding {
   sequence: ParsedKeyPart[]
   command: KeymapResolvedCommand
-  requires: KeymapEventData
+  requires: readonly [name: string, value: unknown][]
   consume: boolean
   fallthrough: boolean
 }
@@ -254,7 +253,7 @@ function sortLayersWithinScope(items: RegisteredLayer[]): RegisteredLayer[] {
 }
 
 function buildBindingKey(stroke: ParsedKeyStroke): string {
-  return getKeyBindingKey({ ...stroke, action: "" })
+  return `${stroke.name}:${stroke.ctrl ? 1 : 0}:${stroke.shift ? 1 : 0}:${stroke.meta ? 1 : 0}:${stroke.super ? 1 : 0}`
 }
 
 function createSequenceNode(parent: SequenceNode | null, stroke: ParsedKeyStroke | null): SequenceNode {
@@ -289,6 +288,9 @@ class KeymapManagerImpl implements KeymapManager {
   private pendingSequenceListeners: Array<(sequence: readonly ParsedKeyStroke[]) => void> = []
   private commands = new Map<string, KeymapCommand>()
   private data: KeymapEventData = {}
+  private dataVersion = 0
+  private readonlyDataVersion = -1
+  private readonlyData: Readonly<KeymapEventData> = Object.freeze({})
   private pendingSequence: PendingSequenceState | null = null
   private order = 0
   private destroyed = false
@@ -342,6 +344,9 @@ class KeymapManagerImpl implements KeymapManager {
     this.pendingSequenceListeners = []
     this.commands.clear()
     this.data = {}
+    this.dataVersion = 0
+    this.readonlyDataVersion = -1
+    this.readonlyData = Object.freeze({})
 
     this.renderer.keyInput.off("keypress", this.keypressListener)
     this.renderer.keyInput.off("keyrelease", this.keyreleaseListener)
@@ -352,12 +357,22 @@ class KeymapManagerImpl implements KeymapManager {
     this.assertNotDestroyed()
 
     if (value === undefined) {
+      if (!(name in this.data)) {
+        return
+      }
+
       delete this.data[name]
+      this.dataVersion += 1
       this.resolvePendingSequence()
       return
     }
 
+    if (Object.is(this.data[name], value)) {
+      return
+    }
+
     this.data[name] = value
+    this.dataVersion += 1
     this.resolvePendingSequence()
   }
 
@@ -423,12 +438,12 @@ class KeymapManagerImpl implements KeymapManager {
     this.assertNotDestroyed()
 
     const focused = this.getFocusedRenderable()
-    const activeLayers = this.getActiveLayers(focused)
-    const pending = this.resolvePendingSequence(activeLayers)
+    const pending = this.resolvePendingSequence(focused)
     if (pending) {
       return this.collectActiveKeysFromChildren(pending.node.children)
     }
 
+    const activeLayers = this.getActiveLayers(focused)
     return this.collectActiveKeysAtRoot(activeLayers)
   }
 
@@ -731,7 +746,7 @@ class KeymapManagerImpl implements KeymapManager {
       const compiledBinding: CompiledBinding = {
         sequence,
         command: parseCommandInput(binding.cmd),
-        requires: mergedRequires,
+        requires: Object.entries(mergedRequires),
         consume: binding.consume !== false,
         fallthrough: binding.fallthrough ?? false,
       }
@@ -810,7 +825,7 @@ class KeymapManagerImpl implements KeymapManager {
       return
     }
 
-    const hooks = [...this.keyHooks]
+    const hooks = this.keyHooks
     const context: KeymapKeyInputContext = {
       event,
       setData: (name, value) => {
@@ -858,8 +873,7 @@ class KeymapManagerImpl implements KeymapManager {
 
   private dispatchLayers(event: KeyEvent): void {
     const focused = this.getFocusedRenderable()
-    const activeLayers = this.getActiveLayers(focused)
-    const pending = this.resolvePendingSequence(activeLayers)
+    const pending = this.resolvePendingSequence(focused)
     const stroke = normalizeEventKeyStroke(event)
 
     if (pending) {
@@ -867,6 +881,7 @@ class KeymapManagerImpl implements KeymapManager {
       return
     }
 
+    const activeLayers = this.getActiveLayers(focused)
     this.dispatchFromRoot(activeLayers, stroke, event, focused)
   }
 
@@ -947,7 +962,7 @@ class KeymapManagerImpl implements KeymapManager {
   }
 
   private nodeHasReachableBindings(node: SequenceNode): boolean {
-    return this.getMatchingBindings(node.reachableBindings).length > 0
+    return this.hasMatchingBindings(node.reachableBindings)
   }
 
   private collectSequencePartsFromNode(node: SequenceNode): ParsedKeyPart[] {
@@ -980,6 +995,16 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     return matches
+  }
+
+  private hasMatchingBindings(bindings: readonly CompiledBinding[]): boolean {
+    for (const binding of bindings) {
+      if (this.matchRequirements(binding.requires)) {
+        return true
+      }
+    }
+
+    return false
   }
 
   private getNodeDisplay(
@@ -1031,6 +1056,21 @@ class KeymapManagerImpl implements KeymapManager {
   private createActiveKey(node: SequenceNode): KeymapActiveKey | undefined {
     if (!node.stroke) {
       return undefined
+    }
+
+    const partIndex = node.depth - 1
+    if (node.reachableBindings.length === 1) {
+      const [binding] = node.reachableBindings
+      if (!binding || !this.matchRequirements(binding.requires)) {
+        return undefined
+      }
+
+      return {
+        stroke: cloneStroke(node.stroke),
+        display: binding.sequence[partIndex]?.display ?? stringifyKeyStroke(node.stroke),
+        commands: [binding.command],
+        continues: node.children.size > 0,
+      }
     }
 
     const reachableBindings = this.getMatchingBindings(node.reachableBindings)
@@ -1099,14 +1139,20 @@ class KeymapManagerImpl implements KeymapManager {
     continues: boolean,
     display: string,
   ): void {
-    const seen = new Set(activeKey.commands.map((command) => command.input))
     for (const command of commands) {
-      if (seen.has(command.input)) {
+      let exists = false
+      for (const existing of activeKey.commands) {
+        if (existing.input === command.input) {
+          exists = true
+          break
+        }
+      }
+
+      if (exists) {
         continue
       }
 
       activeKey.commands.push(command)
-      seen.add(command.input)
     }
 
     if (continues) {
@@ -1126,7 +1172,11 @@ class KeymapManagerImpl implements KeymapManager {
   ): { handled: boolean; stop: boolean } {
     let handled = false
 
-    for (const binding of this.getMatchingBindings(bindings)) {
+    for (const binding of bindings) {
+      if (!this.matchRequirements(binding.requires)) {
+        continue
+      }
+
       const bindingHandled = this.runBinding(layer, binding, event, focused)
       if (!bindingHandled) {
         continue
@@ -1158,7 +1208,7 @@ class KeymapManagerImpl implements KeymapManager {
       event,
       focused,
       target: layer.target ?? null,
-      data: Object.freeze({ ...this.data }),
+      data: this.getReadonlyData(),
       command: binding.command,
     }
 
@@ -1196,8 +1246,12 @@ class KeymapManagerImpl implements KeymapManager {
     event.stopPropagation()
   }
 
-  private matchRequirements(requires: KeymapEventData): boolean {
-    for (const [name, value] of Object.entries(requires)) {
+  private matchRequirements(requires: readonly [name: string, value: unknown][]): boolean {
+    if (requires.length === 0) {
+      return true
+    }
+
+    for (const [name, value] of requires) {
       if (!Object.is(this.data[name], value)) {
         return false
       }
@@ -1287,13 +1341,51 @@ class KeymapManagerImpl implements KeymapManager {
     return activeLayers
   }
 
-  private resolvePendingSequence(activeLayers?: RegisteredLayer[]): PendingSequenceState | undefined {
+  private isLayerActiveForFocused(layer: RegisteredLayer, focused: Renderable | null): boolean {
+    if (layer.scope === "global") {
+      return true
+    }
+
+    const target = layer.target
+    if (!target || target.isDestroyed || !focused) {
+      return false
+    }
+
+    if (layer.scope === "focus") {
+      return target === focused
+    }
+
+    let current: Renderable | null = focused
+    while (current) {
+      if (current === target) {
+        return true
+      }
+
+      current = current.parent
+    }
+
+    return false
+  }
+
+  private getReadonlyData(): Readonly<KeymapEventData> {
+    if (this.readonlyDataVersion === this.dataVersion) {
+      return this.readonlyData
+    }
+
+    this.readonlyData = Object.freeze({ ...this.data })
+    this.readonlyDataVersion = this.dataVersion
+    return this.readonlyData
+  }
+
+  private resolvePendingSequence(focused = this.getFocusedRenderable()): PendingSequenceState | undefined {
     if (!this.pendingSequence) {
       return undefined
     }
 
-    const layers = activeLayers ?? this.getActiveLayers(this.getFocusedRenderable())
-    if (!this.layers.has(this.pendingSequence.layer) || !layers.includes(this.pendingSequence.layer)) {
+    if (
+      !this.layers.has(this.pendingSequence.layer) ||
+      !this.isLayerActiveForFocused(this.pendingSequence.layer, focused)
+    ) {
       this.setPendingSequence(null)
       return undefined
     }

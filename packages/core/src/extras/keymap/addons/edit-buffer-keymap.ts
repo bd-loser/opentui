@@ -1,13 +1,6 @@
 import type { KeyBinding as EditBufferKeyBinding, TextareaAction } from "../../../renderables/Textarea.js"
-import {
-  normalizeBindingInputs,
-  parseCommandInput,
-  parseKeySequenceLike,
-  RESERVED_BINDING_FIELDS,
-  type KeymapBindings,
-  type KeymapLayer,
-  type KeymapManager,
-} from "../core.js"
+import { RESERVED_BINDING_FIELDS, type KeymapBindings, type KeymapLayer, type KeymapManager } from "../core.js"
+import { normalizeBindingInputs, parseCommandInput, parseKeySequenceLike } from "../utils.js"
 import { editBufferCommandNames, registerEditBufferCommands } from "./edit-buffer-commands.js"
 
 const editBufferCommandNameSet = new Set<string>(editBufferCommandNames)

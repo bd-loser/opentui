@@ -1,4 +1,4 @@
-import type { Renderable } from "../../Renderable.js"
+import { RenderableEvents, type Renderable } from "../../Renderable.js"
 import type { CliRenderer } from "../../renderer.js"
 import type { KeyEvent } from "../../lib/KeyHandler.js"
 import { getKeyBindingKey } from "../../lib/keymapping.js"
@@ -171,6 +171,13 @@ interface RegisteredLayer {
   priority: number
   enabled?: KeymapEnabled
   root: SequenceNode
+  offTargetDestroy?: () => void
+  bucket?: RegisteredLayerBucket
+}
+
+interface RegisteredLayerBucket {
+  focusLayers: RegisteredLayer[]
+  focusWithinLayers: RegisteredLayer[]
 }
 
 interface RegisteredKeyHook {
@@ -272,7 +279,9 @@ function mergeRequirement(target: KeymapEventData, name: string, value: unknown,
 class KeymapManagerImpl implements KeymapManager {
   public readonly renderer: CliRenderer
 
-  private layers: RegisteredLayer[] = []
+  private layers = new Set<RegisteredLayer>()
+  private globalLayers: RegisteredLayer[] = []
+  private targetLayers = new WeakMap<Renderable, RegisteredLayerBucket>()
   private tokens = new Map<string, ParsedKeyStroke>()
   private bindingFields = new Map<string, KeymapBindingFieldCompiler>()
   private keyHooks: RegisteredKeyHook[] = []
@@ -315,8 +324,17 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     this.setPendingSequence(null)
+
+    for (const layer of this.layers) {
+      layer.offTargetDestroy?.()
+      layer.offTargetDestroy = undefined
+      layer.bucket = undefined
+    }
+
     this.destroyed = true
-    this.layers = []
+    this.layers.clear()
+    this.globalLayers = []
+    this.targetLayers = new WeakMap()
     this.tokens.clear()
     this.bindingFields.clear()
     this.keyHooks = []
@@ -404,8 +422,6 @@ class KeymapManagerImpl implements KeymapManager {
   public getActiveKeys(): readonly KeymapActiveKey[] {
     this.assertNotDestroyed()
 
-    this.pruneDestroyedLayers()
-
     const focused = this.getFocusedRenderable()
     const activeLayers = this.getActiveLayers(focused)
     const pending = this.resolvePendingSequence(activeLayers)
@@ -444,13 +460,22 @@ class KeymapManagerImpl implements KeymapManager {
       root: this.compileBindings(layer.bindings),
     }
 
-    this.layers = [...this.layers, registeredLayer]
+    this.layers.add(registeredLayer)
+    this.indexLayer(registeredLayer)
+
+    if (target) {
+      const onTargetDestroy = () => {
+        this.unregisterLayer(registeredLayer)
+      }
+
+      target.once(RenderableEvents.DESTROYED, onTargetDestroy)
+      registeredLayer.offTargetDestroy = () => {
+        target.off(RenderableEvents.DESTROYED, onTargetDestroy)
+      }
+    }
 
     return () => {
-      this.layers = this.layers.filter((candidate) => candidate !== registeredLayer)
-      if (this.pendingSequence?.layer === registeredLayer) {
-        this.setPendingSequence(null)
-      }
+      this.unregisterLayer(registeredLayer)
     }
   }
 
@@ -599,6 +624,80 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     return "global"
+  }
+
+  private getOrCreateTargetBucket(target: Renderable): RegisteredLayerBucket {
+    const existing = this.targetLayers.get(target)
+    if (existing) {
+      return existing
+    }
+
+    const bucket: RegisteredLayerBucket = {
+      focusLayers: [],
+      focusWithinLayers: [],
+    }
+    this.targetLayers.set(target, bucket)
+    return bucket
+  }
+
+  private indexLayer(layer: RegisteredLayer): void {
+    if (layer.scope === "global") {
+      this.globalLayers = sortLayersWithinScope([...this.globalLayers, layer])
+      return
+    }
+
+    const target = layer.target
+    if (!target) {
+      return
+    }
+
+    const bucket = this.getOrCreateTargetBucket(target)
+    if (layer.scope === "focus") {
+      bucket.focusLayers = sortLayersWithinScope([...bucket.focusLayers, layer])
+    } else {
+      bucket.focusWithinLayers = sortLayersWithinScope([...bucket.focusWithinLayers, layer])
+    }
+
+    layer.bucket = bucket
+  }
+
+  private removeLayerFromIndex(layer: RegisteredLayer): void {
+    if (layer.scope === "global") {
+      this.globalLayers = this.globalLayers.filter((candidate) => candidate !== layer)
+      return
+    }
+
+    const target = layer.target
+    const bucket = layer.bucket
+    if (!target || !bucket) {
+      return
+    }
+
+    if (layer.scope === "focus") {
+      bucket.focusLayers = bucket.focusLayers.filter((candidate) => candidate !== layer)
+    } else {
+      bucket.focusWithinLayers = bucket.focusWithinLayers.filter((candidate) => candidate !== layer)
+    }
+
+    if (bucket.focusLayers.length === 0 && bucket.focusWithinLayers.length === 0) {
+      this.targetLayers.delete(target)
+    }
+
+    layer.bucket = undefined
+  }
+
+  private unregisterLayer(layer: RegisteredLayer): void {
+    if (!this.layers.delete(layer)) {
+      return
+    }
+
+    this.removeLayerFromIndex(layer)
+    layer.offTargetDestroy?.()
+    layer.offTargetDestroy = undefined
+
+    if (this.pendingSequence?.layer === layer) {
+      this.setPendingSequence(null)
+    }
   }
 
   private compileBindings(bindings: KeymapBindings): SequenceNode {
@@ -758,8 +857,6 @@ class KeymapManagerImpl implements KeymapManager {
   }
 
   private dispatchLayers(event: KeyEvent): void {
-    this.pruneDestroyedLayers()
-
     const focused = this.getFocusedRenderable()
     const activeLayers = this.getActiveLayers(focused)
     const pending = this.resolvePendingSequence(activeLayers)
@@ -1146,23 +1243,6 @@ class KeymapManagerImpl implements KeymapManager {
     }
   }
 
-  private pruneDestroyedLayers(): void {
-    const nextLayers = this.layers.filter((layer) => {
-      if (!layer.target) {
-        return true
-      }
-
-      return !layer.target.isDestroyed
-    })
-
-    if (nextLayers.length !== this.layers.length) {
-      this.layers = nextLayers
-      if (this.pendingSequence && !this.layers.includes(this.pendingSequence.layer)) {
-        this.setPendingSequence(null)
-      }
-    }
-  }
-
   private getFocusedRenderable(): Renderable | null {
     const focused = this.renderer.currentFocusedRenderable
     if (!focused) {
@@ -1185,26 +1265,24 @@ class KeymapManagerImpl implements KeymapManager {
 
     if (focused) {
       let current: Renderable | null = focused
+      let isFocusedTarget = true
+
       while (current) {
-        const localLayers = this.layers.filter((layer) => {
-          if (!layer.target || layer.target !== current) {
-            return false
+        const bucket = this.targetLayers.get(current)
+        if (bucket) {
+          if (isFocusedTarget) {
+            activeLayers.push(...bucket.focusLayers)
           }
 
-          if (layer.scope === "focus") {
-            return current === focused
-          }
+          activeLayers.push(...bucket.focusWithinLayers)
+        }
 
-          return layer.scope === "focus-within"
-        })
-
-        activeLayers.push(...sortLayersWithinScope(localLayers))
         current = current.parent
+        isFocusedTarget = false
       }
     }
 
-    const globalLayers = this.layers.filter((layer) => layer.scope === "global")
-    activeLayers.push(...sortLayersWithinScope(globalLayers))
+    activeLayers.push(...this.globalLayers)
 
     return activeLayers
   }
@@ -1215,7 +1293,7 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     const layers = activeLayers ?? this.getActiveLayers(this.getFocusedRenderable())
-    if (!layers.includes(this.pendingSequence.layer)) {
+    if (!this.layers.has(this.pendingSequence.layer) || !layers.includes(this.pendingSequence.layer)) {
       this.setPendingSequence(null)
       return undefined
     }

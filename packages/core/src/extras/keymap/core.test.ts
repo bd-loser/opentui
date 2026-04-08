@@ -311,7 +311,7 @@ describe("keymap", () => {
   test("captures display for parsed sequences and stringifies tokens on demand", () => {
     const sequence = parseKeySequenceLike(
       "<leader>dd",
-      new Map([["<leader>", { stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false } }]]),
+      new Map([["<leader>", { name: "x", ctrl: true, shift: false, meta: false, super: false }]]),
     )
 
     expect(sequence).toEqual([
@@ -335,7 +335,7 @@ describe("keymap", () => {
   })
 
   test("preserves non-token display strings when explicitly requested", () => {
-    const sequence = parseKeySequenceLike("return", new Map())
+    const sequence = parseKeySequenceLike("return")
 
     expect(sequence).toEqual([
       {

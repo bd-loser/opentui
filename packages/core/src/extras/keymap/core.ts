@@ -3,7 +3,6 @@ import type { CliRenderer } from "../../renderer.js"
 import type { KeyEvent } from "../../lib/KeyHandler.js"
 import { getKeyBindingKey } from "../../lib/keymapping.js"
 import {
-  clonePart,
   cloneStroke,
   createParsedKeyPart,
   normalizeBindingInputs,
@@ -160,7 +159,6 @@ interface SequenceNode {
   parent: SequenceNode | null
   depth: number
   stroke: ParsedKeyStroke | null
-  bindingKey: string | null
   children: Map<string, SequenceNode>
   bindings: CompiledBinding[]
   reachableBindings: CompiledBinding[]
@@ -173,11 +171,6 @@ interface RegisteredLayer {
   priority: number
   enabled?: KeymapEnabled
   root: SequenceNode
-}
-
-interface RegisteredToken {
-  token: string
-  stroke: ParsedKeyStroke
 }
 
 interface RegisteredKeyHook {
@@ -262,7 +255,6 @@ function createSequenceNode(parent: SequenceNode | null, stroke: ParsedKeyStroke
     parent,
     depth: parent ? parent.depth + 1 : 0,
     stroke,
-    bindingKey: stroke ? buildBindingKey(stroke) : null,
     children: new Map(),
     bindings: [],
     reachableBindings: [],
@@ -281,7 +273,7 @@ class KeymapManagerImpl implements KeymapManager {
   public readonly renderer: CliRenderer
 
   private layers: RegisteredLayer[] = []
-  private tokens = new Map<string, RegisteredToken>()
+  private tokens = new Map<string, ParsedKeyStroke>()
   private bindingFields = new Map<string, KeymapBindingFieldCompiler>()
   private keyHooks: RegisteredKeyHook[] = []
   private rawHooks: RegisteredRawHook[] = []
@@ -357,7 +349,14 @@ class KeymapManagerImpl implements KeymapManager {
   }
 
   public getPendingSequence(): readonly ParsedKeyStroke[] {
-    return this.getPendingSequenceParts().map((part) => cloneStroke(part.stroke))
+    this.assertNotDestroyed()
+
+    const pending = this.resolvePendingSequence()
+    if (!pending) {
+      return []
+    }
+
+    return this.collectSequenceStrokesFromNode(pending.node)
   }
 
   public getPendingSequenceParts(): readonly ParsedKeyPart[] {
@@ -467,10 +466,7 @@ class KeymapManagerImpl implements KeymapManager {
       throw new Error(`Keymap token "${normalizedToken}" is already registered`)
     }
 
-    const registeredToken: RegisteredToken = {
-      token: normalizedToken,
-      stroke: parseKeyLike(token.key),
-    }
+    const registeredToken = parseKeyLike(token.key)
 
     this.tokens.set(normalizedToken, registeredToken)
 
@@ -634,7 +630,7 @@ class KeymapManagerImpl implements KeymapManager {
       }
 
       const compiledBinding: CompiledBinding = {
-        sequence: sequence.map(clonePart),
+        sequence,
         command: parseCommandInput(binding.cmd),
         requires: mergedRequires,
         consume: binding.consume !== false,
@@ -854,13 +850,7 @@ class KeymapManagerImpl implements KeymapManager {
   }
 
   private nodeHasReachableBindings(node: SequenceNode): boolean {
-    for (const binding of node.reachableBindings) {
-      if (this.matchRequirements(binding.requires)) {
-        return true
-      }
-    }
-
-    return false
+    return this.getMatchingBindings(node.reachableBindings).length > 0
   }
 
   private collectSequencePartsFromNode(node: SequenceNode): ParsedKeyPart[] {
@@ -879,7 +869,26 @@ class KeymapManagerImpl implements KeymapManager {
     })
   }
 
-  private getNodeDisplay(node: SequenceNode): string {
+  private collectSequenceStrokesFromNode(node: SequenceNode): ParsedKeyStroke[] {
+    return this.collectSequencePartsFromNode(node).map((part) => cloneStroke(part.stroke))
+  }
+
+  private getMatchingBindings(bindings: readonly CompiledBinding[]): CompiledBinding[] {
+    const matches: CompiledBinding[] = []
+
+    for (const binding of bindings) {
+      if (this.matchRequirements(binding.requires)) {
+        matches.push(binding)
+      }
+    }
+
+    return matches
+  }
+
+  private getNodeDisplay(
+    node: SequenceNode,
+    reachableBindings = this.getMatchingBindings(node.reachableBindings),
+  ): string {
     if (!node.stroke) {
       return ""
     }
@@ -887,11 +896,7 @@ class KeymapManagerImpl implements KeymapManager {
     const partIndex = node.depth - 1
     let display: string | undefined
 
-    for (const binding of node.reachableBindings) {
-      if (!this.matchRequirements(binding.requires)) {
-        continue
-      }
-
+    for (const binding of reachableBindings) {
       const part = binding.sequence[partIndex]
       if (!part) {
         continue
@@ -910,6 +915,45 @@ class KeymapManagerImpl implements KeymapManager {
     return display ?? stringifyKeyStroke(node.stroke)
   }
 
+  private collectResolvedCommands(bindings: readonly CompiledBinding[]): KeymapResolvedCommand[] {
+    const commands: KeymapResolvedCommand[] = []
+    const seen = new Set<string>()
+
+    for (const binding of bindings) {
+      if (seen.has(binding.command.input)) {
+        continue
+      }
+
+      commands.push(binding.command)
+      seen.add(binding.command.input)
+    }
+
+    return commands
+  }
+
+  private createActiveKey(node: SequenceNode): KeymapActiveKey | undefined {
+    if (!node.stroke) {
+      return undefined
+    }
+
+    const reachableBindings = this.getMatchingBindings(node.reachableBindings)
+    if (reachableBindings.length === 0) {
+      return undefined
+    }
+
+    const commands = this.collectResolvedCommands(reachableBindings)
+    if (commands.length === 0) {
+      return undefined
+    }
+
+    return {
+      stroke: cloneStroke(node.stroke),
+      display: this.getNodeDisplay(node, reachableBindings),
+      commands,
+      continues: node.children.size > 0,
+    }
+  }
+
   private collectActiveKeysAtRoot(activeLayers: RegisteredLayer[]): readonly KeymapActiveKey[] {
     const activeKeys = new Map<string, KeymapActiveKey>()
 
@@ -919,27 +963,18 @@ class KeymapManagerImpl implements KeymapManager {
       }
 
       for (const [bindingKey, child] of layer.root.children) {
-        if (!child.stroke || !this.nodeHasReachableBindings(child)) {
-          continue
-        }
-
-        const commands = this.collectReachableCommands(child)
-        if (commands.length === 0) {
+        const activeKey = this.createActiveKey(child)
+        if (!activeKey) {
           continue
         }
 
         const existing = activeKeys.get(bindingKey)
         if (!existing) {
-          activeKeys.set(bindingKey, {
-            stroke: cloneStroke(child.stroke),
-            display: this.getNodeDisplay(child),
-            commands: [...commands],
-            continues: child.children.size > 0,
-          })
+          activeKeys.set(bindingKey, activeKey)
           continue
         }
 
-        this.mergeActiveKey(existing, commands, child.children.size > 0, this.getNodeDisplay(child))
+        this.mergeActiveKey(existing, activeKey.commands, activeKey.continues, activeKey.display)
       }
     }
 
@@ -950,44 +985,15 @@ class KeymapManagerImpl implements KeymapManager {
     const activeKeys: KeymapActiveKey[] = []
 
     for (const child of children.values()) {
-      if (!child.stroke || !this.nodeHasReachableBindings(child)) {
+      const activeKey = this.createActiveKey(child)
+      if (!activeKey) {
         continue
       }
 
-      const commands = this.collectReachableCommands(child)
-      if (commands.length === 0) {
-        continue
-      }
-
-      activeKeys.push({
-        stroke: cloneStroke(child.stroke),
-        display: this.getNodeDisplay(child),
-        commands,
-        continues: child.children.size > 0,
-      })
+      activeKeys.push(activeKey)
     }
 
     return activeKeys
-  }
-
-  private collectReachableCommands(node: SequenceNode): KeymapResolvedCommand[] {
-    const commands: KeymapResolvedCommand[] = []
-    const seen = new Set<string>()
-
-    for (const binding of node.reachableBindings) {
-      if (!this.matchRequirements(binding.requires)) {
-        continue
-      }
-
-      if (seen.has(binding.command.input)) {
-        continue
-      }
-
-      commands.push(binding.command)
-      seen.add(binding.command.input)
-    }
-
-    return commands
   }
 
   private mergeActiveKey(
@@ -1023,11 +1029,7 @@ class KeymapManagerImpl implements KeymapManager {
   ): { handled: boolean; stop: boolean } {
     let handled = false
 
-    for (const binding of bindings) {
-      if (!this.matchRequirements(binding.requires)) {
-        continue
-      }
-
+    for (const binding of this.getMatchingBindings(bindings)) {
       const bindingHandled = this.runBinding(layer, binding, event, focused)
       if (!bindingHandled) {
         continue
@@ -1133,9 +1135,7 @@ class KeymapManagerImpl implements KeymapManager {
       return
     }
 
-    const sequence = this.pendingSequence
-      ? this.collectSequencePartsFromNode(this.pendingSequence.node).map((part) => cloneStroke(part.stroke))
-      : []
+    const sequence = this.pendingSequence ? this.collectSequenceStrokesFromNode(this.pendingSequence.node) : []
     const listeners = [...this.pendingSequenceListeners]
     for (const listener of listeners) {
       try {

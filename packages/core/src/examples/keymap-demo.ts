@@ -1,11 +1,11 @@
+import { BoxRenderable, createCliRenderer, RenderableEvents, TextRenderable, type CliRenderer } from "../index.js"
 import {
-  BoxRenderable,
-  createCliRenderer,
-  RenderableEvents,
-  TextRenderable,
-  type CliRenderer,
-} from "../index.js"
-import { getKeymapManager, registerExCommands, registerTimedLeader } from "../extras.js"
+  getKeymapManager,
+  registerExCommands,
+  registerTimedLeader,
+  type KeymapManager,
+  type ParsedKeyStroke,
+} from "../extras.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 let root: BoxRenderable | null = null
@@ -14,6 +14,8 @@ let betaPanel: BoxRenderable | null = null
 let alphaText: TextRenderable | null = null
 let betaText: TextRenderable | null = null
 let detailsText: TextRenderable | null = null
+let whichKeyText: TextRenderable | null = null
+let keymapManager: KeymapManager | null = null
 
 let alphaCount = 0
 let betaCount = 0
@@ -39,30 +41,73 @@ function getFocusedPanelName(renderer: CliRenderer): string {
   return "None"
 }
 
+function formatStroke(stroke: ParsedKeyStroke): string {
+  const parts: string[] = []
+  if (stroke.ctrl) {
+    parts.push("ctrl")
+  }
+
+  if (stroke.shift) {
+    parts.push("shift")
+  }
+
+  if (stroke.meta) {
+    parts.push("meta")
+  }
+
+  if (stroke.super) {
+    parts.push("super")
+  }
+
+  parts.push(stroke.name === "return" ? "enter" : stroke.name)
+  return parts.join("+")
+}
+
+function formatSequence(sequence: readonly ParsedKeyStroke[]): string {
+  if (sequence.length === 0) {
+    return "<root>"
+  }
+
+  return sequence.map((stroke) => formatStroke(stroke)).join(" ")
+}
+
+function buildWhichKeyLines(): string[] {
+  if (!keymapManager) {
+    return ["Which Key", "manager unavailable"]
+  }
+
+  const activeKeys = [...keymapManager.getActiveKeys()].sort((left, right) => {
+    return formatStroke(left.stroke).localeCompare(formatStroke(right.stroke))
+  })
+
+  const lines = ["Which Key", `Prefix: ${formatSequence(keymapManager.getPendingSequence())}`]
+
+  if (activeKeys.length === 0) {
+    lines.push("(no active keys)")
+  } else {
+    for (const activeKey of activeKeys.slice(0, 8)) {
+      const commandList = activeKey.commands.map((command) => command.input).join(" | ")
+      lines.push(`${formatStroke(activeKey.stroke)} -> ${commandList}`)
+    }
+  }
+
+  lines.push("", "Ex commands", ":reset / :r", ":write <file> / :w <file>")
+
+  return lines
+}
+
 function renderPanels(): void {
   if (!alphaText || !betaText) {
     return
   }
 
-  alphaText.content = [
-    "Alpha Panel",
-    `Count: ${alphaCount}`,
-    "j: +1",
-    "k: -1",
-    "enter: :announce Alpha confirmed",
-  ].join("\n")
+  alphaText.content = ["Alpha Panel", `Count: ${alphaCount}`, "j: +1", "k: -1", "enter: :w alpha-panel.txt"].join("\n")
 
-  betaText.content = [
-    "Beta Panel",
-    `Count: ${betaCount}`,
-    "j: +5",
-    "k: -5",
-    "enter: :announce Beta confirmed",
-  ].join("\n")
+  betaText.content = ["Beta Panel", `Count: ${betaCount}`, "j: +5", "k: -5", "enter: :w beta-panel.txt"].join("\n")
 }
 
 function renderStatus(renderer: CliRenderer): void {
-  if (!detailsText) {
+  if (!detailsText || !whichKeyText) {
     return
   }
 
@@ -78,7 +123,8 @@ function renderStatus(renderer: CliRenderer): void {
       "Global keymaps:",
       "tab / shift+tab: move focus",
       "?: toggle help | ctrl+r: :reset",
-      "ctrl+x then s: :announce Saved via leader",
+      "enter on a panel: :w alpha-panel.txt / beta-panel.txt",
+      "ctrl+x then s: :w session.log",
       "ctrl+x then h: toggle help",
     )
   }
@@ -88,6 +134,7 @@ function renderStatus(renderer: CliRenderer): void {
   }
 
   detailsText.content = lines.join("\n")
+  whichKeyText.content = buildWhichKeyLines().join("\n")
 }
 
 function renderAll(renderer: CliRenderer): void {
@@ -116,6 +163,7 @@ function moveFocus(renderer: CliRenderer, direction: 1 | -1): void {
 
 function registerKeymaps(renderer: CliRenderer): void {
   const manager = getKeymapManager(renderer)
+  keymapManager = manager
 
   disposers.push(
     manager.registerCommands([
@@ -182,11 +230,11 @@ function registerKeymaps(renderer: CliRenderer): void {
         },
       },
       {
-        name: "announce",
-        aliases: ["echo"],
-        nargs: "+",
-        run({ args }) {
-          setStatus(renderer, `Ex command: ${args.join(" ")}`)
+        name: "write",
+        aliases: ["w"],
+        nargs: "1",
+        run({ raw, args }) {
+          setStatus(renderer, `Ex command: ${raw} -> wrote ${args[0]}`)
         },
       },
     ]),
@@ -215,9 +263,15 @@ function registerKeymaps(renderer: CliRenderer): void {
         "shift+tab": "focus-prev",
         "?": "toggle-help",
         "ctrl+r": ":reset",
-        "<leader>s": ":announce Saved via leader",
+        "<leader>s": ":w session.log",
         "<leader>h": "toggle-help",
       },
+    }),
+  )
+
+  disposers.push(
+    manager.onPendingSequenceChange(() => {
+      renderStatus(renderer)
     }),
   )
 
@@ -228,7 +282,7 @@ function registerKeymaps(renderer: CliRenderer): void {
         bindings: {
           j: "alpha-up",
           k: "alpha-down",
-          enter: ":announce Alpha confirmed",
+          enter: ":w alpha-panel.txt",
         },
       }),
     )
@@ -241,7 +295,7 @@ function registerKeymaps(renderer: CliRenderer): void {
         bindings: {
           j: "beta-up",
           k: "beta-down",
-          enter: ":announce Beta confirmed",
+          enter: ":w beta-panel.txt",
         },
       }),
     )
@@ -275,7 +329,7 @@ export function run(renderer: CliRenderer): void {
 
   const subtitle = new TextRenderable(renderer, {
     id: "keymap-demo-subtitle",
-    content: "Shows global layers, focused layers, action commands, ex commands, and a ctrl+x leader extension.",
+    content: "Shows global layers, focused layers, which-key hints, ex commands, and a ctrl+x leader extension.",
     fg: "#94a3b8",
     height: 2,
   })
@@ -335,17 +389,39 @@ export function run(renderer: CliRenderer): void {
     borderColor: "#475569",
     padding: 1,
     marginTop: 1,
+    gap: 2,
+    flexDirection: "row",
     flexGrow: 1,
   })
   root.add(footer)
+
+  const detailsPanel = new BoxRenderable(renderer, {
+    id: "keymap-demo-details-panel",
+    flexGrow: 1,
+  })
+  footer.add(detailsPanel)
 
   detailsText = new TextRenderable(renderer, {
     id: "keymap-demo-details",
     content: "",
     fg: "#f8fafc",
-    height: 9,
+    height: 12,
   })
-  footer.add(detailsText)
+  detailsPanel.add(detailsText)
+
+  const whichKeyPanel = new BoxRenderable(renderer, {
+    id: "keymap-demo-which-key-panel",
+    width: 28,
+  })
+  footer.add(whichKeyPanel)
+
+  whichKeyText = new TextRenderable(renderer, {
+    id: "keymap-demo-which-key",
+    content: "",
+    fg: "#cbd5e1",
+    height: 12,
+  })
+  whichKeyPanel.add(whichKeyText)
 
   alphaPanel.on(RenderableEvents.FOCUSED, () => {
     renderStatus(renderer)
@@ -377,12 +453,14 @@ export function destroy(_renderer: CliRenderer): void {
 
   root?.destroyRecursively()
 
+  keymapManager = null
   root = null
   alphaPanel = null
   betaPanel = null
   alphaText = null
   betaText = null
   detailsText = null
+  whichKeyText = null
   logLines = []
 }
 

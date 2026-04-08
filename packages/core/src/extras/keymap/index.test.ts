@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BoxRenderable } from "../../renderables/Box.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../../testing.js"
-import { getKeymapManager } from "./index.js"
+import { getKeymapManager, type KeymapManager } from "./index.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
@@ -14,6 +14,20 @@ function createFocusableBox(id: string): BoxRenderable {
     height: 4,
     focusable: true,
   })
+}
+
+function getActiveKey(
+  manager: KeymapManager,
+  name: string,
+): ReturnType<KeymapManager["getActiveKeys"]>[number] | undefined {
+  return manager.getActiveKeys().find((candidate) => candidate.stroke.name === name)
+}
+
+function getActiveKeyNames(manager: KeymapManager): string[] {
+  return manager
+    .getActiveKeys()
+    .map((candidate) => candidate.stroke.name)
+    .sort()
 }
 
 describe("keymap", () => {
@@ -291,7 +305,7 @@ describe("keymap", () => {
     }).toThrow('Keymap command "dup" is already registered')
   })
 
-  test("supports typed binding fields through extensions", () => {
+  test("supports typed binding fields through key input hooks", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
@@ -324,35 +338,106 @@ describe("keymap", () => {
     mockInput.pressKey("x")
 
     expect(calls).toEqual(["field"])
+    expect(manager.getData("vim.mode")).toBe("normal")
   })
 
-  test("supports key-sequence prefixes and typed fields together", () => {
+  test("supports multi-key sequences and reports active continuation keys", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
-    manager.registerBindingFields({
-      mode(value, ctx) {
-        ctx.require("vim.mode", value)
+    manager.registerCommands([
+      {
+        name: "delete-line",
+        run() {
+          calls.push("delete-line")
+        },
       },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "dd", cmd: "delete-line" }],
     })
+
+    expect(getActiveKeyNames(manager)).toEqual(["d"])
+
+    mockInput.pressKey("d")
+
+    expect(manager.getPendingSequence()).toEqual([{ name: "d", ctrl: false, shift: false, meta: false, super: false }])
+    expect(getActiveKeyNames(manager)).toEqual(["d"])
+    expect(getActiveKey(manager, "d")?.commands.map((command) => command.input)).toEqual(["delete-line"])
+
+    mockInput.pressKey("d")
+
+    expect(calls).toEqual(["delete-line"])
+    expect(manager.getPendingSequence()).toEqual([])
+  })
+
+  test("supports token aliases inside longer sequences", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
 
     manager.registerToken({
       token: "<leader>",
-      data: { prefix: "leader" },
-    })
-
-    manager.onKeyInput(({ event, setData }) => {
-      if (event.name === "x") {
-        setData("vim.mode", "normal")
-        setData("prefix", "leader")
-      }
+      key: { name: "x", ctrl: true },
     })
 
     manager.registerCommands([
       {
-        name: "record",
+        name: "go-definition",
         run() {
-          calls.push("binding")
+          calls.push("go-definition")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "<leader>gd", cmd: "go-definition" }],
+    })
+
+    mockInput.pressKey("x", { ctrl: true })
+
+    expect(getActiveKeyNames(manager)).toEqual(["g"])
+    expect(getActiveKey(manager, "g")?.commands.map((command) => command.input)).toEqual(["go-definition"])
+
+    mockInput.pressKey("g")
+
+    expect(getActiveKeyNames(manager)).toEqual(["d"])
+    expect(getActiveKey(manager, "d")?.commands.map((command) => command.input)).toEqual(["go-definition"])
+
+    mockInput.pressKey("d")
+
+    expect(calls).toEqual(["go-definition"])
+  })
+
+  test("supports branching sequences", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "delete-a",
+        run() {
+          calls.push("da")
+        },
+      },
+      {
+        name: "delete-b",
+        run() {
+          calls.push("db")
+        },
+      },
+      {
+        name: "delete-ca",
+        run() {
+          calls.push("dca")
+        },
+      },
+      {
+        name: "delete-cb",
+        run() {
+          calls.push("dcb")
         },
       },
     ])
@@ -360,14 +445,162 @@ describe("keymap", () => {
     manager.registerLayer({
       scope: "global",
       bindings: [
-        { key: "<leader>x", cmd: "record", fallthrough: true },
-        { key: "x", mode: "normal", cmd: "record", fallthrough: true },
+        { key: "da", cmd: "delete-a" },
+        { key: "db", cmd: "delete-b" },
+        { key: "dca", cmd: "delete-ca" },
+        { key: "dcb", cmd: "delete-cb" },
       ],
     })
 
+    mockInput.pressKey("d")
+    expect(getActiveKeyNames(manager)).toEqual(["a", "b", "c"])
+
+    mockInput.pressKey("c")
+    expect(getActiveKeyNames(manager)).toEqual(["a", "b"])
+
+    mockInput.pressKey("b")
+    expect(calls).toEqual(["dcb"])
+    expect(manager.getPendingSequence()).toEqual([])
+  })
+
+  test("keeps pending sequences local to the layer that captured them", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    const target = createFocusableBox("sequence-target")
+    renderer.root.add(target)
+
+    manager.registerCommands([
+      {
+        name: "local-delete",
+        run() {
+          calls.push("local")
+        },
+      },
+      {
+        name: "global-delete",
+        run() {
+          calls.push("global")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "da", cmd: "global-delete" }],
+    })
+
+    manager.registerLayer({
+      target,
+      bindings: [{ key: "dd", cmd: "local-delete" }],
+    })
+
+    target.focus()
+    mockInput.pressKey("d")
+
+    expect(getActiveKeyNames(manager)).toEqual(["d"])
+
+    mockInput.pressKey("d")
+
+    expect(calls).toEqual(["local"])
+  })
+
+  test("supports addon-style backspace editing for pending sequences", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "delete-ca",
+        run() {
+          calls.push("delete-ca")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "dca", cmd: "delete-ca" }],
+    })
+
+    manager.onKeyInput(({ event, consume }) => {
+      if (event.name !== "backspace") {
+        return
+      }
+
+      if (!manager.popPendingSequence()) {
+        return
+      }
+
+      consume()
+    })
+
+    mockInput.pressKey("d")
+    mockInput.pressKey("c")
+
+    expect(manager.getPendingSequence()).toEqual([
+      { name: "d", ctrl: false, shift: false, meta: false, super: false },
+      { name: "c", ctrl: false, shift: false, meta: false, super: false },
+    ])
+
+    mockInput.pressBackspace()
+
+    expect(manager.getPendingSequence()).toEqual([{ name: "d", ctrl: false, shift: false, meta: false, super: false }])
+    expect(getActiveKeyNames(manager)).toEqual(["c"])
+
+    mockInput.pressKey("c")
+    mockInput.pressKey("a")
+
+    expect(calls).toEqual(["delete-ca"])
+  })
+
+  test("clears pending sequences on invalid continuation", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerCommands([{ name: "delete-line", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
+
+    mockInput.pressKey("d")
+    expect(manager.getPendingSequence()).toHaveLength(1)
+
     mockInput.pressKey("x")
 
-    expect(calls).toEqual(["binding", "binding"])
+    expect(manager.getPendingSequence()).toEqual([])
+    expect(getActiveKeyNames(manager)).toEqual(["d"])
+  })
+
+  test("getActiveKeys respects runtime requirements", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerBindingFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
+    })
+
+    manager.registerCommands([
+      { name: "normal-delete", run() {} },
+      { name: "visual-delete", run() {} },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [
+        { key: "dd", mode: "normal", cmd: "normal-delete" },
+        { key: "vv", mode: "visual", cmd: "visual-delete" },
+      ],
+    })
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+
+    manager.setData("vim.mode", "normal")
+    expect(getActiveKeyNames(manager)).toEqual(["d"])
+
+    manager.setData("vim.mode", "visual")
+    expect(getActiveKeyNames(manager)).toEqual(["v"])
   })
 
   test("throws on conflicting requirements from typed fields", () => {
@@ -399,6 +632,20 @@ describe("keymap", () => {
         bindings: [{ key: "x", mode: "normal", cmd: "noop" }],
       })
     }).toThrow('Unknown keymap binding field "mode"')
+  })
+
+  test("throws when a binding is both an exact key and a prefix", () => {
+    const manager = getKeymapManager(renderer)
+
+    expect(() => {
+      manager.registerLayer({
+        scope: "global",
+        bindings: [
+          { key: "d", cmd: "one" },
+          { key: "dd", cmd: "two" },
+        ],
+      })
+    }).toThrow("Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer")
   })
 
   test("supports raw input hooks and stop semantics", () => {
@@ -524,5 +771,4 @@ describe("keymap", () => {
 
     expect(seen).toEqual([{ target: "ctx-parent", args: "one,two", mode: "normal" }])
   })
-
 })

@@ -17,7 +17,7 @@ describe("leader addon", () => {
     renderer?.destroy()
   })
 
-  test("cancels the armed state on escape", () => {
+  test("registers leader as a plain token alias", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
@@ -49,9 +49,12 @@ describe("leader addon", () => {
     })
 
     mockInput.pressKey("x", { ctrl: true })
-    mockInput.pressEscape()
     mockInput.pressKey("a")
 
-    expect(calls).toEqual(["plain"])
+    expect(calls).toEqual(["leader"])
+
+    mockInput.pressKey("a")
+
+    expect(calls).toEqual(["leader", "plain"])
   })
 })

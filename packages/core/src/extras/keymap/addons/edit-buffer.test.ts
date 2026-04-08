@@ -99,6 +99,10 @@ describe("edit buffer addon", () => {
       'Unknown keymap token "<leader>"',
     )
 
+    expect(() => compileEditBufferKeyBindings([{ key: "dd", cmd: "delete-line" }])).toThrow(
+      "Edit-buffer key bindings must resolve to exactly one key stroke",
+    )
+
     expect(() => compileEditBufferKeyBindings([{ key: "x", mode: "normal", cmd: "delete-line" }])).toThrow(
       'Edit-buffer key bindings do not support the extra field "mode"',
     )

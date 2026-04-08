@@ -913,6 +913,33 @@ describe("keymap", () => {
     expect(seen).toEqual([{ target: "ctx-parent", args: "one,two", mode: "normal" }])
   })
 
+  test("passes fresh runtime data snapshots to commands after data changes", () => {
+    const manager = getKeymapManager(renderer)
+    const seen: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "record-mode",
+        run(ctx) {
+          seen.push(String(ctx.data["vim.mode"]))
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "record-mode" }],
+    })
+
+    manager.setData("vim.mode", "normal")
+    mockInput.pressKey("x")
+
+    manager.setData("vim.mode", "visual")
+    mockInput.pressKey("x")
+
+    expect(seen).toEqual(["normal", "visual"])
+  })
+
   test("orders key hooks by priority, exposes getData, and cleans them up", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
@@ -958,6 +985,50 @@ describe("keymap", () => {
     mockInput.pressKey("x")
 
     expect(calls).toEqual(["high:first", "high:second"])
+  })
+
+  test("uses a stable key hook snapshot when hooks unsubscribe mid-dispatch", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    let offSecond!: () => void
+
+    manager.onKeyInput(
+      ({ event }) => {
+        if (event.name !== "x") {
+          return
+        }
+
+        calls.push("first")
+        offSecond()
+      },
+      { priority: 3 },
+    )
+
+    offSecond = manager.onKeyInput(
+      ({ event }) => {
+        if (event.name === "x") {
+          calls.push("second")
+        }
+      },
+      { priority: 2 },
+    )
+
+    manager.onKeyInput(
+      ({ event }) => {
+        if (event.name === "x") {
+          calls.push("third")
+        }
+      },
+      { priority: 1 },
+    )
+
+    mockInput.pressKey("x")
+    expect(calls).toEqual(["first", "second", "third"])
+
+    calls.length = 0
+    mockInput.pressKey("x")
+    expect(calls).toEqual(["first", "third"])
   })
 
   test("orders raw hooks by priority and cleans them up", () => {
@@ -1201,6 +1272,33 @@ describe("keymap", () => {
     manager.clearPendingSequence()
 
     expect(changes).toEqual(["d"])
+  })
+
+  test("uses a stable pending sequence listener snapshot when listeners unsubscribe mid-notification", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([{ name: "delete-ca", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "dca", cmd: "delete-ca" }],
+    })
+
+    let offSecond!: () => void
+
+    manager.onPendingSequenceChange((sequence) => {
+      calls.push(`first:${sequence.map((stroke) => stroke.name).join("")}`)
+      offSecond()
+    })
+
+    offSecond = manager.onPendingSequenceChange((sequence) => {
+      calls.push(`second:${sequence.map((stroke) => stroke.name).join("")}`)
+    })
+
+    mockInput.pressKey("d")
+    manager.clearPendingSequence()
+
+    expect(calls).toEqual(["first:d", "second:d", "first:"])
   })
 
   test("can dispose tokens and binding field registrations", () => {

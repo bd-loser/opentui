@@ -167,6 +167,17 @@ function registerTargetLayer(
   })
 }
 
+function registerModeBindingFields(manager: KeymapManager): void {
+  manager.registerBindingFields({
+    mode(value, ctx) {
+      ctx.require("vim.mode", value)
+    },
+    state(value, ctx) {
+      ctx.require("vim.state", value)
+    },
+  })
+}
+
 async function createScenarioResources(): Promise<ScenarioResources> {
   const testSetup = await createTestRenderer({ width: 80, height: 24 })
   const manager = getKeymapManager(testSetup.renderer)
@@ -337,6 +348,140 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           resources.manager.getActiveKeys()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "active_keys_requirement_heavy",
+    description: "Repeated getActiveKeys with many runtime-gated bindings",
+    async setup() {
+      const resources = await createScenarioResources()
+      registerModeBindingFields(resources.manager)
+      resources.manager.setData("vim.mode", "normal")
+      resources.manager.setData("vim.state", "idle")
+
+      for (let index = 0; index < 320; index += 1) {
+        resources.manager.registerLayer({
+          scope: "global",
+          bindings: [
+            {
+              key: createKey(index),
+              mode: index % 2 === 0 ? "normal" : "visual",
+              state: index % 3 === 0 ? "idle" : "busy",
+              cmd: "noop",
+            },
+            {
+              key: createKey(index + 1),
+              mode: index % 2 === 0 ? "visual" : "normal",
+              state: index % 4 === 0 ? "idle" : "busy",
+              cmd: "noop",
+            },
+          ],
+        })
+      }
+
+      return {
+        resources,
+        runIteration() {
+          resources.manager.getActiveKeys()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "active_keys_prefix_merge_heavy",
+    description: "Repeated getActiveKeys with many overlapping prefixes across layers",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      for (let index = 0; index < 160; index += 1) {
+        resources.manager.registerLayer({
+          scope: "global",
+          bindings: [
+            { key: "ga", cmd: "noop" },
+            { key: "gb", cmd: "noop" },
+            { key: "gc", cmd: "noop" },
+            { key: "gd", cmd: "noop" },
+          ],
+        })
+      }
+
+      return {
+        resources,
+        runIteration() {
+          resources.manager.getActiveKeys()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "dispatch_key_hooks_heavy",
+    description: "Repeated key dispatch with many registered key hooks",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      for (let index = 0; index < 80; index += 1) {
+        resources.manager.onKeyInput(
+          ({ event }) => {
+            if (event.name === "z") {
+              return
+            }
+          },
+          { priority: index % 5 },
+        )
+      }
+
+      return {
+        resources,
+        runIteration() {
+          resources.mockInput.pressKey("x")
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "dispatch_command_data_heavy",
+    description: "Repeated matched dispatch while commands receive many runtime data fields",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.manager.registerCommands([
+        {
+          name: "consume-data",
+          run(ctx) {
+            if (ctx.data["field-0"] === "value-0") {
+              return
+            }
+          },
+        },
+      ])
+
+      for (let index = 0; index < 20; index += 1) {
+        resources.manager.setData(`field-${index}`, `value-${index}`)
+      }
+
+      resources.manager.registerLayer({
+        scope: "global",
+        bindings: [{ key: "x", cmd: "consume-data" }],
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.mockInput.pressKey("x")
         },
         cleanup() {
           resources.renderer.destroy()

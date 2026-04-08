@@ -2,7 +2,13 @@ import { Buffer } from "node:buffer"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BoxRenderable } from "../../renderables/Box.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../../testing.js"
-import { getKeymapManager, type KeymapManager } from "./index.js"
+import {
+  getKeymapManager,
+  parseKeySequenceLike,
+  stringifyKeySequence,
+  stringifyKeyStroke,
+  type KeymapManager,
+} from "./index.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
@@ -28,6 +34,13 @@ function getActiveKeyNames(manager: KeymapManager): string[] {
     .getActiveKeys()
     .map((candidate) => candidate.stroke.name)
     .sort()
+}
+
+function getActiveKeyDisplay(
+  manager: KeymapManager,
+  display: string,
+): ReturnType<KeymapManager["getActiveKeys"]>[number] | undefined {
+  return manager.getActiveKeys().find((candidate) => candidate.display === display)
 }
 
 describe("keymap", () => {
@@ -295,6 +308,45 @@ describe("keymap", () => {
     expect(calls).toEqual(["shorthand"])
   })
 
+  test("captures display for parsed sequences and stringifies tokens on demand", () => {
+    const sequence = parseKeySequenceLike(
+      "<leader>dd",
+      new Map([["<leader>", { stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false } }]]),
+    )
+
+    expect(sequence).toEqual([
+      {
+        stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false },
+        display: "<leader>",
+      },
+      {
+        stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
+        display: "d",
+      },
+      {
+        stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
+        display: "d",
+      },
+    ])
+    expect(stringifyKeySequence(sequence)).toBe("ctrl+xdd")
+    expect(stringifyKeySequence(sequence, { preferDisplay: true })).toBe("<leader>dd")
+    expect(stringifyKeyStroke(sequence[0]!)).toBe("ctrl+x")
+    expect(stringifyKeyStroke(sequence[0]!, { preferDisplay: true })).toBe("<leader>")
+  })
+
+  test("preserves non-token display strings when explicitly requested", () => {
+    const sequence = parseKeySequenceLike("return", new Map())
+
+    expect(sequence).toEqual([
+      {
+        stroke: { name: "return", ctrl: false, shift: false, meta: false, super: false },
+        display: "return",
+      },
+    ])
+    expect(stringifyKeySequence(sequence)).toBe("enter")
+    expect(stringifyKeySequence(sequence, { preferDisplay: true })).toBe("return")
+  })
+
   test("throws when duplicate command names are registered", () => {
     const manager = getKeymapManager(renderer)
 
@@ -364,8 +416,15 @@ describe("keymap", () => {
     mockInput.pressKey("d")
 
     expect(manager.getPendingSequence()).toEqual([{ name: "d", ctrl: false, shift: false, meta: false, super: false }])
+    expect(manager.getPendingSequenceParts()).toEqual([
+      {
+        stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
+        display: "d",
+      },
+    ])
     expect(getActiveKeyNames(manager)).toEqual(["d"])
     expect(getActiveKey(manager, "d")?.commands.map((command) => command.input)).toEqual(["delete-line"])
+    expect(getActiveKey(manager, "d")?.display).toBe("d")
 
     mockInput.pressKey("d")
 
@@ -427,16 +486,70 @@ describe("keymap", () => {
     mockInput.pressKey("x", { ctrl: true })
 
     expect(getActiveKeyNames(manager)).toEqual(["g"])
+    expect(getActiveKeyDisplay(manager, "g")?.commands.map((command) => command.input)).toEqual(["go-definition"])
+    expect(manager.getPendingSequenceParts()).toEqual([
+      {
+        stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false },
+        display: "<leader>",
+      },
+    ])
     expect(getActiveKey(manager, "g")?.commands.map((command) => command.input)).toEqual(["go-definition"])
 
     mockInput.pressKey("g")
 
     expect(getActiveKeyNames(manager)).toEqual(["d"])
+    expect(stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true })).toBe("<leader>g")
     expect(getActiveKey(manager, "d")?.commands.map((command) => command.input)).toEqual(["go-definition"])
 
     mockInput.pressKey("d")
 
     expect(calls).toEqual(["go-definition"])
+  })
+
+  test("uses preserved display for unambiguous active token prefixes", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerToken({
+      token: "<leader>",
+      key: { name: "x", ctrl: true },
+    })
+
+    manager.registerCommands([
+      { name: "save", run() {} },
+      { name: "help", run() {} },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [
+        { key: "<leader>s", cmd: "save" },
+        { key: "<leader>h", cmd: "help" },
+      ],
+    })
+
+    expect(getActiveKeyDisplay(manager, "<leader>")?.commands.map((command) => command.input)).toEqual(["save", "help"])
+    expect(stringifyKeyStroke(getActiveKeyDisplay(manager, "<leader>")!, { preferDisplay: true })).toBe("<leader>")
+  })
+
+  test("falls back to canonical live display when the same stroke has multiple preserved labels", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerCommands([
+      { name: "submit-enter", run() {} },
+      { name: "submit-return", run() {} },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [
+        { key: "enter", cmd: "submit-enter" },
+        { key: "return", cmd: "submit-return" },
+      ],
+    })
+
+    const activeEnter = manager.getActiveKeys().find((candidate) => candidate.stroke.name === "return")
+    expect(activeEnter?.display).toBe("enter")
+    expect(stringifyKeyStroke(activeEnter!, { preferDisplay: true })).toBe("enter")
   })
 
   test("supports branching sequences", () => {

@@ -22,6 +22,17 @@ export interface ParsedKeyStroke extends KeyStroke {
   super: boolean
 }
 
+export interface ParsedKeyPart {
+  stroke: ParsedKeyStroke
+  display: string
+}
+
+export interface KeymapStringifyOptions {
+  preferDisplay?: boolean
+}
+
+export type KeymapStringifiableKey = ParsedKeyStroke | ParsedKeyPart | { stroke: ParsedKeyStroke; display?: string }
+
 export type KeyLike = string | KeyStroke
 
 export type KeymapBindingInput = {
@@ -82,6 +93,7 @@ export interface KeymapToken {
 
 export interface KeymapActiveKey {
   stroke: ParsedKeyStroke
+  display: string
   commands: KeymapResolvedCommand[]
   continues: boolean
 }
@@ -110,6 +122,7 @@ export interface KeymapManager {
   setData(name: string, value: unknown): void
   getData(name: string): unknown
   getPendingSequence(): readonly ParsedKeyStroke[]
+  getPendingSequenceParts(): readonly ParsedKeyPart[]
   clearPendingSequence(): void
   popPendingSequence(): boolean
   getActiveKeys(): readonly KeymapActiveKey[]
@@ -123,7 +136,7 @@ export interface KeymapManager {
 }
 
 interface CompiledBinding {
-  sequence: ParsedKeyStroke[]
+  sequence: ParsedKeyPart[]
   command: KeymapResolvedCommand
   requires: KeymapEventData
   consume: boolean
@@ -132,6 +145,7 @@ interface CompiledBinding {
 
 interface SequenceNode {
   parent: SequenceNode | null
+  depth: number
   stroke: ParsedKeyStroke | null
   bindingKey: string | null
   children: Map<string, SequenceNode>
@@ -169,7 +183,6 @@ interface RegisteredRawHook {
 interface PendingSequenceState {
   layer: RegisteredLayer
   node: SequenceNode
-  sequence: ParsedKeyStroke[]
 }
 
 const keymapManagersByRenderer = new WeakMap<CliRenderer, KeymapManagerImpl>()
@@ -288,6 +301,67 @@ function cloneStroke(stroke: ParsedKeyStroke): ParsedKeyStroke {
   }
 }
 
+function clonePart(part: ParsedKeyPart): ParsedKeyPart {
+  return {
+    stroke: cloneStroke(part.stroke),
+    display: part.display,
+  }
+}
+
+function hasDisplayStroke(
+  input: KeymapStringifiableKey,
+): input is ParsedKeyPart | { stroke: ParsedKeyStroke; display?: string } {
+  return "stroke" in input
+}
+
+function stringifyCanonicalStroke(stroke: ParsedKeyStroke): string {
+  const parts: string[] = []
+  if (stroke.ctrl) {
+    parts.push("ctrl")
+  }
+
+  if (stroke.shift) {
+    parts.push("shift")
+  }
+
+  if (stroke.meta) {
+    parts.push("meta")
+  }
+
+  if (stroke.super) {
+    parts.push("super")
+  }
+
+  parts.push(stroke.name === "return" ? "enter" : stroke.name)
+  return parts.join("+")
+}
+
+function createParsedKeyPart(stroke: ParsedKeyStroke, display = stringifyCanonicalStroke(stroke)): ParsedKeyPart {
+  return {
+    stroke: cloneStroke(stroke),
+    display,
+  }
+}
+
+export function stringifyKeyStroke(input: KeymapStringifiableKey, options?: KeymapStringifyOptions): string {
+  if (hasDisplayStroke(input)) {
+    if (options?.preferDisplay && input.display) {
+      return input.display
+    }
+
+    return stringifyCanonicalStroke(input.stroke)
+  }
+
+  return stringifyCanonicalStroke(input)
+}
+
+export function stringifyKeySequence(
+  input: readonly KeymapStringifiableKey[],
+  options?: KeymapStringifyOptions,
+): string {
+  return input.map((part) => stringifyKeyStroke(part, options)).join("")
+}
+
 function buildBindingKey(stroke: ParsedKeyStroke): string {
   return getKeyBindingKey({ ...stroke, action: "" })
 }
@@ -295,6 +369,7 @@ function buildBindingKey(stroke: ParsedKeyStroke): string {
 function createSequenceNode(parent: SequenceNode | null, stroke: ParsedKeyStroke | null): SequenceNode {
   return {
     parent,
+    depth: parent ? parent.depth + 1 : 0,
     stroke,
     bindingKey: stroke ? buildBindingKey(stroke) : null,
     children: new Map(),
@@ -399,6 +474,81 @@ function parseKeyChord(input: string): ParsedKeyStroke {
   }
 }
 
+function normalizeKeyDisplayInput(input: string): string {
+  if (input === " ") {
+    return "space"
+  }
+
+  if (input === "+") {
+    return "+"
+  }
+
+  const parts = input.split("+")
+  let name = ""
+  let ctrl = false
+  let shift = false
+  let meta = false
+  let superKey = false
+
+  for (const rawPart of parts) {
+    const part = rawPart.trim()
+    if (!part) {
+      continue
+    }
+
+    const lowered = part.toLowerCase()
+    if (lowered === "ctrl" || lowered === "control") {
+      ctrl = true
+      continue
+    }
+
+    if (lowered === "shift") {
+      shift = true
+      continue
+    }
+
+    if (lowered === "meta" || lowered === "alt" || lowered === "option") {
+      meta = true
+      continue
+    }
+
+    if (lowered === "super") {
+      superKey = true
+      continue
+    }
+
+    if (name) {
+      throw new Error(`Invalid key "${input}": multiple key names are not supported`)
+    }
+
+    name = lowered
+  }
+
+  if (!name) {
+    throw new Error(`Invalid key "${input}": missing key name`)
+  }
+
+  const displayParts: string[] = []
+  if (ctrl) {
+    displayParts.push("ctrl")
+  }
+
+  if (shift) {
+    displayParts.push("shift")
+  }
+
+  if (meta) {
+    displayParts.push("meta")
+  }
+
+  if (superKey) {
+    displayParts.push("super")
+  }
+
+  displayParts.push(name)
+  return displayParts.join("+")
+}
+
 function normalizeKeyStroke(input: KeyStroke): ParsedKeyStroke {
   return {
     name: normalizeKeyName(input.name),
@@ -419,11 +569,8 @@ export function normalizeEventKeyStroke(event: KeyEvent): ParsedKeyStroke {
   }
 }
 
-function parseStringSequence(
-  input: string,
-  tokens: ReadonlyMap<string, { stroke: ParsedKeyStroke }>,
-): ParsedKeyStroke[] {
-  const strokes: ParsedKeyStroke[] = []
+function parseStringSequence(input: string, tokens: ReadonlyMap<string, { stroke: ParsedKeyStroke }>): ParsedKeyPart[] {
+  const parts: ParsedKeyPart[] = []
   let index = 0
 
   while (index < input.length) {
@@ -440,20 +587,20 @@ function parseStringSequence(
         throw new Error(`Unknown keymap token "${tokenName}"`)
       }
 
-      strokes.push(cloneStroke(token.stroke))
+      parts.push(createParsedKeyPart(token.stroke, tokenName))
       index = end + 1
       continue
     }
 
-    strokes.push(parseKeyChord(char))
+    parts.push(createParsedKeyPart(parseKeyChord(char), normalizeKeyDisplayInput(char)))
     index += 1
   }
 
-  if (strokes.length === 0) {
+  if (parts.length === 0) {
     throw new Error(`Invalid key sequence "${input}": sequence cannot be empty`)
   }
 
-  return strokes
+  return parts
 }
 
 export function parseKeyLike(key: KeyLike): ParsedKeyStroke {
@@ -471,9 +618,9 @@ export function parseKeyLike(key: KeyLike): ParsedKeyStroke {
 export function parseKeySequenceLike(
   key: KeyLike,
   tokens: ReadonlyMap<string, { stroke: ParsedKeyStroke }>,
-): ParsedKeyStroke[] {
+): ParsedKeyPart[] {
   if (typeof key !== "string") {
-    return [normalizeKeyStroke(key)]
+    return [createParsedKeyPart(normalizeKeyStroke(key))]
   }
 
   if (key.length === 0) {
@@ -484,10 +631,10 @@ export function parseKeySequenceLike(
     const normalizedToken = normalizeTokenName(key)
     const token = tokens.get(normalizedToken)
     if (token) {
-      return [cloneStroke(token.stroke)]
+      return [createParsedKeyPart(token.stroke, normalizedToken)]
     }
 
-    return [parseKeyChord(key)]
+    return [createParsedKeyPart(parseKeyChord(key), normalizeKeyDisplayInput(key))]
   }
 
   return parseStringSequence(key, tokens)
@@ -630,6 +777,10 @@ class KeymapManagerImpl implements KeymapManager {
   }
 
   public getPendingSequence(): readonly ParsedKeyStroke[] {
+    return this.getPendingSequenceParts().map((part) => cloneStroke(part.stroke))
+  }
+
+  public getPendingSequenceParts(): readonly ParsedKeyPart[] {
     this.assertNotDestroyed()
 
     const pending = this.resolvePendingSequence()
@@ -637,7 +788,7 @@ class KeymapManagerImpl implements KeymapManager {
       return []
     }
 
-    return pending.sequence.map(cloneStroke)
+    return this.collectSequencePartsFromNode(pending.node)
   }
 
   public clearPendingSequence(): void {
@@ -653,7 +804,7 @@ class KeymapManagerImpl implements KeymapManager {
       return false
     }
 
-    if (pending.sequence.length <= 1) {
+    if (pending.node.depth <= 1) {
       this.setPendingSequence(null)
       return true
     }
@@ -667,7 +818,6 @@ class KeymapManagerImpl implements KeymapManager {
     this.setPendingSequence({
       layer: pending.layer,
       node: parent,
-      sequence: pending.sequence.slice(0, -1).map(cloneStroke),
     })
     return true
   }
@@ -904,7 +1054,7 @@ class KeymapManagerImpl implements KeymapManager {
       }
 
       const compiledBinding: CompiledBinding = {
-        sequence: sequence.map(cloneStroke),
+        sequence: sequence.map(clonePart),
         command: parseCommandInput(binding.cmd),
         requires: mergedRequires,
         consume: binding.consume !== false,
@@ -920,17 +1070,17 @@ class KeymapManagerImpl implements KeymapManager {
   private insertBinding(root: SequenceNode, binding: CompiledBinding): void {
     let node = root
 
-    for (const stroke of binding.sequence) {
+    for (const part of binding.sequence) {
       if (node.bindings.length > 0) {
         throw new Error(
           "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
         )
       }
 
-      const bindingKey = buildBindingKey(stroke)
+      const bindingKey = buildBindingKey(part.stroke)
       let child = node.children.get(bindingKey)
       if (!child) {
-        child = createSequenceNode(node, stroke)
+        child = createSequenceNode(node, part.stroke)
         node.children.set(bindingKey, child)
       }
 
@@ -1063,7 +1213,6 @@ class KeymapManagerImpl implements KeymapManager {
       this.setPendingSequence({
         layer: pending.layer,
         node: nextNode,
-        sequence: [...pending.sequence, cloneStroke(stroke)],
       })
       event.preventDefault()
       event.stopPropagation()
@@ -1094,7 +1243,6 @@ class KeymapManagerImpl implements KeymapManager {
         this.setPendingSequence({
           layer,
           node: nextNode,
-          sequence: [cloneStroke(stroke)],
         })
         event.preventDefault()
         event.stopPropagation()
@@ -1135,6 +1283,53 @@ class KeymapManagerImpl implements KeymapManager {
     return false
   }
 
+  private collectSequencePartsFromNode(node: SequenceNode): ParsedKeyPart[] {
+    const nodes: SequenceNode[] = []
+    let current: SequenceNode | null = node
+
+    while (current && current.stroke) {
+      nodes.push(current)
+      current = current.parent
+    }
+
+    nodes.reverse()
+
+    return nodes.map((candidate) => {
+      return createParsedKeyPart(candidate.stroke!, this.getNodeDisplay(candidate))
+    })
+  }
+
+  private getNodeDisplay(node: SequenceNode): string {
+    if (!node.stroke) {
+      return ""
+    }
+
+    const partIndex = node.depth - 1
+    let display: string | undefined
+
+    for (const binding of node.reachableBindings) {
+      if (!this.matchRequirements(binding.requires)) {
+        continue
+      }
+
+      const part = binding.sequence[partIndex]
+      if (!part) {
+        continue
+      }
+
+      if (display === undefined) {
+        display = part.display
+        continue
+      }
+
+      if (display !== part.display) {
+        return stringifyKeyStroke(node.stroke)
+      }
+    }
+
+    return display ?? stringifyKeyStroke(node.stroke)
+  }
+
   private collectActiveKeysAtRoot(activeLayers: RegisteredLayer[]): readonly KeymapActiveKey[] {
     const activeKeys = new Map<string, KeymapActiveKey>()
 
@@ -1157,13 +1352,14 @@ class KeymapManagerImpl implements KeymapManager {
         if (!existing) {
           activeKeys.set(bindingKey, {
             stroke: cloneStroke(child.stroke),
+            display: this.getNodeDisplay(child),
             commands: [...commands],
             continues: child.children.size > 0,
           })
           continue
         }
 
-        this.mergeActiveKey(existing, commands, child.children.size > 0)
+        this.mergeActiveKey(existing, commands, child.children.size > 0, this.getNodeDisplay(child))
       }
     }
 
@@ -1185,6 +1381,7 @@ class KeymapManagerImpl implements KeymapManager {
 
       activeKeys.push({
         stroke: cloneStroke(child.stroke),
+        display: this.getNodeDisplay(child),
         commands,
         continues: child.children.size > 0,
       })
@@ -1213,7 +1410,12 @@ class KeymapManagerImpl implements KeymapManager {
     return commands
   }
 
-  private mergeActiveKey(activeKey: KeymapActiveKey, commands: KeymapResolvedCommand[], continues: boolean): void {
+  private mergeActiveKey(
+    activeKey: KeymapActiveKey,
+    commands: KeymapResolvedCommand[],
+    continues: boolean,
+    display: string,
+  ): void {
     const seen = new Set(activeKey.commands.map((command) => command.input))
     for (const command of commands) {
       if (seen.has(command.input)) {
@@ -1226,6 +1428,10 @@ class KeymapManagerImpl implements KeymapManager {
 
     if (continues) {
       activeKey.continues = true
+    }
+
+    if (activeKey.display !== display) {
+      activeKey.display = stringifyKeyStroke(activeKey.stroke)
     }
   }
 
@@ -1322,19 +1528,11 @@ class KeymapManagerImpl implements KeymapManager {
   }
 
   private setPendingSequence(next: PendingSequenceState | null): void {
-    const normalizedNext = next
-      ? {
-          layer: next.layer,
-          node: next.node,
-          sequence: next.sequence.map(cloneStroke),
-        }
-      : null
-
-    if (this.isSamePendingSequence(this.pendingSequence, normalizedNext)) {
+    if (this.isSamePendingSequence(this.pendingSequence, next)) {
       return
     }
 
-    this.pendingSequence = normalizedNext
+    this.pendingSequence = next
     this.notifyPendingSequenceChange()
   }
 
@@ -1347,33 +1545,7 @@ class KeymapManagerImpl implements KeymapManager {
       return false
     }
 
-    if (current.layer !== next.layer || current.node !== next.node) {
-      return false
-    }
-
-    if (current.sequence.length !== next.sequence.length) {
-      return false
-    }
-
-    for (let index = 0; index < current.sequence.length; index += 1) {
-      const currentStroke = current.sequence[index]
-      const nextStroke = next.sequence[index]
-      if (!currentStroke || !nextStroke) {
-        return false
-      }
-
-      if (
-        currentStroke.name !== nextStroke.name ||
-        currentStroke.ctrl !== nextStroke.ctrl ||
-        currentStroke.shift !== nextStroke.shift ||
-        currentStroke.meta !== nextStroke.meta ||
-        currentStroke.super !== nextStroke.super
-      ) {
-        return false
-      }
-    }
-
-    return true
+    return current.layer === next.layer && current.node === next.node
   }
 
   private notifyPendingSequenceChange(): void {
@@ -1381,7 +1553,9 @@ class KeymapManagerImpl implements KeymapManager {
       return
     }
 
-    const sequence = this.pendingSequence ? this.pendingSequence.sequence.map(cloneStroke) : []
+    const sequence = this.pendingSequence
+      ? this.collectSequencePartsFromNode(this.pendingSequence.node).map((part) => cloneStroke(part.stroke))
+      : []
     const listeners = [...this.pendingSequenceListeners]
     for (const listener of listeners) {
       try {

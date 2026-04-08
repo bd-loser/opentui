@@ -62,13 +62,13 @@ export function compileEditBufferKeyBindings(bindings: KeymapBindings): EditBuff
       throw new Error(`Edit-buffer key bindings do not support the extra field "${fieldName}"`)
     }
 
-    const strokes = parseKeySequenceLike(binding.key, new Map())
-    if (strokes.length !== 1) {
+    const parts = parseKeySequenceLike(binding.key, new Map())
+    if (parts.length !== 1) {
       throw new Error("Edit-buffer key bindings only support a single key stroke")
     }
 
-    const [stroke] = strokes
-    if (!stroke) {
+    const [part] = parts
+    if (!part) {
       throw new Error("Edit-buffer key bindings only support a single key stroke")
     }
 
@@ -76,11 +76,11 @@ export function compileEditBufferKeyBindings(bindings: KeymapBindings): EditBuff
     const command = parseCommandInput(binding.cmd)
 
     return {
-      name: stroke.name,
-      ctrl: stroke.ctrl || undefined,
-      shift: stroke.shift || undefined,
-      meta: stroke.meta || undefined,
-      super: stroke.super || undefined,
+      name: part.stroke.name,
+      ctrl: part.stroke.ctrl || undefined,
+      shift: part.stroke.shift || undefined,
+      meta: part.stroke.meta || undefined,
+      super: part.stroke.super || undefined,
       action: command.name as TextareaAction,
     }
   })

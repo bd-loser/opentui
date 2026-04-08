@@ -1,8 +1,16 @@
-export { getKeymapManager } from "./core.js"
+export {
+  getKeymapManager,
+  parseKeyLike,
+  parseKeySequenceLike,
+  stringifyKeySequence,
+  stringifyKeyStroke,
+} from "./core.js"
 export type {
   ActionCommand,
   ExCommand,
   KeyLike,
+  KeymapStringifiableKey,
+  KeymapStringifyOptions,
   KeymapBindingFieldCompiler,
   KeymapBindingFieldContext,
   KeymapBindingInput,
@@ -20,6 +28,7 @@ export type {
   KeymapRawInputContext,
   KeymapResolvedCommand,
   KeymapToken,
+  ParsedKeyPart,
   ParsedKeyStroke,
   KeyStroke,
 } from "./core.js"

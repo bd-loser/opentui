@@ -4,7 +4,8 @@ import {
   registerExCommands,
   registerTimedLeader,
   type KeymapManager,
-  type ParsedKeyStroke,
+  stringifyKeySequence,
+  stringifyKeyStroke,
 } from "../extras.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
@@ -41,53 +42,26 @@ function getFocusedPanelName(renderer: CliRenderer): string {
   return "None"
 }
 
-function formatStroke(stroke: ParsedKeyStroke): string {
-  const parts: string[] = []
-  if (stroke.ctrl) {
-    parts.push("ctrl")
-  }
-
-  if (stroke.shift) {
-    parts.push("shift")
-  }
-
-  if (stroke.meta) {
-    parts.push("meta")
-  }
-
-  if (stroke.super) {
-    parts.push("super")
-  }
-
-  parts.push(stroke.name === "return" ? "enter" : stroke.name)
-  return parts.join("+")
-}
-
-function formatSequence(sequence: readonly ParsedKeyStroke[]): string {
-  if (sequence.length === 0) {
-    return "<root>"
-  }
-
-  return sequence.map((stroke) => formatStroke(stroke)).join(" ")
-}
-
 function buildWhichKeyLines(): string[] {
   if (!keymapManager) {
     return ["Which Key", "manager unavailable"]
   }
 
   const activeKeys = [...keymapManager.getActiveKeys()].sort((left, right) => {
-    return formatStroke(left.stroke).localeCompare(formatStroke(right.stroke))
+    return stringifyKeyStroke(left, { preferDisplay: true }).localeCompare(
+      stringifyKeyStroke(right, { preferDisplay: true }),
+    )
   })
 
-  const lines = ["Which Key", `Prefix: ${formatSequence(keymapManager.getPendingSequence())}`]
+  const prefix = stringifyKeySequence(keymapManager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
+  const lines = ["Which Key", `Prefix: ${prefix}`]
 
   if (activeKeys.length === 0) {
     lines.push("(no active keys)")
   } else {
     for (const activeKey of activeKeys.slice(0, 8)) {
       const commandList = activeKey.commands.map((command) => command.input).join(" | ")
-      lines.push(`${formatStroke(activeKey.stroke)} -> ${commandList}`)
+      lines.push(`${stringifyKeyStroke(activeKey, { preferDisplay: true })} -> ${commandList}`)
     }
   }
 

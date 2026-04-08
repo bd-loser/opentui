@@ -1,5 +1,5 @@
 import { ConsolePosition } from "@opentui/core"
-import { registerExCommands, registerTimedLeader, type ParsedKeyStroke } from "@opentui/core/extras"
+import { registerExCommands, registerTimedLeader, stringifyKeySequence, stringifyKeyStroke } from "@opentui/core/extras"
 import { render, useKeymap, useKeymappings, useRenderer } from "@opentui/solid"
 import { createMemo, createSignal, onCleanup, onMount, type Accessor } from "solid-js"
 
@@ -7,36 +7,6 @@ type PanelId = "alpha" | "beta"
 
 interface FocusableRenderable {
   focus(): void
-}
-
-function formatStroke(stroke: ParsedKeyStroke): string {
-  const parts: string[] = []
-  if (stroke.ctrl) {
-    parts.push("ctrl")
-  }
-
-  if (stroke.shift) {
-    parts.push("shift")
-  }
-
-  if (stroke.meta) {
-    parts.push("meta")
-  }
-
-  if (stroke.super) {
-    parts.push("super")
-  }
-
-  parts.push(stroke.name === "return" ? "enter" : stroke.name)
-  return parts.join("+")
-}
-
-function formatSequence(sequence: readonly ParsedKeyStroke[]): string {
-  if (sequence.length === 0) {
-    return "<root>"
-  }
-
-  return sequence.map((stroke) => formatStroke(stroke)).join(" ")
 }
 
 function CounterPanel(props: {
@@ -236,17 +206,20 @@ export default function KeymapDemo() {
     sequenceVersion()
 
     const activeKeys = [...manager.getActiveKeys()].sort((left, right) => {
-      return formatStroke(left.stroke).localeCompare(formatStroke(right.stroke))
+      return stringifyKeyStroke(left, { preferDisplay: true }).localeCompare(
+        stringifyKeyStroke(right, { preferDisplay: true }),
+      )
     })
 
-    const lines = ["Which Key", `Prefix: ${formatSequence(manager.getPendingSequence())}`]
+    const prefix = stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
+    const lines = ["Which Key", `Prefix: ${prefix}`]
 
     if (activeKeys.length === 0) {
       lines.push("(no active keys)")
     } else {
       for (const activeKey of activeKeys.slice(0, 8)) {
         const commandList = activeKey.commands.map((command) => command.input).join(" | ")
-        lines.push(`${formatStroke(activeKey.stroke)} -> ${commandList}`)
+        lines.push(`${stringifyKeyStroke(activeKey, { preferDisplay: true })} -> ${commandList}`)
       }
     }
 

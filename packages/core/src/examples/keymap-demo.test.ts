@@ -34,7 +34,7 @@ describe("keymap demo example", () => {
     testSetup.mockInput.pressKey("x", { ctrl: true })
     await testSetup.renderOnce()
     frame = testSetup.captureCharFrame()
-    expect(frame).toContain("Prefix: ctrl+x")
+    expect(frame).toContain("Prefix: <leader>")
     expect(frame).toContain("s -> :w session.log")
 
     testSetup.mockInput.pressKey("s")

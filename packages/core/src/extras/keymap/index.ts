@@ -1,5 +1,5 @@
 export { getKeymapManager } from "./core.js"
-export { parseKeyLike, parseKeySequenceLike, stringifyKeySequence, stringifyKeyStroke } from "./utils.js"
+export { parseKeySequenceLike, stringifyKeySequence, stringifyKeyStroke } from "./utils.js"
 export type {
   ActionCommand,
   ExCommand,

@@ -217,7 +217,7 @@ export function compileEditBufferKeyBindings(bindings: KeymapBindings): EditBuff
       throw new Error(`Edit-buffer key bindings do not support the extra field "${fieldName}"`)
     }
 
-    const parts = parseKeySequenceLike(binding.key, new Map())
+    const parts = parseKeySequenceLike(binding.key)
     if (parts.length !== 1) {
       throw new Error("Edit-buffer key bindings only support a single key stroke")
     }

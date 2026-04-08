@@ -46,6 +46,7 @@ export enum LayoutEvents {
 export enum RenderableEvents {
   FOCUSED = "focused",
   BLURRED = "blurred",
+  DESTROYED = "destroyed",
 }
 
 export interface Position {
@@ -1510,6 +1511,7 @@ export abstract class Renderable extends BaseRenderable {
     }
 
     this._isDestroyed = true
+    this.emit(RenderableEvents.DESTROYED)
 
     if (this.parent) {
       this.parent.remove(this.id)

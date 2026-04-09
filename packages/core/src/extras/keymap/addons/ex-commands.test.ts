@@ -154,4 +154,46 @@ describe("ex commands addon", () => {
     expect(calls).toEqual(["quit", "maybe:", "maybe:one", "many:", "many:one,two", "plus:one", "free:one,two"])
     expect(passthroughCount).toBe(3)
   })
+
+  test("forwards extra command fields into registered ex commands", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerCommandFields({
+      desc(value, ctx) {
+        ctx.attr("desc", value)
+      },
+      title(value, ctx) {
+        ctx.attr("title", value)
+      },
+      category(value, ctx) {
+        ctx.attr("category", value)
+      },
+    })
+
+    registerExCommands(manager, [
+      {
+        name: "write",
+        aliases: ["w"],
+        nargs: "1",
+        desc: "Write the current buffer",
+        title: "Write Buffer",
+        category: "File",
+        run() {},
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: ":w file.txt" }],
+    })
+
+    expect(
+      manager.getActiveKeys({ includeBindings: true }).find((candidate) => candidate.stroke.name === "x")?.commands[0]
+        ?.attrs,
+    ).toEqual({
+      desc: "Write the current buffer",
+      title: "Write Buffer",
+      category: "File",
+    })
+  })
 })

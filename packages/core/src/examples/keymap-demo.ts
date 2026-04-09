@@ -1,4 +1,15 @@
-import { BoxRenderable, createCliRenderer, RenderableEvents, TextRenderable, type CliRenderer } from "../index.js"
+import {
+  BoxRenderable,
+  TextRenderable,
+  TextAttributes,
+  StyledText,
+  createCliRenderer,
+  RenderableEvents,
+  bold,
+  fg,
+  type CliRenderer,
+  type TextChunk,
+} from "../index.js"
 import {
   getKeymapManager,
   registerExCommands,
@@ -11,6 +22,27 @@ import {
   stringifyKeyStroke,
 } from "../extras.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+
+// -- palette ---------------------------------------------------------------
+
+const P = {
+  bg: "#0f172a",
+  surface: "#1e293b",
+  border: "#334155",
+  text: "#e2e8f0",
+  textDim: "#94a3b8",
+  textMuted: "#64748b",
+  title: "#f1f5f9",
+  alpha: "#38bdf8",
+  beta: "#34d399",
+  accent: "#a78bfa",
+  key: "#fbbf24",
+  command: "#67e8f9",
+  leader: "#fb923c",
+  separator: "#475569",
+} as const
+
+// -- state -----------------------------------------------------------------
 
 let root: BoxRenderable | null = null
 let alphaPanel: BoxRenderable | null = null
@@ -29,33 +61,28 @@ let lastAction = "Click a panel or press Tab to start."
 let logLines: string[] = []
 let disposers: Array<() => void> = []
 
+// -- helpers ---------------------------------------------------------------
+
 function addLog(message: string): void {
   logLines = [message, ...logLines].slice(0, 6)
 }
 
 function getFocusedPanelName(renderer: CliRenderer): string {
-  if (renderer.currentFocusedRenderable === alphaPanel) {
-    return "Alpha"
-  }
-
-  if (renderer.currentFocusedRenderable === betaPanel) {
-    return "Beta"
-  }
-
+  if (renderer.currentFocusedRenderable === alphaPanel) return "Alpha"
+  if (renderer.currentFocusedRenderable === betaPanel) return "Beta"
   return "None"
 }
 
+function getFocusedColor(renderer: CliRenderer): string {
+  if (renderer.currentFocusedRenderable === alphaPanel) return P.alpha
+  if (renderer.currentFocusedRenderable === betaPanel) return P.beta
+  return P.textMuted
+}
+
 function getMetadataText(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined
-  }
-
+  if (typeof value !== "string") return undefined
   const trimmed = value.trim()
-  if (!trimmed) {
-    return undefined
-  }
-
-  return trimmed
+  return trimmed || undefined
 }
 
 function getCommandLabel(command: KeymapResolvedCommand): string {
@@ -68,63 +95,73 @@ function getBindingLabel(binding: KeymapActiveBinding): string {
 
 function getSharedBindingText(bindings: readonly KeymapActiveBinding[], name: string): string | undefined {
   let shared: string | undefined
-
   for (const binding of bindings) {
     const value = getMetadataText(binding.attrs?.[name])
-    if (!value) {
-      return undefined
-    }
-
+    if (!value) return undefined
     if (shared === undefined) {
       shared = value
       continue
     }
-
-    if (shared !== value) {
-      return undefined
-    }
+    if (shared !== value) return undefined
   }
-
   return shared
 }
 
 function uniqueLabels(labels: Iterable<string>): string[] {
   const unique: string[] = []
   const seen = new Set<string>()
-
   for (const label of labels) {
-    if (seen.has(label)) {
-      continue
+    if (!seen.has(label)) {
+      seen.add(label)
+      unique.push(label)
     }
-
-    seen.add(label)
-    unique.push(label)
   }
-
   return unique
 }
 
 function getActiveKeyLabel(activeKey: ReturnType<KeymapManager["getActiveKeys"]>[number]): string {
   const bindings = activeKey.bindings ?? []
   const group = activeKey.continues ? getSharedBindingText(bindings, "group") : undefined
-  if (group) {
-    return `+${group}`
-  }
+  if (group) return `+${group}`
 
   const labels =
     bindings.length > 0
       ? uniqueLabels(bindings.map(getBindingLabel))
       : uniqueLabels(activeKey.commands.map(getCommandLabel))
-  if (labels.length > 0) {
-    return labels.join(" | ")
-  }
-
+  if (labels.length > 0) return labels.join(" | ")
   return activeKey.commands.map((command) => command.input).join(" | ")
 }
 
-function buildWhichKeyLines(): string[] {
+// -- styled text builders --------------------------------------------------
+
+function styledLine(chunks: TextChunk[]): TextChunk[] {
+  return chunks
+}
+
+function joinLines(lines: TextChunk[][]): StyledText {
+  const allChunks: TextChunk[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (i > 0) allChunks.push({ __isChunk: true, text: "\n" })
+    for (const chunk of lines[i]) allChunks.push(chunk)
+  }
+  return new StyledText(allChunks)
+}
+
+function buildPanelContent(label: string, count: number, step: number, saveTarget: string, color: string): StyledText {
+  return joinLines([
+    styledLine([bold(fg(color)(`${label} Panel`))]),
+    styledLine([fg(P.textDim)("Count: "), bold(fg(color)(String(count)))]),
+    styledLine([bold(fg(P.key)("j")), fg(P.textDim)(` +${step}  `), bold(fg(P.key)("k")), fg(P.textDim)(` -${step}`)]),
+    styledLine([bold(fg(P.key)("enter")), fg(P.textDim)(` :w ${saveTarget}`)]),
+  ])
+}
+
+function buildWhichKeyContent(): StyledText {
   if (!keymapManager) {
-    return ["Which Key", "manager unavailable"]
+    return joinLines([
+      styledLine([bold(fg(P.accent)("Which Key"))]),
+      styledLine([fg(P.textMuted)("manager unavailable")]),
+    ])
   }
 
   const activeKeys = [...keymapManager.getActiveKeys({ includeBindings: true })].sort((left, right) => {
@@ -134,60 +171,98 @@ function buildWhichKeyLines(): string[] {
   })
 
   const prefix = stringifyKeySequence(keymapManager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
-  const lines = ["Which Key", `Prefix: ${prefix}`]
+  const lines: TextChunk[][] = [
+    styledLine([bold(fg(P.accent)("Which Key"))]),
+    styledLine([fg(P.textDim)("Prefix: "), bold(fg(P.accent)(prefix))]),
+  ]
 
   if (activeKeys.length === 0) {
-    lines.push("(no active keys)")
+    lines.push(styledLine([fg(P.textMuted)("(no active keys)")]))
   } else {
     for (const activeKey of activeKeys.slice(0, 8)) {
-      lines.push(`${stringifyKeyStroke(activeKey, { preferDisplay: true })} -> ${getActiveKeyLabel(activeKey)}`)
+      const keyStr = stringifyKeyStroke(activeKey, { preferDisplay: true })
+      const label = getActiveKeyLabel(activeKey)
+      lines.push(
+        styledLine([bold(fg(P.key)(keyStr)), fg(P.textMuted)(" -> "), fg(P.command)(label)]),
+      )
     }
   }
 
-  lines.push("", "Ex commands", ":reset / :r", ":write <file> / :w <file>")
+  lines.push(
+    styledLine([]),
+    styledLine([bold(fg(P.accent)("Ex commands"))]),
+    styledLine([fg(P.key)(":reset"), fg(P.textMuted)(" / "), fg(P.key)(":r")]),
+    styledLine([fg(P.key)(":write <file>"), fg(P.textMuted)(" / "), fg(P.key)(":w <file>")]),
+  )
 
-  return lines
+  return joinLines(lines)
 }
 
-function renderPanels(): void {
-  if (!alphaText || !betaText) {
-    return
-  }
+function buildDetailsContent(renderer: CliRenderer): StyledText {
+  const name = getFocusedPanelName(renderer)
+  const color = getFocusedColor(renderer)
 
-  alphaText.content = ["Alpha Panel", `Count: ${alphaCount}`, "j: +1", "k: -1", "enter: :w alpha-panel.txt"].join("\n")
-
-  betaText.content = ["Beta Panel", `Count: ${betaCount}`, "j: +5", "k: -5", "enter: :w beta-panel.txt"].join("\n")
-}
-
-function renderStatus(renderer: CliRenderer): void {
-  if (!detailsText || !whichKeyText) {
-    return
-  }
-
-  const lines = [
-    `Focused: ${getFocusedPanelName(renderer)}`,
-    `Leader: ${leaderArmed ? "armed (ctrl+x)" : "idle"}`,
-    `Last action: ${lastAction}`,
+  const lines: TextChunk[][] = [
+    styledLine([fg(P.textDim)("Focused: "), bold(fg(color)(name))]),
+    leaderArmed
+      ? styledLine([fg(P.textDim)("Leader: "), bold(fg(P.leader)("armed (ctrl+x)"))])
+      : styledLine([fg(P.textDim)("Leader: "), fg(P.textMuted)("idle")]),
+    styledLine([fg(P.textDim)("Last action: "), fg(P.text)(lastAction)]),
   ]
 
   if (helpVisible) {
     lines.push(
-      "",
-      "Global keymaps:",
-      "tab / shift+tab: move focus",
-      "?: toggle help | ctrl+r: :reset",
-      "enter on a panel: :w alpha-panel.txt / beta-panel.txt",
-      "ctrl+x then s: :w session.log",
-      "ctrl+x then h: toggle help",
+      styledLine([]),
+      styledLine([bold(fg(P.textDim)("Keybindings"))]),
+      styledLine([
+        bold(fg(P.key)("tab")),
+        fg(P.textMuted)(" / "),
+        bold(fg(P.key)("shift+tab")),
+        fg(P.textDim)(": move focus"),
+      ]),
+      styledLine([
+        bold(fg(P.key)("?")),
+        fg(P.textDim)(": toggle help"),
+        fg(P.separator)(" | "),
+        bold(fg(P.key)("ctrl+r")),
+        fg(P.textDim)(": :reset"),
+      ]),
+      styledLine([bold(fg(P.key)("enter")), fg(P.textDim)(": :w alpha-panel.txt / beta-panel.txt")]),
+      styledLine([
+        bold(fg(P.key)("ctrl+x")),
+        fg(P.textMuted)(" then "),
+        bold(fg(P.key)("s")),
+        fg(P.textDim)(": :w session.log"),
+      ]),
+      styledLine([
+        bold(fg(P.key)("ctrl+x")),
+        fg(P.textMuted)(" then "),
+        bold(fg(P.key)("h")),
+        fg(P.textDim)(": toggle help"),
+      ]),
     )
   }
 
   if (logLines.length > 0) {
-    lines.push("", "Recent log:", ...logLines)
+    lines.push(styledLine([]), styledLine([bold(fg(P.textDim)("Log"))]))
+    for (const logLine of logLines) {
+      lines.push(styledLine([fg(P.textMuted)(logLine)]))
+    }
   }
 
-  detailsText.content = lines.join("\n")
-  whichKeyText.content = buildWhichKeyLines().join("\n")
+  return joinLines(lines)
+}
+
+// -- render functions ------------------------------------------------------
+
+function renderPanels(): void {
+  if (alphaText) alphaText.content = buildPanelContent("Alpha", alphaCount, 1, "alpha-panel.txt", P.alpha)
+  if (betaText) betaText.content = buildPanelContent("Beta", betaCount, 5, "beta-panel.txt", P.beta)
+}
+
+function renderStatus(renderer: CliRenderer): void {
+  if (detailsText) detailsText.content = buildDetailsContent(renderer)
+  if (whichKeyText) whichKeyText.content = buildWhichKeyContent()
 }
 
 function renderAll(renderer: CliRenderer): void {
@@ -203,9 +278,7 @@ function setStatus(renderer: CliRenderer, message: string): void {
 
 function moveFocus(renderer: CliRenderer, direction: 1 | -1): void {
   const panels = [alphaPanel, betaPanel].filter((panel): panel is BoxRenderable => panel !== null)
-  if (panels.length === 0) {
-    return
-  }
+  if (panels.length === 0) return
 
   const currentIndex = panels.findIndex((panel) => panel === renderer.currentFocusedRenderable)
   const startIndex = currentIndex === -1 ? 0 : currentIndex
@@ -213,6 +286,8 @@ function moveFocus(renderer: CliRenderer, direction: 1 | -1): void {
   panels[nextIndex]?.focus()
   setStatus(renderer, `Focused ${nextIndex === 0 ? "Alpha" : "Beta"} panel`)
 }
+
+// -- keymaps ---------------------------------------------------------------
 
 function registerKeymaps(renderer: CliRenderer): void {
   const manager = getKeymapManager(renderer)
@@ -384,8 +459,10 @@ function registerKeymaps(renderer: CliRenderer): void {
   }
 }
 
+// -- build UI tree ---------------------------------------------------------
+
 export function run(renderer: CliRenderer): void {
-  renderer.setBackgroundColor("#0f172a")
+  renderer.setBackgroundColor(P.bg)
 
   alphaCount = 0
   betaCount = 0
@@ -401,75 +478,86 @@ export function run(renderer: CliRenderer): void {
   })
   renderer.root.add(root)
 
+  // -- title ---------------------------------------------------------------
+
   const title = new TextRenderable(renderer, {
     id: "keymap-demo-title",
     content: "Keymap Demo",
-    fg: "#f8fafc",
+    fg: P.title,
+    attributes: TextAttributes.BOLD,
     height: 1,
   })
   root.add(title)
 
   const subtitle = new TextRenderable(renderer, {
     id: "keymap-demo-subtitle",
-    content:
-      "Shows global layers, focused layers, which-key hints from metadata, ex commands, and a ctrl+x leader extension.",
-    fg: "#94a3b8",
+    content: "Global layers, focused layers, which-key hints from metadata, ex commands, and a ctrl+x leader extension.",
+    fg: P.textMuted,
     height: 2,
   })
   root.add(subtitle)
 
-  const panels = new BoxRenderable(renderer, {
+  // -- panels row ----------------------------------------------------------
+
+  const panelsRow = new BoxRenderable(renderer, {
     id: "keymap-demo-panels",
     flexDirection: "row",
     gap: 1,
     height: 7,
   })
-  root.add(panels)
+  root.add(panelsRow)
 
   alphaPanel = new BoxRenderable(renderer, {
     id: "keymap-demo-alpha",
     border: true,
+    borderStyle: "rounded",
     focusable: true,
-    focusedBorderColor: "#38bdf8",
-    borderColor: "#475569",
+    focusedBorderColor: P.alpha,
+    borderColor: P.border,
     padding: 1,
     flexDirection: "column",
     flexGrow: 1,
+    title: " Alpha ",
+    titleAlignment: "left",
   })
-  panels.add(alphaPanel)
+  panelsRow.add(alphaPanel)
 
   alphaText = new TextRenderable(renderer, {
     id: "keymap-demo-alpha-text",
     content: "",
-    fg: "#e2e8f0",
-    height: 5,
+    fg: P.text,
   })
   alphaPanel.add(alphaText)
 
   betaPanel = new BoxRenderable(renderer, {
     id: "keymap-demo-beta",
     border: true,
+    borderStyle: "rounded",
     focusable: true,
-    focusedBorderColor: "#34d399",
-    borderColor: "#475569",
+    focusedBorderColor: P.beta,
+    borderColor: P.border,
     padding: 1,
     flexDirection: "column",
     flexGrow: 1,
+    title: " Beta ",
+    titleAlignment: "left",
   })
-  panels.add(betaPanel)
+  panelsRow.add(betaPanel)
 
   betaText = new TextRenderable(renderer, {
     id: "keymap-demo-beta-text",
     content: "",
-    fg: "#e2e8f0",
-    height: 5,
+    fg: P.text,
   })
   betaPanel.add(betaText)
+
+  // -- footer: status + which-key in one bordered box ----------------------
 
   const footer = new BoxRenderable(renderer, {
     id: "keymap-demo-footer",
     border: true,
-    borderColor: "#475569",
+    borderStyle: "rounded",
+    borderColor: P.border,
     padding: 1,
     marginTop: 1,
     gap: 2,
@@ -478,46 +566,42 @@ export function run(renderer: CliRenderer): void {
   })
   root.add(footer)
 
-  const detailsPanel = new BoxRenderable(renderer, {
-    id: "keymap-demo-details-panel",
+  const detailsColumn = new BoxRenderable(renderer, {
+    id: "keymap-demo-details-column",
     flexGrow: 1,
   })
-  footer.add(detailsPanel)
+  footer.add(detailsColumn)
 
   detailsText = new TextRenderable(renderer, {
     id: "keymap-demo-details",
     content: "",
-    fg: "#f8fafc",
-    height: 12,
+    fg: P.text,
+    height: 14,
   })
-  detailsPanel.add(detailsText)
+  detailsColumn.add(detailsText)
 
-  const whichKeyPanel = new BoxRenderable(renderer, {
-    id: "keymap-demo-which-key-panel",
+  const whichKeyColumn = new BoxRenderable(renderer, {
+    id: "keymap-demo-which-key-column",
     width: 28,
   })
-  footer.add(whichKeyPanel)
+  footer.add(whichKeyColumn)
 
   whichKeyText = new TextRenderable(renderer, {
     id: "keymap-demo-which-key",
     content: "",
-    fg: "#cbd5e1",
-    height: 12,
+    fg: P.text,
+    height: 14,
   })
-  whichKeyPanel.add(whichKeyText)
+  whichKeyColumn.add(whichKeyText)
 
-  alphaPanel.on(RenderableEvents.FOCUSED, () => {
-    renderStatus(renderer)
-  })
-  alphaPanel.on(RenderableEvents.BLURRED, () => {
-    renderStatus(renderer)
-  })
-  betaPanel.on(RenderableEvents.FOCUSED, () => {
-    renderStatus(renderer)
-  })
-  betaPanel.on(RenderableEvents.BLURRED, () => {
-    renderStatus(renderer)
-  })
+  // -- event listeners -----------------------------------------------------
+
+  alphaPanel.on(RenderableEvents.FOCUSED, () => renderStatus(renderer))
+  alphaPanel.on(RenderableEvents.BLURRED, () => renderStatus(renderer))
+  betaPanel.on(RenderableEvents.FOCUSED, () => renderStatus(renderer))
+  betaPanel.on(RenderableEvents.BLURRED, () => renderStatus(renderer))
+
+  // -- init ----------------------------------------------------------------
 
   registerKeymaps(renderer)
   addLog("Tab switches focus. j/k act on the focused panel.")

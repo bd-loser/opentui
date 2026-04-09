@@ -1,13 +1,44 @@
-import { ConsolePosition } from "@opentui/core"
+import { ConsolePosition, TextAttributes } from "@opentui/core"
 import { registerExCommands, registerTimedLeader, stringifyKeySequence, stringifyKeyStroke } from "@opentui/core/extras"
 import { render, useKeymap, useKeymappings, useRenderer } from "@opentui/solid"
-import { createMemo, createSignal, onCleanup, onMount, type Accessor } from "solid-js"
+import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
+
+// -- palette ---------------------------------------------------------------
+
+const palette = {
+  bg: "#0f172a",
+  surface: "#1e293b",
+  border: "#334155",
+  text: "#e2e8f0",
+  textDim: "#94a3b8",
+  textMuted: "#64748b",
+  title: "#f1f5f9",
+  alpha: "#38bdf8",
+  beta: "#34d399",
+  accent: "#a78bfa",
+  key: "#fbbf24",
+  command: "#67e8f9",
+  leader: "#fb923c",
+  separator: "#475569",
+} as const
+
+// -- types -----------------------------------------------------------------
 
 type PanelId = "alpha" | "beta"
 
 interface FocusableRenderable {
   focus(): void
 }
+
+// -- small helpers ---------------------------------------------------------
+
+function KeyLabel(props: { children: JSX.Element }) {
+  return <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>{props.children}</span>
+}
+
+
+
+// -- CounterPanel ----------------------------------------------------------
 
 function CounterPanel(props: {
   id: PanelId
@@ -66,25 +97,38 @@ function CounterPanel(props: {
       border
       focusable
       focused={props.focused()}
-      borderColor="#475569"
+      borderColor={palette.border}
       focusedBorderColor={props.color}
-      padding={1}
-      flexGrow={1}
-      flexDirection="column"
+      title={` ${props.label} `}
+      titleAlignment="left"
+      style={{
+        borderStyle: "rounded",
+        padding: 1,
+        flexGrow: 1,
+        flexDirection: "column",
+      }}
       on:focused={() => props.setFocused(props.id)}
     >
-      <text fg="#e2e8f0" height={5}>
-        {[
-          `${props.label} Panel`,
-          `Count: ${props.count()}`,
-          `j: +${props.step}`,
-          `k: -${props.step}`,
-          `enter: :w ${props.saveTarget}`,
-        ].join("\n")}
+      <text height={1}>
+        <span style={{ fg: palette.textDim }}>Count: </span>
+        <span style={{ fg: props.color, attributes: TextAttributes.BOLD }}>{String(props.count())}</span>
+      </text>
+      <box height={1} />
+      <text height={1}>
+        <KeyLabel>j</KeyLabel>
+        <span style={{ fg: palette.textDim }}>{` +${props.step}  `}</span>
+        <KeyLabel>k</KeyLabel>
+        <span style={{ fg: palette.textDim }}>{` -${props.step}`}</span>
+      </text>
+      <text height={1}>
+        <KeyLabel>enter</KeyLabel>
+        <span style={{ fg: palette.textDim }}>{` :w ${props.saveTarget}`}</span>
       </text>
     </box>
   )
 }
+
+// -- KeymapDemo (root) -----------------------------------------------------
 
 export default function KeymapDemo() {
   const renderer = useRenderer()
@@ -98,10 +142,7 @@ export default function KeymapDemo() {
   const [leaderArmed, setLeaderArmed] = createSignal(false)
   const [lastAction, setLastAction] = createSignal("Press Tab to start.")
   const [sequenceVersion, setSequenceVersion] = createSignal(0)
-  const [logs, setLogs] = createSignal<string[]>([
-    "Tab switches focus. j/k act on the focused panel.",
-    "ctrl+x arms the leader extension.",
-  ])
+  const [logs, setLogs] = createSignal<string[]>([])
 
   const announce = (message: string) => {
     setLastAction(message)
@@ -201,7 +242,12 @@ export default function KeymapDemo() {
     },
   })
 
-  const whichKeyText = createMemo(() => {
+  // -- computed content -----------------------------------------------------
+
+  const focusedName = createMemo(() => (activePanel() === "alpha" ? "Alpha" : "Beta"))
+  const focusedColor = createMemo(() => (activePanel() === "alpha" ? palette.alpha : palette.beta))
+
+  const whichKeyEntries = createMemo(() => {
     activePanel()
     sequenceVersion()
 
@@ -211,52 +257,19 @@ export default function KeymapDemo() {
       )
     })
 
-    const prefix = stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
-    const lines = ["Which Key", `Prefix: ${prefix}`]
-
-    if (activeKeys.length === 0) {
-      lines.push("(no active keys)")
-    } else {
-      for (const activeKey of activeKeys.slice(0, 8)) {
-        const commandList = activeKey.commands.map((command) => command.input).join(" | ")
-        lines.push(`${stringifyKeyStroke(activeKey, { preferDisplay: true })} -> ${commandList}`)
-      }
-    }
-
-    lines.push("", "Ex commands", ":reset / :r", ":write <file> / :w <file>")
-
-    return lines.join("\n")
+    return activeKeys.slice(0, 8).map((activeKey) => ({
+      key: stringifyKeyStroke(activeKey, { preferDisplay: true }),
+      commands: activeKey.commands.map((command) => command.input).join(" | "),
+    }))
   })
 
-  const detailsText = createMemo(() => {
-    const lines = [
-      `Focused: ${activePanel() === "alpha" ? "Alpha" : "Beta"}`,
-      `Leader: ${leaderArmed() ? "armed (ctrl+x)" : "idle"}`,
-      `Last action: ${lastAction()}`,
-    ]
-
-    if (helpVisible()) {
-      lines.push(
-        "",
-        "Global keymaps:",
-        "tab / shift+tab: move focus",
-        "?: toggle help | ctrl+r: :reset",
-        "enter on a panel: :w alpha-panel.txt / beta-panel.txt",
-        "ctrl+x then s: :w session.log",
-        "ctrl+x then h: toggle help",
-      )
-    }
-
-    const recentLogs = logs().slice(0, 4)
-    if (recentLogs.length > 0) {
-      lines.push("", "Recent log:", ...recentLogs)
-    }
-
-    return lines.join("\n")
+  const whichKeyPrefix = createMemo(() => {
+    sequenceVersion()
+    return stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
   })
 
   onMount(() => {
-    renderer.setBackgroundColor("#0f172a")
+    renderer.setBackgroundColor(palette.bg)
     alphaPanelRef?.focus()
     announce("Focused Alpha panel")
   })
@@ -269,22 +282,24 @@ export default function KeymapDemo() {
   })
 
   return (
-    <box flexDirection="column" flexGrow={1} padding={1} backgroundColor="#0f172a">
-      <text fg="#f8fafc" height={1}>
+    <box flexDirection="column" flexGrow={1} padding={1} backgroundColor={palette.bg}>
+      {/* Header */}
+      <text style={{ fg: palette.title, attributes: TextAttributes.BOLD }} height={1}>
         Keymap Demo
       </text>
-      <text fg="#94a3b8" height={2}>
-        Shows useKeymappings + useKeymap with global bindings, local panel bindings, which-key hints, and a ctrl+x
-        leader extension.
+      <text fg={palette.textMuted} height={2}>
+        useKeymappings + useKeymap with global bindings, local panel bindings, which-key hints, and a ctrl+x leader
+        extension.
       </text>
 
+      {/* Counter panels */}
       <box flexDirection="row" gap={1} height={7}>
         <CounterPanel
           id="alpha"
           label="Alpha"
           saveTarget="alpha-panel.txt"
           step={1}
-          color="#38bdf8"
+          color={palette.alpha}
           setRef={(value) => {
             alphaPanelRef = value
           }}
@@ -299,7 +314,7 @@ export default function KeymapDemo() {
           label="Beta"
           saveTarget="beta-panel.txt"
           step={5}
-          color="#34d399"
+          color={palette.beta}
           count={betaCount}
           focused={() => activePanel() === "beta"}
           setFocused={setFocusedPanel}
@@ -308,16 +323,118 @@ export default function KeymapDemo() {
         />
       </box>
 
-      <box border borderColor="#475569" padding={1} marginTop={1} flexGrow={1} flexDirection="row" gap={2}>
-        <box flexGrow={1} flexDirection="column">
-          <text fg="#f8fafc" height={12}>
-            {detailsText()}
+      {/* Footer: status + which-key in one bordered box */}
+      <box
+        border
+        style={{
+          borderStyle: "rounded",
+          borderColor: palette.border,
+          padding: 1,
+          marginTop: 1,
+          flexGrow: 1,
+          flexDirection: "row",
+          gap: 2,
+        }}
+      >
+        {/* Details column */}
+        <box flexGrow={1}>
+          <text fg={palette.text} height={14}>
+            <span style={{ fg: palette.textDim }}>Focused: </span>
+            <span style={{ fg: focusedColor(), attributes: TextAttributes.BOLD }}>{focusedName()}</span>
+            <br />
+            <span style={{ fg: palette.textDim }}>Leader: </span>
+            <Show
+              when={leaderArmed()}
+              fallback={<span style={{ fg: palette.textMuted }}>idle</span>}
+            >
+              <span style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}>armed (ctrl+x)</span>
+            </Show>
+            <br />
+            <span style={{ fg: palette.textDim }}>Last action: </span>
+            <span style={{ fg: palette.text }}>{lastAction()}</span>
+            <Show when={helpVisible()}>
+              <br />
+              <br />
+              <span style={{ fg: palette.textDim, attributes: TextAttributes.BOLD }}>Keybindings</span>
+              <br />
+              <KeyLabel>tab</KeyLabel>
+              <span style={{ fg: palette.textMuted }}>{" / "}</span>
+              <KeyLabel>shift+tab</KeyLabel>
+              <span style={{ fg: palette.textDim }}>: move focus</span>
+              <br />
+              <KeyLabel>?</KeyLabel>
+              <span style={{ fg: palette.textDim }}>: toggle help</span>
+              <span style={{ fg: palette.separator }}>{" | "}</span>
+              <KeyLabel>ctrl+r</KeyLabel>
+              <span style={{ fg: palette.textDim }}>: :reset</span>
+              <br />
+              <KeyLabel>enter</KeyLabel>
+              <span style={{ fg: palette.textDim }}>: :w alpha-panel.txt / beta-panel.txt</span>
+              <br />
+              <KeyLabel>ctrl+x</KeyLabel>
+              <span style={{ fg: palette.textMuted }}>{" then "}</span>
+              <KeyLabel>s</KeyLabel>
+              <span style={{ fg: palette.textDim }}>: :w session.log</span>
+              <br />
+              <KeyLabel>ctrl+x</KeyLabel>
+              <span style={{ fg: palette.textMuted }}>{" then "}</span>
+              <KeyLabel>h</KeyLabel>
+              <span style={{ fg: palette.textDim }}>: toggle help</span>
+            </Show>
+            <Show when={logs().length > 0}>
+              <br />
+              <br />
+              <span style={{ fg: palette.textDim, attributes: TextAttributes.BOLD }}>Log:</span>
+              <For each={logs().slice(0, 4)}>
+                {(log) => (
+                  <>
+                    <br />
+                    <span style={{ fg: palette.textMuted }}>{log}</span>
+                  </>
+                )}
+              </For>
+            </Show>
           </text>
         </box>
-        <box width={28}>
-          <text fg="#cbd5e1" height={12}>
-            {whichKeyText()}
-          </text>
+
+        {/* Which-key column — each group in its own box so <For> is never mixed with static siblings */}
+        <box width={28} flexDirection="column">
+          <box flexDirection="column" flexShrink={0}>
+            <text style={{ fg: palette.accent, attributes: TextAttributes.BOLD }} height={1}>
+              Which Key
+            </text>
+            <text height={1}>
+              <span style={{ fg: palette.textDim }}>Prefix: </span>
+              <span style={{ fg: palette.accent, attributes: TextAttributes.BOLD }}>{whichKeyPrefix()}</span>
+            </text>
+          </box>
+          <box flexDirection="column" flexShrink={0}>
+            <For each={whichKeyEntries()}>
+              {(entry) => (
+                <text height={1}>
+                  <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>{entry.key}</span>
+                  <span style={{ fg: palette.textMuted }}>{" -> "}</span>
+                  <span style={{ fg: palette.command }}>{entry.commands}</span>
+                </text>
+              )}
+            </For>
+          </box>
+          <box flexGrow={1} />
+          <box flexDirection="column" flexShrink={0}>
+            <text style={{ fg: palette.accent, attributes: TextAttributes.BOLD }} height={1}>
+              Ex commands
+            </text>
+            <text height={1}>
+              <span style={{ fg: palette.key }}>{":reset"}</span>
+              <span style={{ fg: palette.textMuted }}>{" / "}</span>
+              <span style={{ fg: palette.key }}>{":r"}</span>
+            </text>
+            <text height={1}>
+              <span style={{ fg: palette.key }}>{":write <file>"}</span>
+              <span style={{ fg: palette.textMuted }}>{" / "}</span>
+              <span style={{ fg: palette.key }}>{":w <file>"}</span>
+            </text>
+          </box>
         </box>
       </box>
     </box>

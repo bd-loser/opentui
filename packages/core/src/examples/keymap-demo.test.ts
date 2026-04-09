@@ -35,7 +35,7 @@ describe("keymap demo example", () => {
     await testSetup.renderOnce()
     frame = testSetup.captureCharFrame()
     expect(frame).toContain("Prefix: <leader>")
-    expect(frame).toContain("s -> :w session.log")
+    expect(frame).toContain("s -> Write session log")
 
     testSetup.mockInput.pressKey("s")
     await testSetup.renderOnce()

@@ -2,8 +2,11 @@ import { BoxRenderable, createCliRenderer, RenderableEvents, TextRenderable, typ
 import {
   getKeymapManager,
   registerExCommands,
+  registerMetadataFields,
   registerTimedLeader,
+  type KeymapActiveBinding,
   type KeymapManager,
+  type KeymapResolvedCommand,
   stringifyKeySequence,
   stringifyKeyStroke,
 } from "../extras.js"
@@ -42,12 +45,89 @@ function getFocusedPanelName(renderer: CliRenderer): string {
   return "None"
 }
 
+function getMetadataText(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined
+  }
+
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return undefined
+  }
+
+  return trimmed
+}
+
+function getCommandLabel(command: KeymapResolvedCommand): string {
+  return getMetadataText(command.attrs?.desc) ?? getMetadataText(command.attrs?.title) ?? command.input
+}
+
+function getBindingLabel(binding: KeymapActiveBinding): string {
+  return getMetadataText(binding.attrs?.desc) ?? getCommandLabel(binding.command)
+}
+
+function getSharedBindingText(bindings: readonly KeymapActiveBinding[], name: string): string | undefined {
+  let shared: string | undefined
+
+  for (const binding of bindings) {
+    const value = getMetadataText(binding.attrs?.[name])
+    if (!value) {
+      return undefined
+    }
+
+    if (shared === undefined) {
+      shared = value
+      continue
+    }
+
+    if (shared !== value) {
+      return undefined
+    }
+  }
+
+  return shared
+}
+
+function uniqueLabels(labels: Iterable<string>): string[] {
+  const unique: string[] = []
+  const seen = new Set<string>()
+
+  for (const label of labels) {
+    if (seen.has(label)) {
+      continue
+    }
+
+    seen.add(label)
+    unique.push(label)
+  }
+
+  return unique
+}
+
+function getActiveKeyLabel(activeKey: ReturnType<KeymapManager["getActiveKeys"]>[number]): string {
+  const bindings = activeKey.bindings ?? []
+  const group = activeKey.continues ? getSharedBindingText(bindings, "group") : undefined
+  if (group) {
+    return `+${group}`
+  }
+
+  const labels =
+    bindings.length > 0
+      ? uniqueLabels(bindings.map(getBindingLabel))
+      : uniqueLabels(activeKey.commands.map(getCommandLabel))
+  if (labels.length > 0) {
+    return labels.join(" | ")
+  }
+
+  return activeKey.commands.map((command) => command.input).join(" | ")
+}
+
 function buildWhichKeyLines(): string[] {
   if (!keymapManager) {
     return ["Which Key", "manager unavailable"]
   }
 
-  const activeKeys = [...keymapManager.getActiveKeys()].sort((left, right) => {
+  const activeKeys = [...keymapManager.getActiveKeys({ includeBindings: true })].sort((left, right) => {
     return stringifyKeyStroke(left, { preferDisplay: true }).localeCompare(
       stringifyKeyStroke(right, { preferDisplay: true }),
     )
@@ -60,8 +140,7 @@ function buildWhichKeyLines(): string[] {
     lines.push("(no active keys)")
   } else {
     for (const activeKey of activeKeys.slice(0, 8)) {
-      const commandList = activeKey.commands.map((command) => command.input).join(" | ")
-      lines.push(`${stringifyKeyStroke(activeKey, { preferDisplay: true })} -> ${commandList}`)
+      lines.push(`${stringifyKeyStroke(activeKey, { preferDisplay: true })} -> ${getActiveKeyLabel(activeKey)}`)
     }
   }
 
@@ -139,22 +218,33 @@ function registerKeymaps(renderer: CliRenderer): void {
   const manager = getKeymapManager(renderer)
   keymapManager = manager
 
+  disposers.push(registerMetadataFields(manager))
+
   disposers.push(
     manager.registerCommands([
       {
         name: "focus-next",
+        title: "Next panel",
+        desc: "Next panel",
+        category: "Navigation",
         run() {
           moveFocus(renderer, 1)
         },
       },
       {
         name: "focus-prev",
+        title: "Prev panel",
+        desc: "Prev panel",
+        category: "Navigation",
         run() {
           moveFocus(renderer, -1)
         },
       },
       {
         name: "toggle-help",
+        title: "Toggle help",
+        desc: "Toggle help",
+        category: "View",
         run() {
           helpVisible = !helpVisible
           setStatus(renderer, helpVisible ? "Help shown" : "Help hidden")
@@ -162,6 +252,9 @@ function registerKeymaps(renderer: CliRenderer): void {
       },
       {
         name: "alpha-up",
+        title: "Alpha +1",
+        desc: "Alpha +1",
+        category: "Alpha",
         run() {
           alphaCount += 1
           setStatus(renderer, `Alpha increased to ${alphaCount}`)
@@ -169,6 +262,9 @@ function registerKeymaps(renderer: CliRenderer): void {
       },
       {
         name: "alpha-down",
+        title: "Alpha -1",
+        desc: "Alpha -1",
+        category: "Alpha",
         run() {
           alphaCount -= 1
           setStatus(renderer, `Alpha decreased to ${alphaCount}`)
@@ -176,6 +272,9 @@ function registerKeymaps(renderer: CliRenderer): void {
       },
       {
         name: "beta-up",
+        title: "Beta +5",
+        desc: "Beta +5",
+        category: "Beta",
         run() {
           betaCount += 5
           setStatus(renderer, `Beta increased to ${betaCount}`)
@@ -183,6 +282,9 @@ function registerKeymaps(renderer: CliRenderer): void {
       },
       {
         name: "beta-down",
+        title: "Beta -5",
+        desc: "Beta -5",
+        category: "Beta",
         run() {
           betaCount -= 5
           setStatus(renderer, `Beta decreased to ${betaCount}`)
@@ -197,6 +299,9 @@ function registerKeymaps(renderer: CliRenderer): void {
         name: "reset",
         aliases: ["r"],
         nargs: "0",
+        title: "Reset counters",
+        desc: "Reset counters",
+        category: "Session",
         run() {
           alphaCount = 0
           betaCount = 0
@@ -207,6 +312,9 @@ function registerKeymaps(renderer: CliRenderer): void {
         name: "write",
         aliases: ["w"],
         nargs: "1",
+        title: "Write file",
+        desc: "Write file",
+        category: "File",
         run({ raw, args }) {
           setStatus(renderer, `Ex command: ${raw} -> wrote ${args[0]}`)
         },
@@ -232,14 +340,14 @@ function registerKeymaps(renderer: CliRenderer): void {
   disposers.push(
     manager.registerLayer({
       scope: "global",
-      bindings: {
-        tab: "focus-next",
-        "shift+tab": "focus-prev",
-        "?": "toggle-help",
-        "ctrl+r": ":reset",
-        "<leader>s": ":w session.log",
-        "<leader>h": "toggle-help",
-      },
+      bindings: [
+        { key: "tab", cmd: "focus-next" },
+        { key: "shift+tab", cmd: "focus-prev" },
+        { key: "?", cmd: "toggle-help" },
+        { key: "ctrl+r", cmd: ":reset" },
+        { key: "<leader>s", cmd: ":w session.log", desc: "Write session log", group: "Leader" },
+        { key: "<leader>h", cmd: "toggle-help", desc: "Toggle help", group: "Leader" },
+      ],
     }),
   )
 
@@ -253,11 +361,11 @@ function registerKeymaps(renderer: CliRenderer): void {
     disposers.push(
       manager.registerLayer({
         target: alphaPanel,
-        bindings: {
-          j: "alpha-up",
-          k: "alpha-down",
-          enter: ":w alpha-panel.txt",
-        },
+        bindings: [
+          { key: "j", cmd: "alpha-up" },
+          { key: "k", cmd: "alpha-down" },
+          { key: "enter", cmd: ":w alpha-panel.txt", desc: "Write alpha panel" },
+        ],
       }),
     )
   }
@@ -266,11 +374,11 @@ function registerKeymaps(renderer: CliRenderer): void {
     disposers.push(
       manager.registerLayer({
         target: betaPanel,
-        bindings: {
-          j: "beta-up",
-          k: "beta-down",
-          enter: ":w beta-panel.txt",
-        },
+        bindings: [
+          { key: "j", cmd: "beta-up" },
+          { key: "k", cmd: "beta-down" },
+          { key: "enter", cmd: ":w beta-panel.txt", desc: "Write beta panel" },
+        ],
       }),
     )
   }
@@ -303,7 +411,8 @@ export function run(renderer: CliRenderer): void {
 
   const subtitle = new TextRenderable(renderer, {
     id: "keymap-demo-subtitle",
-    content: "Shows global layers, focused layers, which-key hints, ex commands, and a ctrl+x leader extension.",
+    content:
+      "Shows global layers, focused layers, which-key hints from metadata, ex commands, and a ctrl+x leader extension.",
     fg: "#94a3b8",
     height: 2,
   })

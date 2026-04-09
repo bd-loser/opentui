@@ -43,17 +43,19 @@ export function registerExCommands(manager: KeymapManager, commands: ExCommand[]
   const registrations: KeymapCommand[] = []
 
   for (const command of commands) {
-    const names = [command.name, ...(command.aliases ?? [])]
+    const { name, aliases, nargs: _nargs, run, ...attrs } = command
+    const names = [name, ...(aliases ?? [])]
     for (const name of names) {
       const normalizedName = normalizeExCommandName(name)
       registrations.push({
+        ...attrs,
         name: normalizedName,
         run(ctx) {
           if (!validateCommandArgs(command, ctx.command.args)) {
             return false
           }
 
-          return command.run({
+          return run({
             ...ctx,
             raw: ctx.command.input,
             args: ctx.command.args,

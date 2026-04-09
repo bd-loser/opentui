@@ -18,6 +18,8 @@ export type KeymapEnabled = boolean | (() => boolean)
 
 export type KeymapEventData = Record<string, unknown>
 
+export type KeymapAttributes = Record<string, unknown>
+
 export interface KeyStroke {
   name: string
   ctrl?: boolean
@@ -69,6 +71,7 @@ export interface KeymapResolvedCommand {
   input: string
   name: string
   args: string[]
+  attrs?: Readonly<KeymapAttributes>
 }
 
 export interface KeymapCommandContext {
@@ -86,6 +89,7 @@ export type KeymapCommandResult = boolean | void | Promise<boolean | void>
 export interface KeymapCommand {
   name: string
   run: (ctx: KeymapCommandContext) => KeymapCommandResult
+  [key: string]: unknown
 }
 
 export type ActionCommand = KeymapCommand
@@ -95,6 +99,7 @@ export interface ExCommand {
   aliases?: string[]
   nargs?: "0" | "1" | "?" | "*" | "+"
   run: (ctx: KeymapCommandContext & { raw: string; args: string[] }) => void | Promise<void>
+  [key: string]: unknown
 }
 
 export interface KeymapToken {
@@ -102,18 +107,38 @@ export interface KeymapToken {
   key: KeyLike
 }
 
+export interface KeymapActiveBinding {
+  sequence: ParsedKeyPart[]
+  command: KeymapResolvedCommand
+  attrs?: Readonly<KeymapAttributes>
+  consume: boolean
+  fallthrough: boolean
+}
+
+export interface KeymapActiveKeyOptions {
+  includeBindings?: boolean
+}
+
 export interface KeymapActiveKey {
   stroke: ParsedKeyStroke
   display: string
+  bindings?: KeymapActiveBinding[]
   commands: KeymapResolvedCommand[]
   continues: boolean
 }
 
 export interface KeymapBindingFieldContext {
   require(name: string, value: unknown): void
+  attr(name: string, value: unknown): void
 }
 
 export type KeymapBindingFieldCompiler = (value: unknown, ctx: KeymapBindingFieldContext) => void
+
+export interface KeymapCommandFieldContext {
+  attr(name: string, value: unknown): void
+}
+
+export type KeymapCommandFieldCompiler = (value: unknown, ctx: KeymapCommandFieldContext) => void
 
 export interface KeymapKeyInputContext {
   event: KeyEvent
@@ -136,22 +161,27 @@ export interface KeymapManager {
   getPendingSequenceParts(): readonly ParsedKeyPart[]
   clearPendingSequence(): void
   popPendingSequence(): boolean
-  getActiveKeys(): readonly KeymapActiveKey[]
+  getActiveKeys(options?: KeymapActiveKeyOptions): readonly KeymapActiveKey[]
   onPendingSequenceChange(fn: (sequence: readonly ParsedKeyStroke[]) => void): () => void
   registerLayer(layer: KeymapLayer): () => void
   registerToken(token: KeymapToken): () => void
   registerBindingFields(fields: Record<string, KeymapBindingFieldCompiler>): () => void
+  registerCommandFields(fields: Record<string, KeymapCommandFieldCompiler>): () => void
   onKeyInput(fn: (ctx: KeymapKeyInputContext) => void, options?: { priority?: number; release?: boolean }): () => void
   onRawInput(fn: (ctx: KeymapRawInputContext) => void, options?: { priority?: number }): () => void
   registerCommands(commands: KeymapCommand[]): () => void
 }
 
-interface CompiledBinding {
-  sequence: ParsedKeyPart[]
-  command: KeymapResolvedCommand
+interface CompiledBinding extends KeymapActiveBinding {
   requires: readonly [name: string, value: unknown][]
-  consume: boolean
-  fallthrough: boolean
+  matchCacheVersion?: number
+  matchCache?: boolean
+}
+
+interface RegisteredCommand {
+  name: string
+  run: (ctx: KeymapCommandContext) => KeymapCommandResult
+  attrs?: Readonly<KeymapAttributes>
 }
 
 interface SequenceNode {
@@ -200,6 +230,8 @@ interface PendingSequenceState {
 const keymapManagersByRenderer = new WeakMap<CliRenderer, KeymapManagerImpl>()
 
 export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "consume", "fallthrough"])
+
+const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
 
 function resolveEnabled(enabled: KeymapEnabled | undefined): boolean {
   if (enabled === undefined) {
@@ -275,6 +307,22 @@ function mergeRequirement(target: KeymapEventData, name: string, value: unknown,
   target[name] = value
 }
 
+function mergeAttribute(target: KeymapAttributes, name: string, value: unknown, source: string): void {
+  if (Object.prototype.hasOwnProperty.call(target, name) && !Object.is(target[name], value)) {
+    throw new Error(`Conflicting keymap attribute for "${name}" from ${source}`)
+  }
+
+  target[name] = value
+}
+
+function freezeAttributes(attrs: KeymapAttributes): Readonly<KeymapAttributes> | undefined {
+  if (Object.keys(attrs).length === 0) {
+    return undefined
+  }
+
+  return Object.freeze({ ...attrs })
+}
+
 class KeymapManagerImpl implements KeymapManager {
   public readonly renderer: CliRenderer
 
@@ -283,10 +331,12 @@ class KeymapManagerImpl implements KeymapManager {
   private targetLayers = new WeakMap<Renderable, RegisteredLayerBucket>()
   private tokens = new Map<string, ParsedKeyStroke>()
   private bindingFields = new Map<string, KeymapBindingFieldCompiler>()
+  private commandFields = new Map<string, KeymapCommandFieldCompiler>()
   private keyHooks: RegisteredKeyHook[] = []
   private rawHooks: RegisteredRawHook[] = []
   private pendingSequenceListeners: Array<(sequence: readonly ParsedKeyStroke[]) => void> = []
-  private commands = new Map<string, KeymapCommand>()
+  private commands = new Map<string, RegisteredCommand>()
+  private commandsWithAttrs = 0
   private data: KeymapEventData = {}
   private dataVersion = 0
   private readonlyDataVersion = -1
@@ -339,10 +389,12 @@ class KeymapManagerImpl implements KeymapManager {
     this.targetLayers = new WeakMap()
     this.tokens.clear()
     this.bindingFields.clear()
+    this.commandFields.clear()
     this.keyHooks = []
     this.rawHooks = []
     this.pendingSequenceListeners = []
     this.commands.clear()
+    this.commandsWithAttrs = 0
     this.data = {}
     this.dataVersion = 0
     this.readonlyDataVersion = -1
@@ -434,17 +486,26 @@ class KeymapManagerImpl implements KeymapManager {
     return true
   }
 
-  public getActiveKeys(): readonly KeymapActiveKey[] {
+  public getActiveKeys(options?: KeymapActiveKeyOptions): readonly KeymapActiveKey[] {
     this.assertNotDestroyed()
 
+    const includeBindings = options?.includeBindings === true
     const focused = this.getFocusedRenderable()
     const pending = this.resolvePendingSequence(focused)
     if (pending) {
-      return this.collectActiveKeysFromChildren(pending.node.children)
+      if (includeBindings) {
+        return this.collectActiveKeysFromChildren(pending.node.children, true)
+      }
+
+      return this.collectActiveKeysFromChildrenFast(pending.node.children)
     }
 
     const activeLayers = this.getActiveLayers(focused)
-    return this.collectActiveKeysAtRoot(activeLayers)
+    if (includeBindings) {
+      return this.collectActiveKeysAtRoot(activeLayers, true)
+    }
+
+    return this.collectActiveKeysAtRootFast(activeLayers)
   }
 
   public onPendingSequenceChange(fn: (sequence: readonly ParsedKeyStroke[]) => void): () => void {
@@ -546,6 +607,34 @@ class KeymapManagerImpl implements KeymapManager {
     }
   }
 
+  public registerCommandFields(fields: Record<string, KeymapCommandFieldCompiler>): () => void {
+    this.assertNotDestroyed()
+
+    const entries = Object.entries(fields)
+    for (const [name] of entries) {
+      if (RESERVED_COMMAND_FIELDS.has(name)) {
+        throw new Error(`Keymap command field "${name}" is reserved`)
+      }
+
+      if (this.commandFields.has(name)) {
+        throw new Error(`Keymap command field "${name}" is already registered`)
+      }
+    }
+
+    for (const [name, compiler] of entries) {
+      this.commandFields.set(name, compiler)
+    }
+
+    return () => {
+      for (const [name, compiler] of entries) {
+        const current = this.commandFields.get(name)
+        if (current === compiler) {
+          this.commandFields.delete(name)
+        }
+      }
+    }
+  }
+
   public onKeyInput(
     fn: (ctx: KeymapKeyInputContext) => void,
     options?: { priority?: number; release?: boolean },
@@ -586,10 +675,40 @@ class KeymapManagerImpl implements KeymapManager {
     this.assertNotDestroyed()
 
     const normalizedCommands = commands.map((command) => {
-      return {
+      const mergedAttrs: KeymapAttributes = {}
+
+      for (const [fieldName, value] of Object.entries(command)) {
+        if (RESERVED_COMMAND_FIELDS.has(fieldName)) {
+          continue
+        }
+
+        if (value === undefined) {
+          continue
+        }
+
+        const compiler = this.commandFields.get(fieldName)
+        if (!compiler) {
+          throw new Error(`Unknown keymap command field "${fieldName}"`)
+        }
+
+        compiler(value, {
+          attr(name, attributeValue) {
+            mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
+          },
+        })
+      }
+
+      const attrs = freezeAttributes(mergedAttrs)
+      const normalizedCommand: RegisteredCommand = {
         name: normalizeCommandName(command.name),
         run: command.run,
-      } satisfies KeymapCommand
+      }
+
+      if (attrs) {
+        normalizedCommand.attrs = attrs
+      }
+
+      return normalizedCommand
     })
 
     const seen = new Set<string>()
@@ -607,12 +726,18 @@ class KeymapManagerImpl implements KeymapManager {
 
     for (const command of normalizedCommands) {
       this.commands.set(command.name, command)
+      if (command.attrs) {
+        this.commandsWithAttrs += 1
+      }
     }
 
     return () => {
       for (const command of normalizedCommands) {
         const current = this.commands.get(command.name)
         if (current === command) {
+          if (command.attrs) {
+            this.commandsWithAttrs -= 1
+          }
           this.commands.delete(command.name)
         }
       }
@@ -721,6 +846,7 @@ class KeymapManagerImpl implements KeymapManager {
     for (const binding of normalizeBindingInputs(bindings)) {
       const sequence = parseKeySequenceLike(binding.key, this.tokens)
       const mergedRequires: KeymapEventData = {}
+      const mergedAttrs: KeymapAttributes = {}
 
       for (const [fieldName, value] of Object.entries(binding)) {
         if (RESERVED_BINDING_FIELDS.has(fieldName)) {
@@ -740,15 +866,23 @@ class KeymapManagerImpl implements KeymapManager {
           require(name, requiredValue) {
             mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
           },
+          attr(name, attributeValue) {
+            mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
+          },
         })
       }
 
+      const attrs = freezeAttributes(mergedAttrs)
       const compiledBinding: CompiledBinding = {
         sequence,
         command: parseCommandInput(binding.cmd),
         requires: Object.entries(mergedRequires),
         consume: binding.consume !== false,
         fallthrough: binding.fallthrough ?? false,
+      }
+
+      if (attrs) {
+        compiledBinding.attrs = attrs
       }
 
       this.insertBinding(root, compiledBinding)
@@ -989,7 +1123,7 @@ class KeymapManagerImpl implements KeymapManager {
     const matches: CompiledBinding[] = []
 
     for (const binding of bindings) {
-      if (this.matchRequirements(binding.requires)) {
+      if (this.matchesBindingRequirements(binding)) {
         matches.push(binding)
       }
     }
@@ -999,7 +1133,7 @@ class KeymapManagerImpl implements KeymapManager {
 
   private hasMatchingBindings(bindings: readonly CompiledBinding[]): boolean {
     for (const binding of bindings) {
-      if (this.matchRequirements(binding.requires)) {
+      if (this.matchesBindingRequirements(binding)) {
         return true
       }
     }
@@ -1037,7 +1171,79 @@ class KeymapManagerImpl implements KeymapManager {
     return display ?? stringifyKeyStroke(node.stroke)
   }
 
-  private collectResolvedCommands(bindings: readonly CompiledBinding[]): KeymapResolvedCommand[] {
+  private resolveCommand(
+    command: KeymapResolvedCommand,
+    registered = this.commands.get(command.name),
+  ): KeymapResolvedCommand {
+    if (this.commandsWithAttrs === 0 || !registered?.attrs) {
+      return command
+    }
+
+    return {
+      input: command.input,
+      name: command.name,
+      args: command.args,
+      attrs: registered.attrs,
+    }
+  }
+
+  private toActiveBinding(binding: CompiledBinding): KeymapActiveBinding {
+    if (this.commandsWithAttrs === 0) {
+      return binding
+    }
+
+    const command = this.resolveCommand(binding.command)
+    if (command === binding.command) {
+      return binding
+    }
+
+    return {
+      sequence: binding.sequence,
+      command,
+      attrs: binding.attrs,
+      consume: binding.consume,
+      fallthrough: binding.fallthrough,
+    }
+  }
+
+  private collectActiveBindings(bindings: readonly CompiledBinding[]): KeymapActiveBinding[] {
+    return bindings.map((binding) => this.toActiveBinding(binding))
+  }
+
+  private collectResolvedCommands(
+    bindings: readonly CompiledBinding[],
+    resolveAttrs: boolean,
+  ): KeymapResolvedCommand[] {
+    const commands: KeymapResolvedCommand[] = []
+    const seen = new Set<string>()
+
+    if (!resolveAttrs || this.commandsWithAttrs === 0) {
+      for (const binding of bindings) {
+        if (seen.has(binding.command.input)) {
+          continue
+        }
+
+        commands.push(binding.command)
+        seen.add(binding.command.input)
+      }
+
+      return commands
+    }
+
+    for (const binding of bindings) {
+      const command = this.resolveCommand(binding.command)
+      if (seen.has(command.input)) {
+        continue
+      }
+
+      commands.push(command)
+      seen.add(command.input)
+    }
+
+    return commands
+  }
+
+  private collectCommandsFast(bindings: readonly CompiledBinding[]): KeymapResolvedCommand[] {
     const commands: KeymapResolvedCommand[] = []
     const seen = new Set<string>()
 
@@ -1053,7 +1259,7 @@ class KeymapManagerImpl implements KeymapManager {
     return commands
   }
 
-  private createActiveKey(node: SequenceNode): KeymapActiveKey | undefined {
+  private createFastActiveKey(node: SequenceNode): KeymapActiveKey | undefined {
     if (!node.stroke) {
       return undefined
     }
@@ -1061,7 +1267,7 @@ class KeymapManagerImpl implements KeymapManager {
     const partIndex = node.depth - 1
     if (node.reachableBindings.length === 1) {
       const [binding] = node.reachableBindings
-      if (!binding || !this.matchRequirements(binding.requires)) {
+      if (!binding || !this.matchesBindingRequirements(binding)) {
         return undefined
       }
 
@@ -1078,7 +1284,7 @@ class KeymapManagerImpl implements KeymapManager {
       return undefined
     }
 
-    const commands = this.collectResolvedCommands(reachableBindings)
+    const commands = this.collectCommandsFast(reachableBindings)
     if (commands.length === 0) {
       return undefined
     }
@@ -1091,7 +1297,7 @@ class KeymapManagerImpl implements KeymapManager {
     }
   }
 
-  private collectActiveKeysAtRoot(activeLayers: RegisteredLayer[]): readonly KeymapActiveKey[] {
+  private collectActiveKeysAtRootFast(activeLayers: RegisteredLayer[]): readonly KeymapActiveKey[] {
     const activeKeys = new Map<string, KeymapActiveKey>()
 
     for (const layer of activeLayers) {
@@ -1100,7 +1306,7 @@ class KeymapManagerImpl implements KeymapManager {
       }
 
       for (const [bindingKey, child] of layer.root.children) {
-        const activeKey = this.createActiveKey(child)
+        const activeKey = this.createFastActiveKey(child)
         if (!activeKey) {
           continue
         }
@@ -1111,18 +1317,18 @@ class KeymapManagerImpl implements KeymapManager {
           continue
         }
 
-        this.mergeActiveKey(existing, activeKey.commands, activeKey.continues, activeKey.display)
+        this.mergeActiveKeyFast(existing, activeKey.commands, activeKey.continues, activeKey.display)
       }
     }
 
     return [...activeKeys.values()]
   }
 
-  private collectActiveKeysFromChildren(children: ReadonlyMap<string, SequenceNode>): readonly KeymapActiveKey[] {
+  private collectActiveKeysFromChildrenFast(children: ReadonlyMap<string, SequenceNode>): readonly KeymapActiveKey[] {
     const activeKeys: KeymapActiveKey[] = []
 
     for (const child of children.values()) {
-      const activeKey = this.createActiveKey(child)
+      const activeKey = this.createFastActiveKey(child)
       if (!activeKey) {
         continue
       }
@@ -1133,7 +1339,7 @@ class KeymapManagerImpl implements KeymapManager {
     return activeKeys
   }
 
-  private mergeActiveKey(
+  private mergeActiveKeyFast(
     activeKey: KeymapActiveKey,
     commands: KeymapResolvedCommand[],
     continues: boolean,
@@ -1164,6 +1370,151 @@ class KeymapManagerImpl implements KeymapManager {
     }
   }
 
+  private createActiveKey(node: SequenceNode, includeBindings: boolean): KeymapActiveKey | undefined {
+    if (!node.stroke) {
+      return undefined
+    }
+
+    const partIndex = node.depth - 1
+    if (node.reachableBindings.length === 1) {
+      const [binding] = node.reachableBindings
+      if (!binding || !this.matchesBindingRequirements(binding)) {
+        return undefined
+      }
+
+      const command =
+        includeBindings && this.commandsWithAttrs > 0 ? this.resolveCommand(binding.command) : binding.command
+
+      if (!includeBindings) {
+        return {
+          stroke: cloneStroke(node.stroke),
+          display: binding.sequence[partIndex]?.display ?? stringifyKeyStroke(node.stroke),
+          commands: [command],
+          continues: node.children.size > 0,
+        }
+      }
+
+      return {
+        stroke: cloneStroke(node.stroke),
+        display: binding.sequence[partIndex]?.display ?? stringifyKeyStroke(node.stroke),
+        bindings: [this.toActiveBinding(binding)],
+        commands: [command],
+        continues: node.children.size > 0,
+      }
+    }
+
+    const reachableBindings = this.getMatchingBindings(node.reachableBindings)
+    if (reachableBindings.length === 0) {
+      return undefined
+    }
+
+    const commands = this.collectResolvedCommands(reachableBindings, includeBindings)
+    if (commands.length === 0) {
+      return undefined
+    }
+
+    if (!includeBindings) {
+      return {
+        stroke: cloneStroke(node.stroke),
+        display: this.getNodeDisplay(node, reachableBindings),
+        commands,
+        continues: node.children.size > 0,
+      }
+    }
+
+    return {
+      stroke: cloneStroke(node.stroke),
+      display: this.getNodeDisplay(node, reachableBindings),
+      bindings: this.collectActiveBindings(reachableBindings),
+      commands,
+      continues: node.children.size > 0,
+    }
+  }
+
+  private collectActiveKeysAtRoot(
+    activeLayers: RegisteredLayer[],
+    includeBindings: boolean,
+  ): readonly KeymapActiveKey[] {
+    const activeKeys = new Map<string, KeymapActiveKey>()
+
+    for (const layer of activeLayers) {
+      if (!resolveEnabled(layer.enabled)) {
+        continue
+      }
+
+      for (const [bindingKey, child] of layer.root.children) {
+        const activeKey = this.createActiveKey(child, includeBindings)
+        if (!activeKey) {
+          continue
+        }
+
+        const existing = activeKeys.get(bindingKey)
+        if (!existing) {
+          activeKeys.set(bindingKey, activeKey)
+          continue
+        }
+
+        this.mergeActiveKey(existing, activeKey, includeBindings)
+      }
+    }
+
+    return [...activeKeys.values()]
+  }
+
+  private collectActiveKeysFromChildren(
+    children: ReadonlyMap<string, SequenceNode>,
+    includeBindings: boolean,
+  ): readonly KeymapActiveKey[] {
+    const activeKeys: KeymapActiveKey[] = []
+
+    for (const child of children.values()) {
+      const activeKey = this.createActiveKey(child, includeBindings)
+      if (!activeKey) {
+        continue
+      }
+
+      activeKeys.push(activeKey)
+    }
+
+    return activeKeys
+  }
+
+  private mergeActiveKey(activeKey: KeymapActiveKey, next: KeymapActiveKey, includeBindings: boolean): void {
+    if (includeBindings) {
+      if (!activeKey.bindings) {
+        activeKey.bindings = []
+      }
+
+      if (next.bindings && next.bindings.length > 0) {
+        activeKey.bindings.push(...next.bindings)
+      }
+    }
+
+    for (const command of next.commands) {
+      let exists = false
+      for (const existing of activeKey.commands) {
+        if (existing.input === command.input) {
+          exists = true
+          break
+        }
+      }
+
+      if (exists) {
+        continue
+      }
+
+      activeKey.commands.push(command)
+    }
+
+    if (next.continues) {
+      activeKey.continues = true
+    }
+
+    if (activeKey.display !== next.display) {
+      activeKey.display = stringifyKeyStroke(activeKey.stroke)
+    }
+  }
+
   private runBindings(
     layer: RegisteredLayer,
     bindings: CompiledBinding[],
@@ -1173,7 +1524,7 @@ class KeymapManagerImpl implements KeymapManager {
     let handled = false
 
     for (const binding of bindings) {
-      if (!this.matchRequirements(binding.requires)) {
+      if (!this.matchesBindingRequirements(binding)) {
         continue
       }
 
@@ -1197,8 +1548,8 @@ class KeymapManagerImpl implements KeymapManager {
     event: KeyEvent,
     focused: Renderable | null,
   ): boolean {
-    const command = this.commands.get(binding.command.name)
-    if (!command) {
+    const registeredCommand = this.commands.get(binding.command.name)
+    if (!registeredCommand) {
       return false
     }
 
@@ -1209,12 +1560,12 @@ class KeymapManagerImpl implements KeymapManager {
       focused,
       target: layer.target ?? null,
       data: this.getReadonlyData(),
-      command: binding.command,
+      command: this.resolveCommand(binding.command, registeredCommand),
     }
 
     let result: KeymapCommandResult
     try {
-      result = command.run(context)
+      result = registeredCommand.run(context)
     } catch (error) {
       console.error(`[Keymap] Error running command "${binding.command.name}":`, error)
       this.applyBindingEventEffects(binding, event)
@@ -1258,6 +1609,21 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     return true
+  }
+
+  private matchesBindingRequirements(binding: CompiledBinding): boolean {
+    if (binding.requires.length === 0) {
+      return true
+    }
+
+    if (binding.matchCacheVersion === this.dataVersion) {
+      return binding.matchCache === true
+    }
+
+    const matched = this.matchRequirements(binding.requires)
+    binding.matchCacheVersion = this.dataVersion
+    binding.matchCache = matched
+    return matched
   }
 
   private setPendingSequence(next: PendingSequenceState | null): void {

@@ -25,8 +25,9 @@ function createFocusableBox(id: string): BoxRenderable {
 function getActiveKey(
   manager: KeymapManager,
   name: string,
+  options?: Parameters<KeymapManager["getActiveKeys"]>[0],
 ): ReturnType<KeymapManager["getActiveKeys"]>[number] | undefined {
-  return manager.getActiveKeys().find((candidate) => candidate.stroke.name === name)
+  return manager.getActiveKeys(options).find((candidate) => candidate.stroke.name === name)
 }
 
 function getActiveKeyNames(manager: KeymapManager): string[] {
@@ -39,8 +40,9 @@ function getActiveKeyNames(manager: KeymapManager): string[] {
 function getActiveKeyDisplay(
   manager: KeymapManager,
   display: string,
+  options?: Parameters<KeymapManager["getActiveKeys"]>[0],
 ): ReturnType<KeymapManager["getActiveKeys"]>[number] | undefined {
-  return manager.getActiveKeys().find((candidate) => candidate.display === display)
+  return manager.getActiveKeys(options).find((candidate) => candidate.display === display)
 }
 
 describe("keymap", () => {
@@ -391,6 +393,122 @@ describe("keymap", () => {
 
     expect(calls).toEqual(["field"])
     expect(manager.getData("vim.mode")).toBe("normal")
+  })
+
+  test("supports binding metadata attributes through typed fields", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerBindingFields({
+      desc(value, ctx) {
+        ctx.attr("desc", value)
+      },
+      group(value, ctx) {
+        ctx.attr("group", value)
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "save-file",
+        run() {},
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "save-file", desc: "Save file", group: "File" }],
+    })
+
+    const activeKey = getActiveKey(manager, "x", { includeBindings: true })
+    expect(activeKey?.bindings).toHaveLength(1)
+    expect(activeKey?.bindings[0]?.attrs).toEqual({ desc: "Save file", group: "File" })
+    expect(activeKey?.bindings[0]?.command.attrs).toBeUndefined()
+    expect(activeKey?.commands[0]?.attrs).toBeUndefined()
+  })
+
+  test("typed binding fields can emit both requirements and attributes", () => {
+    const manager = getKeymapManager(renderer)
+    const seen: string[] = []
+
+    manager.registerBindingFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+        ctx.attr("mode", value)
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "record-mode",
+        run(ctx) {
+          seen.push(String(ctx.data["vim.mode"]))
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", mode: "normal", cmd: "record-mode" }],
+    })
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+
+    manager.setData("vim.mode", "normal")
+
+    const activeKey = getActiveKey(manager, "x", { includeBindings: true })
+    expect(activeKey?.bindings[0]?.attrs).toEqual({ mode: "normal" })
+
+    mockInput.pressKey("x")
+
+    expect(seen).toEqual(["normal"])
+  })
+
+  test("supports command metadata attributes in active keys and command contexts", () => {
+    const manager = getKeymapManager(renderer)
+    const seen: Record<string, unknown>[] = []
+
+    manager.registerCommandFields({
+      desc(value, ctx) {
+        ctx.attr("desc", value)
+      },
+      title(value, ctx) {
+        ctx.attr("title", value)
+      },
+      category(value, ctx) {
+        ctx.attr("category", value)
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "save-file",
+        desc: "Save the current file",
+        title: "Save File",
+        category: "File",
+        run(ctx) {
+          seen.push({ ...ctx.command.attrs })
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "save-file" }],
+    })
+
+    const attrs = {
+      desc: "Save the current file",
+      title: "Save File",
+      category: "File",
+    }
+
+    const activeKey = getActiveKey(manager, "x", { includeBindings: true })
+    expect(activeKey?.bindings[0]?.command.attrs).toEqual(attrs)
+    expect(activeKey?.commands[0]?.attrs).toEqual(attrs)
+
+    mockInput.pressKey("x")
+
+    expect(seen).toEqual([attrs])
   })
 
   test("supports multi-key sequences and reports active continuation keys", () => {
@@ -764,6 +882,26 @@ describe("keymap", () => {
     }).toThrow('Conflicting keymap requirement for "vim.mode"')
   })
 
+  test("throws on conflicting attributes from typed binding fields", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerBindingFields({
+      desc(value, ctx) {
+        ctx.attr("label", value)
+      },
+      title(value, ctx) {
+        ctx.attr("label", value)
+      },
+    })
+
+    expect(() => {
+      manager.registerLayer({
+        scope: "global",
+        bindings: [{ key: "x", desc: "Delete line", title: "Delete", cmd: "noop" }],
+      })
+    }).toThrow('Conflicting keymap attribute for "label"')
+  })
+
   test("throws on unknown binding fields", () => {
     const manager = getKeymapManager(renderer)
 
@@ -773,6 +911,54 @@ describe("keymap", () => {
         bindings: [{ key: "x", mode: "normal", cmd: "noop" }],
       })
     }).toThrow('Unknown keymap binding field "mode"')
+  })
+
+  test("throws on unknown command fields", () => {
+    const manager = getKeymapManager(renderer)
+
+    expect(() => {
+      manager.registerCommands([
+        {
+          name: "save-file",
+          desc: "Save the current file",
+          run() {},
+        },
+      ])
+    }).toThrow('Unknown keymap command field "desc"')
+  })
+
+  test("throws on reserved command field registrations", () => {
+    const manager = getKeymapManager(renderer)
+
+    expect(() => {
+      manager.registerCommandFields({
+        name() {},
+      })
+    }).toThrow('Keymap command field "name" is reserved')
+  })
+
+  test("throws on conflicting attributes from typed command fields", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerCommandFields({
+      desc(value, ctx) {
+        ctx.attr("label", value)
+      },
+      title(value, ctx) {
+        ctx.attr("label", value)
+      },
+    })
+
+    expect(() => {
+      manager.registerCommands([
+        {
+          name: "save-file",
+          desc: "Save",
+          title: "Write",
+          run() {},
+        },
+      ])
+    }).toThrow('Conflicting keymap attribute for "label"')
   })
 
   test("throws when a binding is both an exact key and a prefix", () => {
@@ -1330,6 +1516,57 @@ describe("keymap", () => {
         bindings: [{ key: "x", mode: "normal", cmd: "noop" }] as any,
       })
     }).toThrow('Unknown keymap binding field "mode"')
+
+    const offCommandFields = manager.registerCommandFields({
+      desc(value, ctx) {
+        ctx.attr("desc", value)
+      },
+    })
+    offCommandFields()
+
+    expect(() => {
+      manager.registerCommands([
+        {
+          name: "noop",
+          desc: "No operation",
+          run() {},
+        },
+      ])
+    }).toThrow('Unknown keymap command field "desc"')
+  })
+
+  test("merges active bindings across layers while preserving metadata", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerBindingFields({
+      desc(value, ctx) {
+        ctx.attr("desc", value)
+      },
+    })
+    manager.registerCommandFields({
+      category(value, ctx) {
+        ctx.attr("category", value)
+      },
+    })
+
+    manager.registerCommands([
+      { name: "save", category: "File", run() {} },
+      { name: "help", category: "Help", run() {} },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "save", desc: "Save file" }],
+    })
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "help", desc: "Show help" }],
+    })
+
+    const activeKey = getActiveKey(manager, "x", { includeBindings: true })
+
+    expect(activeKey?.bindings.map((binding) => binding.attrs["desc"]).sort()).toEqual(["Save file", "Show help"])
+    expect(activeKey?.commands.map((command) => command.attrs["category"]).sort()).toEqual(["File", "Help"])
   })
 
   test("merges active keys across layers and falls back to canonical display when labels conflict", () => {

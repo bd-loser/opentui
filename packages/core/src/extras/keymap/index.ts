@@ -26,6 +26,8 @@ export type {
   KeymapFocusLayer,
   KeymapFocusWithinLayer,
   KeymapGlobalLayer,
+  KeymapLayerFieldCompiler,
+  KeymapLayerFieldContext,
   KeymapLayerFields,
   KeymapLayer,
   KeymapManager,

@@ -65,6 +65,7 @@ export interface KeymapLayerFields {
   priority?: number
   enabled?: KeymapEnabled
   bindings: KeymapBindings
+  [key: string]: unknown
 }
 
 export interface KeymapGlobalLayer extends KeymapLayerFields {
@@ -153,6 +154,12 @@ export interface KeymapBindingFieldContext {
 
 export type KeymapBindingFieldCompiler = (value: unknown, ctx: KeymapBindingFieldContext) => void
 
+export interface KeymapLayerFieldContext {
+  require(name: string, value: unknown): void
+}
+
+export type KeymapLayerFieldCompiler = (value: unknown, ctx: KeymapLayerFieldContext) => void
+
 export interface KeymapCommandFieldContext {
   attr(name: string, value: unknown): void
 }
@@ -183,6 +190,7 @@ export interface KeymapManager {
   getActiveKeys(options?: KeymapActiveKeyOptions): readonly KeymapActiveKey[]
   onPendingSequenceChange(fn: (sequence: readonly ParsedKeyStroke[]) => void): () => void
   registerLayer(layer: KeymapLayer): () => void
+  registerLayerFields(fields: Record<string, KeymapLayerFieldCompiler>): () => void
   registerToken(token: KeymapToken): () => void
   registerBindingFields(fields: Record<string, KeymapBindingFieldCompiler>): () => void
   registerCommandFields(fields: Record<string, KeymapCommandFieldCompiler>): () => void
@@ -191,11 +199,13 @@ export interface KeymapManager {
   registerCommands(commands: KeymapCommand[]): () => void
 }
 
-interface CompiledBinding extends KeymapActiveBinding {
+interface RequirementMatchable {
   requires: readonly [name: string, value: unknown][]
   matchCacheVersion?: number
   matchCache?: boolean
 }
+
+interface CompiledBinding extends KeymapActiveBinding, RequirementMatchable {}
 
 interface RegisteredCommand {
   name: string
@@ -218,6 +228,9 @@ interface RegisteredLayer {
   scope: KeymapScope
   priority: number
   enabled?: KeymapEnabled
+  requires: readonly [name: string, value: unknown][]
+  matchCacheVersion?: number
+  matchCache?: boolean
   bindingInputs: readonly KeymapBindingInput[]
   hasTokenBindings: boolean
   root: SequenceNode
@@ -251,6 +264,8 @@ interface PendingSequenceState {
 const keymapManagersByRenderer = new WeakMap<CliRenderer, KeymapManagerImpl>()
 
 export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "consume", "fallthrough"])
+
+const RESERVED_LAYER_FIELDS = new Set(["target", "scope", "priority", "enabled", "bindings"])
 
 const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
 
@@ -366,6 +381,7 @@ class KeymapManagerImpl implements KeymapManager {
   private globalLayers: RegisteredLayer[] = []
   private targetLayers = new WeakMap<Renderable, RegisteredLayerBucket>()
   private tokens = new Map<string, ParsedKeyStroke>()
+  private layerFields = new Map<string, KeymapLayerFieldCompiler>()
   private bindingFields = new Map<string, KeymapBindingFieldCompiler>()
   private commandFields = new Map<string, KeymapCommandFieldCompiler>()
   private keyHooks: RegisteredKeyHook[] = []
@@ -373,6 +389,7 @@ class KeymapManagerImpl implements KeymapManager {
   private pendingSequenceListeners: Array<(sequence: readonly ParsedKeyStroke[]) => void> = []
   private commands = new Map<string, RegisteredCommand>()
   private commandsWithAttrs = 0
+  private layersWithRequirements = 0
   private data: KeymapEventData = {}
   private dataVersion = 0
   private readonlyDataVersion = -1
@@ -424,6 +441,7 @@ class KeymapManagerImpl implements KeymapManager {
     this.globalLayers = []
     this.targetLayers = new WeakMap()
     this.tokens.clear()
+    this.layerFields.clear()
     this.bindingFields.clear()
     this.commandFields.clear()
     this.keyHooks = []
@@ -431,6 +449,7 @@ class KeymapManagerImpl implements KeymapManager {
     this.pendingSequenceListeners = []
     this.commands.clear()
     this.commandsWithAttrs = 0
+    this.layersWithRequirements = 0
     this.data = {}
     this.dataVersion = 0
     this.readonlyDataVersion = -1
@@ -559,6 +578,7 @@ class KeymapManagerImpl implements KeymapManager {
 
     const scope = this.normalizeScope(layer)
     const bindingInputs = snapshotBindingInputs(layer.bindings)
+    const requires = this.compileLayerRequirements(layer)
     const target = layer.target
     if (target && target.isDestroyed) {
       throw new Error("Cannot register a keymap layer for a destroyed renderable")
@@ -570,12 +590,16 @@ class KeymapManagerImpl implements KeymapManager {
       scope,
       priority: layer.priority ?? 0,
       enabled: layer.enabled,
+      requires,
       bindingInputs,
       hasTokenBindings: bindingInputs.some((binding) => bindingUsesTokenSyntax(binding)),
       root: this.compileBindings(bindingInputs, this.tokens),
     }
 
     this.layers.add(registeredLayer)
+    if (registeredLayer.requires.length > 0) {
+      this.layersWithRequirements += 1
+    }
     this.indexLayer(registeredLayer)
 
     if (target) {
@@ -591,6 +615,34 @@ class KeymapManagerImpl implements KeymapManager {
 
     return () => {
       this.unregisterLayer(registeredLayer)
+    }
+  }
+
+  public registerLayerFields(fields: Record<string, KeymapLayerFieldCompiler>): () => void {
+    this.assertNotDestroyed()
+
+    const entries = Object.entries(fields)
+    for (const [name] of entries) {
+      if (RESERVED_LAYER_FIELDS.has(name)) {
+        throw new Error(`Keymap layer field "${name}" is reserved`)
+      }
+
+      if (this.layerFields.has(name)) {
+        throw new Error(`Keymap layer field "${name}" is already registered`)
+      }
+    }
+
+    for (const [name, compiler] of entries) {
+      this.layerFields.set(name, compiler)
+    }
+
+    return () => {
+      for (const [name, compiler] of entries) {
+        const current = this.layerFields.get(name)
+        if (current === compiler) {
+          this.layerFields.delete(name)
+        }
+      }
     }
   }
 
@@ -809,6 +861,33 @@ class KeymapManagerImpl implements KeymapManager {
     return "global"
   }
 
+  private compileLayerRequirements(layer: KeymapLayer): readonly [name: string, value: unknown][] {
+    const mergedRequires: KeymapEventData = {}
+
+    for (const [fieldName, value] of Object.entries(layer)) {
+      if (RESERVED_LAYER_FIELDS.has(fieldName)) {
+        continue
+      }
+
+      if (value === undefined) {
+        continue
+      }
+
+      const compiler = this.layerFields.get(fieldName)
+      if (!compiler) {
+        throw new Error(`Unknown keymap layer field "${fieldName}"`)
+      }
+
+      compiler(value, {
+        require(name, requiredValue) {
+          mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
+        },
+      })
+    }
+
+    return Object.entries(mergedRequires)
+  }
+
   private getOrCreateTargetBucket(target: Renderable): RegisteredLayerBucket {
     const existing = this.targetLayers.get(target)
     if (existing) {
@@ -872,6 +951,10 @@ class KeymapManagerImpl implements KeymapManager {
   private unregisterLayer(layer: RegisteredLayer): void {
     if (!this.layers.delete(layer)) {
       return
+    }
+
+    if (layer.requires.length > 0) {
+      this.layersWithRequirements -= 1
     }
 
     this.removeLayerFromIndex(layer)
@@ -1127,8 +1210,14 @@ class KeymapManagerImpl implements KeymapManager {
     event: KeyEvent,
     focused: Renderable | null,
   ): void {
+    const hasLayerRequirements = this.layersWithRequirements > 0
+
     for (const layer of activeLayers) {
       if (!resolveEnabled(layer.enabled)) {
+        continue
+      }
+
+      if (hasLayerRequirements && layer.requires.length > 0 && !this.matchesLayerRequirements(layer)) {
         continue
       }
 
@@ -1375,9 +1464,14 @@ class KeymapManagerImpl implements KeymapManager {
 
   private collectActiveKeysAtRootFast(activeLayers: RegisteredLayer[]): readonly KeymapActiveKey[] {
     const activeKeys = new Map<string, KeymapActiveKey>()
+    const hasLayerRequirements = this.layersWithRequirements > 0
 
     for (const layer of activeLayers) {
       if (!resolveEnabled(layer.enabled)) {
+        continue
+      }
+
+      if (hasLayerRequirements && layer.requires.length > 0 && !this.matchesLayerRequirements(layer)) {
         continue
       }
 
@@ -1512,9 +1606,14 @@ class KeymapManagerImpl implements KeymapManager {
     includeBindings: boolean,
   ): readonly KeymapActiveKey[] {
     const activeKeys = new Map<string, KeymapActiveKey>()
+    const hasLayerRequirements = this.layersWithRequirements > 0
 
     for (const layer of activeLayers) {
       if (!resolveEnabled(layer.enabled)) {
+        continue
+      }
+
+      if (hasLayerRequirements && layer.requires.length > 0 && !this.matchesLayerRequirements(layer)) {
         continue
       }
 
@@ -1687,19 +1786,39 @@ class KeymapManagerImpl implements KeymapManager {
     return true
   }
 
-  private matchesBindingRequirements(binding: CompiledBinding): boolean {
-    if (binding.requires.length === 0) {
+  private matchesRequirements(target: RequirementMatchable): boolean {
+    if (target.requires.length === 0) {
       return true
     }
 
-    if (binding.matchCacheVersion === this.dataVersion) {
-      return binding.matchCache === true
+    if (target.matchCacheVersion === this.dataVersion) {
+      return target.matchCache === true
     }
 
-    const matched = this.matchRequirements(binding.requires)
-    binding.matchCacheVersion = this.dataVersion
-    binding.matchCache = matched
+    const matched = this.matchRequirements(target.requires)
+    target.matchCacheVersion = this.dataVersion
+    target.matchCache = matched
     return matched
+  }
+
+  private matchesBindingRequirements(binding: CompiledBinding): boolean {
+    return this.matchesRequirements(binding)
+  }
+
+  private matchesLayerRequirements(layer: RegisteredLayer): boolean {
+    return this.matchesRequirements(layer)
+  }
+
+  private layerMatchesRuntimeState(layer: RegisteredLayer): boolean {
+    if (!resolveEnabled(layer.enabled)) {
+      return false
+    }
+
+    if (this.layersWithRequirements === 0 || layer.requires.length === 0) {
+      return true
+    }
+
+    return this.matchesLayerRequirements(layer)
   }
 
   private setPendingSequence(next: PendingSequenceState | null): void {
@@ -1832,7 +1951,7 @@ class KeymapManagerImpl implements KeymapManager {
       return undefined
     }
 
-    if (!resolveEnabled(this.pendingSequence.layer.enabled)) {
+    if (!this.layerMatchesRuntimeState(this.pendingSequence.layer)) {
       this.setPendingSequence(null)
       return undefined
     }

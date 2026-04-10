@@ -182,11 +182,7 @@ export function useKeymap<TRenderable extends Renderable = Renderable>(
       return
     }
 
-    const baseLayer = {
-      priority: layer.priority,
-      enabled: layer.enabled,
-      bindings: layer.bindings,
-    }
+    const { scope: _scope, target: _target, ...baseLayer } = layer
 
     let resolvedLayer: KeymapLayer
     if (resolvedScope === "global") {

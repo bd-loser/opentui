@@ -442,9 +442,10 @@ describe("keymap", () => {
     })
 
     const activeKey = getActiveKey(manager, "x", { includeBindings: true })
+    const activeBinding = activeKey?.bindings?.[0]
     expect(activeKey?.bindings).toHaveLength(1)
-    expect(activeKey?.bindings[0]?.attrs).toEqual({ desc: "Save file", group: "File" })
-    expect(activeKey?.bindings[0]?.command.attrs).toBeUndefined()
+    expect(activeBinding?.attrs).toEqual({ desc: "Save file", group: "File" })
+    expect(activeBinding?.command.attrs).toBeUndefined()
     expect(activeKey?.commands[0]?.attrs).toBeUndefined()
   })
 
@@ -478,11 +479,99 @@ describe("keymap", () => {
     manager.setData("vim.mode", "normal")
 
     const activeKey = getActiveKey(manager, "x", { includeBindings: true })
-    expect(activeKey?.bindings[0]?.attrs).toEqual({ mode: "normal" })
+    expect(activeKey?.bindings?.[0]?.attrs).toEqual({ mode: "normal" })
 
     mockInput.pressKey("x")
 
     expect(seen).toEqual(["normal"])
+  })
+
+  test("supports typed layer fields for local scopes", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerLayerFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "local-mode",
+        run() {
+          calls.push("local")
+        },
+      },
+    ])
+
+    const target = createFocusableBox("layer-field-target")
+    renderer.root.add(target)
+
+    manager.registerLayer({
+      target,
+      mode: "normal",
+      bindings: [{ key: "x", cmd: "local-mode" }],
+    })
+
+    target.focus()
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+
+    mockInput.pressKey("x")
+    expect(calls).toEqual([])
+
+    manager.setData("vim.mode", "normal")
+
+    expect(getActiveKeyNames(manager)).toEqual(["x"])
+
+    mockInput.pressKey("x")
+    expect(calls).toEqual(["local"])
+  })
+
+  test("layer and binding requirements compose", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerLayerFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
+    })
+    manager.registerBindingFields({
+      state(value, ctx) {
+        ctx.require("vim.state", value)
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "composed",
+        run() {
+          calls.push("hit")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      mode: "normal",
+      bindings: [{ key: "x", state: "idle", cmd: "composed" }],
+    })
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+
+    manager.setData("vim.mode", "normal")
+    expect(getActiveKeyNames(manager)).toEqual([])
+
+    manager.setData("vim.state", "idle")
+    expect(getActiveKeyNames(manager)).toEqual(["x"])
+
+    mockInput.pressKey("x")
+    expect(calls).toEqual(["hit"])
+
+    manager.setData("vim.mode", "visual")
+    expect(getActiveKeyNames(manager)).toEqual([])
   })
 
   test("supports command metadata attributes in active keys and command contexts", () => {
@@ -525,7 +614,7 @@ describe("keymap", () => {
     }
 
     const activeKey = getActiveKey(manager, "x", { includeBindings: true })
-    expect(activeKey?.bindings[0]?.command.attrs).toEqual(attrs)
+    expect(activeKey?.bindings?.[0]?.command.attrs).toEqual(attrs)
     expect(activeKey?.commands[0]?.attrs).toEqual(attrs)
 
     mockInput.pressKey("x")
@@ -904,6 +993,28 @@ describe("keymap", () => {
     }).toThrow('Conflicting keymap requirement for "vim.mode"')
   })
 
+  test("throws on conflicting requirements from typed layer fields", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerLayerFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
+      state(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
+    })
+
+    expect(() => {
+      manager.registerLayer({
+        scope: "global",
+        mode: "normal",
+        state: "visual",
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+    }).toThrow('Conflicting keymap requirement for "vim.mode"')
+  })
+
   test("throws on conflicting attributes from typed binding fields", () => {
     const manager = getKeymapManager(renderer)
 
@@ -935,6 +1046,18 @@ describe("keymap", () => {
     }).toThrow('Unknown keymap binding field "mode"')
   })
 
+  test("throws on unknown layer fields", () => {
+    const manager = getKeymapManager(renderer)
+
+    expect(() => {
+      manager.registerLayer({
+        scope: "global",
+        mode: "normal",
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+    }).toThrow('Unknown keymap layer field "mode"')
+  })
+
   test("throws on unknown command fields", () => {
     const manager = getKeymapManager(renderer)
 
@@ -957,6 +1080,16 @@ describe("keymap", () => {
         name() {},
       })
     }).toThrow('Keymap command field "name" is reserved')
+  })
+
+  test("throws on reserved layer field registrations", () => {
+    const manager = getKeymapManager(renderer)
+
+    expect(() => {
+      manager.registerLayerFields({
+        scope() {},
+      })
+    }).toThrow('Keymap layer field "scope" is reserved')
   })
 
   test("throws on conflicting attributes from typed command fields", () => {
@@ -1460,6 +1593,31 @@ describe("keymap", () => {
     expect(manager.getPendingSequence()).toEqual([])
   })
 
+  test("clears pending sequences when layer requirements stop matching", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerLayerFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
+    })
+
+    manager.registerCommands([{ name: "delete-line", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      mode: "normal",
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
+
+    manager.setData("vim.mode", "normal")
+    mockInput.pressKey("d")
+    expect(manager.getPendingSequence()).toHaveLength(1)
+
+    manager.setData("vim.mode", "visual")
+
+    expect(manager.getPendingSequence()).toEqual([])
+  })
+
   test("can unsubscribe pending sequence listeners", () => {
     const manager = getKeymapManager(renderer)
     const changes: string[] = []
@@ -1642,8 +1800,23 @@ describe("keymap", () => {
     expect(getActiveKeyNames(manager)).toEqual(["a", "b"])
   })
 
-  test("can dispose binding field and command field registrations", () => {
+  test("can dispose layer, binding, and command field registrations", () => {
     const manager = getKeymapManager(renderer)
+
+    const offLayerFields = manager.registerLayerFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
+    })
+    offLayerFields()
+
+    expect(() => {
+      manager.registerLayer({
+        scope: "global",
+        mode: "normal",
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+    }).toThrow('Unknown keymap layer field "mode"')
 
     const offBindingFields = manager.registerBindingFields({
       mode(value, ctx) {
@@ -1707,8 +1880,8 @@ describe("keymap", () => {
 
     const activeKey = getActiveKey(manager, "x", { includeBindings: true })
 
-    expect(activeKey?.bindings.map((binding) => binding.attrs["desc"]).sort()).toEqual(["Save file", "Show help"])
-    expect(activeKey?.commands.map((command) => command.attrs["category"]).sort()).toEqual(["File", "Help"])
+    expect(activeKey?.bindings?.map((binding) => binding.attrs?.["desc"]).sort()).toEqual(["Save file", "Show help"])
+    expect(activeKey?.commands.map((command) => command.attrs?.["category"]).sort()).toEqual(["File", "Help"])
   })
 
   test("merges active keys across layers and falls back to canonical display when labels conflict", () => {

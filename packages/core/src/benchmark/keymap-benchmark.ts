@@ -218,6 +218,17 @@ function registerModeBindingFields(manager: KeymapManager): void {
   })
 }
 
+function registerModeLayerFields(manager: KeymapManager): void {
+  manager.registerLayerFields({
+    mode(value, ctx) {
+      ctx.require("vim.mode", value)
+    },
+    state(value, ctx) {
+      ctx.require("vim.state", value)
+    },
+  })
+}
+
 async function createScenarioResources(): Promise<ScenarioResources> {
   const testSetup = await createTestRenderer({ width: 80, height: 24 })
   const manager = getKeymapManager(testSetup.renderer)
@@ -237,7 +248,7 @@ async function createScenarioResources(): Promise<ScenarioResources> {
 
 function createFocusTree(resources: ScenarioResources, depth: number): BoxRenderable[] {
   const chain: BoxRenderable[] = []
-  let parent = resources.renderer.root as BoxRenderable
+  let parent: { add(child: BoxRenderable): void } = resources.renderer.root
 
   for (let index = 0; index < depth; index += 1) {
     const node = createFocusableBox(resources.renderer, `focus-${index}`)
@@ -450,6 +461,38 @@ const scenarios: BenchmarkScenario[] = [
               state: index % 4 === 0 ? "idle" : "busy",
               cmd: "noop",
             },
+          ],
+        })
+      }
+
+      return {
+        resources,
+        runIteration() {
+          resources.manager.getActiveKeys()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "active_keys_layer_requirement_heavy",
+    description: "Repeated getActiveKeys with many runtime-gated layers",
+    async setup() {
+      const resources = await createScenarioResources()
+      registerModeLayerFields(resources.manager)
+      resources.manager.setData("vim.mode", "normal")
+      resources.manager.setData("vim.state", "idle")
+
+      for (let index = 0; index < 320; index += 1) {
+        resources.manager.registerLayer({
+          scope: "global",
+          mode: index % 2 === 0 ? "normal" : "visual",
+          state: index % 3 === 0 ? "idle" : "busy",
+          bindings: [
+            { key: createKey(index), cmd: "noop" },
+            { key: createKey(index + 1), cmd: "noop" },
           ],
         })
       }

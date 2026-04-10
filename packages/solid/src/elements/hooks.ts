@@ -8,7 +8,7 @@ import {
   type KeyEvent,
   type TimelineOptions,
 } from "@opentui/core"
-import { getKeymapManager, type KeymapLayer } from "@opentui/core/extras"
+import { getKeymapManager, type KeymapBindings, type KeymapEnabled, type KeymapLayer } from "@opentui/core/extras"
 import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js"
 
 export const RendererContext = createContext<CliRenderer>()
@@ -102,13 +102,51 @@ export const usePaste = (callback: (event: PasteEvent) => void) => {
   })
 }
 
-export interface UseKeymapLayer extends Omit<KeymapLayer, "target"> {
-  target?: Renderable | null | undefined | (() => Renderable | null | undefined)
+export type UseKeymapTarget<TRenderable extends Renderable = Renderable> =
+  | TRenderable
+  | null
+  | undefined
+  | (() => TRenderable | null | undefined)
+
+interface UseKeymapLayerBase {
+  priority?: number
+  enabled?: KeymapEnabled
+  bindings: KeymapBindings
 }
 
 export type KeymapRef<TRenderable extends Renderable = Renderable> = (value: TRenderable) => void
 
-function resolveKeymapTarget(target: UseKeymapLayer["target"]): Renderable | undefined {
+export interface UseGlobalKeymapLayer extends UseKeymapLayerBase {
+  scope?: "global"
+  target?: undefined
+}
+
+export interface UseFocusKeymapLayer<TRenderable extends Renderable = Renderable> extends UseKeymapLayerBase {
+  scope: "focus"
+  target?: UseKeymapTarget<TRenderable>
+}
+
+export interface UseFocusWithinKeymapLayer<TRenderable extends Renderable = Renderable> extends UseKeymapLayerBase {
+  scope: "focus-within"
+  target?: UseKeymapTarget<TRenderable>
+}
+
+export interface UseInferredFocusWithinKeymapLayer<TRenderable extends Renderable = Renderable>
+  extends UseKeymapLayerBase {
+  scope?: undefined
+  target: UseKeymapTarget<TRenderable>
+}
+
+export type UseTargetKeymapLayer<TRenderable extends Renderable = Renderable> =
+  | UseFocusKeymapLayer<TRenderable>
+  | UseFocusWithinKeymapLayer<TRenderable>
+  | UseInferredFocusWithinKeymapLayer<TRenderable>
+
+export type UseKeymapLayer<TRenderable extends Renderable = Renderable> =
+  | UseGlobalKeymapLayer
+  | UseTargetKeymapLayer<TRenderable>
+
+function resolveKeymapTarget(target: UseKeymapTarget | undefined): Renderable | undefined {
   if (typeof target === "function") {
     return target() ?? undefined
   }
@@ -121,9 +159,13 @@ export const useKeymappings = () => {
   return getKeymapManager(renderer)
 }
 
-export const useKeymap = <TRenderable extends Renderable = Renderable>(
-  layer: UseKeymapLayer,
-): KeymapRef<TRenderable> => {
+export function useKeymap<TRenderable extends Renderable = Renderable>(layer: UseGlobalKeymapLayer): KeymapRef<TRenderable>
+export function useKeymap<TRenderable extends Renderable = Renderable>(
+  layer: UseTargetKeymapLayer<TRenderable>,
+): KeymapRef<TRenderable>
+export function useKeymap<TRenderable extends Renderable = Renderable>(
+  layer: UseKeymapLayer<TRenderable>,
+): KeymapRef<TRenderable> {
   const manager = useKeymappings()
   let dispose: (() => void) | undefined
   let mounted = false
@@ -144,10 +186,28 @@ export const useKeymap = <TRenderable extends Renderable = Renderable>(
       return
     }
 
-    const resolvedLayer: KeymapLayer = {
-      ...layer,
-      scope: resolvedScope,
-      target: resolvedTarget,
+    const baseLayer = {
+      priority: layer.priority,
+      enabled: layer.enabled,
+      bindings: layer.bindings,
+    }
+
+    let resolvedLayer: KeymapLayer
+    if (resolvedScope === "global") {
+      resolvedLayer = {
+        ...baseLayer,
+        scope: "global",
+      }
+    } else {
+      if (!resolvedTarget) {
+        return
+      }
+
+      resolvedLayer = {
+        ...baseLayer,
+        scope: resolvedScope,
+        target: resolvedTarget,
+      }
     }
 
     dispose = manager.registerLayer(resolvedLayer)

@@ -59,13 +59,32 @@ export type KeymapBindingShorthand = Record<string, string>
 
 export type KeymapBindings = KeymapBindingInput[] | KeymapBindingShorthand
 
-export interface KeymapLayer {
-  target?: Renderable
-  scope?: "global" | "focus" | "focus-within"
+export type KeymapScope = "global" | "focus" | "focus-within"
+
+interface KeymapLayerBase {
   priority?: number
   enabled?: KeymapEnabled
   bindings: KeymapBindings
 }
+
+export interface KeymapGlobalLayer extends KeymapLayerBase {
+  target?: undefined
+  scope?: "global"
+}
+
+export interface KeymapFocusWithinLayer extends KeymapLayerBase {
+  target: Renderable
+  scope?: "focus-within"
+}
+
+export interface KeymapFocusLayer extends KeymapLayerBase {
+  target: Renderable
+  scope: "focus"
+}
+
+export type KeymapTargetLayer = KeymapFocusWithinLayer | KeymapFocusLayer
+
+export type KeymapLayer = KeymapGlobalLayer | KeymapTargetLayer
 
 export interface KeymapResolvedCommand {
   input: string
@@ -196,7 +215,7 @@ interface SequenceNode {
 interface RegisteredLayer {
   order: number
   target?: Renderable
-  scope: "global" | "focus" | "focus-within"
+  scope: KeymapScope
   priority: number
   enabled?: KeymapEnabled
   bindingInputs: readonly KeymapBindingInput[]
@@ -774,7 +793,7 @@ class KeymapManagerImpl implements KeymapManager {
     }
   }
 
-  private normalizeScope(layer: KeymapLayer): "global" | "focus" | "focus-within" {
+  private normalizeScope(layer: KeymapLayer): KeymapScope {
     if (layer.scope) {
       if (layer.scope !== "global" && !layer.target) {
         throw new Error(`Keymap scope "${layer.scope}" requires a target renderable`)

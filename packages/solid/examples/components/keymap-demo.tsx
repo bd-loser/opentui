@@ -336,65 +336,80 @@ export default function KeymapDemo() {
           gap: 2,
         }}
       >
-        {/* Details column */}
-        <box flexGrow={1}>
-          <text fg={palette.text} height={14}>
-            <span style={{ fg: palette.textDim }}>Focused: </span>
-            <span style={{ fg: focusedColor(), attributes: TextAttributes.BOLD }}>{focusedName()}</span>
-            <br />
-            <span style={{ fg: palette.textDim }}>Leader: </span>
-            <Show
-              when={leaderArmed()}
-              fallback={<span style={{ fg: palette.textMuted }}>idle</span>}
-            >
-              <span style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}>armed (ctrl+x)</span>
-            </Show>
-            <br />
-            <span style={{ fg: palette.textDim }}>Last action: </span>
-            <span style={{ fg: palette.text }}>{lastAction()}</span>
-            <Show when={helpVisible()}>
-              <br />
-              <br />
-              <span style={{ fg: palette.textDim, attributes: TextAttributes.BOLD }}>Keybindings</span>
-              <br />
-              <KeyLabel>tab</KeyLabel>
-              <span style={{ fg: palette.textMuted }}>{" / "}</span>
-              <KeyLabel>shift+tab</KeyLabel>
-              <span style={{ fg: palette.textDim }}>: move focus</span>
-              <br />
-              <KeyLabel>?</KeyLabel>
-              <span style={{ fg: palette.textDim }}>: toggle help</span>
-              <span style={{ fg: palette.separator }}>{" | "}</span>
-              <KeyLabel>ctrl+r</KeyLabel>
-              <span style={{ fg: palette.textDim }}>: :reset</span>
-              <br />
-              <KeyLabel>enter</KeyLabel>
-              <span style={{ fg: palette.textDim }}>: :w alpha-panel.txt / beta-panel.txt</span>
-              <br />
-              <KeyLabel>ctrl+x</KeyLabel>
-              <span style={{ fg: palette.textMuted }}>{" then "}</span>
-              <KeyLabel>s</KeyLabel>
-              <span style={{ fg: palette.textDim }}>: :w session.log</span>
-              <br />
-              <KeyLabel>ctrl+x</KeyLabel>
-              <span style={{ fg: palette.textMuted }}>{" then "}</span>
-              <KeyLabel>h</KeyLabel>
-              <span style={{ fg: palette.textDim }}>: toggle help</span>
-            </Show>
-            <Show when={logs().length > 0}>
-              <br />
-              <br />
-              <span style={{ fg: palette.textDim, attributes: TextAttributes.BOLD }}>Log:</span>
-              <For each={logs().slice(0, 4)}>
-                {(log) => (
-                  <>
-                    <br />
-                    <span style={{ fg: palette.textMuted }}>{log}</span>
-                  </>
-                )}
-              </For>
-            </Show>
-          </text>
+        {/* Details column — box layout, each section isolated so Show/For ordering is stable */}
+        <box flexGrow={1} flexDirection="column">
+          <box flexDirection="column" flexShrink={0}>
+            <text height={1}>
+              <span style={{ fg: palette.textDim }}>Focused: </span>
+              <span style={{ fg: focusedColor(), attributes: TextAttributes.BOLD }}>{focusedName()}</span>
+            </text>
+            <text height={1}>
+              <span style={{ fg: palette.textDim }}>Leader: </span>
+              <Show
+                when={leaderArmed()}
+                fallback={<span style={{ fg: palette.textMuted }}>idle</span>}
+              >
+                <span style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}>armed (ctrl+x)</span>
+              </Show>
+            </text>
+            <text height={1}>
+              <span style={{ fg: palette.textDim }}>Last action: </span>
+              <span style={{ fg: palette.text }}>{lastAction()}</span>
+            </text>
+          </box>
+          <Show when={helpVisible()}>
+            <box flexDirection="column" flexShrink={0} marginTop={1}>
+              <text style={{ fg: palette.textDim, attributes: TextAttributes.BOLD }} height={1}>
+                Keybindings
+              </text>
+              <text height={1}>
+                <KeyLabel>tab</KeyLabel>
+                <span style={{ fg: palette.textMuted }}>{" / "}</span>
+                <KeyLabel>shift+tab</KeyLabel>
+                <span style={{ fg: palette.textDim }}>: move focus</span>
+              </text>
+              <text height={1}>
+                <KeyLabel>?</KeyLabel>
+                <span style={{ fg: palette.textDim }}>: toggle help</span>
+                <span style={{ fg: palette.separator }}>{" | "}</span>
+                <KeyLabel>ctrl+r</KeyLabel>
+                <span style={{ fg: palette.textDim }}>: :reset</span>
+              </text>
+              <text height={1}>
+                <KeyLabel>enter</KeyLabel>
+                <span style={{ fg: palette.textDim }}>: :w alpha-panel.txt / beta-panel.txt</span>
+              </text>
+              <text height={1}>
+                <KeyLabel>ctrl+x</KeyLabel>
+                <span style={{ fg: palette.textMuted }}>{" then "}</span>
+                <KeyLabel>s</KeyLabel>
+                <span style={{ fg: palette.textDim }}>: :w session.log</span>
+              </text>
+              <text height={1}>
+                <KeyLabel>ctrl+x</KeyLabel>
+                <span style={{ fg: palette.textMuted }}>{" then "}</span>
+                <KeyLabel>h</KeyLabel>
+                <span style={{ fg: palette.textDim }}>: toggle help</span>
+              </text>
+            </box>
+          </Show>
+          <box flexGrow={1} />
+          <Show when={logs().length > 0}>
+            <box flexDirection="column" flexShrink={0}>
+              <text style={{ fg: palette.textDim, attributes: TextAttributes.BOLD }} height={1}>
+                Log:
+              </text>
+              <box flexDirection="column">
+                <For each={logs().slice(0, 4)}>
+                  {(log) => (
+                    <text fg={palette.textMuted} height={1} truncate>
+                      {log}
+                    </text>
+                  )}
+                </For>
+              </box>
+            </box>
+          </Show>
         </box>
 
         {/* Which-key column — each group in its own box so <For> is never mixed with static siblings */}

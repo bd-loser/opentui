@@ -71,6 +71,28 @@ describe("keymap", () => {
     expect(second).not.toBe(first)
   })
 
+  test("defaults targetless layers to global scope", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "global-default",
+        run() {
+          calls.push("global")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      bindings: [{ key: "x", cmd: "global-default" }],
+    })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["global"])
+  })
+
   test("matches a target layer by default with focus-within semantics", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []

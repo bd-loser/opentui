@@ -1,4 +1,4 @@
-import { ConsolePosition, TextAttributes } from "@opentui/core"
+import { ConsolePosition, TextAttributes, type Renderable } from "@opentui/core"
 import { registerExCommands, registerTimedLeader, stringifyKeySequence, stringifyKeyStroke } from "@opentui/core/extras"
 import { render, useKeymap, useKeymappings, useRenderer } from "@opentui/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
@@ -22,13 +22,7 @@ const palette = {
   separator: "#475569",
 } as const
 
-// -- types -----------------------------------------------------------------
-
 type PanelId = "alpha" | "beta"
-
-interface FocusableRenderable {
-  focus(): void
-}
 
 // -- small helpers ---------------------------------------------------------
 
@@ -44,7 +38,7 @@ function CounterPanel(props: {
   saveTarget: string
   step: number
   color: string
-  setRef?: (value: FocusableRenderable) => void
+  setRef?: (value: Renderable) => void
   count: Accessor<number>
   focused: Accessor<boolean>
   setFocused: (id: PanelId) => void
@@ -75,6 +69,7 @@ function CounterPanel(props: {
   ])
 
   const keymapRef = useKeymap({
+    scope: "focus-within",
     bindings: {
       j: incrementCommand,
       k: decrementCommand,
@@ -88,7 +83,7 @@ function CounterPanel(props: {
 
   return (
     <box
-      ref={(value: FocusableRenderable) => {
+      ref={(value: Renderable) => {
         keymapRef(value)
         props.setRef?.(value)
       }}
@@ -131,7 +126,7 @@ function CounterPanel(props: {
 export default function KeymapDemo() {
   const renderer = useRenderer()
   const manager = useKeymappings()
-  let alphaPanelRef: FocusableRenderable | undefined
+  let alphaPanelRef: Renderable | undefined
 
   const [activePanel, setActivePanel] = createSignal<PanelId>("alpha")
   const [alphaCount, setAlphaCount] = createSignal(0)

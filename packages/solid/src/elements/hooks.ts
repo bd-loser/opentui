@@ -8,7 +8,7 @@ import {
   type KeyEvent,
   type TimelineOptions,
 } from "@opentui/core"
-import { getKeymapManager, type KeymapBindings, type KeymapEnabled, type KeymapLayer } from "@opentui/core/extras"
+import { getKeymapManager, type KeymapLayer, type KeymapLayerFields } from "@opentui/core/extras"
 import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js"
 
 export const RendererContext = createContext<CliRenderer>()
@@ -108,11 +108,7 @@ export type UseKeymapTarget<TRenderable extends Renderable = Renderable> =
   | undefined
   | (() => TRenderable | null | undefined)
 
-interface UseKeymapLayerBase {
-  priority?: number
-  enabled?: KeymapEnabled
-  bindings: KeymapBindings
-}
+type UseKeymapLayerBase = KeymapLayerFields
 
 export type KeymapRef<TRenderable extends Renderable = Renderable> = (value: TRenderable) => void
 

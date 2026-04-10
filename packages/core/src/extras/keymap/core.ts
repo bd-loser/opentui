@@ -61,23 +61,23 @@ export type KeymapBindings = KeymapBindingInput[] | KeymapBindingShorthand
 
 export type KeymapScope = "global" | "focus" | "focus-within"
 
-interface KeymapLayerBase {
+export interface KeymapLayerFields {
   priority?: number
   enabled?: KeymapEnabled
   bindings: KeymapBindings
 }
 
-export interface KeymapGlobalLayer extends KeymapLayerBase {
+export interface KeymapGlobalLayer extends KeymapLayerFields {
   target?: undefined
   scope?: "global"
 }
 
-export interface KeymapFocusWithinLayer extends KeymapLayerBase {
+export interface KeymapFocusWithinLayer extends KeymapLayerFields {
   target: Renderable
   scope?: "focus-within"
 }
 
-export interface KeymapFocusLayer extends KeymapLayerBase {
+export interface KeymapFocusLayer extends KeymapLayerFields {
   target: Renderable
   scope: "focus"
 }

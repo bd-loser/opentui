@@ -111,6 +111,7 @@ describe("solid keymap hooks", () => {
       })
 
       const keymapRef = useKeymap({
+        scope: "focus-within",
         bindings: [{ key: "x", cmd: "target" }],
       })
 
@@ -132,5 +133,42 @@ describe("solid keymap hooks", () => {
 
     testSetup.mockInput.pressKey("x")
     expect(calls).toEqual(["target"])
+  })
+
+  test("useKeymap rejects local bindings without a target or ref", async () => {
+    function App() {
+      useKeymap({
+        scope: "focus-within",
+        bindings: { x: "target" },
+      })
+
+      return <text>bindings</text>
+    }
+
+    await expect(
+      testRender(() => <App />, {
+        width: 20,
+        height: 6,
+      }),
+    ).rejects.toThrow("useKeymap local bindings need a target or the returned ref callback attached to a renderable")
+  })
+
+  test("useKeymap rejects explicit targets that are unavailable during mount", async () => {
+    function App() {
+      useKeymap({
+        scope: "focus-within",
+        target: () => undefined,
+        bindings: { x: "target" },
+      })
+
+      return <text>bindings</text>
+    }
+
+    await expect(
+      testRender(() => <App />, {
+        width: 20,
+        height: 6,
+      }),
+    ).rejects.toThrow("useKeymap target was not available during mount")
   })
 })

@@ -121,7 +121,9 @@ export const useKeymappings = () => {
   return getKeymapManager(renderer)
 }
 
-export const useKeymap = <TRenderable extends Renderable = Renderable>(layer: UseKeymapLayer): KeymapRef<TRenderable> => {
+export const useKeymap = <TRenderable extends Renderable = Renderable>(
+  layer: UseKeymapLayer,
+): KeymapRef<TRenderable> => {
   const manager = useKeymappings()
   let dispose: (() => void) | undefined
   let mounted = false
@@ -177,7 +179,7 @@ export const useKeymap = <TRenderable extends Renderable = Renderable>(layer: Us
 
     const resolvedScope = layer.scope ?? (resolvedTarget || refTarget ? "focus-within" : "global")
     if (resolvedScope !== "global" && !resolvedTarget && !refTarget) {
-      throw new Error('useKeymap local bindings need a target or the returned ref callback attached to a renderable')
+      throw new Error("useKeymap local bindings need a target or the returned ref callback attached to a renderable")
     }
 
     register()

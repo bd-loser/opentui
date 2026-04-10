@@ -490,7 +490,8 @@ export function run(renderer: CliRenderer): void {
 
   const subtitle = new TextRenderable(renderer, {
     id: "keymap-demo-subtitle",
-    content: "Global layers, focused layers, which-key hints from metadata, ex commands, and a ctrl+x leader extension.",
+    content:
+      "Global layers, focused layers, which-key hints from metadata, ex commands, and a ctrl+x leader extension.",
     fg: P.textMuted,
     height: 2,
   })

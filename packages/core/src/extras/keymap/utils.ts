@@ -287,7 +287,8 @@ function parseStringSequence(input: string, tokens: ReadonlyMap<string, ParsedKe
       const tokenName = normalizeTokenName(input.slice(index, end + 1))
       const token = tokens.get(tokenName)
       if (!token) {
-        throw new Error(`Unknown keymap token "${tokenName}"`)
+        index = end + 1
+        continue
       }
 
       parts.push(createParsedKeyPart(token, tokenName))
@@ -298,11 +299,6 @@ function parseStringSequence(input: string, tokens: ReadonlyMap<string, ParsedKe
     parts.push(parseStringKeyPart(char))
     index += 1
   }
-
-  if (parts.length === 0) {
-    throw new Error(`Invalid key sequence "${input}": sequence cannot be empty`)
-  }
-
   return parts
 }
 

@@ -175,19 +175,25 @@ describe("edit buffer keymap addon", () => {
       bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
     })
 
-    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(true)
+    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
+      true,
+    )
 
     off()
     off()
 
-    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(false)
+    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
+      false,
+    )
 
     registerEditBufferKeymap(manager, {
       scope: "global",
       bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
     })
 
-    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(true)
+    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
+      true,
+    )
 
     const textarea = new TextareaRenderable(renderer, {
       width: 20,
@@ -282,9 +288,13 @@ describe("edit buffer keymap addon", () => {
     ])
   })
 
-  test("compileEditBufferKeyBindings rejects unsupported config", () => {
-    expect(() => compileEditBufferKeyBindings([{ key: "<leader>x", cmd: "delete-line" }])).toThrow(
-      'Unknown keymap token "<leader>"',
+  test("compileEditBufferKeyBindings ignores unknown tokens and rejects unsupported config", () => {
+    expect(compileEditBufferKeyBindings([{ key: "<leader>x", cmd: "delete-line" }])).toEqual([
+      { name: "x", ctrl: undefined, shift: undefined, meta: undefined, super: undefined, action: "delete-line" },
+    ])
+
+    expect(() => compileEditBufferKeyBindings([{ key: "<leader>", cmd: "delete-line" }])).toThrow(
+      "Edit-buffer key bindings only support a single key stroke",
     )
 
     expect(() => compileEditBufferKeyBindings([{ key: "dd", cmd: "delete-line" }])).toThrow(

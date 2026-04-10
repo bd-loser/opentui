@@ -199,6 +199,8 @@ interface RegisteredLayer {
   scope: "global" | "focus" | "focus-within"
   priority: number
   enabled?: KeymapEnabled
+  bindingInputs: readonly KeymapBindingInput[]
+  hasTokenBindings: boolean
   root: SequenceNode
   offTargetDestroy?: () => void
   bucket?: RegisteredLayerBucket
@@ -321,6 +323,21 @@ function freezeAttributes(attrs: KeymapAttributes): Readonly<KeymapAttributes> |
   }
 
   return Object.freeze({ ...attrs })
+}
+
+function cloneBindingInput(binding: KeymapBindingInput): KeymapBindingInput {
+  return {
+    ...binding,
+    key: typeof binding.key === "string" ? binding.key : { ...binding.key },
+  }
+}
+
+function snapshotBindingInputs(bindings: KeymapBindings): KeymapBindingInput[] {
+  return normalizeBindingInputs(bindings).map((binding) => cloneBindingInput(binding))
+}
+
+function bindingUsesTokenSyntax(binding: KeymapBindingInput): boolean {
+  return typeof binding.key === "string" && binding.key.includes("<")
 }
 
 class KeymapManagerImpl implements KeymapManager {
@@ -522,6 +539,7 @@ class KeymapManagerImpl implements KeymapManager {
     this.assertNotDestroyed()
 
     const scope = this.normalizeScope(layer)
+    const bindingInputs = snapshotBindingInputs(layer.bindings)
     const target = layer.target
     if (target && target.isDestroyed) {
       throw new Error("Cannot register a keymap layer for a destroyed renderable")
@@ -533,7 +551,9 @@ class KeymapManagerImpl implements KeymapManager {
       scope,
       priority: layer.priority ?? 0,
       enabled: layer.enabled,
-      root: this.compileBindings(layer.bindings),
+      bindingInputs,
+      hasTokenBindings: bindingInputs.some((binding) => bindingUsesTokenSyntax(binding)),
+      root: this.compileBindings(bindingInputs, this.tokens),
     }
 
     this.layers.add(registeredLayer)
@@ -569,12 +589,16 @@ class KeymapManagerImpl implements KeymapManager {
 
     const registeredToken = parseKeyLike(token.key)
 
-    this.tokens.set(normalizedToken, registeredToken)
+    const nextTokens = new Map(this.tokens)
+    nextTokens.set(normalizedToken, registeredToken)
+    this.applyTokenState(nextTokens)
 
     return () => {
       const current = this.tokens.get(normalizedToken)
       if (current === registeredToken) {
-        this.tokens.delete(normalizedToken)
+        const nextTokens = new Map(this.tokens)
+        nextTokens.delete(normalizedToken)
+        this.applyTokenState(nextTokens)
       }
     }
   }
@@ -840,11 +864,40 @@ class KeymapManagerImpl implements KeymapManager {
     }
   }
 
-  private compileBindings(bindings: KeymapBindings): SequenceNode {
+  private applyTokenState(nextTokens: Map<string, ParsedKeyStroke>): void {
+    const nextRoots = new Map<RegisteredLayer, SequenceNode>()
+
+    for (const layer of this.layers) {
+      if (!layer.hasTokenBindings) {
+        continue
+      }
+
+      nextRoots.set(layer, this.compileBindings(layer.bindingInputs, nextTokens))
+    }
+
+    this.tokens = nextTokens
+
+    let shouldClearPending = false
+    for (const [layer, root] of nextRoots) {
+      layer.root = root
+      if (this.pendingSequence?.layer === layer) {
+        shouldClearPending = true
+      }
+    }
+
+    if (shouldClearPending) {
+      this.setPendingSequence(null)
+    }
+  }
+
+  private compileBindings(
+    bindings: readonly KeymapBindingInput[],
+    tokens: ReadonlyMap<string, ParsedKeyStroke>,
+  ): SequenceNode {
     const root = createSequenceNode(null, null)
 
-    for (const binding of normalizeBindingInputs(bindings)) {
-      const sequence = parseKeySequenceLike(binding.key, this.tokens)
+    for (const binding of bindings) {
+      const sequence = parseKeySequenceLike(binding.key, tokens)
       const mergedRequires: KeymapEventData = {}
       const mergedAttrs: KeymapAttributes = {}
 
@@ -883,6 +936,10 @@ class KeymapManagerImpl implements KeymapManager {
 
       if (attrs) {
         compiledBinding.attrs = attrs
+      }
+
+      if (sequence.length === 0) {
+        continue
       }
 
       this.insertBinding(root, compiledBinding)

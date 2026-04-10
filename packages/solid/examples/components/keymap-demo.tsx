@@ -36,8 +36,6 @@ function KeyLabel(props: { children: JSX.Element }) {
   return <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>{props.children}</span>
 }
 
-
-
 // -- CounterPanel ----------------------------------------------------------
 
 function CounterPanel(props: {
@@ -345,10 +343,7 @@ export default function KeymapDemo() {
             </text>
             <text height={1}>
               <span style={{ fg: palette.textDim }}>Leader: </span>
-              <Show
-                when={leaderArmed()}
-                fallback={<span style={{ fg: palette.textMuted }}>idle</span>}
-              >
+              <Show when={leaderArmed()} fallback={<span style={{ fg: palette.textMuted }}>idle</span>}>
                 <span style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}>armed (ctrl+x)</span>
               </Show>
             </text>

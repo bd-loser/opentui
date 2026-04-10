@@ -396,6 +396,36 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "active_keys_pending_recompiled_token_prefix",
+    description: "Repeated getActiveKeys while a late-registered token prefix is pending",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      for (let index = 0; index < 320; index += 1) {
+        resources.manager.registerLayer({
+          scope: "global",
+          bindings: [{ key: `<leader>${createKey(index)}`, cmd: "noop" }],
+        })
+      }
+
+      resources.manager.registerToken({
+        token: "<leader>",
+        key: { name: "x", ctrl: true },
+      })
+      resources.mockInput.pressKey("x", { ctrl: true })
+
+      return {
+        resources,
+        runIteration() {
+          resources.manager.getActiveKeys()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "active_keys_requirement_heavy",
     description: "Repeated getActiveKeys with many runtime-gated bindings",
     async setup() {

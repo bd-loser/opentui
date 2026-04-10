@@ -57,4 +57,40 @@ describe("leader addon", () => {
 
     expect(calls).toEqual(["leader", "plain"])
   })
+
+  test("recompiles bindings that were registered before leader exists", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "leader-action",
+        run() {
+          calls.push("leader")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "<leader>a", cmd: "leader-action" }],
+    })
+
+    mockInput.pressKey("a")
+
+    expect(calls).toEqual(["leader"])
+
+    registerLeader(manager, {
+      trigger: { name: "x", ctrl: true },
+    })
+
+    mockInput.pressKey("a")
+
+    expect(calls).toEqual(["leader"])
+
+    mockInput.pressKey("x", { ctrl: true })
+    mockInput.pressKey("a")
+
+    expect(calls).toEqual(["leader", "leader"])
+  })
 })

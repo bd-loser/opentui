@@ -1487,21 +1487,141 @@ describe("keymap", () => {
     expect(calls).toEqual(["first:d", "second:d", "first:"])
   })
 
-  test("can dispose tokens and binding field registrations", () => {
+  test("recompiles tokenized layers when tokens are registered and disposed", () => {
     const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "leader-action",
+        run() {
+          calls.push("leader")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "<leader>a", cmd: "leader-action" }],
+    })
+
+    expect(getActiveKeyNames(manager)).toEqual(["a"])
+
+    mockInput.pressKey("a")
+    expect(calls).toEqual(["leader"])
 
     const offToken = manager.registerToken({
       token: "<leader>",
       key: { name: "x", ctrl: true },
     })
+
+    expect(getActiveKeyNames(manager)).toEqual(["x"])
+    expect(getActiveKeyDisplay(manager, "<leader>")?.commands.map((command) => command.input)).toEqual([
+      "leader-action",
+    ])
+
+    mockInput.pressKey("a")
+    expect(calls).toEqual(["leader"])
+
+    mockInput.pressKey("x", { ctrl: true })
+    expect(stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true })).toBe("<leader>")
+    expect(getActiveKeyNames(manager)).toEqual(["a"])
+
+    mockInput.pressKey("a")
+    expect(calls).toEqual(["leader", "leader"])
+
     offToken()
 
+    expect(getActiveKeyNames(manager)).toEqual(["a"])
+
+    mockInput.pressKey("a")
+    expect(calls).toEqual(["leader", "leader", "leader"])
+  })
+
+  test("keeps token-only bindings inactive until the token is registered", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "leader-only",
+        run() {
+          calls.push("leader-only")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "<leader>", cmd: "leader-only" }],
+    })
+
+    expect(manager.getActiveKeys()).toEqual([])
+
+    manager.registerToken({
+      token: "<leader>",
+      key: { name: "x", ctrl: true },
+    })
+
+    expect(getActiveKeyDisplay(manager, "<leader>")?.commands.map((command) => command.input)).toEqual(["leader-only"])
+
+    mockInput.pressKey("x", { ctrl: true })
+
+    expect(calls).toEqual(["leader-only"])
+  })
+
+  test("clears pending tokenized sequences when token registration recompiles their layer", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerCommands([{ name: "leader-action", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "<leader>ab", cmd: "leader-action" }],
+    })
+
+    mockInput.pressKey("a")
+
+    expect(manager.getPendingSequence()).toEqual([{ name: "a", ctrl: false, shift: false, meta: false, super: false }])
+
+    manager.registerToken({
+      token: "<leader>",
+      key: { name: "x", ctrl: true },
+    })
+
+    expect(manager.getPendingSequence()).toEqual([])
+    expect(getActiveKeyNames(manager)).toEqual(["x"])
+  })
+
+  test("keeps token registration transactional when recompilation would create a prefix conflict", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerCommands([
+      { name: "plain", run() {} },
+      { name: "tokenized", run() {} },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [
+        { key: "a", cmd: "plain" },
+        { key: "<leader>b", cmd: "tokenized" },
+      ],
+    })
+
+    expect(getActiveKeyNames(manager)).toEqual(["a", "b"])
+
     expect(() => {
-      manager.registerLayer({
-        scope: "global",
-        bindings: [{ key: "<leader>a", cmd: "leader-action" }],
+      manager.registerToken({
+        token: "<leader>",
+        key: "a",
       })
-    }).toThrow('Unknown keymap token "<leader>"')
+    }).toThrow("Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer")
+
+    expect(getActiveKeyNames(manager)).toEqual(["a", "b"])
+  })
+
+  test("can dispose binding field and command field registrations", () => {
+    const manager = getKeymapManager(renderer)
 
     const offBindingFields = manager.registerBindingFields({
       mode(value, ctx) {
@@ -1671,6 +1791,27 @@ describe("keymap", () => {
       {
         stroke: { name: "space", ctrl: false, shift: false, meta: false, super: false },
         display: "space",
+      },
+    ])
+    expect(parseKeySequenceLike("<leader>")).toEqual([])
+    expect(parseKeySequenceLike("g<leader>d")).toEqual([
+      {
+        stroke: { name: "g", ctrl: false, shift: false, meta: false, super: false },
+        display: "g",
+      },
+      {
+        stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
+        display: "d",
+      },
+    ])
+    expect(parseKeySequenceLike("<leader>zz")).toEqual([
+      {
+        stroke: { name: "z", ctrl: false, shift: false, meta: false, super: false },
+        display: "z",
+      },
+      {
+        stroke: { name: "z", ctrl: false, shift: false, meta: false, super: false },
+        display: "z",
       },
     ])
     expect(parseKeySequenceLike("<leader>", leaderToken)).toEqual([

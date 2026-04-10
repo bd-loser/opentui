@@ -352,7 +352,7 @@ export default function KeymapDemo() {
                 <span style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}>armed (ctrl+x)</span>
               </Show>
             </text>
-            <text height={1}>
+            <text>
               <span style={{ fg: palette.textDim }}>Last action: </span>
               <span style={{ fg: palette.text }}>{lastAction()}</span>
             </text>

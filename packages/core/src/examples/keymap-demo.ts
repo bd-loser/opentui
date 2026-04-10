@@ -472,6 +472,7 @@ export function run(renderer: CliRenderer): void {
   root = new BoxRenderable(renderer, {
     id: "keymap-demo-root",
     flexDirection: "column",
+    flexGrow: 1,
     padding: 1,
   })
   renderer.root.add(root)

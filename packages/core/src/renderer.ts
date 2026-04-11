@@ -37,6 +37,7 @@ import {
 } from "./lib/terminal-capability-detection.js"
 import { type Clock, type TimerHandle, SystemClock } from "./lib/clock.js"
 import { StdinParser, type StdinEvent, type StdinParserProtocolContext } from "./lib/stdin-parser.js"
+import { matchesKeyBinding } from "./lib/keymapping.js"
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -764,7 +765,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const useKittyForParsing = kittyConfig !== null
     this._keyHandler = new InternalKeyHandler()
     this._keyHandler.on("keypress", (event) => {
-      if (this.exitOnCtrlC && event.name === "c" && event.ctrl) {
+      // Use the shared matcher here too. Kitty can report a non-Latin
+      // character plus a base-layout `c`, and Ctrl+C should still exit.
+      if (this.exitOnCtrlC && matchesKeyBinding(event, { name: "c", ctrl: true })) {
         process.nextTick(() => {
           this.destroy()
         })

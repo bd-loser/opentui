@@ -143,7 +143,7 @@ export interface KeymapActiveKey {
   bindings?: KeymapActiveBinding[]
   bindingAttrs?: Readonly<KeymapAttributes>
   commandAttrs?: Readonly<KeymapAttributes>
-  commands: KeymapResolvedCommand[]
+  command?: KeymapResolvedCommand
   continues: boolean
 }
 
@@ -1714,21 +1714,6 @@ class KeymapManagerImpl implements KeymapManager {
     return this.commands.get(binding.command.name)?.attrs
   }
 
-  private collectResolvedCommands(
-    bindings: readonly CompiledBinding[],
-    resolveAttrs: boolean,
-  ): KeymapResolvedCommand[] {
-    if (!resolveAttrs || this.commandsWithAttrs === 0) {
-      return bindings.map((binding) => binding.command)
-    }
-
-    return bindings.map((binding) => this.resolveCommand(binding.command))
-  }
-
-  private collectCommandsFast(bindings: readonly CompiledBinding[]): KeymapResolvedCommand[] {
-    return bindings.map((binding) => binding.command)
-  }
-
   private collectActiveKeysAtRoot(
     activeLayers: RegisteredLayer[],
     includeBindings: boolean,
@@ -1821,6 +1806,7 @@ class KeymapManagerImpl implements KeymapManager {
           node,
           [binding],
           binding.sequence[partIndex]?.display ?? stringifyKeyStroke(node.stroke),
+          undefined,
           includeBindings,
           includeMetadata,
         ),
@@ -1838,6 +1824,7 @@ class KeymapManagerImpl implements KeymapManager {
         node,
         matchingBindings,
         this.getNodeDisplay(node, matchingBindings),
+        undefined,
         includeBindings,
         includeMetadata,
       ),
@@ -1866,6 +1853,7 @@ class KeymapManagerImpl implements KeymapManager {
           node,
           [binding],
           binding.sequence[partIndex]?.display ?? stringifyKeyStroke(node.stroke),
+          binding,
           includeBindings,
           includeMetadata,
         ),
@@ -1884,7 +1872,14 @@ class KeymapManagerImpl implements KeymapManager {
         : this.getNodeDisplay(node, selected.bindings)
 
     return {
-      activeKey: this.buildActiveKey(node, selected.bindings, display, includeBindings, includeMetadata),
+      activeKey: this.buildActiveKey(
+        node,
+        selected.bindings,
+        display,
+        selected.bindings[0],
+        includeBindings,
+        includeMetadata,
+      ),
       stop: selected.stop,
     }
   }
@@ -1920,28 +1915,20 @@ class KeymapManagerImpl implements KeymapManager {
     node: SequenceNode,
     bindings: readonly CompiledBinding[],
     display: string,
+    commandBinding: CompiledBinding | undefined,
     includeBindings: boolean,
     includeMetadata: boolean,
   ): KeymapActiveKey {
     const singleBinding = bindings.length === 1 ? bindings[0] : undefined
-    let commands: KeymapResolvedCommand[]
-
-    if (singleBinding) {
-      commands =
-        includeBindings && this.commandsWithAttrs > 0
-          ? [this.resolveCommand(singleBinding.command)]
-          : [singleBinding.command]
-    } else if (includeBindings && this.commandsWithAttrs > 0) {
-      commands = this.collectResolvedCommands(bindings, true)
-    } else {
-      commands = this.collectCommandsFast(bindings)
-    }
 
     const activeKey: KeymapActiveKey = {
       stroke: cloneStroke(node.stroke!),
       display,
-      commands,
       continues: node.children.size > 0,
+    }
+
+    if (commandBinding) {
+      activeKey.command = this.resolveCommand(commandBinding.command)
     }
 
     if (includeBindings) {
@@ -1964,7 +1951,9 @@ class KeymapManagerImpl implements KeymapManager {
   }
 
   private appendDispatchActiveKey(activeKey: KeymapActiveKey, next: KeymapActiveKey, includeBindings: boolean): void {
-    activeKey.commands.push(...next.commands)
+    if (!activeKey.command && next.command) {
+      activeKey.command = next.command
+    }
 
     if (next.continues) {
       activeKey.continues = true

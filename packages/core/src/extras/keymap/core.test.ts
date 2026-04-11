@@ -421,7 +421,7 @@ describe("keymap", () => {
     expect(activeKey?.bindings).toHaveLength(1)
     expect(activeBinding?.attrs).toEqual({ desc: "Save file", group: "File" })
     expect(activeBinding?.command.attrs).toBeUndefined()
-    expect(activeKey?.commands[0]?.attrs).toBeUndefined()
+    expect(activeKey?.command?.attrs).toBeUndefined()
   })
 
   test("typed binding fields can emit both requirements and attributes", () => {
@@ -913,7 +913,7 @@ describe("keymap", () => {
 
     const activeKey = getActiveKey(manager, "x", { includeBindings: true })
     expect(activeKey?.bindings?.[0]?.command.attrs).toEqual(attrs)
-    expect(activeKey?.commands[0]?.attrs).toEqual(attrs)
+    expect(activeKey?.command?.attrs).toEqual(attrs)
 
     mockInput.pressKey("x")
 
@@ -977,29 +977,29 @@ describe("keymap", () => {
     expect(plain?.bindings).toBeUndefined()
     expect(plain?.bindingAttrs).toBeUndefined()
     expect(plain?.commandAttrs).toBeUndefined()
-    expect(plain?.commands[0]?.attrs).toBeUndefined()
+    expect(plain?.command?.attrs).toEqual(commandAttrs)
 
     expect(metadataOnly?.bindings).toBeUndefined()
-    expect(metadataOnly?.commands[0]?.attrs).toBeUndefined()
+    expect(metadataOnly?.command?.attrs).toEqual(commandAttrs)
     expect(metadataOnly?.bindingAttrs).toEqual(bindingAttrs)
     expect(metadataOnly?.commandAttrs).toEqual(commandAttrs)
 
     expect(withBindings?.bindingAttrs).toBeUndefined()
     expect(withBindings?.commandAttrs).toBeUndefined()
-    expect(withBindings?.commands[0]?.attrs).toEqual(commandAttrs)
+    expect(withBindings?.command?.attrs).toEqual(commandAttrs)
     expect(withBindings?.bindings?.[0]?.attrs).toEqual(bindingAttrs)
     expect(withBindings?.bindings?.[0]?.command.attrs).toEqual(commandAttrs)
 
     expect(withBindingsAndMetadata?.bindingAttrs).toEqual(bindingAttrs)
     expect(withBindingsAndMetadata?.commandAttrs).toEqual(commandAttrs)
-    expect(withBindingsAndMetadata?.commands[0]?.attrs).toEqual(commandAttrs)
+    expect(withBindingsAndMetadata?.command?.attrs).toEqual(commandAttrs)
     expect(withBindingsAndMetadata?.bindings?.[0]?.attrs).toEqual(bindingAttrs)
     expect(withBindingsAndMetadata?.bindings?.[0]?.command.attrs).toEqual(commandAttrs)
 
     expect(plainAgain?.bindings).toBeUndefined()
     expect(plainAgain?.bindingAttrs).toBeUndefined()
     expect(plainAgain?.commandAttrs).toBeUndefined()
-    expect(plainAgain?.commands[0]?.attrs).toBeUndefined()
+    expect(plainAgain?.command?.attrs).toEqual(commandAttrs)
   })
 
   test("supports multi-key sequences and reports active continuation keys", () => {
@@ -1032,7 +1032,7 @@ describe("keymap", () => {
       },
     ])
     expect(getActiveKeyNames(manager)).toEqual(["d"])
-    expect(getActiveKey(manager, "d")?.commands.map((command) => command.input)).toEqual(["delete-line"])
+    expect(getActiveKey(manager, "d")?.command?.input).toBe("delete-line")
     expect(getActiveKey(manager, "d")?.display).toBe("d")
 
     mockInput.pressKey("d")
@@ -1231,20 +1231,20 @@ describe("keymap", () => {
     mockInput.pressKey("x", { ctrl: true })
 
     expect(getActiveKeyNames(manager)).toEqual(["g"])
-    expect(getActiveKeyDisplay(manager, "g")?.commands.map((command) => command.input)).toEqual(["go-definition"])
+    expect(getActiveKeyDisplay(manager, "g")?.command).toBeUndefined()
     expect(manager.getPendingSequenceParts()).toEqual([
       {
         stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false },
         display: "<leader>",
       },
     ])
-    expect(getActiveKey(manager, "g")?.commands.map((command) => command.input)).toEqual(["go-definition"])
+    expect(getActiveKey(manager, "g")?.command).toBeUndefined()
 
     mockInput.pressKey("g")
 
     expect(getActiveKeyNames(manager)).toEqual(["d"])
     expect(stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true })).toBe("<leader>g")
-    expect(getActiveKey(manager, "d")?.commands.map((command) => command.input)).toEqual(["go-definition"])
+    expect(getActiveKey(manager, "d")?.command?.input).toBe("go-definition")
 
     mockInput.pressKey("d")
 
@@ -1272,7 +1272,7 @@ describe("keymap", () => {
       ],
     })
 
-    expect(getActiveKeyDisplay(manager, "<leader>")?.commands.map((command) => command.input)).toEqual(["save", "help"])
+    expect(getActiveKeyDisplay(manager, "<leader>")?.command).toBeUndefined()
     expect(stringifyKeyStroke(getActiveKeyDisplay(manager, "<leader>")!, { preferDisplay: true })).toBe("<leader>")
   })
 
@@ -2193,9 +2193,7 @@ describe("keymap", () => {
     })
 
     expect(getActiveKeyNames(manager)).toEqual(["x"])
-    expect(getActiveKeyDisplay(manager, "<leader>")?.commands.map((command) => command.input)).toEqual([
-      "leader-action",
-    ])
+    expect(getActiveKeyDisplay(manager, "<leader>")?.command).toBeUndefined()
 
     mockInput.pressKey("a")
     expect(calls).toEqual(["leader"])
@@ -2240,7 +2238,7 @@ describe("keymap", () => {
       key: { name: "x", ctrl: true },
     })
 
-    expect(getActiveKeyDisplay(manager, "<leader>")?.commands.map((command) => command.input)).toEqual(["leader-only"])
+    expect(getActiveKeyDisplay(manager, "<leader>")?.command?.input).toBe("leader-only")
 
     mockInput.pressKey("x", { ctrl: true })
 
@@ -2388,13 +2386,13 @@ describe("keymap", () => {
 
     const activeX = getActiveKey(manager, "x", { includeBindings: true, includeMetadata: true })
 
-    expect(activeX?.commands.map((command) => command.input)).toEqual(["help"])
+    expect(activeX?.command?.input).toBe("help")
     expect(activeX?.bindings?.map((binding) => binding.command.input)).toEqual(["help"])
     expect(activeX?.bindingAttrs).toEqual({ desc: "Local x" })
 
     const activeY = getActiveKey(manager, "y", { includeBindings: true, includeMetadata: true })
 
-    expect(activeY?.commands.map((command) => command.input)).toEqual(["save", "help"])
+    expect(activeY?.command?.input).toBe("save")
     expect(activeY?.bindings?.map((binding) => binding.command.input)).toEqual(["save", "help"])
     expect(activeY?.bindingAttrs).toEqual({ desc: "Local y" })
   })
@@ -2430,7 +2428,7 @@ describe("keymap", () => {
       .getActiveKeys()
       .find((candidate) => candidate.stroke.name === "x" && candidate.stroke.ctrl)
 
-    expect(activeKey?.commands.map((command) => command.input)).toEqual(["leader"])
+    expect(activeKey?.command).toBeUndefined()
     expect(activeKey?.continues).toBe(true)
   })
 

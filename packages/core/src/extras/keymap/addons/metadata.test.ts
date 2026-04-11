@@ -39,7 +39,7 @@ describe("metadata addon", () => {
       .find((candidate) => candidate.stroke.name === "x")
 
     expect(activeKey?.bindings?.[0]?.attrs).toEqual({ desc: "Write current file", group: "File" })
-    expect(activeKey?.commands[0]?.attrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
+    expect(activeKey?.command?.attrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
   })
 
   test("exposes generic binding and command metadata through includeMetadata", () => {
@@ -66,7 +66,7 @@ describe("metadata addon", () => {
       .find((candidate) => candidate.stroke.name === "x")
 
     expect(activeKey?.bindings).toBeUndefined()
-    expect(activeKey?.commands[0]?.attrs).toBeUndefined()
+    expect(activeKey?.command?.attrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
     expect(activeKey?.bindingAttrs).toEqual({ desc: "Write current file", group: "File" })
     expect(activeKey?.commandAttrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
   })
@@ -122,7 +122,7 @@ describe("metadata addon", () => {
       .getActiveKeys({ includeBindings: true })
       .find((candidate) => candidate.stroke.name === "x")
     expect(activeKey?.bindings?.[0]?.attrs).toEqual({ desc: "Write file", group: "File" })
-    expect(activeKey?.commands[0]?.attrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
+    expect(activeKey?.command?.attrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
 
     expect(() => {
       manager.registerCommands([

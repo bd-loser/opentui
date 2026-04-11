@@ -24,9 +24,18 @@ describe("enabled addon", () => {
     renderer?.destroy()
   })
 
-  test("requires registering the enabled field before use", () => {
+  test("ignores enabled layer fields until the addon is registered", () => {
     const manager = getKeymapManager(renderer)
-    manager.registerCommands([{ name: "noop", run() {} }])
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "noop",
+        run() {
+          calls.push("noop")
+        },
+      },
+    ])
 
     expect(() => {
       manager.registerLayer({
@@ -34,7 +43,13 @@ describe("enabled addon", () => {
         enabled: false,
         bindings: [{ key: "x", cmd: "noop" }],
       })
-    }).toThrow('Unknown keymap layer field "enabled"')
+    }).not.toThrow()
+
+    expect(getActiveKeyNames()).toEqual(["x"])
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["noop"])
   })
 
   test("registers boolean and predicate enabled values", () => {
@@ -152,7 +167,16 @@ describe("enabled addon", () => {
   test("rejects invalid enabled values and can be disposed", () => {
     const manager = getKeymapManager(renderer)
     const offEnabled = registerEnabledField(manager)
-    manager.registerCommands([{ name: "noop", run() {} }])
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "noop",
+        run() {
+          calls.push("noop")
+        },
+      },
+    ])
 
     expect(() => {
       manager.registerLayer({
@@ -170,7 +194,13 @@ describe("enabled addon", () => {
         enabled: true,
         bindings: [{ key: "x", cmd: "noop" }],
       })
-    }).toThrow('Unknown keymap layer field "enabled"')
+    }).not.toThrow()
+
+    expect(getActiveKeyNames()).toContain("x")
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["noop"])
   })
 
   test("treats thrown enabled predicates as disabled", () => {

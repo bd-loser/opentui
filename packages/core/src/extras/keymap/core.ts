@@ -1017,7 +1017,7 @@ class KeymapManagerImpl implements KeymapManager {
 
           const compiler = this.commandFields.get(fieldName)
           if (!compiler) {
-            throw new Error(`Unknown keymap command field "${fieldName}"`)
+            continue
           }
 
           compiler(value, {
@@ -1187,7 +1187,7 @@ class KeymapManagerImpl implements KeymapManager {
 
       const compiler = this.layerFields.get(fieldName)
       if (!compiler) {
-        throw new Error(`Unknown keymap layer field "${fieldName}"`)
+        continue
       }
 
       compiler(value, {

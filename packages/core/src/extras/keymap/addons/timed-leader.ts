@@ -1,4 +1,4 @@
-import type { KeymapManager, ParsedKeyStroke } from "../core.js"
+import type { KeymapManager, ParsedKeyStroke } from "../types.js"
 import { parseKeyLike } from "../utils.js"
 import { registerLeader, type LeaderOptions } from "./leader.js"
 

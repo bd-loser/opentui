@@ -1,4 +1,4 @@
-import type { KeymapManager } from "../core.js"
+import type { KeymapManager } from "../types.js"
 
 export interface KeymapKeyedEnabled {
   match: () => boolean

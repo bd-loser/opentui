@@ -5,7 +5,7 @@ import {
   registerTimedLeader,
   stringifyKeySequence,
   stringifyKeyStroke,
-  type KeymapActiveMetadata,
+  type KeymapActiveKey,
 } from "@opentui/core/extras"
 import { render, useActiveKeys, useKeymap, useKeymappings, usePendingSequenceParts, useRenderer } from "@opentui/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
@@ -46,20 +46,18 @@ function getMetadataText(value: unknown): string | undefined {
   return trimmed || undefined
 }
 
-function getActiveKeyLabel(activeKey: { metadata?: readonly KeymapActiveMetadata[]; commands: readonly { input: string }[]; continues: boolean }): string {
-  const firstMetadata = activeKey.metadata?.[0]
+function getActiveKeyLabel(activeKey: KeymapActiveKey): string {
   if (activeKey.continues) {
-    const group = getMetadataText(firstMetadata?.bindingAttrs?.group)
+    const group = getMetadataText(activeKey.bindingAttrs?.group)
     if (group) {
       return `+${group}`
     }
   }
 
   return (
-    getMetadataText(firstMetadata?.bindingAttrs?.desc) ??
-    getMetadataText(firstMetadata?.commandAttrs?.desc) ??
-    getMetadataText(firstMetadata?.commandAttrs?.title) ??
-    firstMetadata?.command.input ??
+    getMetadataText(activeKey.bindingAttrs?.desc) ??
+    getMetadataText(activeKey.commandAttrs?.desc) ??
+    getMetadataText(activeKey.commandAttrs?.title) ??
     activeKey.commands[0]?.input ??
     ""
   )

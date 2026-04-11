@@ -15,6 +15,7 @@ import {
   registerExCommands,
   registerMetadataFields,
   registerTimedLeader,
+  type KeymapActiveKey,
   type KeymapManager,
   stringifyKeySequence,
   stringifyKeyStroke,
@@ -91,7 +92,7 @@ function getMetadataText(value: unknown): string | undefined {
   return trimmed || undefined
 }
 
-function getActiveKeyLabel(activeKey: ReturnType<KeymapManager["getActiveKeys"]>[number]): string {
+function getActiveKeyLabel(activeKey: KeymapActiveKey): string {
   if (activeKey.continues) {
     const group = getMetadataText(activeKey.bindingAttrs?.group)
     if (group) {

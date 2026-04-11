@@ -262,6 +262,60 @@ function createFlagKey(index: number): string {
   return `flag-${index}`
 }
 
+function registerExternalBindingFields(manager: KeymapManager, flags: Record<string, boolean>): void {
+  manager.registerBindingFields({
+    activeExternally(value, ctx) {
+      const key = normalizeFlagKey(value, "binding field activeExternally")
+      ctx.match(() => flags[key] === true, { keys: [key] })
+    },
+  })
+}
+
+function registerStateChangeNoopListener(manager: KeymapManager): () => void {
+  let events = 0
+
+  return manager.onStateChange(() => {
+    events += 1
+  })
+}
+
+function registerStateChangeReadListeners(manager: KeymapManager): () => void {
+  let sink = 0
+
+  const offActiveKeys = manager.onStateChange(() => {
+    sink += manager.getActiveKeys().length
+  })
+  const offPendingSequence = manager.onStateChange(() => {
+    sink += manager.getPendingSequenceParts().length
+  })
+
+  return () => {
+    offPendingSequence()
+    offActiveKeys()
+    void sink
+  }
+}
+
+function setupStateChangeFocusChurn(resources: ScenarioResources): {
+  first: BoxRenderable
+  second: BoxRenderable
+} {
+  const first = createFocusableBox(resources.renderer, "state-focus-first")
+  const second = createFocusableBox(resources.renderer, "state-focus-second")
+
+  resources.renderer.root.add(first)
+  resources.renderer.root.add(second)
+
+  for (let index = 0; index < 8; index += 1) {
+    registerTargetLayer(resources.manager, first, index, createKey(index + 1))
+    registerTargetLayer(resources.manager, second, index + 100, createKey(index + 11))
+  }
+
+  registerGlobalLayers(resources.manager, 120)
+
+  return { first, second }
+}
+
 async function createScenarioResources(): Promise<ScenarioResources> {
   const testSetup = await createTestRenderer({ width: 80, height: 24 })
   const manager = getKeymapManager(testSetup.renderer)
@@ -639,6 +693,134 @@ const scenarios: BenchmarkScenario[] = [
           iteration += 1
         },
         cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "state_change_focus_churn_noop",
+    description: "Repeated focus changes with a noop state listener",
+    async setup() {
+      const resources = await createScenarioResources()
+      const { first, second } = setupStateChangeFocusChurn(resources)
+      const offStateChange = registerStateChangeNoopListener(resources.manager)
+      let focusFirst = false
+
+      first.focus()
+
+      return {
+        resources,
+        runIteration() {
+          if (focusFirst) {
+            first.focus()
+          } else {
+            second.focus()
+          }
+
+          focusFirst = !focusFirst
+        },
+        cleanup() {
+          offStateChange()
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "state_change_focus_churn_read_heavy",
+    description: "Repeated focus changes with active key and prefix listeners",
+    async setup() {
+      const resources = await createScenarioResources()
+      const { first, second } = setupStateChangeFocusChurn(resources)
+      const offStateChange = registerStateChangeReadListeners(resources.manager)
+      let focusFirst = false
+
+      first.focus()
+
+      return {
+        resources,
+        runIteration() {
+          if (focusFirst) {
+            first.focus()
+          } else {
+            second.focus()
+          }
+
+          focusFirst = !focusFirst
+        },
+        cleanup() {
+          offStateChange()
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "state_change_pending_blur_read_heavy",
+    description: "Repeated pending sequence blur clears with state listeners",
+    async setup() {
+      const resources = await createScenarioResources()
+      const target = createFocusableBox(resources.renderer, "state-pending-target")
+      const offStateChange = registerStateChangeReadListeners(resources.manager)
+
+      resources.renderer.root.add(target)
+      resources.manager.registerLayer({
+        target,
+        bindings: [{ key: "dd", cmd: "noop" }],
+      })
+
+      return {
+        resources,
+        runIteration() {
+          target.focus()
+          resources.mockInput.pressKey("d")
+          target.blur()
+        },
+        cleanup() {
+          offStateChange()
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "state_change_external_invalidation_read_heavy",
+    description: "Repeated external keyed invalidation with state listeners",
+    async setup() {
+      const resources = await createScenarioResources()
+      const flags: Record<string, boolean> = Object.create(null)
+      const offStateChange = registerStateChangeReadListeners(resources.manager)
+
+      registerExternalBindingFields(resources.manager, flags)
+
+      for (let index = 0; index < 320; index += 1) {
+        const key = createFlagKey(index)
+        flags[key] = true
+        resources.manager.registerLayer({
+          scope: "global",
+          bindings: [
+            {
+              key: createKey(index),
+              activeExternally: key,
+              cmd: "noop",
+            },
+          ],
+        })
+      }
+
+      let iteration = 0
+
+      return {
+        resources,
+        runIteration() {
+          const key = createFlagKey(iteration % 320)
+          flags[key] = iteration % 2 === 0
+          resources.manager.invalidateRuntimeKey(key)
+          iteration += 1
+        },
+        cleanup() {
+          offStateChange()
           resources.renderer.destroy()
         },
       }

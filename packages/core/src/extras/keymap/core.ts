@@ -203,7 +203,8 @@ export interface KeymapRawInputContext {
 }
 
 export interface KeymapLogger {
-  warn(...args: unknown[]): void
+  warn?(...args: unknown[]): void
+  error?(...args: unknown[]): void
 }
 
 export interface KeymapManagerOptions {
@@ -338,8 +339,14 @@ interface PendingSequenceState {
 
 const keymapManagersByRenderer = new WeakMap<CliRenderer, KeymapManagerImpl>()
 
-const NOOP_KEYMAP_LOGGER: KeymapLogger = {
+interface ResolvedKeymapLogger {
+  warn(...args: unknown[]): void
+  error(...args: unknown[]): void
+}
+
+const NOOP_KEYMAP_LOGGER: ResolvedKeymapLogger = {
   warn() {},
+  error() {},
 }
 
 export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "consume", "fallthrough"])
@@ -449,13 +456,20 @@ function bindingUsesTokenSyntax(binding: KeymapBindingInput): boolean {
   return typeof binding.key === "string" && binding.key.includes("<")
 }
 
-function resolveKeymapLogger(logger?: KeymapLogger): KeymapLogger {
-  return logger ?? NOOP_KEYMAP_LOGGER
+function resolveKeymapLogger(logger?: KeymapLogger): ResolvedKeymapLogger {
+  if (!logger) {
+    return NOOP_KEYMAP_LOGGER
+  }
+
+  return {
+    warn: logger.warn ?? NOOP_KEYMAP_LOGGER.warn,
+    error: logger.error ?? logger.warn ?? NOOP_KEYMAP_LOGGER.error,
+  }
 }
 
 class KeymapManagerImpl implements KeymapManager {
   public readonly renderer: CliRenderer
-  private logger: KeymapLogger
+  private logger: ResolvedKeymapLogger
 
   private layers = new Set<RegisteredLayer>()
   private globalLayers: RegisteredLayer[] = []
@@ -1164,7 +1178,7 @@ class KeymapManagerImpl implements KeymapManager {
           try {
             listener()
           } catch (error) {
-            console.error("[Keymap] Error in state change hook:", error)
+            this.logger.error("[Keymap] Error in state change hook:", error)
           }
         }
       }
@@ -1597,7 +1611,7 @@ class KeymapManagerImpl implements KeymapManager {
       try {
         hook.fn(context)
       } catch (error) {
-        console.error("[Keymap] Error in raw input hook:", error)
+        this.logger.error("[Keymap] Error in raw input hook:", error)
       }
 
       if (stopped) {
@@ -1644,7 +1658,7 @@ class KeymapManagerImpl implements KeymapManager {
       try {
         hook.fn(context)
       } catch (error) {
-        console.error("[Keymap] Error in key input hook:", error)
+        this.logger.error("[Keymap] Error in key input hook:", error)
       }
 
       if (event.propagationStopped) {
@@ -2154,14 +2168,14 @@ class KeymapManagerImpl implements KeymapManager {
     try {
       result = run(context)
     } catch (error) {
-      console.error(`[Keymap] Error running command ${this.describeBindingCommand(binding)}:`, error)
+      this.logger.error(`[Keymap] Error running command ${this.describeBindingCommand(binding)}:`, error)
       this.applyBindingEventEffects(binding, event)
       return true
     }
 
     if (isPromiseLike(result)) {
       result.catch((error) => {
-        console.error(`[Keymap] Async error in command ${this.describeBindingCommand(binding)}:`, error)
+        this.logger.error(`[Keymap] Async error in command ${this.describeBindingCommand(binding)}:`, error)
       })
       this.applyBindingEventEffects(binding, event)
       return true
@@ -2284,7 +2298,7 @@ class KeymapManagerImpl implements KeymapManager {
     try {
       return matcher.match()
     } catch (error) {
-      console.error(`[Keymap] Error evaluating runtime matcher from ${matcher.source}:`, error)
+      this.logger.error(`[Keymap] Error evaluating runtime matcher from ${matcher.source}:`, error)
       return false
     }
   }
@@ -2385,7 +2399,7 @@ class KeymapManagerImpl implements KeymapManager {
       try {
         listener(sequence)
       } catch (error) {
-        console.error("[Keymap] Error in pending sequence hook:", error)
+        this.logger.error("[Keymap] Error in pending sequence hook:", error)
       }
     }
   }

@@ -1699,6 +1699,45 @@ describe("keymap", () => {
     ])
   })
 
+  test("logs runtime matcher failures through logger.error", () => {
+    const warnings: string[] = []
+    const errors: string[] = []
+    const manager = getKeymapManager(renderer, {
+      logger: {
+        warn(...args) {
+          warnings.push(args.map((value) => String(value)).join(" "))
+        },
+        error(...args) {
+          errors.push(args.map((value) => String(value)).join(" "))
+        },
+      },
+    })
+
+    manager.registerBindingFields({
+      active(value, ctx) {
+        if (value !== true) {
+          throw new Error('Keymap binding field "active" must be true')
+        }
+
+        ctx.match(() => {
+          throw new Error("boom")
+        })
+      },
+    })
+
+    manager.registerCommands([{ name: "runtime-binding", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
+    })
+
+    expect(() => manager.getActiveKeys()).not.toThrow()
+    expect(errors.some((message) => message.includes("Error evaluating runtime matcher from field active:"))).toBe(
+      true,
+    )
+    expect(warnings).toEqual([])
+  })
+
   test("throws on reserved command field registrations", () => {
     const manager = getKeymapManager(renderer)
 

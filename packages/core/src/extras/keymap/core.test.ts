@@ -1660,6 +1660,45 @@ describe("keymap", () => {
     expect(calls).toEqual(["save-file"])
   })
 
+  test("logs warnings for ignored unknown fields when logger is configured", () => {
+    const warnings: string[] = []
+    const manager = getKeymapManager(renderer, {
+      logger: {
+        warn(...args) {
+          warnings.push(args.map((value) => String(value)).join(" "))
+        },
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "save-file",
+        desc: "Save the current file",
+        run() {},
+      },
+      {
+        name: "open-file",
+        desc: "Open the current file",
+        run() {},
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      mode: "normal",
+      bindings: [
+        { key: "x", when: "normal", cmd: "save-file" },
+        { key: "y", when: "insert", cmd: "open-file" },
+      ],
+    })
+
+    expect(warnings).toEqual([
+      '[Keymap] Unknown command field "desc" was ignored',
+      '[Keymap] Unknown layer field "mode" was ignored',
+      '[Keymap] Unknown binding field "when" was ignored',
+    ])
+  })
+
   test("throws on reserved command field registrations", () => {
     const manager = getKeymapManager(renderer)
 

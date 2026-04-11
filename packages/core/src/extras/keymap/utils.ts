@@ -5,7 +5,8 @@ import type {
   KeyStroke,
   KeymapBindingInput,
   KeymapBindings,
-  KeymapResolvedCommand,
+  KeymapCommandHandler,
+  KeymapParsedCommand,
   KeymapStringifiableKey,
   KeymapStringifyOptions,
   ParsedKeyPart,
@@ -340,7 +341,7 @@ export function parseKeySequenceLike(
   return parseStringSequence(key, tokens)
 }
 
-export function parseCommandInput(input: string): KeymapResolvedCommand {
+export function parseCommandInput(input: string): KeymapParsedCommand {
   const trimmed = input.trim()
   if (!trimmed) {
     throw new Error("Invalid keymap command: command cannot be empty")
@@ -379,8 +380,8 @@ export function normalizeBindingInputs(bindings: KeymapBindings): KeymapBindingI
 
   const normalized: KeymapBindingInput[] = []
   for (const [key, cmd] of Object.entries(bindings)) {
-    if (typeof cmd !== "string") {
-      throw new Error(`Invalid keymap binding for "${key}": shorthand bindings must map to string commands`)
+    if (typeof cmd !== "string" && typeof cmd !== "function") {
+      throw new Error(`Invalid keymap binding for "${key}": shorthand bindings must map to string or function commands`)
     }
 
     normalized.push({ key, cmd })

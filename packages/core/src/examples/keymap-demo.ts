@@ -104,7 +104,7 @@ function getActiveKeyLabel(activeKey: KeymapActiveKey): string {
     getMetadataText(activeKey.bindingAttrs?.desc) ??
     getMetadataText(activeKey.commandAttrs?.desc) ??
     getMetadataText(activeKey.commandAttrs?.title) ??
-    activeKey.command?.input ??
+    (typeof activeKey.command === "string" ? activeKey.command : undefined) ??
     ""
   )
 }
@@ -387,6 +387,7 @@ function registerKeymaps(renderer: CliRenderer): void {
         { key: "shift+tab", cmd: "focus-prev" },
         { key: "?", cmd: "toggle-help" },
         { key: "ctrl+r", cmd: ":reset" },
+        { key: "<leader>", group: "Leader" },
         { key: "<leader>s", cmd: ":w session.log", desc: "Write session log", group: "Leader" },
         { key: "<leader>h", cmd: "toggle-help", desc: "Toggle help", group: "Leader" },
       ],

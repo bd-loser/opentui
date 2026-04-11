@@ -188,8 +188,7 @@ describe("ex commands addon", () => {
     })
 
     expect(
-      manager.getActiveKeys({ includeBindings: true }).find((candidate) => candidate.stroke.name === "x")?.command
-        ?.attrs,
+      manager.getActiveKeys({ includeMetadata: true }).find((candidate) => candidate.stroke.name === "x")?.commandAttrs,
     ).toEqual({
       desc: "Write the current buffer",
       title: "Write Buffer",

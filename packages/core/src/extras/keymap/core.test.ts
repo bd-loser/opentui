@@ -95,6 +95,26 @@ describe("keymap", () => {
     expect(calls).toEqual(["global"])
   })
 
+  test("supports function binding commands", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    const handler = () => {
+      calls.push("handled")
+    }
+
+    manager.registerLayer({
+      bindings: [{ key: "x", cmd: handler }],
+    })
+
+    expect(getActiveKey(manager, "x")?.command).toBe(handler)
+    expect(getActiveKey(manager, "x", { includeBindings: true })?.bindings?.[0]?.command).toBe(handler)
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["handled"])
+  })
+
   test("matches a target layer by default with focus-within semantics", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
@@ -420,8 +440,10 @@ describe("keymap", () => {
     const activeBinding = activeKey?.bindings?.[0]
     expect(activeKey?.bindings).toHaveLength(1)
     expect(activeBinding?.attrs).toEqual({ desc: "Save file", group: "File" })
-    expect(activeBinding?.command.attrs).toBeUndefined()
-    expect(activeKey?.command?.attrs).toBeUndefined()
+    expect(activeBinding?.command).toBe("save-file")
+    expect(activeBinding?.commandAttrs).toBeUndefined()
+    expect(activeKey?.command).toBe("save-file")
+    expect(activeKey?.commandAttrs).toBeUndefined()
   })
 
   test("typed binding fields can emit both requirements and attributes", () => {
@@ -895,7 +917,7 @@ describe("keymap", () => {
         title: "Save File",
         category: "File",
         run(ctx) {
-          seen.push({ ...ctx.command.attrs })
+          seen.push({ ...(ctx.command?.attrs ?? {}) })
         },
       },
     ])
@@ -911,9 +933,11 @@ describe("keymap", () => {
       category: "File",
     }
 
-    const activeKey = getActiveKey(manager, "x", { includeBindings: true })
-    expect(activeKey?.bindings?.[0]?.command.attrs).toEqual(attrs)
-    expect(activeKey?.command?.attrs).toEqual(attrs)
+    const activeKey = getActiveKey(manager, "x", { includeBindings: true, includeMetadata: true })
+    expect(activeKey?.bindings?.[0]?.command).toBe("save-file")
+    expect(activeKey?.bindings?.[0]?.commandAttrs).toEqual(attrs)
+    expect(activeKey?.command).toBe("save-file")
+    expect(activeKey?.commandAttrs).toEqual(attrs)
 
     mockInput.pressKey("x")
 
@@ -977,29 +1001,31 @@ describe("keymap", () => {
     expect(plain?.bindings).toBeUndefined()
     expect(plain?.bindingAttrs).toBeUndefined()
     expect(plain?.commandAttrs).toBeUndefined()
-    expect(plain?.command?.attrs).toEqual(commandAttrs)
+    expect(plain?.command).toBe("save-file")
 
     expect(metadataOnly?.bindings).toBeUndefined()
-    expect(metadataOnly?.command?.attrs).toEqual(commandAttrs)
+    expect(metadataOnly?.command).toBe("save-file")
     expect(metadataOnly?.bindingAttrs).toEqual(bindingAttrs)
     expect(metadataOnly?.commandAttrs).toEqual(commandAttrs)
 
     expect(withBindings?.bindingAttrs).toBeUndefined()
     expect(withBindings?.commandAttrs).toBeUndefined()
-    expect(withBindings?.command?.attrs).toEqual(commandAttrs)
+    expect(withBindings?.command).toBe("save-file")
     expect(withBindings?.bindings?.[0]?.attrs).toEqual(bindingAttrs)
-    expect(withBindings?.bindings?.[0]?.command.attrs).toEqual(commandAttrs)
+    expect(withBindings?.bindings?.[0]?.command).toBe("save-file")
+    expect(withBindings?.bindings?.[0]?.commandAttrs).toEqual(commandAttrs)
 
     expect(withBindingsAndMetadata?.bindingAttrs).toEqual(bindingAttrs)
     expect(withBindingsAndMetadata?.commandAttrs).toEqual(commandAttrs)
-    expect(withBindingsAndMetadata?.command?.attrs).toEqual(commandAttrs)
+    expect(withBindingsAndMetadata?.command).toBe("save-file")
     expect(withBindingsAndMetadata?.bindings?.[0]?.attrs).toEqual(bindingAttrs)
-    expect(withBindingsAndMetadata?.bindings?.[0]?.command.attrs).toEqual(commandAttrs)
+    expect(withBindingsAndMetadata?.bindings?.[0]?.command).toBe("save-file")
+    expect(withBindingsAndMetadata?.bindings?.[0]?.commandAttrs).toEqual(commandAttrs)
 
     expect(plainAgain?.bindings).toBeUndefined()
     expect(plainAgain?.bindingAttrs).toBeUndefined()
     expect(plainAgain?.commandAttrs).toBeUndefined()
-    expect(plainAgain?.command?.attrs).toEqual(commandAttrs)
+    expect(plainAgain?.command).toBe("save-file")
   })
 
   test("supports multi-key sequences and reports active continuation keys", () => {
@@ -1032,7 +1058,7 @@ describe("keymap", () => {
       },
     ])
     expect(getActiveKeyNames(manager)).toEqual(["d"])
-    expect(getActiveKey(manager, "d")?.command?.input).toBe("delete-line")
+    expect(getActiveKey(manager, "d")?.command).toBe("delete-line")
     expect(getActiveKey(manager, "d")?.display).toBe("d")
 
     mockInput.pressKey("d")
@@ -1244,7 +1270,7 @@ describe("keymap", () => {
 
     expect(getActiveKeyNames(manager)).toEqual(["d"])
     expect(stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true })).toBe("<leader>g")
-    expect(getActiveKey(manager, "d")?.command?.input).toBe("go-definition")
+    expect(getActiveKey(manager, "d")?.command).toBe("go-definition")
 
     mockInput.pressKey("d")
 
@@ -1646,6 +1672,31 @@ describe("keymap", () => {
     }).toThrow("Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer")
   })
 
+  test("allows a non-dispatch binding to label a prefix", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerBindingFields({
+      group(value, ctx) {
+        ctx.attr("group", value)
+      },
+    })
+
+    manager.registerCommands([{ name: "delete-line", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [
+        { key: "d", group: "Delete" },
+        { key: "dd", cmd: "delete-line" },
+      ],
+    })
+
+    const activeKey = getActiveKey(manager, "d", { includeBindings: true, includeMetadata: true })
+
+    expect(activeKey?.command).toBeUndefined()
+    expect(activeKey?.bindingAttrs).toEqual({ group: "Delete" })
+    expect(activeKey?.bindings?.map((binding) => binding.command)).toEqual([undefined])
+  })
+
   test("supports raw input hooks and stop semantics", () => {
     const manager = getKeymapManager(renderer)
     const rawCalls: string[] = []
@@ -1725,9 +1776,9 @@ describe("keymap", () => {
     expect(calls).toEqual(["global"])
   })
 
-  test("passes target, args, and runtime data to commands", () => {
+  test("passes target and runtime data to commands", () => {
     const manager = getKeymapManager(renderer)
-    const seen: Array<{ target: string; args: string; mode: string }> = []
+    const seen: Array<{ target: string; command: string; mode: string }> = []
 
     manager.registerBindingFields({
       mode(value, ctx) {
@@ -1747,7 +1798,7 @@ describe("keymap", () => {
         run(ctx) {
           seen.push({
             target: ctx.target?.id ?? "none",
-            args: ctx.command.args.join(","),
+            command: ctx.command?.name ?? "none",
             mode: String(ctx.data["vim.mode"]),
           })
         },
@@ -1761,13 +1812,13 @@ describe("keymap", () => {
 
     manager.registerLayer({
       target: parent,
-      bindings: [{ key: "x", mode: "normal", cmd: "record one two" }],
+      bindings: [{ key: "x", mode: "normal", cmd: "record" }],
     })
 
     child.focus()
     mockInput.pressKey("x")
 
-    expect(seen).toEqual([{ target: "ctx-parent", args: "one,two", mode: "normal" }])
+    expect(seen).toEqual([{ target: "ctx-parent", command: "record", mode: "normal" }])
   })
 
   test("passes fresh runtime data snapshots to commands after data changes", () => {
@@ -2238,7 +2289,7 @@ describe("keymap", () => {
       key: { name: "x", ctrl: true },
     })
 
-    expect(getActiveKeyDisplay(manager, "<leader>")?.command?.input).toBe("leader-only")
+    expect(getActiveKeyDisplay(manager, "<leader>")?.command).toBe("leader-only")
 
     mockInput.pressKey("x", { ctrl: true })
 
@@ -2386,14 +2437,14 @@ describe("keymap", () => {
 
     const activeX = getActiveKey(manager, "x", { includeBindings: true, includeMetadata: true })
 
-    expect(activeX?.command?.input).toBe("help")
-    expect(activeX?.bindings?.map((binding) => binding.command.input)).toEqual(["help"])
+    expect(activeX?.command).toBe("help")
+    expect(activeX?.bindings?.map((binding) => binding.command)).toEqual(["help"])
     expect(activeX?.bindingAttrs).toEqual({ desc: "Local x" })
 
     const activeY = getActiveKey(manager, "y", { includeBindings: true, includeMetadata: true })
 
-    expect(activeY?.command?.input).toBe("save")
-    expect(activeY?.bindings?.map((binding) => binding.command.input)).toEqual(["save", "help"])
+    expect(activeY?.command).toBe("save")
+    expect(activeY?.bindings?.map((binding) => binding.command)).toEqual(["save", "help"])
     expect(activeY?.bindingAttrs).toEqual({ desc: "Local y" })
   })
 

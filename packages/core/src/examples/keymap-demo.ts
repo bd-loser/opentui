@@ -15,7 +15,7 @@ import {
   registerExCommands,
   registerMetadataFields,
   registerTimedLeader,
-  type KeymapActiveBinding,
+  type KeymapActiveMetadata,
   type KeymapManager,
   type KeymapResolvedCommand,
   stringifyKeySequence,
@@ -93,18 +93,18 @@ function getMetadataText(value: unknown): string | undefined {
   return trimmed || undefined
 }
 
-function getCommandLabel(command: KeymapResolvedCommand): string {
-  return getMetadataText(command.attrs?.desc) ?? getMetadataText(command.attrs?.title) ?? command.input
+function getCommandLabel(command: KeymapResolvedCommand, attrs?: Record<string, unknown>): string {
+  return getMetadataText(attrs?.desc) ?? getMetadataText(attrs?.title) ?? command.input
 }
 
-function getBindingLabel(binding: KeymapActiveBinding): string {
-  return getMetadataText(binding.attrs?.desc) ?? getCommandLabel(binding.command)
+function getMetadataLabel(metadata: KeymapActiveMetadata): string {
+  return getMetadataText(metadata.bindingAttrs?.desc) ?? getCommandLabel(metadata.command, metadata.commandAttrs)
 }
 
-function getSharedBindingText(bindings: readonly KeymapActiveBinding[], name: string): string | undefined {
+function getSharedMetadataText(metadata: readonly KeymapActiveMetadata[], name: string): string | undefined {
   let shared: string | undefined
-  for (const binding of bindings) {
-    const value = getMetadataText(binding.attrs?.[name])
+  for (const entry of metadata) {
+    const value = getMetadataText(entry.bindingAttrs?.[name])
     if (!value) return undefined
     if (shared === undefined) {
       shared = value
@@ -128,14 +128,14 @@ function uniqueLabels(labels: Iterable<string>): string[] {
 }
 
 function getActiveKeyLabel(activeKey: ReturnType<KeymapManager["getActiveKeys"]>[number]): string {
-  const bindings = activeKey.bindings ?? []
-  const group = activeKey.continues ? getSharedBindingText(bindings, "group") : undefined
+  const metadata = activeKey.metadata ?? []
+  const group = activeKey.continues ? getSharedMetadataText(metadata, "group") : undefined
   if (group) return `+${group}`
 
   const labels =
-    bindings.length > 0
-      ? uniqueLabels(bindings.map(getBindingLabel))
-      : uniqueLabels(activeKey.commands.map(getCommandLabel))
+    metadata.length > 0
+      ? uniqueLabels(metadata.map(getMetadataLabel))
+      : uniqueLabels(activeKey.commands.map((command) => getCommandLabel(command)))
   if (labels.length > 0) return labels.join(" | ")
   return activeKey.commands.map((command) => command.input).join(" | ")
 }
@@ -167,7 +167,7 @@ function buildPanelContent(label: string, count: number, step: number, saveTarge
 function buildWhichKeyEntries(): StyledText {
   if (!keymapManager) return joinLines([styledLine([fg(P.textMuted)("(unavailable)")])])
 
-  const activeKeys = [...keymapManager.getActiveKeys({ includeBindings: true })].sort((left, right) => {
+  const activeKeys = [...keymapManager.getActiveKeys({ includeMetadata: true })].sort((left, right) => {
     return stringifyKeyStroke(left, { preferDisplay: true }).localeCompare(
       stringifyKeyStroke(right, { preferDisplay: true }),
     )

@@ -503,6 +503,43 @@ describe("keymap", () => {
     expect(getActiveKeyNames(manager)).toEqual([])
   })
 
+  test("includeMetadata re-evaluates unkeyed binding matchers on each read", () => {
+    const manager = getKeymapManager(renderer)
+    let enabled = false
+
+    manager.registerBindingFields({
+      active(value, ctx) {
+        if (value !== true) {
+          throw new Error('Keymap binding field "active" must be true')
+        }
+
+        ctx.match(() => enabled)
+        ctx.attr("label", "Runtime binding")
+      },
+    })
+
+    manager.registerCommands([{ name: "runtime-binding", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
+    })
+
+    expect(getActiveKey(manager, "x", { includeMetadata: true })?.metadata).toBeUndefined()
+
+    enabled = true
+
+    expect(getActiveKey(manager, "x", { includeMetadata: true })?.metadata).toEqual([
+      {
+        command: {
+          input: "runtime-binding",
+          name: "runtime-binding",
+          args: [],
+        },
+        bindingAttrs: { label: "Runtime binding" },
+      },
+    ])
+  })
+
   test("typed binding field matchers clear pending sequences when they stop matching", () => {
     const manager = getKeymapManager(renderer)
     let enabled = true

@@ -1,17 +1,21 @@
 import type { KeyEvent } from "../../lib/KeyHandler.js"
 import { defaultKeyAliases } from "../../lib/keymapping.js"
 import type {
+  KeymapAttributes,
+  KeymapBindingCommand,
   KeyLike,
   KeyStroke,
   KeymapBindingInput,
   KeymapBindings,
-  KeymapCommandHandler,
+  KeymapEventData,
   KeymapParsedCommand,
   KeymapStringifiableKey,
   KeymapStringifyOptions,
   ParsedKeyPart,
   ParsedKeyStroke,
-} from "./core.js"
+  RegisteredLayer,
+  SequenceNode,
+} from "./types.js"
 
 const namedSingleStrokeKeys = new Set<string>([
   "space",
@@ -74,6 +78,107 @@ export function cloneStroke(stroke: ParsedKeyStroke): ParsedKeyStroke {
     meta: stroke.meta,
     super: stroke.super,
   }
+}
+
+export function isPromiseLike(value: unknown): value is Promise<unknown> {
+  if (!value) {
+    return false
+  }
+
+  if (typeof value !== "object" && typeof value !== "function") {
+    return false
+  }
+
+  return typeof (value as { then?: unknown }).then === "function"
+}
+
+export function sortByPriorityAndOrder<T extends { priority: number; order: number }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const priorityDiff = b.priority - a.priority
+    if (priorityDiff !== 0) {
+      return priorityDiff
+    }
+
+    return a.order - b.order
+  })
+}
+
+export function sortLayersWithinScope(items: RegisteredLayer[]): RegisteredLayer[] {
+  return [...items].sort((a, b) => {
+    const priorityDiff = b.priority - a.priority
+    if (priorityDiff !== 0) {
+      return priorityDiff
+    }
+
+    return b.order - a.order
+  })
+}
+
+export function buildBindingKey(stroke: ParsedKeyStroke): string {
+  return `${stroke.name}:${stroke.ctrl ? 1 : 0}:${stroke.shift ? 1 : 0}:${stroke.meta ? 1 : 0}:${stroke.super ? 1 : 0}`
+}
+
+export function createSequenceNode(parent: SequenceNode | null, stroke: ParsedKeyStroke | null): SequenceNode {
+  return {
+    parent,
+    depth: parent ? parent.depth + 1 : 0,
+    stroke,
+    children: new Map(),
+    bindings: [],
+    reachableBindings: [],
+  }
+}
+
+export function mergeRequirement(target: KeymapEventData, name: string, value: unknown, source: string): void {
+  if (Object.prototype.hasOwnProperty.call(target, name) && !Object.is(target[name], value)) {
+    throw new Error(`Conflicting keymap requirement for "${name}" from ${source}`)
+  }
+
+  target[name] = value
+}
+
+export function mergeAttribute(target: KeymapAttributes, name: string, value: unknown, source: string): void {
+  if (Object.prototype.hasOwnProperty.call(target, name) && !Object.is(target[name], value)) {
+    throw new Error(`Conflicting keymap attribute for "${name}" from ${source}`)
+  }
+
+  target[name] = value
+}
+
+export function freezeAttributes(attrs: KeymapAttributes): Readonly<KeymapAttributes> | undefined {
+  if (Object.keys(attrs).length === 0) {
+    return undefined
+  }
+
+  return Object.freeze({ ...attrs })
+}
+
+export function cloneBindingInput(binding: KeymapBindingInput): KeymapBindingInput {
+  return {
+    ...binding,
+    key: typeof binding.key === "string" ? binding.key : { ...binding.key },
+  }
+}
+
+export function normalizeBindingCommand(command: KeymapBindingCommand | undefined): KeymapBindingCommand | undefined {
+  if (command === undefined || typeof command === "function") {
+    return command
+  }
+
+  const trimmed = command.trim()
+  if (!trimmed) {
+    throw new Error("Invalid keymap command: command cannot be empty")
+  }
+
+  return trimmed
+}
+
+export function snapshotBindingInputs(bindings: KeymapBindings): KeymapBindingInput[] {
+  return normalizeBindingInputs(bindings).map((binding) => cloneBindingInput(binding))
+}
+
+export function bindingUsesTokenSyntax(binding: KeymapBindingInput): boolean {
+  return typeof binding.key === "string" && binding.key.includes("<")
 }
 
 function hasDisplayStroke(

@@ -46,7 +46,7 @@ export type {
   ParsedKeyPart,
   ParsedKeyStroke,
   KeyStroke,
-} from "./core.js"
+} from "./types.js"
 export { registerEnabledField } from "./addons/enabled.js"
 export { registerExCommands } from "./addons/ex-commands.js"
 export { compileEditBufferKeyBindings, registerEditBufferKeymap } from "./addons/edit-buffer-keymap.js"

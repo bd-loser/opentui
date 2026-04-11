@@ -1,4 +1,4 @@
-import type { ExCommand, KeymapCommand, KeymapManager } from "../core.js"
+import type { ExCommand, KeymapCommand, KeymapManager } from "../types.js"
 import { normalizeCommandName, parseCommandInput } from "../utils.js"
 
 function normalizeExCommandName(name: string): string {

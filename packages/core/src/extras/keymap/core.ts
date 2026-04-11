@@ -250,6 +250,7 @@ interface RegisteredLayer {
   matchCache?: boolean
   bindingInputs: readonly KeymapBindingInput[]
   compiledBindings: readonly CompiledBinding[]
+  hasUnkeyedBindings: boolean
   hasTokenBindings: boolean
   root: SequenceNode
   offTargetDestroy?: () => void
@@ -400,6 +401,15 @@ class KeymapManagerImpl implements KeymapManager {
   private pendingSequence: PendingSequenceState | null = null
   private order = 0
   private destroyed = false
+  private derivedStateVersion = 0
+  private pendingSequenceCacheVersion = -1
+  private pendingSequenceCache: readonly ParsedKeyStroke[] = []
+  private pendingSequencePartsCacheVersion = -1
+  private pendingSequencePartsCache: readonly ParsedKeyPart[] = []
+  private activeKeysFastCacheVersion = -1
+  private activeKeysFastCache: readonly KeymapActiveKey[] = []
+  private activeKeysWithBindingsCacheVersion = -1
+  private activeKeysWithBindingsCache: readonly KeymapActiveKey[] = []
   private stateChangeDepth = 0
   private stateChangePending = false
   private flushingStateChange = false
@@ -467,6 +477,15 @@ class KeymapManagerImpl implements KeymapManager {
     this.dataVersion = 0
     this.readonlyDataVersion = -1
     this.readonlyData = Object.freeze({})
+    this.derivedStateVersion = 0
+    this.pendingSequenceCacheVersion = -1
+    this.pendingSequenceCache = []
+    this.pendingSequencePartsCacheVersion = -1
+    this.pendingSequencePartsCache = []
+    this.activeKeysFastCacheVersion = -1
+    this.activeKeysFastCache = []
+    this.activeKeysWithBindingsCacheVersion = -1
+    this.activeKeysWithBindingsCache = []
     this.stateChangeDepth = 0
     this.stateChangePending = false
     this.flushingStateChange = false
@@ -523,23 +542,41 @@ class KeymapManagerImpl implements KeymapManager {
   public getPendingSequence(): readonly ParsedKeyStroke[] {
     this.assertNotDestroyed()
 
-    const pending = this.resolvePendingSequence()
-    if (!pending) {
-      return []
+    if (this.pendingSequenceCacheVersion === this.derivedStateVersion) {
+      return this.pendingSequenceCache
     }
 
-    return this.collectSequenceStrokesFromNode(pending.node)
+    const pending = this.resolvePendingSequence()
+    const canUseCache = !pending || this.layerCanCacheActiveKeys(pending.layer)
+
+    const sequence = pending ? this.collectSequenceStrokesFromNode(pending.node) : []
+
+    if (canUseCache) {
+      this.pendingSequenceCacheVersion = this.derivedStateVersion
+      this.pendingSequenceCache = sequence
+    }
+
+    return sequence
   }
 
   public getPendingSequenceParts(): readonly ParsedKeyPart[] {
     this.assertNotDestroyed()
 
-    const pending = this.resolvePendingSequence()
-    if (!pending) {
-      return []
+    if (this.pendingSequencePartsCacheVersion === this.derivedStateVersion) {
+      return this.pendingSequencePartsCache
     }
 
-    return this.collectSequencePartsFromNode(pending.node)
+    const pending = this.resolvePendingSequence()
+    const canUseCache = !pending || this.layerCanCacheActiveKeys(pending.layer)
+
+    const parts = pending ? this.collectSequencePartsFromNode(pending.node) : []
+
+    if (canUseCache) {
+      this.pendingSequencePartsCacheVersion = this.derivedStateVersion
+      this.pendingSequencePartsCache = parts
+    }
+
+    return parts
   }
 
   public clearPendingSequence(): void {
@@ -577,22 +614,51 @@ class KeymapManagerImpl implements KeymapManager {
     this.assertNotDestroyed()
 
     const includeBindings = options?.includeBindings === true
+
+    if (includeBindings) {
+      if (this.activeKeysWithBindingsCacheVersion === this.derivedStateVersion) {
+        return this.activeKeysWithBindingsCache
+      }
+    } else if (this.activeKeysFastCacheVersion === this.derivedStateVersion) {
+      return this.activeKeysFastCache
+    }
+
     const focused = this.getFocusedRenderable()
     const pending = this.resolvePendingSequence(focused)
+    const activeLayers = pending ? undefined : this.getActiveLayers(focused)
+    const canUseCache = pending
+      ? this.layerCanCacheActiveKeys(pending.layer)
+      : this.activeLayersCanCacheActiveKeys(activeLayers)
+
+    let activeKeys: readonly KeymapActiveKey[]
+
     if (pending) {
       if (includeBindings) {
-        return this.collectActiveKeysFromChildren(pending.node.children, true)
+        activeKeys = this.collectActiveKeysFromChildren(pending.node.children, true)
+      } else {
+        activeKeys = this.collectActiveKeysFromChildrenFast(pending.node.children)
       }
-
-      return this.collectActiveKeysFromChildrenFast(pending.node.children)
+    } else {
+      if (includeBindings) {
+        activeKeys = this.collectActiveKeysAtRoot(activeLayers, true)
+      } else {
+        activeKeys = this.collectActiveKeysAtRootFast(activeLayers)
+      }
     }
 
-    const activeLayers = this.getActiveLayers(focused)
+    if (!canUseCache) {
+      return activeKeys
+    }
+
     if (includeBindings) {
-      return this.collectActiveKeysAtRoot(activeLayers, true)
+      this.activeKeysWithBindingsCacheVersion = this.derivedStateVersion
+      this.activeKeysWithBindingsCache = activeKeys
+    } else {
+      this.activeKeysFastCacheVersion = this.derivedStateVersion
+      this.activeKeysFastCache = activeKeys
     }
 
-    return this.collectActiveKeysAtRootFast(activeLayers)
+    return activeKeys
   }
 
   public onStateChange(fn: () => void): () => void {
@@ -640,6 +706,7 @@ class KeymapManagerImpl implements KeymapManager {
         matchCacheDirty: true,
         bindingInputs,
         compiledBindings: compiledBindings.bindings,
+        hasUnkeyedBindings: compiledBindings.bindings.some((binding) => binding.hasUnkeyedMatchers),
         hasTokenBindings: bindingInputs.some((binding) => bindingUsesTokenSyntax(binding)),
         root: compiledBindings.root,
       }
@@ -933,6 +1000,8 @@ class KeymapManagerImpl implements KeymapManager {
   }
 
   private queueStateChange(): void {
+    this.derivedStateVersion += 1
+
     if (this.stateChangeListeners.length === 0) {
       return
     }
@@ -2172,6 +2241,20 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     return focused
+  }
+
+  private layerCanCacheActiveKeys(layer: RegisteredLayer): boolean {
+    return !layer.hasUnkeyedMatchers && !layer.hasUnkeyedBindings
+  }
+
+  private activeLayersCanCacheActiveKeys(activeLayers: readonly RegisteredLayer[]): boolean {
+    for (const layer of activeLayers) {
+      if (!this.layerCanCacheActiveKeys(layer)) {
+        return false
+      }
+    }
+
+    return true
   }
 
   private getActiveLayers(focused: Renderable | null): RegisteredLayer[] {

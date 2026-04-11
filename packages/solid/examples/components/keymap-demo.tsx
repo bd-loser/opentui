@@ -1,5 +1,12 @@
 import { ConsolePosition, TextAttributes, type Renderable } from "@opentui/core"
-import { registerExCommands, registerTimedLeader, stringifyKeySequence, stringifyKeyStroke } from "@opentui/core/extras"
+import {
+  registerExCommands,
+  registerMetadataFields,
+  registerTimedLeader,
+  stringifyKeySequence,
+  stringifyKeyStroke,
+  type KeymapActiveMetadata,
+} from "@opentui/core/extras"
 import { render, useActiveKeys, useKeymap, useKeymappings, usePendingSequenceParts, useRenderer } from "@opentui/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
 
@@ -30,6 +37,43 @@ function KeyLabel(props: { children: JSX.Element }) {
   return <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>{props.children}</span>
 }
 
+function getMetadataText(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined
+  }
+
+  const trimmed = value.trim()
+  return trimmed || undefined
+}
+
+function getActiveKeyLabel(activeKey: { metadata?: readonly KeymapActiveMetadata[]; commands: readonly { input: string }[]; continues: boolean }): string {
+  const metadata = activeKey.metadata ?? []
+  if (activeKey.continues && metadata.length > 0) {
+    const firstGroup = getMetadataText(metadata[0]?.bindingAttrs?.group)
+    if (firstGroup && metadata.every((entry) => getMetadataText(entry.bindingAttrs?.group) === firstGroup)) {
+      return `+${firstGroup}`
+    }
+  }
+
+  const labels = new Set<string>()
+
+  for (const entry of metadata) {
+    const label =
+      getMetadataText(entry.bindingAttrs?.desc) ??
+      getMetadataText(entry.commandAttrs?.desc) ??
+      getMetadataText(entry.commandAttrs?.title) ??
+      entry.command.input
+
+    labels.add(label)
+  }
+
+  if (labels.size > 0) {
+    return [...labels].join(" | ")
+  }
+
+  return activeKey.commands.map((command) => command.input).join(" | ")
+}
+
 // -- CounterPanel ----------------------------------------------------------
 
 function CounterPanel(props: {
@@ -52,6 +96,8 @@ function CounterPanel(props: {
   const offCommands = manager.registerCommands([
     {
       name: incrementCommand,
+      title: `${props.label} +${props.step}`,
+      desc: `${props.label} +${props.step}`,
       run() {
         const next = props.count() + props.step
         props.setCount(next)
@@ -60,6 +106,8 @@ function CounterPanel(props: {
     },
     {
       name: decrementCommand,
+      title: `${props.label} -${props.step}`,
+      desc: `${props.label} -${props.step}`,
       run() {
         const next = props.count() - props.step
         props.setCount(next)
@@ -70,11 +118,11 @@ function CounterPanel(props: {
 
   const keymapRef = useKeymap({
     scope: "focus-within",
-    bindings: {
-      j: incrementCommand,
-      k: decrementCommand,
-      enter: `:w ${props.saveTarget}`,
-    },
+    bindings: [
+      { key: "j", cmd: incrementCommand, desc: `${props.label} +${props.step}` },
+      { key: "k", cmd: decrementCommand, desc: `${props.label} -${props.step}` },
+      { key: "enter", cmd: `:w ${props.saveTarget}`, desc: `Write ${props.label.toLowerCase()} panel` },
+    ],
   })
 
   onCleanup(() => {
@@ -135,7 +183,8 @@ export default function KeymapDemo() {
   const [leaderArmed, setLeaderArmed] = createSignal(false)
   const [lastAction, setLastAction] = createSignal("Press Tab to start.")
   const [logs, setLogs] = createSignal<string[]>([])
-  const activeKeys = useActiveKeys()
+  const offMetadata = registerMetadataFields(manager)
+  const activeKeys = useActiveKeys({ includeMetadata: true })
   const pendingSequenceParts = usePendingSequenceParts()
 
   const announce = (message: string) => {
@@ -164,18 +213,24 @@ export default function KeymapDemo() {
   const offActions = manager.registerCommands([
     {
       name: "focus-next",
+      title: "Next panel",
+      desc: "Next panel",
       run() {
         moveFocus(1)
       },
     },
     {
       name: "focus-prev",
+      title: "Prev panel",
+      desc: "Prev panel",
       run() {
         moveFocus(-1)
       },
     },
     {
       name: "toggle-help",
+      title: "Toggle help",
+      desc: "Toggle help",
       run() {
         setHelpVisible((value) => {
           const next = !value
@@ -191,6 +246,8 @@ export default function KeymapDemo() {
       name: "reset",
       aliases: ["r"],
       nargs: "0",
+      title: "Reset counters",
+      desc: "Reset counters",
       run() {
         setAlphaCount(0)
         setBetaCount(0)
@@ -201,6 +258,8 @@ export default function KeymapDemo() {
       name: "write",
       aliases: ["w"],
       nargs: "1",
+      title: "Write file",
+      desc: "Write file",
       run({ raw, args }) {
         announce(`Ex command: ${raw} -> wrote ${args[0]}`)
       },
@@ -220,14 +279,14 @@ export default function KeymapDemo() {
 
   useKeymap({
     scope: "global",
-    bindings: {
-      tab: "focus-next",
-      "shift+tab": "focus-prev",
-      "?": "toggle-help",
-      "ctrl+r": ":reset",
-      "<leader>s": ":w session.log",
-      "<leader>h": "toggle-help",
-    },
+    bindings: [
+      { key: "tab", cmd: "focus-next" },
+      { key: "shift+tab", cmd: "focus-prev" },
+      { key: "?", cmd: "toggle-help" },
+      { key: "ctrl+r", cmd: ":reset" },
+      { key: "<leader>s", cmd: ":w session.log", desc: "Write session log", group: "Leader" },
+      { key: "<leader>h", cmd: "toggle-help", desc: "Toggle help", group: "Leader" },
+    ],
   })
 
   // -- computed content -----------------------------------------------------
@@ -244,7 +303,7 @@ export default function KeymapDemo() {
 
     return sortedActiveKeys.slice(0, 8).map((activeKey) => ({
       key: stringifyKeyStroke(activeKey, { preferDisplay: true }),
-      commands: activeKey.commands.map((command) => command.input).join(" | "),
+      commands: getActiveKeyLabel(activeKey),
     }))
   })
 
@@ -262,6 +321,7 @@ export default function KeymapDemo() {
     offLeader()
     offEx()
     offActions()
+    offMetadata()
   })
 
   return (

@@ -3,7 +3,7 @@ import path from "node:path"
 
 import { BoxRenderable } from "../renderables/Box.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../testing.js"
-import { getKeymapManager, registerEnabledField, type KeymapManager } from "../extras/keymap/index.js"
+import { getKeymapManager, registerEnabledField, registerMetadataFields, type KeymapManager } from "../extras/keymap/index.js"
 
 const DEFAULT_ITERATIONS = 20_000
 const DEFAULT_WARMUP = 2_000
@@ -296,9 +296,49 @@ function registerStateChangeReadListeners(manager: KeymapManager): () => void {
   }
 }
 
+function registerStateChangeMetadataListeners(manager: KeymapManager): () => void {
+  let sink = 0
+
+  const offActiveKeys = manager.onStateChange(() => {
+    sink += manager.getActiveKeys({ includeMetadata: true }).length
+  })
+  const offPendingSequence = manager.onStateChange(() => {
+    sink += manager.getPendingSequenceParts().length
+  })
+
+  return () => {
+    offPendingSequence()
+    offActiveKeys()
+    void sink
+  }
+}
+
+function registerStateChangeBindingListeners(manager: KeymapManager): () => void {
+  let sink = 0
+
+  const offActiveKeys = manager.onStateChange(() => {
+    sink += manager.getActiveKeys({ includeBindings: true }).length
+  })
+  const offPendingSequence = manager.onStateChange(() => {
+    sink += manager.getPendingSequenceParts().length
+  })
+
+  return () => {
+    offPendingSequence()
+    offActiveKeys()
+    void sink
+  }
+}
+
 function readActiveKeysRepeatedly(manager: KeymapManager, count: number): void {
   for (let index = 0; index < count; index += 1) {
     manager.getActiveKeys()
+  }
+}
+
+function readActiveKeysWithMetadataRepeatedly(manager: KeymapManager, count: number): void {
+  for (let index = 0; index < count; index += 1) {
+    manager.getActiveKeys({ includeMetadata: true })
   }
 }
 
@@ -332,6 +372,84 @@ function setupStateChangeFocusChurn(resources: ScenarioResources): {
   registerGlobalLayers(resources.manager, 120)
 
   return { first, second }
+}
+
+function setupMetadataFocusTree(resources: ScenarioResources): BoxRenderable[] {
+  registerMetadataFields(resources.manager)
+
+  const commands = Array.from({ length: 36 + 300 + 150 }, (_, index) => ({
+    name: `metadata-command-${index}`,
+    title: `Action ${index}`,
+    desc: `Action ${index}`,
+    run() {},
+  }))
+
+  resources.manager.registerCommands(commands)
+
+  const focusChain = createFocusTree(resources, 6)
+  let commandIndex = 0
+
+  for (let index = 0; index < focusChain.length; index += 1) {
+    const target = focusChain[index]
+    if (!target) {
+      continue
+    }
+
+    for (let layerIndex = 0; layerIndex < 6; layerIndex += 1) {
+      resources.manager.registerLayer({
+        target,
+        scope: index % 2 === 0 ? "focus-within" : "focus",
+        priority: layerIndex % 4,
+        bindings: [
+          {
+            key: createKey(index * 10 + layerIndex),
+            cmd: `metadata-command-${commandIndex}`,
+            desc: `Binding ${commandIndex}`,
+            group: `Panel ${index}`,
+          },
+        ],
+      })
+
+      commandIndex += 1
+    }
+  }
+
+  for (let index = 0; index < 300; index += 1) {
+    const sibling = createFocusableBox(resources.renderer, `metadata-sibling-${index}`)
+    resources.renderer.root.add(sibling)
+    resources.manager.registerLayer({
+      target: sibling,
+      scope: index % 2 === 0 ? "focus-within" : "focus",
+      priority: index % 4,
+      bindings: [
+        {
+          key: createKey(index + 4000),
+          cmd: `metadata-command-${commandIndex}`,
+          desc: `Binding ${commandIndex}`,
+          group: "Sibling",
+        },
+      ],
+    })
+    commandIndex += 1
+  }
+
+  for (let index = 0; index < 150; index += 1) {
+    resources.manager.registerLayer({
+      scope: "global",
+      priority: index % 3,
+      bindings: [
+        {
+          key: createKey(index + 8000),
+          cmd: `metadata-command-${commandIndex}`,
+          desc: `Binding ${commandIndex}`,
+          group: "Global",
+        },
+      ],
+    })
+    commandIndex += 1
+  }
+
+  return focusChain
 }
 
 async function createScenarioResources(): Promise<ScenarioResources> {
@@ -461,34 +579,33 @@ const scenarios: BenchmarkScenario[] = [
   },
   {
     name: "active_keys_focus_tree_with_bindings_repeat_reads_5x",
-    description: "Repeated getActiveKeys with bindings five times against the same focus tree state",
+    description: "Repeated getActiveKeys with bindings five times against metadata-rich focus tree state",
     async setup() {
       const resources = await createScenarioResources()
-      const focusChain = createFocusTree(resources, 6)
-
-      for (let index = 0; index < focusChain.length; index += 1) {
-        const target = focusChain[index]
-        if (!target) {
-          continue
-        }
-
-        for (let layerIndex = 0; layerIndex < 6; layerIndex += 1) {
-          registerTargetLayer(resources.manager, target, index * 10 + layerIndex)
-        }
-      }
-
-      for (let index = 0; index < 300; index += 1) {
-        const sibling = createFocusableBox(resources.renderer, `repeat-binding-sibling-${index}`)
-        resources.renderer.root.add(sibling)
-        registerTargetLayer(resources.manager, sibling, index + 4000)
-      }
-
-      registerGlobalLayers(resources.manager, 150)
+      setupMetadataFocusTree(resources)
 
       return {
         resources,
         runIteration() {
           readActiveKeysWithBindingsRepeatedly(resources.manager, 5)
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "active_keys_focus_tree_with_metadata_repeat_reads_5x",
+    description: "Repeated getActiveKeys with metadata five times against metadata-rich focus tree state",
+    async setup() {
+      const resources = await createScenarioResources()
+      setupMetadataFocusTree(resources)
+
+      return {
+        resources,
+        runIteration() {
+          readActiveKeysWithMetadataRepeatedly(resources.manager, 5)
         },
         cleanup() {
           resources.renderer.destroy()
@@ -869,6 +986,76 @@ const scenarios: BenchmarkScenario[] = [
       const { first, second } = setupStateChangeFocusChurn(resources)
       const offStateChange = registerStateChangeReadListeners(resources.manager)
       let focusFirst = false
+
+      first.focus()
+
+      return {
+        resources,
+        runIteration() {
+          if (focusFirst) {
+            first.focus()
+          } else {
+            second.focus()
+          }
+
+          focusFirst = !focusFirst
+        },
+        cleanup() {
+          offStateChange()
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "state_change_focus_churn_metadata_read_heavy",
+    description: "Repeated focus changes with active metadata and prefix listeners",
+    async setup() {
+      const resources = await createScenarioResources()
+      const focusChain = setupMetadataFocusTree(resources)
+      const offStateChange = registerStateChangeMetadataListeners(resources.manager)
+      const first = focusChain[0]
+      const second = focusChain[1]
+      let focusFirst = false
+
+      if (!first || !second) {
+        throw new Error("Expected metadata focus targets for metadata benchmark")
+      }
+
+      first.focus()
+
+      return {
+        resources,
+        runIteration() {
+          if (focusFirst) {
+            first.focus()
+          } else {
+            second.focus()
+          }
+
+          focusFirst = !focusFirst
+        },
+        cleanup() {
+          offStateChange()
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "state_change_focus_churn_bindings_read_heavy",
+    description: "Repeated focus changes with active binding and prefix listeners",
+    async setup() {
+      const resources = await createScenarioResources()
+      const focusChain = setupMetadataFocusTree(resources)
+      const offStateChange = registerStateChangeBindingListeners(resources.manager)
+      const first = focusChain[0]
+      const second = focusChain[1]
+      let focusFirst = false
+
+      if (!first || !second) {
+        throw new Error("Expected metadata focus targets for binding benchmark")
+      }
 
       first.focus()
 

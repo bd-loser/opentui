@@ -42,6 +42,72 @@ describe("metadata addon", () => {
     expect(activeKey?.commands[0]?.attrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
   })
 
+  test("exposes generic binding and command metadata through includeMetadata", () => {
+    const manager = getKeymapManager(renderer)
+    registerMetadataFields(manager)
+
+    manager.registerCommands([
+      {
+        name: "save-file",
+        desc: "Save file",
+        title: "Save",
+        category: "File",
+        run() {},
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
+    })
+
+    const activeKey = manager
+      .getActiveKeys({ includeMetadata: true })
+      .find((candidate) => candidate.stroke.name === "x")
+
+    expect(activeKey?.bindings).toBeUndefined()
+    expect(activeKey?.commands[0]?.attrs).toBeUndefined()
+    expect(activeKey?.metadata).toEqual([
+      {
+        command: {
+          input: "save-file",
+          name: "save-file",
+          args: [],
+        },
+        bindingAttrs: { desc: "Write current file", group: "File" },
+        commandAttrs: { desc: "Save file", title: "Save", category: "File" },
+      },
+    ])
+  })
+
+  test("can include both metadata and bindings", () => {
+    const manager = getKeymapManager(renderer)
+    registerMetadataFields(manager)
+
+    manager.registerCommands([
+      {
+        name: "save-file",
+        desc: "Save file",
+        title: "Save",
+        category: "File",
+        run() {},
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
+    })
+
+    const activeKey = manager
+      .getActiveKeys({ includeBindings: true, includeMetadata: true })
+      .find((candidate) => candidate.stroke.name === "x")
+
+    expect(activeKey?.bindings?.[0]?.attrs).toEqual({ desc: "Write current file", group: "File" })
+    expect(activeKey?.metadata?.[0]?.bindingAttrs).toEqual({ desc: "Write current file", group: "File" })
+    expect(activeKey?.metadata?.[0]?.commandAttrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
+  })
+
   test("normalizes metadata strings and rejects invalid values", () => {
     const manager = getKeymapManager(renderer)
     registerMetadataFields(manager)

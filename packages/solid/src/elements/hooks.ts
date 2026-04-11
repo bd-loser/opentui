@@ -8,8 +8,16 @@ import {
   type KeyEvent,
   type TimelineOptions,
 } from "@opentui/core"
-import { getKeymapManager, type KeymapLayer, type KeymapLayerFields } from "@opentui/core/extras"
-import { createContext, createSignal, onCleanup, onMount, useContext } from "solid-js"
+import {
+  getKeymapManager,
+  type KeymapActiveKey,
+  type KeymapActiveKeyOptions,
+  type KeymapLayer,
+  type KeymapLayerFields,
+  type KeymapManager,
+  type ParsedKeyPart,
+} from "@opentui/core/extras"
+import { createContext, createMemo, createSignal, onCleanup, onMount, useContext, type Accessor } from "solid-js"
 
 export const RendererContext = createContext<CliRenderer>()
 
@@ -150,9 +158,48 @@ function resolveKeymapTarget(target: UseKeymapTarget | undefined): Renderable | 
   return target ?? undefined
 }
 
-export const useKeymappings = () => {
+export const useKeymappings = (): KeymapManager => {
   const renderer = useRenderer()
   return getKeymapManager(renderer)
+}
+
+function useKeymapStateVersion(manager: KeymapManager): Accessor<number> {
+  const [version, setVersion] = createSignal(0)
+  let dispose: (() => void) | undefined
+
+  onMount(() => {
+    dispose = manager.onStateChange(() => {
+      setVersion((value) => value + 1)
+    })
+
+    setVersion((value) => value + 1)
+  })
+
+  onCleanup(() => {
+    dispose?.()
+  })
+
+  return version
+}
+
+export const useActiveKeys = (options?: KeymapActiveKeyOptions): Accessor<readonly KeymapActiveKey[]> => {
+  const manager = useKeymappings()
+  const version = useKeymapStateVersion(manager)
+
+  return createMemo(() => {
+    version()
+    return manager.getActiveKeys(options)
+  })
+}
+
+export const usePendingSequenceParts = (): Accessor<readonly ParsedKeyPart[]> => {
+  const manager = useKeymappings()
+  const version = useKeymapStateVersion(manager)
+
+  return createMemo(() => {
+    version()
+    return manager.getPendingSequenceParts()
+  })
 }
 
 export function useKeymap<TRenderable extends Renderable = Renderable>(layer: UseGlobalKeymapLayer): KeymapRef<TRenderable>

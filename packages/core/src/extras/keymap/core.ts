@@ -1,5 +1,5 @@
 import { RenderableEvents, type Renderable } from "../../Renderable.js"
-import type { CliRenderer } from "../../renderer.js"
+import { CliRenderEvents, type CliRenderer } from "../../renderer.js"
 import type { KeyEvent } from "../../lib/KeyHandler.js"
 import {
   cloneStroke,
@@ -188,6 +188,7 @@ export interface KeymapManager {
   clearPendingSequence(): void
   popPendingSequence(): boolean
   getActiveKeys(options?: KeymapActiveKeyOptions): readonly KeymapActiveKey[]
+  onStateChange(fn: () => void): () => void
   onPendingSequenceChange(fn: (sequence: readonly ParsedKeyStroke[]) => void): () => void
   registerLayer(layer: KeymapLayer): () => void
   registerLayerFields(fields: Record<string, KeymapLayerFieldCompiler>): () => void
@@ -387,6 +388,7 @@ class KeymapManagerImpl implements KeymapManager {
   private runtimeKeyDependents = new Map<string, Set<RuntimeMatchable>>()
   private keyHooks: RegisteredKeyHook[] = []
   private rawHooks: RegisteredRawHook[] = []
+  private stateChangeListeners: Array<() => void> = []
   private pendingSequenceListeners: Array<(sequence: readonly ParsedKeyStroke[]) => void> = []
   private commands = new Map<string, RegisteredCommand>()
   private commandsWithAttrs = 0
@@ -398,10 +400,14 @@ class KeymapManagerImpl implements KeymapManager {
   private pendingSequence: PendingSequenceState | null = null
   private order = 0
   private destroyed = false
+  private stateChangeDepth = 0
+  private stateChangePending = false
+  private flushingStateChange = false
 
   private readonly keypressListener: (event: KeyEvent) => void
   private readonly keyreleaseListener: (event: KeyEvent) => void
   private readonly rawListener: (sequence: string) => boolean
+  private readonly focusedRenderableListener: (focused: Renderable | null) => void
 
   constructor(renderer: CliRenderer) {
     this.renderer = renderer
@@ -414,10 +420,14 @@ class KeymapManagerImpl implements KeymapManager {
     this.rawListener = (sequence) => {
       return this.handleRawSequence(sequence)
     }
+    this.focusedRenderableListener = (focused) => {
+      this.handleFocusedRenderableChange(focused)
+    }
 
     this.renderer.keyInput.prependListener("keypress", this.keypressListener)
     this.renderer.keyInput.prependListener("keyrelease", this.keyreleaseListener)
     this.renderer.prependInputHandler(this.rawListener)
+    this.renderer.on(CliRenderEvents.FOCUSED_RENDERABLE, this.focusedRenderableListener)
   }
 
   public get isDestroyed(): boolean {
@@ -448,6 +458,7 @@ class KeymapManagerImpl implements KeymapManager {
     this.runtimeKeyDependents.clear()
     this.keyHooks = []
     this.rawHooks = []
+    this.stateChangeListeners = []
     this.pendingSequenceListeners = []
     this.commands.clear()
     this.commandsWithAttrs = 0
@@ -456,35 +467,43 @@ class KeymapManagerImpl implements KeymapManager {
     this.dataVersion = 0
     this.readonlyDataVersion = -1
     this.readonlyData = Object.freeze({})
+    this.stateChangeDepth = 0
+    this.stateChangePending = false
+    this.flushingStateChange = false
 
     this.renderer.keyInput.off("keypress", this.keypressListener)
     this.renderer.keyInput.off("keyrelease", this.keyreleaseListener)
     this.renderer.removeInputHandler(this.rawListener)
+    this.renderer.off(CliRenderEvents.FOCUSED_RENDERABLE, this.focusedRenderableListener)
   }
 
   public setData(name: string, value: unknown): void {
     this.assertNotDestroyed()
 
-    if (value === undefined) {
-      if (!(name in this.data)) {
+    this.runWithStateChangeBatch(() => {
+      if (value === undefined) {
+        if (!(name in this.data)) {
+          return
+        }
+
+        delete this.data[name]
+        this.dataVersion += 1
+        this.invalidateRuntimeConditionKey(name)
+        this.resolvePendingSequence()
+        this.queueStateChange()
         return
       }
 
-      delete this.data[name]
+      if (Object.is(this.data[name], value)) {
+        return
+      }
+
+      this.data[name] = value
       this.dataVersion += 1
       this.invalidateRuntimeConditionKey(name)
       this.resolvePendingSequence()
-      return
-    }
-
-    if (Object.is(this.data[name], value)) {
-      return
-    }
-
-    this.data[name] = value
-    this.dataVersion += 1
-    this.invalidateRuntimeConditionKey(name)
-    this.resolvePendingSequence()
+      this.queueStateChange()
+    })
   }
 
   public getData(name: string): unknown {
@@ -494,8 +513,11 @@ class KeymapManagerImpl implements KeymapManager {
 
   public invalidateRuntimeKey(name: string): void {
     this.assertNotDestroyed()
-    this.invalidateRuntimeConditionKey(name)
-    this.resolvePendingSequence()
+    this.runWithStateChangeBatch(() => {
+      this.invalidateRuntimeConditionKey(name)
+      this.resolvePendingSequence()
+      this.queueStateChange()
+    })
   }
 
   public getPendingSequence(): readonly ParsedKeyStroke[] {
@@ -573,6 +595,16 @@ class KeymapManagerImpl implements KeymapManager {
     return this.collectActiveKeysAtRootFast(activeLayers)
   }
 
+  public onStateChange(fn: () => void): () => void {
+    this.assertNotDestroyed()
+
+    this.stateChangeListeners = [...this.stateChangeListeners, fn]
+
+    return () => {
+      this.stateChangeListeners = this.stateChangeListeners.filter((candidate) => candidate !== fn)
+    }
+  }
+
   public onPendingSequenceChange(fn: (sequence: readonly ParsedKeyStroke[]) => void): () => void {
     this.assertNotDestroyed()
 
@@ -586,55 +618,59 @@ class KeymapManagerImpl implements KeymapManager {
   public registerLayer(layer: KeymapLayer): () => void {
     this.assertNotDestroyed()
 
-    const scope = this.normalizeScope(layer)
-    const bindingInputs = snapshotBindingInputs(layer.bindings)
-    const { requires, matchers, conditionKeys, hasUnkeyedMatchers } = this.compileLayerRuntimeState(layer)
-    const compiledBindings = this.compileBindings(bindingInputs, this.tokens)
-    const target = layer.target
-    if (target && target.isDestroyed) {
-      throw new Error("Cannot register a keymap layer for a destroyed renderable")
-    }
+    return this.runWithStateChangeBatch(() => {
+      const scope = this.normalizeScope(layer)
+      const bindingInputs = snapshotBindingInputs(layer.bindings)
+      const { requires, matchers, conditionKeys, hasUnkeyedMatchers } = this.compileLayerRuntimeState(layer)
+      const compiledBindings = this.compileBindings(bindingInputs, this.tokens)
+      const target = layer.target
+      if (target && target.isDestroyed) {
+        throw new Error("Cannot register a keymap layer for a destroyed renderable")
+      }
 
-    const registeredLayer: RegisteredLayer = {
-      order: this.order++,
-      target,
-      scope,
-      priority: layer.priority ?? 0,
-      requires,
-      matchers,
-      conditionKeys,
-      hasUnkeyedMatchers,
-      matchCacheDirty: true,
-      bindingInputs,
-      compiledBindings: compiledBindings.bindings,
-      hasTokenBindings: bindingInputs.some((binding) => bindingUsesTokenSyntax(binding)),
-      root: compiledBindings.root,
-    }
+      const registeredLayer: RegisteredLayer = {
+        order: this.order++,
+        target,
+        scope,
+        priority: layer.priority ?? 0,
+        requires,
+        matchers,
+        conditionKeys,
+        hasUnkeyedMatchers,
+        matchCacheDirty: true,
+        bindingInputs,
+        compiledBindings: compiledBindings.bindings,
+        hasTokenBindings: bindingInputs.some((binding) => bindingUsesTokenSyntax(binding)),
+        root: compiledBindings.root,
+      }
 
-    this.layers.add(registeredLayer)
-    if (registeredLayer.requires.length > 0 || registeredLayer.matchers.length > 0) {
-      this.layersWithConditions += 1
-    }
-    this.registerRuntimeMatchable(registeredLayer)
-    for (const binding of registeredLayer.compiledBindings) {
-      this.registerRuntimeMatchable(binding)
-    }
-    this.indexLayer(registeredLayer)
+      this.layers.add(registeredLayer)
+      if (registeredLayer.requires.length > 0 || registeredLayer.matchers.length > 0) {
+        this.layersWithConditions += 1
+      }
+      this.registerRuntimeMatchable(registeredLayer)
+      for (const binding of registeredLayer.compiledBindings) {
+        this.registerRuntimeMatchable(binding)
+      }
+      this.indexLayer(registeredLayer)
 
-    if (target) {
-      const onTargetDestroy = () => {
+      if (target) {
+        const onTargetDestroy = () => {
+          this.unregisterLayer(registeredLayer)
+        }
+
+        target.once(RenderableEvents.DESTROYED, onTargetDestroy)
+        registeredLayer.offTargetDestroy = () => {
+          target.off(RenderableEvents.DESTROYED, onTargetDestroy)
+        }
+      }
+
+      this.queueStateChange()
+
+      return () => {
         this.unregisterLayer(registeredLayer)
       }
-
-      target.once(RenderableEvents.DESTROYED, onTargetDestroy)
-      registeredLayer.offTargetDestroy = () => {
-        target.off(RenderableEvents.DESTROYED, onTargetDestroy)
-      }
-    }
-
-    return () => {
-      this.unregisterLayer(registeredLayer)
-    }
+    })
   }
 
   public registerLayerFields(fields: Record<string, KeymapLayerFieldCompiler>): () => void {
@@ -788,73 +824,147 @@ class KeymapManagerImpl implements KeymapManager {
   public registerCommands(commands: KeymapCommand[]): () => void {
     this.assertNotDestroyed()
 
-    const normalizedCommands = commands.map((command) => {
-      const mergedAttrs: KeymapAttributes = {}
+    return this.runWithStateChangeBatch(() => {
+      const normalizedCommands = commands.map((command) => {
+        const mergedAttrs: KeymapAttributes = {}
 
-      for (const [fieldName, value] of Object.entries(command)) {
-        if (RESERVED_COMMAND_FIELDS.has(fieldName)) {
-          continue
+        for (const [fieldName, value] of Object.entries(command)) {
+          if (RESERVED_COMMAND_FIELDS.has(fieldName)) {
+            continue
+          }
+
+          if (value === undefined) {
+            continue
+          }
+
+          const compiler = this.commandFields.get(fieldName)
+          if (!compiler) {
+            throw new Error(`Unknown keymap command field "${fieldName}"`)
+          }
+
+          compiler(value, {
+            attr(name, attributeValue) {
+              mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
+            },
+          })
         }
 
-        if (value === undefined) {
-          continue
+        const attrs = freezeAttributes(mergedAttrs)
+        const normalizedCommand: RegisteredCommand = {
+          name: normalizeCommandName(command.name),
+          run: command.run,
         }
 
-        const compiler = this.commandFields.get(fieldName)
-        if (!compiler) {
-          throw new Error(`Unknown keymap command field "${fieldName}"`)
+        if (attrs) {
+          normalizedCommand.attrs = attrs
         }
 
-        compiler(value, {
-          attr(name, attributeValue) {
-            mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
-          },
+        return normalizedCommand
+      })
+
+      const seen = new Set<string>()
+      for (const command of normalizedCommands) {
+        if (seen.has(command.name)) {
+          throw new Error(`Duplicate keymap command "${command.name}" in the same registration batch`)
+        }
+
+        if (this.commands.has(command.name)) {
+          throw new Error(`Keymap command "${command.name}" is already registered`)
+        }
+
+        seen.add(command.name)
+      }
+
+      for (const command of normalizedCommands) {
+        this.commands.set(command.name, command)
+        if (command.attrs) {
+          this.commandsWithAttrs += 1
+        }
+      }
+
+      if (normalizedCommands.length > 0) {
+        this.queueStateChange()
+      }
+
+      return () => {
+        this.runWithStateChangeBatch(() => {
+          let removed = false
+
+          for (const command of normalizedCommands) {
+            const current = this.commands.get(command.name)
+            if (current !== command) {
+              continue
+            }
+
+            if (command.attrs) {
+              this.commandsWithAttrs -= 1
+            }
+
+            this.commands.delete(command.name)
+            removed = true
+          }
+
+          if (removed) {
+            this.queueStateChange()
+          }
         })
       }
-
-      const attrs = freezeAttributes(mergedAttrs)
-      const normalizedCommand: RegisteredCommand = {
-        name: normalizeCommandName(command.name),
-        run: command.run,
-      }
-
-      if (attrs) {
-        normalizedCommand.attrs = attrs
-      }
-
-      return normalizedCommand
     })
+  }
 
-    const seen = new Set<string>()
-    for (const command of normalizedCommands) {
-      if (seen.has(command.name)) {
-        throw new Error(`Duplicate keymap command "${command.name}" in the same registration batch`)
+  private handleFocusedRenderableChange(focused: Renderable | null): void {
+    this.runWithStateChangeBatch(() => {
+      this.resolvePendingSequence(focused)
+      this.queueStateChange()
+    })
+  }
+
+  private runWithStateChangeBatch<T>(fn: () => T): T {
+    this.stateChangeDepth += 1
+
+    try {
+      return fn()
+    } finally {
+      this.stateChangeDepth -= 1
+      if (this.stateChangeDepth === 0) {
+        this.flushStateChange()
       }
+    }
+  }
 
-      if (this.commands.has(command.name)) {
-        throw new Error(`Keymap command "${command.name}" is already registered`)
-      }
-
-      seen.add(command.name)
+  private queueStateChange(): void {
+    if (this.stateChangeListeners.length === 0) {
+      return
     }
 
-    for (const command of normalizedCommands) {
-      this.commands.set(command.name, command)
-      if (command.attrs) {
-        this.commandsWithAttrs += 1
-      }
+    this.stateChangePending = true
+    if (this.stateChangeDepth === 0 && !this.flushingStateChange) {
+      this.flushStateChange()
+    }
+  }
+
+  private flushStateChange(): void {
+    if (!this.stateChangePending || this.stateChangeDepth > 0 || this.flushingStateChange) {
+      return
     }
 
-    return () => {
-      for (const command of normalizedCommands) {
-        const current = this.commands.get(command.name)
-        if (current === command) {
-          if (command.attrs) {
-            this.commandsWithAttrs -= 1
+    this.flushingStateChange = true
+
+    try {
+      while (this.stateChangePending && this.stateChangeDepth === 0) {
+        this.stateChangePending = false
+
+        const listeners = [...this.stateChangeListeners]
+        for (const listener of listeners) {
+          try {
+            listener()
+          } catch (error) {
+            console.error("[Keymap] Error in state change hook:", error)
           }
-          this.commands.delete(command.name)
         }
       }
+    } finally {
+      this.flushingStateChange = false
     }
   }
 
@@ -998,62 +1108,72 @@ class KeymapManagerImpl implements KeymapManager {
   }
 
   private unregisterLayer(layer: RegisteredLayer): void {
-    if (!this.layers.delete(layer)) {
-      return
-    }
-
-    if (layer.requires.length > 0 || layer.matchers.length > 0) {
-      this.layersWithConditions -= 1
-    }
-
-    this.unregisterRuntimeMatchable(layer)
-    for (const binding of layer.compiledBindings) {
-      this.unregisterRuntimeMatchable(binding)
-    }
-
-    this.removeLayerFromIndex(layer)
-    layer.offTargetDestroy?.()
-    layer.offTargetDestroy = undefined
-
-    if (this.pendingSequence?.layer === layer) {
-      this.setPendingSequence(null)
-    }
-  }
-
-  private applyTokenState(nextTokens: Map<string, ParsedKeyStroke>): void {
-    const nextCompilations = new Map<RegisteredLayer, CompiledBindingsResult>()
-
-    for (const layer of this.layers) {
-      if (!layer.hasTokenBindings) {
-        continue
+    this.runWithStateChangeBatch(() => {
+      if (!this.layers.delete(layer)) {
+        return
       }
 
-      nextCompilations.set(layer, this.compileBindings(layer.bindingInputs, nextTokens))
-    }
+      if (layer.requires.length > 0 || layer.matchers.length > 0) {
+        this.layersWithConditions -= 1
+      }
 
-    this.tokens = nextTokens
-
-    let shouldClearPending = false
-    for (const [layer, compilation] of nextCompilations) {
+      this.unregisterRuntimeMatchable(layer)
       for (const binding of layer.compiledBindings) {
         this.unregisterRuntimeMatchable(binding)
       }
 
-      layer.root = compilation.root
-      layer.compiledBindings = compilation.bindings
-
-      for (const binding of layer.compiledBindings) {
-        this.registerRuntimeMatchable(binding)
-      }
+      this.removeLayerFromIndex(layer)
+      layer.offTargetDestroy?.()
+      layer.offTargetDestroy = undefined
 
       if (this.pendingSequence?.layer === layer) {
-        shouldClearPending = true
+        this.setPendingSequence(null)
       }
-    }
 
-    if (shouldClearPending) {
-      this.setPendingSequence(null)
-    }
+      this.queueStateChange()
+    })
+  }
+
+  private applyTokenState(nextTokens: Map<string, ParsedKeyStroke>): void {
+    this.runWithStateChangeBatch(() => {
+      const nextCompilations = new Map<RegisteredLayer, CompiledBindingsResult>()
+
+      for (const layer of this.layers) {
+        if (!layer.hasTokenBindings) {
+          continue
+        }
+
+        nextCompilations.set(layer, this.compileBindings(layer.bindingInputs, nextTokens))
+      }
+
+      this.tokens = nextTokens
+
+      let shouldClearPending = false
+      for (const [layer, compilation] of nextCompilations) {
+        for (const binding of layer.compiledBindings) {
+          this.unregisterRuntimeMatchable(binding)
+        }
+
+        layer.root = compilation.root
+        layer.compiledBindings = compilation.bindings
+
+        for (const binding of layer.compiledBindings) {
+          this.registerRuntimeMatchable(binding)
+        }
+
+        if (this.pendingSequence?.layer === layer) {
+          shouldClearPending = true
+        }
+      }
+
+      if (shouldClearPending) {
+        this.setPendingSequence(null)
+      }
+
+      if (nextCompilations.size > 0) {
+        this.queueStateChange()
+      }
+    })
   }
 
   private compileBindings(
@@ -2006,6 +2126,7 @@ class KeymapManagerImpl implements KeymapManager {
 
     this.pendingSequence = next
     this.notifyPendingSequenceChange()
+    this.queueStateChange()
   }
 
   private isSamePendingSequence(current: PendingSequenceState | null, next: PendingSequenceState | null): boolean {

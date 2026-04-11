@@ -280,33 +280,6 @@ describe("keymap", () => {
     expect(renderableCount).toBe(1)
   })
 
-  test("supports layer enabled predicates", () => {
-    const manager = getKeymapManager(renderer)
-    const calls: string[] = []
-    let enabled = false
-
-    manager.registerCommands([
-      {
-        name: "layer-command",
-        run() {
-          calls.push("layer")
-        },
-      },
-    ])
-
-    manager.registerLayer({
-      scope: "global",
-      enabled: () => enabled,
-      bindings: [{ key: "x", cmd: "layer-command" }],
-    })
-
-    mockInput.pressKey("x")
-    enabled = true
-    mockInput.pressKey("x")
-
-    expect(calls).toEqual(["layer"])
-  })
-
   test("supports object shorthand bindings", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
@@ -486,6 +459,188 @@ describe("keymap", () => {
     expect(seen).toEqual(["normal"])
   })
 
+  test("typed binding fields can emit runtime matchers", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+    let enabled = false
+
+    manager.registerBindingFields({
+      active(value, ctx) {
+        if (value !== true) {
+          throw new Error('Keymap binding field "active" must be true')
+        }
+
+        ctx.match(() => enabled)
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "runtime-binding",
+        run() {
+          calls.push("binding")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
+    })
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+
+    enabled = true
+
+    expect(getActiveKeyNames(manager)).toEqual(["x"])
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["binding"])
+
+    enabled = false
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+  })
+
+  test("typed binding field matchers clear pending sequences when they stop matching", () => {
+    const manager = getKeymapManager(renderer)
+    let enabled = true
+
+    manager.registerBindingFields({
+      active(value, ctx) {
+        if (value !== true) {
+          throw new Error('Keymap binding field "active" must be true')
+        }
+
+        ctx.match(() => enabled)
+      },
+    })
+
+    manager.registerCommands([{ name: "delete-line", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "dd", active: true, cmd: "delete-line" }],
+    })
+
+    mockInput.pressKey("d")
+
+    expect(manager.getPendingSequence()).toHaveLength(1)
+
+    enabled = false
+
+    expect(manager.getPendingSequence()).toEqual([])
+    expect(getActiveKeyNames(manager)).toEqual([])
+  })
+
+  test("treats thrown binding runtime matchers as non-matching", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerBindingFields({
+      active(value, ctx) {
+        if (value !== true) {
+          throw new Error('Keymap binding field "active" must be true')
+        }
+
+        ctx.match(() => {
+          throw new Error("boom")
+        })
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "runtime-binding",
+        run() {
+          calls.push("binding")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
+    })
+
+    expect(() => manager.getActiveKeys()).not.toThrow()
+    expect(getActiveKeyNames(manager)).toEqual([])
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual([])
+  })
+
+  test("typed binding field matchers can use keyed invalidation", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+    let enabled = false
+    let evaluations = 0
+
+    manager.registerBindingFields({
+      active(value, ctx) {
+        if (value !== true) {
+          throw new Error('Keymap binding field "active" must be true')
+        }
+
+        ctx.match(
+          () => {
+            evaluations += 1
+            return enabled
+          },
+          { keys: ["binding.active"] },
+        )
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "runtime-binding",
+        run() {
+          calls.push("binding")
+        },
+      },
+    ])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
+    })
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(evaluations).toBe(1)
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(evaluations).toBe(1)
+
+    manager.setData("unrelated", true)
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(evaluations).toBe(1)
+
+    enabled = true
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(evaluations).toBe(1)
+
+    manager.invalidateRuntimeKey("binding.active")
+
+    expect(getActiveKeyNames(manager)).toEqual(["x"])
+    expect(evaluations).toBe(2)
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["binding"])
+
+    enabled = false
+
+    expect(getActiveKeyNames(manager)).toEqual(["x"])
+
+    manager.invalidateRuntimeKey("binding.active")
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(evaluations).toBe(3)
+  })
+
   test("supports typed layer fields for local scopes", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
@@ -527,6 +682,117 @@ describe("keymap", () => {
 
     mockInput.pressKey("x")
     expect(calls).toEqual(["local"])
+  })
+
+  test("typed layer fields can emit runtime matchers", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+    let enabled = false
+
+    manager.registerLayerFields({
+      active(value, ctx) {
+        if (value !== true) {
+          throw new Error('Keymap layer field "active" must be true')
+        }
+
+        ctx.match(() => enabled)
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "runtime-layer",
+        run() {
+          calls.push("layer")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      active: true,
+      bindings: [{ key: "x", cmd: "runtime-layer" }],
+    })
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+
+    enabled = true
+
+    expect(getActiveKeyNames(manager)).toEqual(["x"])
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["layer"])
+
+    enabled = false
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+  })
+
+  test("typed layer field matchers clear pending sequences when they stop matching", () => {
+    const manager = getKeymapManager(renderer)
+    let enabled = true
+
+    manager.registerLayerFields({
+      active(value, ctx) {
+        if (value !== true) {
+          throw new Error('Keymap layer field "active" must be true')
+        }
+
+        ctx.match(() => enabled)
+      },
+    })
+
+    manager.registerCommands([{ name: "delete-line", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      active: true,
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
+
+    mockInput.pressKey("d")
+
+    expect(manager.getPendingSequence()).toHaveLength(1)
+
+    enabled = false
+
+    expect(manager.getPendingSequence()).toEqual([])
+    expect(getActiveKeyNames(manager)).toEqual([])
+  })
+
+  test("typed layer field matchers clear pending sequences after keyed invalidation", () => {
+    const manager = getKeymapManager(renderer)
+    let enabled = true
+
+    manager.registerLayerFields({
+      active(value, ctx) {
+        if (value !== true) {
+          throw new Error('Keymap layer field "active" must be true')
+        }
+
+        ctx.match(() => enabled, { keys: ["layer.active"] })
+      },
+    })
+
+    manager.registerCommands([{ name: "delete-line", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      active: true,
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
+
+    mockInput.pressKey("d")
+
+    expect(manager.getPendingSequence()).toHaveLength(1)
+
+    enabled = false
+
+    expect(manager.getPendingSequence()).toHaveLength(1)
+
+    manager.invalidateRuntimeKey("layer.active")
+
+    expect(manager.getPendingSequence()).toEqual([])
+    expect(getActiveKeyNames(manager)).toEqual([])
   })
 
   test("layer and binding requirements compose", () => {
@@ -1570,25 +1836,6 @@ describe("keymap", () => {
     expect(manager.getPendingSequence()).toHaveLength(1)
 
     offLayer()
-
-    expect(manager.getPendingSequence()).toEqual([])
-  })
-
-  test("clears pending sequences when the owning layer becomes disabled", () => {
-    const manager = getKeymapManager(renderer)
-    let enabled = true
-
-    manager.registerCommands([{ name: "delete-line", run() {} }])
-    manager.registerLayer({
-      scope: "global",
-      enabled: () => enabled,
-      bindings: [{ key: "dd", cmd: "delete-line" }],
-    })
-
-    mockInput.pressKey("d")
-    expect(manager.getPendingSequence()).toHaveLength(1)
-
-    enabled = false
 
     expect(manager.getPendingSequence()).toEqual([])
   })

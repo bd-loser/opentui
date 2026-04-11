@@ -14,8 +14,6 @@ import {
   stringifyKeyStroke,
 } from "./utils.js"
 
-export type KeymapEnabled = boolean | (() => boolean)
-
 export type KeymapEventData = Record<string, unknown>
 
 export type KeymapAttributes = Record<string, unknown>
@@ -63,7 +61,6 @@ export type KeymapScope = "global" | "focus" | "focus-within"
 
 export interface KeymapLayerFields {
   priority?: number
-  enabled?: KeymapEnabled
   bindings: KeymapBindings
   [key: string]: unknown
 }
@@ -150,12 +147,14 @@ export interface KeymapActiveKey {
 export interface KeymapBindingFieldContext {
   require(name: string, value: unknown): void
   attr(name: string, value: unknown): void
+  match(matcher: () => boolean, options?: { keys?: readonly string[] }): void
 }
 
 export type KeymapBindingFieldCompiler = (value: unknown, ctx: KeymapBindingFieldContext) => void
 
 export interface KeymapLayerFieldContext {
   require(name: string, value: unknown): void
+  match(matcher: () => boolean, options?: { keys?: readonly string[] }): void
 }
 
 export type KeymapLayerFieldCompiler = (value: unknown, ctx: KeymapLayerFieldContext) => void
@@ -183,6 +182,7 @@ export interface KeymapManager {
   destroy(): void
   setData(name: string, value: unknown): void
   getData(name: string): unknown
+  invalidateRuntimeKey(name: string): void
   getPendingSequence(): readonly ParsedKeyStroke[]
   getPendingSequenceParts(): readonly ParsedKeyPart[]
   clearPendingSequence(): void
@@ -199,18 +199,32 @@ export interface KeymapManager {
   registerCommands(commands: KeymapCommand[]): () => void
 }
 
-interface RequirementMatchable {
+interface RuntimeMatcher {
+  source: string
+  match: () => boolean
+  keys: readonly string[]
+}
+
+interface RuntimeMatchable {
   requires: readonly [name: string, value: unknown][]
-  matchCacheVersion?: number
+  matchers: readonly RuntimeMatcher[]
+  conditionKeys: readonly string[]
+  hasUnkeyedMatchers: boolean
+  matchCacheDirty?: boolean
   matchCache?: boolean
 }
 
-interface CompiledBinding extends KeymapActiveBinding, RequirementMatchable {}
+interface CompiledBinding extends KeymapActiveBinding, RuntimeMatchable {}
 
 interface RegisteredCommand {
   name: string
   run: (ctx: KeymapCommandContext) => KeymapCommandResult
   attrs?: Readonly<KeymapAttributes>
+}
+
+interface CompiledBindingsResult {
+  root: SequenceNode
+  bindings: readonly CompiledBinding[]
 }
 
 interface SequenceNode {
@@ -227,11 +241,14 @@ interface RegisteredLayer {
   target?: Renderable
   scope: KeymapScope
   priority: number
-  enabled?: KeymapEnabled
   requires: readonly [name: string, value: unknown][]
-  matchCacheVersion?: number
+  matchers: readonly RuntimeMatcher[]
+  conditionKeys: readonly string[]
+  hasUnkeyedMatchers: boolean
+  matchCacheDirty?: boolean
   matchCache?: boolean
   bindingInputs: readonly KeymapBindingInput[]
+  compiledBindings: readonly CompiledBinding[]
   hasTokenBindings: boolean
   root: SequenceNode
   offTargetDestroy?: () => void
@@ -265,26 +282,9 @@ const keymapManagersByRenderer = new WeakMap<CliRenderer, KeymapManagerImpl>()
 
 export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "consume", "fallthrough"])
 
-const RESERVED_LAYER_FIELDS = new Set(["target", "scope", "priority", "enabled", "bindings"])
+const RESERVED_LAYER_FIELDS = new Set(["target", "scope", "priority", "bindings"])
 
 const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
-
-function resolveEnabled(enabled: KeymapEnabled | undefined): boolean {
-  if (enabled === undefined) {
-    return true
-  }
-
-  if (typeof enabled === "function") {
-    try {
-      return enabled()
-    } catch (error) {
-      console.error("[Keymap] Error evaluating enabled predicate:", error)
-      return false
-    }
-  }
-
-  return enabled
-}
 
 function isPromiseLike(value: unknown): value is Promise<unknown> {
   if (!value) {
@@ -384,12 +384,13 @@ class KeymapManagerImpl implements KeymapManager {
   private layerFields = new Map<string, KeymapLayerFieldCompiler>()
   private bindingFields = new Map<string, KeymapBindingFieldCompiler>()
   private commandFields = new Map<string, KeymapCommandFieldCompiler>()
+  private runtimeKeyDependents = new Map<string, Set<RuntimeMatchable>>()
   private keyHooks: RegisteredKeyHook[] = []
   private rawHooks: RegisteredRawHook[] = []
   private pendingSequenceListeners: Array<(sequence: readonly ParsedKeyStroke[]) => void> = []
   private commands = new Map<string, RegisteredCommand>()
   private commandsWithAttrs = 0
-  private layersWithRequirements = 0
+  private layersWithConditions = 0
   private data: KeymapEventData = {}
   private dataVersion = 0
   private readonlyDataVersion = -1
@@ -444,12 +445,13 @@ class KeymapManagerImpl implements KeymapManager {
     this.layerFields.clear()
     this.bindingFields.clear()
     this.commandFields.clear()
+    this.runtimeKeyDependents.clear()
     this.keyHooks = []
     this.rawHooks = []
     this.pendingSequenceListeners = []
     this.commands.clear()
     this.commandsWithAttrs = 0
-    this.layersWithRequirements = 0
+    this.layersWithConditions = 0
     this.data = {}
     this.dataVersion = 0
     this.readonlyDataVersion = -1
@@ -470,6 +472,7 @@ class KeymapManagerImpl implements KeymapManager {
 
       delete this.data[name]
       this.dataVersion += 1
+      this.invalidateRuntimeConditionKey(name)
       this.resolvePendingSequence()
       return
     }
@@ -480,12 +483,19 @@ class KeymapManagerImpl implements KeymapManager {
 
     this.data[name] = value
     this.dataVersion += 1
+    this.invalidateRuntimeConditionKey(name)
     this.resolvePendingSequence()
   }
 
   public getData(name: string): unknown {
     this.assertNotDestroyed()
     return this.data[name]
+  }
+
+  public invalidateRuntimeKey(name: string): void {
+    this.assertNotDestroyed()
+    this.invalidateRuntimeConditionKey(name)
+    this.resolvePendingSequence()
   }
 
   public getPendingSequence(): readonly ParsedKeyStroke[] {
@@ -578,7 +588,8 @@ class KeymapManagerImpl implements KeymapManager {
 
     const scope = this.normalizeScope(layer)
     const bindingInputs = snapshotBindingInputs(layer.bindings)
-    const requires = this.compileLayerRequirements(layer)
+    const { requires, matchers, conditionKeys, hasUnkeyedMatchers } = this.compileLayerRuntimeState(layer)
+    const compiledBindings = this.compileBindings(bindingInputs, this.tokens)
     const target = layer.target
     if (target && target.isDestroyed) {
       throw new Error("Cannot register a keymap layer for a destroyed renderable")
@@ -589,16 +600,24 @@ class KeymapManagerImpl implements KeymapManager {
       target,
       scope,
       priority: layer.priority ?? 0,
-      enabled: layer.enabled,
       requires,
+      matchers,
+      conditionKeys,
+      hasUnkeyedMatchers,
+      matchCacheDirty: true,
       bindingInputs,
+      compiledBindings: compiledBindings.bindings,
       hasTokenBindings: bindingInputs.some((binding) => bindingUsesTokenSyntax(binding)),
-      root: this.compileBindings(bindingInputs, this.tokens),
+      root: compiledBindings.root,
     }
 
     this.layers.add(registeredLayer)
-    if (registeredLayer.requires.length > 0) {
-      this.layersWithRequirements += 1
+    if (registeredLayer.requires.length > 0 || registeredLayer.matchers.length > 0) {
+      this.layersWithConditions += 1
+    }
+    this.registerRuntimeMatchable(registeredLayer)
+    for (const binding of registeredLayer.compiledBindings) {
+      this.registerRuntimeMatchable(binding)
     }
     this.indexLayer(registeredLayer)
 
@@ -861,8 +880,16 @@ class KeymapManagerImpl implements KeymapManager {
     return "global"
   }
 
-  private compileLayerRequirements(layer: KeymapLayer): readonly [name: string, value: unknown][] {
+  private compileLayerRuntimeState(layer: KeymapLayer): {
+    requires: readonly [name: string, value: unknown][]
+    matchers: readonly RuntimeMatcher[]
+    conditionKeys: readonly string[]
+    hasUnkeyedMatchers: boolean
+  } {
     const mergedRequires: KeymapEventData = {}
+    const matchers: RuntimeMatcher[] = []
+    const conditionKeys = new Set<string>()
+    let hasUnkeyedMatchers = false
 
     for (const [fieldName, value] of Object.entries(layer)) {
       if (RESERVED_LAYER_FIELDS.has(fieldName)) {
@@ -881,11 +908,33 @@ class KeymapManagerImpl implements KeymapManager {
       compiler(value, {
         require(name, requiredValue) {
           mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
+          conditionKeys.add(name)
+        },
+        match(matcher, options) {
+          const keys = options?.keys ? [...options.keys] : []
+          if (keys.length === 0) {
+            hasUnkeyedMatchers = true
+          } else {
+            for (const key of keys) {
+              conditionKeys.add(key)
+            }
+          }
+
+          matchers.push({
+            source: `field ${fieldName}`,
+            match: matcher,
+            keys,
+          })
         },
       })
     }
 
-    return Object.entries(mergedRequires)
+    return {
+      requires: Object.entries(mergedRequires),
+      matchers,
+      conditionKeys: [...conditionKeys],
+      hasUnkeyedMatchers,
+    }
   }
 
   private getOrCreateTargetBucket(target: Renderable): RegisteredLayerBucket {
@@ -953,8 +1002,13 @@ class KeymapManagerImpl implements KeymapManager {
       return
     }
 
-    if (layer.requires.length > 0) {
-      this.layersWithRequirements -= 1
+    if (layer.requires.length > 0 || layer.matchers.length > 0) {
+      this.layersWithConditions -= 1
+    }
+
+    this.unregisterRuntimeMatchable(layer)
+    for (const binding of layer.compiledBindings) {
+      this.unregisterRuntimeMatchable(binding)
     }
 
     this.removeLayerFromIndex(layer)
@@ -967,21 +1021,31 @@ class KeymapManagerImpl implements KeymapManager {
   }
 
   private applyTokenState(nextTokens: Map<string, ParsedKeyStroke>): void {
-    const nextRoots = new Map<RegisteredLayer, SequenceNode>()
+    const nextCompilations = new Map<RegisteredLayer, CompiledBindingsResult>()
 
     for (const layer of this.layers) {
       if (!layer.hasTokenBindings) {
         continue
       }
 
-      nextRoots.set(layer, this.compileBindings(layer.bindingInputs, nextTokens))
+      nextCompilations.set(layer, this.compileBindings(layer.bindingInputs, nextTokens))
     }
 
     this.tokens = nextTokens
 
     let shouldClearPending = false
-    for (const [layer, root] of nextRoots) {
-      layer.root = root
+    for (const [layer, compilation] of nextCompilations) {
+      for (const binding of layer.compiledBindings) {
+        this.unregisterRuntimeMatchable(binding)
+      }
+
+      layer.root = compilation.root
+      layer.compiledBindings = compilation.bindings
+
+      for (const binding of layer.compiledBindings) {
+        this.registerRuntimeMatchable(binding)
+      }
+
       if (this.pendingSequence?.layer === layer) {
         shouldClearPending = true
       }
@@ -995,13 +1059,17 @@ class KeymapManagerImpl implements KeymapManager {
   private compileBindings(
     bindings: readonly KeymapBindingInput[],
     tokens: ReadonlyMap<string, ParsedKeyStroke>,
-  ): SequenceNode {
+  ): CompiledBindingsResult {
     const root = createSequenceNode(null, null)
+    const compiledBindings: CompiledBinding[] = []
 
     for (const binding of bindings) {
       const sequence = parseKeySequenceLike(binding.key, tokens)
       const mergedRequires: KeymapEventData = {}
       const mergedAttrs: KeymapAttributes = {}
+      const matchers: RuntimeMatcher[] = []
+      const conditionKeys = new Set<string>()
+      let hasUnkeyedMatchers = false
 
       for (const [fieldName, value] of Object.entries(binding)) {
         if (RESERVED_BINDING_FIELDS.has(fieldName)) {
@@ -1020,9 +1088,26 @@ class KeymapManagerImpl implements KeymapManager {
         compiler(value, {
           require(name, requiredValue) {
             mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
+            conditionKeys.add(name)
           },
           attr(name, attributeValue) {
             mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
+          },
+          match(matcher, options) {
+            const keys = options?.keys ? [...options.keys] : []
+            if (keys.length === 0) {
+              hasUnkeyedMatchers = true
+            } else {
+              for (const key of keys) {
+                conditionKeys.add(key)
+              }
+            }
+
+            matchers.push({
+              source: `field ${fieldName}`,
+              match: matcher,
+              keys,
+            })
           },
         })
       }
@@ -1032,6 +1117,10 @@ class KeymapManagerImpl implements KeymapManager {
         sequence,
         command: parseCommandInput(binding.cmd),
         requires: Object.entries(mergedRequires),
+        matchers,
+        conditionKeys: [...conditionKeys],
+        hasUnkeyedMatchers,
+        matchCacheDirty: true,
         consume: binding.consume !== false,
         fallthrough: binding.fallthrough ?? false,
       }
@@ -1044,10 +1133,14 @@ class KeymapManagerImpl implements KeymapManager {
         continue
       }
 
+      compiledBindings.push(compiledBinding)
       this.insertBinding(root, compiledBinding)
     }
 
-    return root
+    return {
+      root,
+      bindings: compiledBindings,
+    }
   }
 
   private insertBinding(root: SequenceNode, binding: CompiledBinding): void {
@@ -1210,14 +1303,10 @@ class KeymapManagerImpl implements KeymapManager {
     event: KeyEvent,
     focused: Renderable | null,
   ): void {
-    const hasLayerRequirements = this.layersWithRequirements > 0
+    const hasLayerConditions = this.layersWithConditions > 0
 
     for (const layer of activeLayers) {
-      if (!resolveEnabled(layer.enabled)) {
-        continue
-      }
-
-      if (hasLayerRequirements && layer.requires.length > 0 && !this.matchesLayerRequirements(layer)) {
+      if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
         continue
       }
 
@@ -1288,7 +1377,7 @@ class KeymapManagerImpl implements KeymapManager {
     const matches: CompiledBinding[] = []
 
     for (const binding of bindings) {
-      if (this.matchesBindingRequirements(binding)) {
+      if (this.matchesBindingConditions(binding)) {
         matches.push(binding)
       }
     }
@@ -1298,7 +1387,7 @@ class KeymapManagerImpl implements KeymapManager {
 
   private hasMatchingBindings(bindings: readonly CompiledBinding[]): boolean {
     for (const binding of bindings) {
-      if (this.matchesBindingRequirements(binding)) {
+      if (this.matchesBindingConditions(binding)) {
         return true
       }
     }
@@ -1432,7 +1521,7 @@ class KeymapManagerImpl implements KeymapManager {
     const partIndex = node.depth - 1
     if (node.reachableBindings.length === 1) {
       const [binding] = node.reachableBindings
-      if (!binding || !this.matchesBindingRequirements(binding)) {
+      if (!binding || !this.matchesBindingConditions(binding)) {
         return undefined
       }
 
@@ -1464,14 +1553,10 @@ class KeymapManagerImpl implements KeymapManager {
 
   private collectActiveKeysAtRootFast(activeLayers: RegisteredLayer[]): readonly KeymapActiveKey[] {
     const activeKeys = new Map<string, KeymapActiveKey>()
-    const hasLayerRequirements = this.layersWithRequirements > 0
+    const hasLayerConditions = this.layersWithConditions > 0
 
     for (const layer of activeLayers) {
-      if (!resolveEnabled(layer.enabled)) {
-        continue
-      }
-
-      if (hasLayerRequirements && layer.requires.length > 0 && !this.matchesLayerRequirements(layer)) {
+      if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
         continue
       }
 
@@ -1548,7 +1633,7 @@ class KeymapManagerImpl implements KeymapManager {
     const partIndex = node.depth - 1
     if (node.reachableBindings.length === 1) {
       const [binding] = node.reachableBindings
-      if (!binding || !this.matchesBindingRequirements(binding)) {
+      if (!binding || !this.matchesBindingConditions(binding)) {
         return undefined
       }
 
@@ -1606,14 +1691,10 @@ class KeymapManagerImpl implements KeymapManager {
     includeBindings: boolean,
   ): readonly KeymapActiveKey[] {
     const activeKeys = new Map<string, KeymapActiveKey>()
-    const hasLayerRequirements = this.layersWithRequirements > 0
+    const hasLayerConditions = this.layersWithConditions > 0
 
     for (const layer of activeLayers) {
-      if (!resolveEnabled(layer.enabled)) {
-        continue
-      }
-
-      if (hasLayerRequirements && layer.requires.length > 0 && !this.matchesLayerRequirements(layer)) {
+      if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
         continue
       }
 
@@ -1699,7 +1780,7 @@ class KeymapManagerImpl implements KeymapManager {
     let handled = false
 
     for (const binding of bindings) {
-      if (!this.matchesBindingRequirements(binding)) {
+      if (!this.matchesBindingConditions(binding)) {
         continue
       }
 
@@ -1786,39 +1867,136 @@ class KeymapManagerImpl implements KeymapManager {
     return true
   }
 
-  private matchesRequirements(target: RequirementMatchable): boolean {
-    if (target.requires.length === 0) {
-      return true
+  private hasNoConditions(target: RuntimeMatchable): boolean {
+    return target.requires.length === 0 && target.matchers.length === 0
+  }
+
+  private registerRuntimeMatchable(target: RuntimeMatchable): void {
+    if (target.conditionKeys.length === 0) {
+      return
     }
 
-    if (target.matchCacheVersion === this.dataVersion) {
-      return target.matchCache === true
+    for (const key of target.conditionKeys) {
+      const dependents = this.runtimeKeyDependents.get(key)
+      if (dependents) {
+        dependents.add(target)
+        continue
+      }
+
+      this.runtimeKeyDependents.set(key, new Set([target]))
     }
 
-    const matched = this.matchRequirements(target.requires)
-    target.matchCacheVersion = this.dataVersion
-    target.matchCache = matched
-    return matched
+    if (!target.hasUnkeyedMatchers) {
+      target.matchCacheDirty = true
+    }
   }
 
-  private matchesBindingRequirements(binding: CompiledBinding): boolean {
-    return this.matchesRequirements(binding)
+  private unregisterRuntimeMatchable(target: RuntimeMatchable): void {
+    if (target.conditionKeys.length === 0) {
+      return
+    }
+
+    for (const key of target.conditionKeys) {
+      const dependents = this.runtimeKeyDependents.get(key)
+      if (!dependents) {
+        continue
+      }
+
+      dependents.delete(target)
+      if (dependents.size === 0) {
+        this.runtimeKeyDependents.delete(key)
+      }
+    }
   }
 
-  private matchesLayerRequirements(layer: RegisteredLayer): boolean {
-    return this.matchesRequirements(layer)
+  private invalidateRuntimeConditionKey(name: string): void {
+    const dependents = this.runtimeKeyDependents.get(name)
+    if (!dependents) {
+      return
+    }
+
+    for (const target of dependents) {
+      target.matchCacheDirty = true
+    }
   }
 
-  private layerMatchesRuntimeState(layer: RegisteredLayer): boolean {
-    if (!resolveEnabled(layer.enabled)) {
+  private hasFreshConditionCache(target: RuntimeMatchable): boolean {
+    if (target.hasUnkeyedMatchers || target.conditionKeys.length === 0) {
       return false
     }
 
-    if (this.layersWithRequirements === 0 || layer.requires.length === 0) {
+    return target.matchCacheDirty !== true && target.matchCache !== undefined
+  }
+
+  private updateConditionCache(target: RuntimeMatchable, matched: boolean): void {
+    if (target.hasUnkeyedMatchers || target.conditionKeys.length === 0) {
+      return
+    }
+
+    target.matchCacheDirty = false
+    target.matchCache = matched
+  }
+
+  private matchesRuntimeMatcher(matcher: RuntimeMatcher): boolean {
+    try {
+      return matcher.match()
+    } catch (error) {
+      console.error(`[Keymap] Error evaluating runtime matcher from ${matcher.source}:`, error)
+      return false
+    }
+  }
+
+  private matchesRuntimeMatchers(target: RuntimeMatchable): boolean {
+    if (target.matchers.length === 0) {
       return true
     }
 
-    return this.matchesLayerRequirements(layer)
+    if (target.matchers.length === 1) {
+      const [matcher] = target.matchers
+      return matcher ? this.matchesRuntimeMatcher(matcher) : true
+    }
+
+    for (const matcher of target.matchers) {
+      if (!this.matchesRuntimeMatcher(matcher)) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  private matchesConditions(target: RuntimeMatchable): boolean {
+    if (this.hasNoConditions(target)) {
+      return true
+    }
+
+    if (this.hasFreshConditionCache(target)) {
+      return target.matchCache === true
+    }
+
+    const matched = this.matchRequirements(target.requires) && this.matchesRuntimeMatchers(target)
+    this.updateConditionCache(target, matched)
+    return matched
+  }
+
+  private matchesBindingConditions(binding: CompiledBinding): boolean {
+    return this.matchesConditions(binding)
+  }
+
+  private matchesLayerConditions(layer: RegisteredLayer): boolean {
+    return this.matchesConditions(layer)
+  }
+
+  private layerHasNoConditions(layer: RegisteredLayer): boolean {
+    return this.hasNoConditions(layer)
+  }
+
+  private layerMatchesRuntimeState(layer: RegisteredLayer): boolean {
+    if (this.layersWithConditions === 0 || this.layerHasNoConditions(layer)) {
+      return true
+    }
+
+    return this.matchesLayerConditions(layer)
   }
 
   private setPendingSequence(next: PendingSequenceState | null): void {

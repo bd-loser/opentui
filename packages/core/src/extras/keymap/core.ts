@@ -230,6 +230,11 @@ interface CompiledBinding extends KeymapActiveBinding, RuntimeMatchable {
   activeMetadataCache?: KeymapActiveMetadata
 }
 
+interface DispatchActiveKeyResult {
+  activeKey: KeymapActiveKey
+  stop: boolean
+}
+
 interface RegisteredCommand {
   name: string
   run: (ctx: KeymapCommandContext) => KeymapCommandResult
@@ -420,14 +425,14 @@ class KeymapManagerImpl implements KeymapManager {
   private pendingSequenceCache: readonly ParsedKeyStroke[] = []
   private pendingSequencePartsCacheVersion = -1
   private pendingSequencePartsCache: readonly ParsedKeyPart[] = []
-  private activeKeysFastCacheVersion = -1
-  private activeKeysFastCache: readonly KeymapActiveKey[] = []
+  private activeKeysPlainCacheVersion = -1
+  private activeKeysPlainCache: readonly KeymapActiveKey[] = []
+  private activeKeysBindingsCacheVersion = -1
+  private activeKeysBindingsCache: readonly KeymapActiveKey[] = []
   private activeKeysMetadataCacheVersion = -1
   private activeKeysMetadataCache: readonly KeymapActiveKey[] = []
-  private activeKeysWithBindingsCacheVersion = -1
-  private activeKeysWithBindingsCache: readonly KeymapActiveKey[] = []
-  private activeKeysWithBindingsAndMetadataCacheVersion = -1
-  private activeKeysWithBindingsAndMetadataCache: readonly KeymapActiveKey[] = []
+  private activeKeysBindingsAndMetadataCacheVersion = -1
+  private activeKeysBindingsAndMetadataCache: readonly KeymapActiveKey[] = []
   private stateChangeDepth = 0
   private stateChangePending = false
   private flushingStateChange = false
@@ -501,14 +506,14 @@ class KeymapManagerImpl implements KeymapManager {
     this.pendingSequenceCache = []
     this.pendingSequencePartsCacheVersion = -1
     this.pendingSequencePartsCache = []
-    this.activeKeysFastCacheVersion = -1
-    this.activeKeysFastCache = []
+    this.activeKeysPlainCacheVersion = -1
+    this.activeKeysPlainCache = []
+    this.activeKeysBindingsCacheVersion = -1
+    this.activeKeysBindingsCache = []
     this.activeKeysMetadataCacheVersion = -1
     this.activeKeysMetadataCache = []
-    this.activeKeysWithBindingsCacheVersion = -1
-    this.activeKeysWithBindingsCache = []
-    this.activeKeysWithBindingsAndMetadataCacheVersion = -1
-    this.activeKeysWithBindingsAndMetadataCache = []
+    this.activeKeysBindingsAndMetadataCacheVersion = -1
+    this.activeKeysBindingsAndMetadataCache = []
     this.stateChangeDepth = 0
     this.stateChangePending = false
     this.flushingStateChange = false
@@ -641,25 +646,27 @@ class KeymapManagerImpl implements KeymapManager {
 
     if (includeBindings) {
       if (includeMetadata) {
-        if (this.activeKeysWithBindingsAndMetadataCacheVersion === this.derivedStateVersion) {
-          return this.activeKeysWithBindingsAndMetadataCache
+        if (this.activeKeysBindingsAndMetadataCacheVersion === this.derivedStateVersion) {
+          return this.activeKeysBindingsAndMetadataCache
         }
-      } else {
-        if (this.activeKeysWithBindingsCacheVersion === this.derivedStateVersion) {
-          return this.activeKeysWithBindingsCache
-        }
+      } else if (this.activeKeysBindingsCacheVersion === this.derivedStateVersion) {
+        return this.activeKeysBindingsCache
       }
     } else if (includeMetadata) {
       if (this.activeKeysMetadataCacheVersion === this.derivedStateVersion) {
         return this.activeKeysMetadataCache
       }
-    } else if (this.activeKeysFastCacheVersion === this.derivedStateVersion) {
-      return this.activeKeysFastCache
+    } else if (this.activeKeysPlainCacheVersion === this.derivedStateVersion) {
+      return this.activeKeysPlainCache
     }
 
     const focused = this.getFocusedRenderable()
     const pending = this.resolvePendingSequence(focused)
-    const activeLayers = pending ? undefined : this.getActiveLayers(focused)
+    let activeLayers: RegisteredLayer[] = []
+    if (!pending) {
+      activeLayers = this.getActiveLayers(focused)
+    }
+
     let canUseCache = false
 
     if (pending) {
@@ -671,17 +678,9 @@ class KeymapManagerImpl implements KeymapManager {
     let activeKeys: readonly KeymapActiveKey[]
 
     if (pending) {
-      if (includeBindings || includeMetadata) {
-        activeKeys = this.collectActiveKeysFromChildren(pending.node.children, includeBindings, includeMetadata)
-      } else {
-        activeKeys = this.collectActiveKeysFromChildrenFast(pending.node.children)
-      }
+      activeKeys = this.collectActiveKeysFromChildren(pending.node.children, includeBindings, includeMetadata)
     } else {
-      if (includeBindings || includeMetadata) {
-        activeKeys = this.collectActiveKeysAtRoot(activeLayers, includeBindings, includeMetadata)
-      } else {
-        activeKeys = this.collectActiveKeysAtRootFast(activeLayers)
-      }
+      activeKeys = this.collectActiveKeysAtRoot(activeLayers, includeBindings, includeMetadata)
     }
 
     if (!canUseCache) {
@@ -690,18 +689,18 @@ class KeymapManagerImpl implements KeymapManager {
 
     if (includeBindings) {
       if (includeMetadata) {
-        this.activeKeysWithBindingsAndMetadataCacheVersion = this.derivedStateVersion
-        this.activeKeysWithBindingsAndMetadataCache = activeKeys
+        this.activeKeysBindingsAndMetadataCacheVersion = this.derivedStateVersion
+        this.activeKeysBindingsAndMetadataCache = activeKeys
       } else {
-        this.activeKeysWithBindingsCacheVersion = this.derivedStateVersion
-        this.activeKeysWithBindingsCache = activeKeys
+        this.activeKeysBindingsCacheVersion = this.derivedStateVersion
+        this.activeKeysBindingsCache = activeKeys
       }
     } else if (includeMetadata) {
       this.activeKeysMetadataCacheVersion = this.derivedStateVersion
       this.activeKeysMetadataCache = activeKeys
     } else {
-      this.activeKeysFastCacheVersion = this.derivedStateVersion
-      this.activeKeysFastCache = activeKeys
+      this.activeKeysPlainCacheVersion = this.derivedStateVersion
+      this.activeKeysPlainCache = activeKeys
     }
 
     return activeKeys
@@ -1718,49 +1717,15 @@ class KeymapManagerImpl implements KeymapManager {
     bindings: readonly CompiledBinding[],
     resolveAttrs: boolean,
   ): KeymapResolvedCommand[] {
-    const commands: KeymapResolvedCommand[] = []
-    const seen = new Set<string>()
-
     if (!resolveAttrs || this.commandsWithAttrs === 0) {
-      for (const binding of bindings) {
-        if (seen.has(binding.command.input)) {
-          continue
-        }
-
-        commands.push(binding.command)
-        seen.add(binding.command.input)
-      }
-
-      return commands
+      return bindings.map((binding) => binding.command)
     }
 
-    for (const binding of bindings) {
-      const command = this.resolveCommand(binding.command)
-      if (seen.has(command.input)) {
-        continue
-      }
-
-      commands.push(command)
-      seen.add(command.input)
-    }
-
-    return commands
+    return bindings.map((binding) => this.resolveCommand(binding.command))
   }
 
   private collectCommandsFast(bindings: readonly CompiledBinding[]): KeymapResolvedCommand[] {
-    const commands: KeymapResolvedCommand[] = []
-    const seen = new Set<string>()
-
-    for (const binding of bindings) {
-      if (seen.has(binding.command.input)) {
-        continue
-      }
-
-      commands.push(binding.command)
-      seen.add(binding.command.input)
-    }
-
-    return commands
+    return bindings.map((binding) => binding.command)
   }
 
   private toActiveMetadata(binding: CompiledBinding): KeymapActiveMetadata {
@@ -1795,189 +1760,13 @@ class KeymapManagerImpl implements KeymapManager {
     return bindings.map((binding) => this.toActiveMetadata(binding))
   }
 
-  private createFastActiveKey(node: SequenceNode): KeymapActiveKey | undefined {
-    if (!node.stroke) {
-      return undefined
-    }
-
-    const partIndex = node.depth - 1
-    if (node.reachableBindings.length === 1) {
-      const [binding] = node.reachableBindings
-      if (!binding || !this.matchesBindingConditions(binding)) {
-        return undefined
-      }
-
-      return {
-        stroke: cloneStroke(node.stroke),
-        display: binding.sequence[partIndex]?.display ?? stringifyKeyStroke(node.stroke),
-        commands: [binding.command],
-        continues: node.children.size > 0,
-      }
-    }
-
-    const reachableBindings = this.getMatchingBindings(node.reachableBindings)
-    if (reachableBindings.length === 0) {
-      return undefined
-    }
-
-    const commands = this.collectCommandsFast(reachableBindings)
-    if (commands.length === 0) {
-      return undefined
-    }
-
-    return {
-      stroke: cloneStroke(node.stroke),
-      display: this.getNodeDisplay(node, reachableBindings),
-      commands,
-      continues: node.children.size > 0,
-    }
-  }
-
-  private collectActiveKeysAtRootFast(activeLayers: RegisteredLayer[]): readonly KeymapActiveKey[] {
-    const activeKeys = new Map<string, KeymapActiveKey>()
-    const hasLayerConditions = this.layersWithConditions > 0
-
-    for (const layer of activeLayers) {
-      if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
-        continue
-      }
-
-      for (const [bindingKey, child] of layer.root.children) {
-        const activeKey = this.createFastActiveKey(child)
-        if (!activeKey) {
-          continue
-        }
-
-        const existing = activeKeys.get(bindingKey)
-        if (!existing) {
-          activeKeys.set(bindingKey, activeKey)
-          continue
-        }
-
-        this.mergeActiveKeyFast(existing, activeKey.commands, activeKey.continues, activeKey.display)
-      }
-    }
-
-    return [...activeKeys.values()]
-  }
-
-  private collectActiveKeysFromChildrenFast(children: ReadonlyMap<string, SequenceNode>): readonly KeymapActiveKey[] {
-    const activeKeys: KeymapActiveKey[] = []
-
-    for (const child of children.values()) {
-      const activeKey = this.createFastActiveKey(child)
-      if (!activeKey) {
-        continue
-      }
-
-      activeKeys.push(activeKey)
-    }
-
-    return activeKeys
-  }
-
-  private mergeActiveKeyFast(
-    activeKey: KeymapActiveKey,
-    commands: KeymapResolvedCommand[],
-    continues: boolean,
-    display: string,
-  ): void {
-    for (const command of commands) {
-      let exists = false
-      for (const existing of activeKey.commands) {
-        if (existing.input === command.input) {
-          exists = true
-          break
-        }
-      }
-
-      if (exists) {
-        continue
-      }
-
-      activeKey.commands.push(command)
-    }
-
-    if (continues) {
-      activeKey.continues = true
-    }
-
-    if (activeKey.display !== display) {
-      activeKey.display = stringifyKeyStroke(activeKey.stroke)
-    }
-  }
-
-  private createActiveKey(
-    node: SequenceNode,
-    includeBindings: boolean,
-    includeMetadata: boolean,
-  ): KeymapActiveKey | undefined {
-    if (!node.stroke) {
-      return undefined
-    }
-
-    const partIndex = node.depth - 1
-    if (node.reachableBindings.length === 1) {
-      const [binding] = node.reachableBindings
-      if (!binding || !this.matchesBindingConditions(binding)) {
-        return undefined
-      }
-
-      const command =
-        includeBindings && this.commandsWithAttrs > 0 ? this.resolveCommand(binding.command) : binding.command
-
-      const activeKey: KeymapActiveKey = {
-        stroke: cloneStroke(node.stroke),
-        display: binding.sequence[partIndex]?.display ?? stringifyKeyStroke(node.stroke),
-        commands: [command],
-        continues: node.children.size > 0,
-      }
-
-      if (includeBindings) {
-        activeKey.bindings = [this.toActiveBinding(binding)]
-      }
-
-      if (includeMetadata) {
-        activeKey.metadata = [this.toActiveMetadata(binding)]
-      }
-
-      return activeKey
-    }
-
-    const reachableBindings = this.getMatchingBindings(node.reachableBindings)
-    if (reachableBindings.length === 0) {
-      return undefined
-    }
-
-    const commands = this.collectResolvedCommands(reachableBindings, includeBindings)
-    if (commands.length === 0) {
-      return undefined
-    }
-
-    const activeKey: KeymapActiveKey = {
-      stroke: cloneStroke(node.stroke),
-      display: this.getNodeDisplay(node, reachableBindings),
-      commands,
-      continues: node.children.size > 0,
-    }
-
-    if (includeBindings) {
-      activeKey.bindings = this.collectActiveBindings(reachableBindings)
-    }
-
-    if (includeMetadata) {
-      activeKey.metadata = this.collectActiveMetadata(reachableBindings)
-    }
-
-    return activeKey
-  }
-
   private collectActiveKeysAtRoot(
     activeLayers: RegisteredLayer[],
     includeBindings: boolean,
     includeMetadata: boolean,
   ): readonly KeymapActiveKey[] {
     const activeKeys = new Map<string, KeymapActiveKey>()
+    const stopped = new Set<string>()
     const hasLayerConditions = this.layersWithConditions > 0
 
     for (const layer of activeLayers) {
@@ -1986,18 +1775,25 @@ class KeymapManagerImpl implements KeymapManager {
       }
 
       for (const [bindingKey, child] of layer.root.children) {
-        const activeKey = this.createActiveKey(child, includeBindings, includeMetadata)
-        if (!activeKey) {
+        if (stopped.has(bindingKey)) {
+          continue
+        }
+
+        const result = this.createDispatchActiveKey(child, includeBindings, includeMetadata)
+        if (!result) {
           continue
         }
 
         const existing = activeKeys.get(bindingKey)
         if (!existing) {
-          activeKeys.set(bindingKey, activeKey)
-          continue
+          activeKeys.set(bindingKey, result.activeKey)
+        } else {
+          this.appendDispatchActiveKey(existing, result.activeKey, includeBindings, includeMetadata)
         }
 
-        this.mergeActiveKey(existing, activeKey, includeBindings, includeMetadata)
+        if (result.stop) {
+          stopped.add(bindingKey)
+        }
       }
     }
 
@@ -2012,23 +1808,200 @@ class KeymapManagerImpl implements KeymapManager {
     const activeKeys: KeymapActiveKey[] = []
 
     for (const child of children.values()) {
-      const activeKey = this.createActiveKey(child, includeBindings, includeMetadata)
-      if (!activeKey) {
+      const result = this.createDispatchActiveKey(child, includeBindings, includeMetadata)
+      if (!result) {
         continue
       }
 
-      activeKeys.push(activeKey)
+      activeKeys.push(result.activeKey)
     }
 
     return activeKeys
   }
 
-  private mergeActiveKey(
+  private createDispatchActiveKey(
+    node: SequenceNode,
+    includeBindings: boolean,
+    includeMetadata: boolean,
+  ): DispatchActiveKeyResult | undefined {
+    if (node.children.size > 0) {
+      return this.createPrefixActiveKey(node, includeBindings, includeMetadata)
+    }
+
+    return this.createExactActiveKey(node, includeBindings, includeMetadata)
+  }
+
+  private createPrefixActiveKey(
+    node: SequenceNode,
+    includeBindings: boolean,
+    includeMetadata: boolean,
+  ): DispatchActiveKeyResult | undefined {
+    if (!node.stroke) {
+      return undefined
+    }
+
+    const partIndex = node.depth - 1
+    if (node.reachableBindings.length === 1) {
+      const [binding] = node.reachableBindings
+      if (!binding || !this.matchesBindingConditions(binding)) {
+        return undefined
+      }
+
+      return {
+        activeKey: this.buildActiveKey(
+          node,
+          [binding],
+          binding.sequence[partIndex]?.display ?? stringifyKeyStroke(node.stroke),
+          includeBindings,
+          includeMetadata,
+        ),
+        stop: true,
+      }
+    }
+
+    const matchingBindings = this.getMatchingBindings(node.reachableBindings)
+    if (matchingBindings.length === 0) {
+      return undefined
+    }
+
+    return {
+      activeKey: this.buildActiveKey(
+        node,
+        matchingBindings,
+        this.getNodeDisplay(node, matchingBindings),
+        includeBindings,
+        includeMetadata,
+      ),
+      stop: true,
+    }
+  }
+
+  private createExactActiveKey(
+    node: SequenceNode,
+    includeBindings: boolean,
+    includeMetadata: boolean,
+  ): DispatchActiveKeyResult | undefined {
+    if (!node.stroke) {
+      return undefined
+    }
+
+    const partIndex = node.depth - 1
+    if (node.bindings.length === 1) {
+      const [binding] = node.bindings
+      if (!binding || !this.matchesBindingConditions(binding) || !this.commands.has(binding.command.name)) {
+        return undefined
+      }
+
+      return {
+        activeKey: this.buildActiveKey(
+          node,
+          [binding],
+          binding.sequence[partIndex]?.display ?? stringifyKeyStroke(node.stroke),
+          includeBindings,
+          includeMetadata,
+        ),
+        stop: !binding.fallthrough,
+      }
+    }
+
+    const selected = this.selectDispatchedBindings(node.bindings)
+    if (!selected) {
+      return undefined
+    }
+
+    const display =
+      selected.bindings.length === 1
+        ? (selected.bindings[0]?.sequence[partIndex]?.display ?? stringifyKeyStroke(node.stroke))
+        : this.getNodeDisplay(node, selected.bindings)
+
+    return {
+      activeKey: this.buildActiveKey(node, selected.bindings, display, includeBindings, includeMetadata),
+      stop: selected.stop,
+    }
+  }
+
+  private selectDispatchedBindings(
+    bindings: readonly CompiledBinding[],
+  ): { bindings: readonly CompiledBinding[]; stop: boolean } | undefined {
+    const selected: CompiledBinding[] = []
+
+    for (const binding of bindings) {
+      if (!this.matchesBindingConditions(binding)) {
+        continue
+      }
+
+      if (!this.commands.has(binding.command.name)) {
+        continue
+      }
+
+      selected.push(binding)
+      if (!binding.fallthrough) {
+        return { bindings: selected, stop: true }
+      }
+    }
+
+    if (selected.length === 0) {
+      return undefined
+    }
+
+    return { bindings: selected, stop: false }
+  }
+
+  private buildActiveKey(
+    node: SequenceNode,
+    bindings: readonly CompiledBinding[],
+    display: string,
+    includeBindings: boolean,
+    includeMetadata: boolean,
+  ): KeymapActiveKey {
+    const singleBinding = bindings.length === 1 ? bindings[0] : undefined
+    let commands: KeymapResolvedCommand[]
+
+    if (singleBinding) {
+      commands =
+        includeBindings && this.commandsWithAttrs > 0
+          ? [this.resolveCommand(singleBinding.command)]
+          : [singleBinding.command]
+    } else if (includeBindings && this.commandsWithAttrs > 0) {
+      commands = this.collectResolvedCommands(bindings, true)
+    } else {
+      commands = this.collectCommandsFast(bindings)
+    }
+
+    const activeKey: KeymapActiveKey = {
+      stroke: cloneStroke(node.stroke!),
+      display,
+      commands,
+      continues: node.children.size > 0,
+    }
+
+    if (includeBindings) {
+      activeKey.bindings = singleBinding ? [this.toActiveBinding(singleBinding)] : this.collectActiveBindings(bindings)
+    }
+
+    if (includeMetadata) {
+      activeKey.metadata = singleBinding ? [this.toActiveMetadata(singleBinding)] : this.collectActiveMetadata(bindings)
+    }
+
+    return activeKey
+  }
+
+  private appendDispatchActiveKey(
     activeKey: KeymapActiveKey,
     next: KeymapActiveKey,
     includeBindings: boolean,
     includeMetadata: boolean,
   ): void {
+    activeKey.commands.push(...next.commands)
+
+    if (next.continues) {
+      activeKey.continues = true
+    }
+
+    if (activeKey.display !== next.display) {
+      activeKey.display = stringifyKeyStroke(activeKey.stroke)
+    }
+
     if (includeBindings) {
       if (!activeKey.bindings) {
         activeKey.bindings = []
@@ -2037,30 +2010,6 @@ class KeymapManagerImpl implements KeymapManager {
       if (next.bindings && next.bindings.length > 0) {
         activeKey.bindings.push(...next.bindings)
       }
-    }
-
-    for (const command of next.commands) {
-      let exists = false
-      for (const existing of activeKey.commands) {
-        if (existing.input === command.input) {
-          exists = true
-          break
-        }
-      }
-
-      if (exists) {
-        continue
-      }
-
-      activeKey.commands.push(command)
-    }
-
-    if (next.continues) {
-      activeKey.continues = true
-    }
-
-    if (activeKey.display !== next.display) {
-      activeKey.display = stringifyKeyStroke(activeKey.stroke)
     }
 
     if (!includeMetadata) {
@@ -2318,10 +2267,10 @@ class KeymapManagerImpl implements KeymapManager {
   private invalidateDerivedStateCaches(): void {
     this.pendingSequenceCacheVersion = -1
     this.pendingSequencePartsCacheVersion = -1
-    this.activeKeysFastCacheVersion = -1
+    this.activeKeysPlainCacheVersion = -1
+    this.activeKeysBindingsCacheVersion = -1
     this.activeKeysMetadataCacheVersion = -1
-    this.activeKeysWithBindingsCacheVersion = -1
-    this.activeKeysWithBindingsAndMetadataCacheVersion = -1
+    this.activeKeysBindingsAndMetadataCacheVersion = -1
   }
 
   private isSamePendingSequence(current: PendingSequenceState | null, next: PendingSequenceState | null): boolean {

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { registerEnabledField } from "@opentui/core/extras"
+import type { Renderable } from "@opentui/core"
+import { registerEnabledField, stringifyKeySequence } from "@opentui/core/extras"
 import { Show, createEffect, createSignal, onCleanup } from "solid-js"
-import { testRender, useKeymap, useKeymappings } from "../index.js"
+import { testRender, useActiveKeys, useKeymap, useKeymappings, usePendingSequenceParts } from "../index.js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -87,6 +88,109 @@ describe("solid keymap hooks", () => {
 
     testSetup.mockInput.pressKey("x")
     expect(calls).toEqual(["global"])
+  })
+
+  test("useActiveKeys updates on focus changes and direct blur", async () => {
+    let firstTarget!: Renderable
+    let secondTarget!: Renderable
+
+    function App() {
+      const manager = useKeymappings()
+      const activeKeys = useActiveKeys()
+      const offCommands = manager.registerCommands([
+        { name: "first", run() {} },
+        { name: "second", run() {} },
+      ])
+
+      const firstKeymapRef = useKeymap({
+        scope: "focus-within",
+        bindings: { x: "first" },
+      })
+      const secondKeymapRef = useKeymap({
+        scope: "focus-within",
+        bindings: { y: "second" },
+      })
+
+      onCleanup(() => {
+        offCommands()
+      })
+
+      return (
+        <box width={24} height={8} flexDirection="column">
+          <text>{`Active: ${activeKeys().map((key) => key.stroke.name).join(",") || "<none>"}`}</text>
+          <box
+            ref={(value: Renderable) => {
+              firstKeymapRef(value)
+              firstTarget = value
+            }}
+            width={8}
+            height={2}
+            focusable
+            focused
+          />
+          <box
+            ref={(value: Renderable) => {
+              secondKeymapRef(value)
+              secondTarget = value
+            }}
+            width={8}
+            height={2}
+            focusable
+          />
+        </box>
+      )
+    }
+
+    testSetup = await testRender(() => <App />, { width: 24, height: 8 })
+    await testSetup.renderOnce()
+
+    expect(testSetup.captureCharFrame()).toContain("Active: x")
+
+    secondTarget.focus()
+    await Bun.sleep(0)
+    await testSetup.renderOnce()
+
+    expect(testSetup.captureCharFrame()).toContain("Active: y")
+
+    secondTarget.blur()
+    await Bun.sleep(0)
+    await testSetup.renderOnce()
+
+    expect(testSetup.captureCharFrame()).toContain("Active: <none>")
+  })
+
+  test("usePendingSequenceParts updates without manual subscriptions", async () => {
+    function App() {
+      const manager = useKeymappings()
+      const pendingSequenceParts = usePendingSequenceParts()
+      const offCommands = manager.registerCommands([{ name: "delete-line", run() {} }])
+
+      useKeymap({
+        scope: "global",
+        bindings: [{ key: "dd", cmd: "delete-line" }],
+      })
+
+      onCleanup(() => {
+        offCommands()
+      })
+
+      return <text>{`Pending: ${stringifyKeySequence(pendingSequenceParts(), { preferDisplay: true }) || "<root>"}`}</text>
+    }
+
+    testSetup = await testRender(() => <App />, { width: 24, height: 6 })
+    await testSetup.renderOnce()
+
+    expect(testSetup.captureCharFrame()).toContain("Pending: <root>")
+
+    testSetup.mockInput.pressKey("d")
+    await testSetup.renderOnce()
+
+    expect(testSetup.captureCharFrame()).toContain("Pending: d")
+
+    testSetup.mockInput.pressKey("x")
+    await testSetup.renderOnce()
+
+    expect(testSetup.captureCharFrame()).toContain("Pending: <root>")
   })
 
   test("useKeymap can bind local keymaps through its returned ref", async () => {

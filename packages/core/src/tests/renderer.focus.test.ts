@@ -292,3 +292,38 @@ test("focused_editor event emits on editor focus changes", async () => {
   ])
   expect(testRenderer.currentFocusedEditor?.id).toBe("editor-b")
 })
+
+test("focused_renderable event emits once per focus change and direct blur", async () => {
+  const events: Array<[string | null, string | null]> = []
+  const first = new BoxRenderable(testRenderer, {
+    id: "first-box",
+    width: 10,
+    height: 2,
+    focusable: true,
+  })
+  const second = new BoxRenderable(testRenderer, {
+    id: "second-box",
+    width: 10,
+    height: 2,
+    focusable: true,
+  })
+
+  testRenderer.on(CliRenderEvents.FOCUSED_RENDERABLE, (current, previous) => {
+    events.push([current?.id ?? null, previous?.id ?? null])
+  })
+
+  testRenderer.root.add(first)
+  testRenderer.root.add(second)
+  await testRenderer.idle()
+
+  first.focus()
+  second.focus()
+  second.blur()
+
+  expect(events).toEqual([
+    ["first-box", null],
+    ["second-box", "first-box"],
+    [null, "second-box"],
+  ])
+  expect(testRenderer.currentFocusedRenderable).toBeNull()
+})

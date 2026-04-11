@@ -1,6 +1,6 @@
 import { ConsolePosition, TextAttributes, type Renderable } from "@opentui/core"
 import { registerExCommands, registerTimedLeader, stringifyKeySequence, stringifyKeyStroke } from "@opentui/core/extras"
-import { render, useKeymap, useKeymappings, useRenderer } from "@opentui/solid"
+import { render, useActiveKeys, useKeymap, useKeymappings, usePendingSequenceParts, useRenderer } from "@opentui/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
 
 // -- palette ---------------------------------------------------------------
@@ -134,18 +134,17 @@ export default function KeymapDemo() {
   const [helpVisible, setHelpVisible] = createSignal(true)
   const [leaderArmed, setLeaderArmed] = createSignal(false)
   const [lastAction, setLastAction] = createSignal("Press Tab to start.")
-  const [sequenceVersion, setSequenceVersion] = createSignal(0)
   const [logs, setLogs] = createSignal<string[]>([])
+  const activeKeys = useActiveKeys()
+  const pendingSequenceParts = usePendingSequenceParts()
 
   const announce = (message: string) => {
     setLastAction(message)
     setLogs((current) => [message, ...current].slice(0, 6))
-    setSequenceVersion((value) => value + 1)
   }
 
   const setFocusedPanel = (id: PanelId) => {
     setActivePanel(id)
-    setSequenceVersion((value) => value + 1)
   }
 
   const focusPanel = (id: PanelId) => {
@@ -219,10 +218,6 @@ export default function KeymapDemo() {
     },
   })
 
-  const offPendingSequence = manager.onPendingSequenceChange(() => {
-    setSequenceVersion((value) => value + 1)
-  })
-
   useKeymap({
     scope: "global",
     bindings: {
@@ -241,24 +236,20 @@ export default function KeymapDemo() {
   const focusedColor = createMemo(() => (activePanel() === "alpha" ? palette.alpha : palette.beta))
 
   const whichKeyEntries = createMemo(() => {
-    activePanel()
-    sequenceVersion()
-
-    const activeKeys = [...manager.getActiveKeys()].sort((left, right) => {
+    const sortedActiveKeys = [...activeKeys()].sort((left, right) => {
       return stringifyKeyStroke(left, { preferDisplay: true }).localeCompare(
         stringifyKeyStroke(right, { preferDisplay: true }),
       )
     })
 
-    return activeKeys.slice(0, 8).map((activeKey) => ({
+    return sortedActiveKeys.slice(0, 8).map((activeKey) => ({
       key: stringifyKeyStroke(activeKey, { preferDisplay: true }),
       commands: activeKey.commands.map((command) => command.input).join(" | "),
     }))
   })
 
   const whichKeyPrefix = createMemo(() => {
-    sequenceVersion()
-    return stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
+    return stringifyKeySequence(pendingSequenceParts(), { preferDisplay: true }) || "<root>"
   })
 
   onMount(() => {
@@ -268,7 +259,6 @@ export default function KeymapDemo() {
   })
 
   onCleanup(() => {
-    offPendingSequence()
     offLeader()
     offEx()
     offActions()

@@ -955,6 +955,142 @@ describe("keymap", () => {
     expect(changes).toEqual(["d", "dc", "d", ""])
   })
 
+  test("notifies state changes with the current pending sequence and active keys", () => {
+    const manager = getKeymapManager(renderer)
+    const snapshots: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "delete-ca",
+        run() {},
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "dca", cmd: "delete-ca" }],
+    })
+
+    manager.onStateChange(() => {
+      const pending = stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
+      const active = getActiveKeyNames(manager).join(",") || "<none>"
+      snapshots.push(`${pending}:${active}`)
+    })
+
+    mockInput.pressKey("d")
+    mockInput.pressKey("c")
+    manager.popPendingSequence()
+    manager.clearPendingSequence()
+
+    expect(snapshots).toEqual(["d:c", "dc:a", "d:c", "<root>:d"])
+  })
+
+  test("coalesces state changes when runtime data clears a pending sequence", () => {
+    const manager = getKeymapManager(renderer)
+    const snapshots: string[] = []
+
+    manager.registerLayerFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
+    })
+
+    manager.registerCommands([{ name: "delete-line", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      mode: "normal",
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
+
+    manager.setData("vim.mode", "normal")
+    mockInput.pressKey("d")
+
+    manager.onStateChange(() => {
+      const pending = stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
+      const active = getActiveKeyNames(manager).join(",") || "<none>"
+      snapshots.push(`${pending}:${active}`)
+    })
+
+    manager.setData("vim.mode", "visual")
+
+    expect(snapshots).toEqual(["<root>:<none>"])
+    expect(manager.getPendingSequence()).toEqual([])
+  })
+
+  test("notifies state changes when focus changes active layers and direct blur clears focus", () => {
+    const manager = getKeymapManager(renderer)
+    const target = createFocusableBox("state-target")
+    const snapshots: string[] = []
+
+    renderer.root.add(target)
+
+    manager.registerCommands([{ name: "local", run() {} }])
+    manager.registerLayer({
+      target,
+      bindings: [{ key: "x", cmd: "local" }],
+    })
+
+    manager.onStateChange(() => {
+      snapshots.push(getActiveKeyNames(manager).join(",") || "<none>")
+    })
+
+    target.focus()
+    target.blur()
+
+    expect(snapshots).toEqual(["x", "<none>"])
+  })
+
+  test("coalesces state changes when blur clears a pending sequence", () => {
+    const manager = getKeymapManager(renderer)
+    const target = createFocusableBox("pending-target")
+    const snapshots: string[] = []
+
+    renderer.root.add(target)
+
+    manager.registerCommands([{ name: "delete-line", run() {} }])
+    manager.registerLayer({
+      target,
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
+
+    target.focus()
+    mockInput.pressKey("d")
+
+    manager.onStateChange(() => {
+      const pending = stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
+      const active = getActiveKeyNames(manager).join(",") || "<none>"
+      snapshots.push(`${pending}:${active}`)
+    })
+
+    target.blur()
+
+    expect(snapshots).toEqual(["<root>:<none>"])
+    expect(manager.getPendingSequence()).toEqual([])
+  })
+
+  test("can unsubscribe state change listeners", () => {
+    const manager = getKeymapManager(renderer)
+    const target = createFocusableBox("unsubscribe-target")
+    const snapshots: string[] = []
+
+    renderer.root.add(target)
+
+    manager.registerCommands([{ name: "local", run() {} }])
+    manager.registerLayer({
+      target,
+      bindings: [{ key: "x", cmd: "local" }],
+    })
+
+    const off = manager.onStateChange(() => {
+      snapshots.push(getActiveKeyNames(manager).join(",") || "<none>")
+    })
+
+    off()
+    target.focus()
+
+    expect(snapshots).toEqual([])
+  })
+
   test("supports token aliases inside longer sequences", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []

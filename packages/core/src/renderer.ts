@@ -674,6 +674,7 @@ export enum CliRenderEvents {
   RESIZE = "resize",
   FOCUS = "focus",
   BLUR = "blur",
+  FOCUSED_RENDERABLE = "focused_renderable",
   FOCUSED_EDITOR = "focused_editor",
   THEME_MODE = "theme_mode",
   CAPABILITIES = "capabilities",
@@ -1138,23 +1139,37 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public focusRenderable(renderable: Renderable) {
-    if (this._currentFocusedRenderable === renderable) return
-
-    const prev = this.currentFocusedEditor
-
-    this._currentFocusedRenderable?.blur()
-    this._currentFocusedRenderable = renderable
-
-    const next = this.currentFocusedEditor
-    if (prev !== next) {
-      this.emit(CliRenderEvents.FOCUSED_EDITOR, next, prev)
+    if (this._currentFocusedRenderable === renderable) {
+      return
     }
+
+    const previousRenderable = this._currentFocusedRenderable
+    const previousEditor = this.currentFocusedEditor
+
+    this._currentFocusedRenderable = renderable
+    previousRenderable?.blur()
+
+    const currentEditor = this.currentFocusedEditor
+    if (previousEditor !== currentEditor) {
+      this.emit(CliRenderEvents.FOCUSED_EDITOR, currentEditor, previousEditor)
+    }
+
+    this.emit(CliRenderEvents.FOCUSED_RENDERABLE, renderable, previousRenderable)
   }
 
   public blurRenderable(renderable: Renderable): void {
-    if (this._currentFocusedRenderable === renderable) {
-      this._currentFocusedRenderable = null
+    if (this._currentFocusedRenderable !== renderable) {
+      return
     }
+
+    const previousEditor = this.currentFocusedEditor
+    this._currentFocusedRenderable = null
+
+    if (previousEditor !== null) {
+      this.emit(CliRenderEvents.FOCUSED_EDITOR, null, previousEditor)
+    }
+
+    this.emit(CliRenderEvents.FOCUSED_RENDERABLE, null, renderable)
   }
 
   private setCapturedRenderable(renderable: Renderable | undefined): void {

@@ -33,12 +33,7 @@ function resolveEnabledValue(value: boolean | (() => boolean)): boolean {
     return value
   }
 
-  try {
-    return value()
-  } catch (error) {
-    console.error("[Keymap] Error evaluating enabled predicate:", error)
-    return false
-  }
+  return value()
 }
 
 export function registerEnabledField(manager: KeymapManager): () => void {

@@ -390,8 +390,8 @@ export abstract class Renderable extends BaseRenderable {
   public focus(): void {
     if (this._isDestroyed || this._focused || !this._focusable) return
 
-    this._ctx.focusRenderable(this)
     this._focused = true
+    this._ctx.focusRenderable(this)
     this.requestRender()
 
     this.keypressHandler = (key: KeyEvent) => {

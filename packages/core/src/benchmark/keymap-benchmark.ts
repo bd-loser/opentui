@@ -302,6 +302,12 @@ function readActiveKeysRepeatedly(manager: KeymapManager, count: number): void {
   }
 }
 
+function readActiveKeysWithBindingsRepeatedly(manager: KeymapManager, count: number): void {
+  for (let index = 0; index < count; index += 1) {
+    manager.getActiveKeys({ includeBindings: true })
+  }
+}
+
 function readPendingSequencePartsRepeatedly(manager: KeymapManager, count: number): void {
   for (let index = 0; index < count; index += 1) {
     manager.getPendingSequenceParts()
@@ -446,6 +452,43 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           readActiveKeysRepeatedly(resources.manager, 5)
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "active_keys_focus_tree_with_bindings_repeat_reads_5x",
+    description: "Repeated getActiveKeys with bindings five times against the same focus tree state",
+    async setup() {
+      const resources = await createScenarioResources()
+      const focusChain = createFocusTree(resources, 6)
+
+      for (let index = 0; index < focusChain.length; index += 1) {
+        const target = focusChain[index]
+        if (!target) {
+          continue
+        }
+
+        for (let layerIndex = 0; layerIndex < 6; layerIndex += 1) {
+          registerTargetLayer(resources.manager, target, index * 10 + layerIndex)
+        }
+      }
+
+      for (let index = 0; index < 300; index += 1) {
+        const sibling = createFocusableBox(resources.renderer, `repeat-binding-sibling-${index}`)
+        resources.renderer.root.add(sibling)
+        registerTargetLayer(resources.manager, sibling, index + 4000)
+      }
+
+      registerGlobalLayers(resources.manager, 150)
+
+      return {
+        resources,
+        runIteration() {
+          readActiveKeysWithBindingsRepeatedly(resources.manager, 5)
         },
         cleanup() {
           resources.renderer.destroy()

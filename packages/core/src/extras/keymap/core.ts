@@ -1449,7 +1449,7 @@ class KeymapManagerImpl implements KeymapManager {
 
         const compiler = this.bindingFields.get(fieldName)
         if (!compiler) {
-          throw new Error(`Unknown keymap binding field "${fieldName}"`)
+          continue
         }
 
         compiler(value, {

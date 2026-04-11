@@ -17,7 +17,6 @@ import {
   registerTimedLeader,
   type KeymapActiveMetadata,
   type KeymapManager,
-  type KeymapResolvedCommand,
   stringifyKeySequence,
   stringifyKeyStroke,
 } from "../extras.js"
@@ -93,51 +92,23 @@ function getMetadataText(value: unknown): string | undefined {
   return trimmed || undefined
 }
 
-function getCommandLabel(command: KeymapResolvedCommand, attrs?: Record<string, unknown>): string {
-  return getMetadataText(attrs?.desc) ?? getMetadataText(attrs?.title) ?? command.input
-}
-
-function getMetadataLabel(metadata: KeymapActiveMetadata): string {
-  return getMetadataText(metadata.bindingAttrs?.desc) ?? getCommandLabel(metadata.command, metadata.commandAttrs)
-}
-
-function getSharedMetadataText(metadata: readonly KeymapActiveMetadata[], name: string): string | undefined {
-  let shared: string | undefined
-  for (const entry of metadata) {
-    const value = getMetadataText(entry.bindingAttrs?.[name])
-    if (!value) return undefined
-    if (shared === undefined) {
-      shared = value
-      continue
-    }
-    if (shared !== value) return undefined
-  }
-  return shared
-}
-
-function uniqueLabels(labels: Iterable<string>): string[] {
-  const unique: string[] = []
-  const seen = new Set<string>()
-  for (const label of labels) {
-    if (!seen.has(label)) {
-      seen.add(label)
-      unique.push(label)
-    }
-  }
-  return unique
-}
-
 function getActiveKeyLabel(activeKey: ReturnType<KeymapManager["getActiveKeys"]>[number]): string {
-  const metadata = activeKey.metadata ?? []
-  const group = activeKey.continues ? getSharedMetadataText(metadata, "group") : undefined
-  if (group) return `+${group}`
+  const firstMetadata = activeKey.metadata?.[0]
+  if (activeKey.continues) {
+    const group = getMetadataText(firstMetadata?.bindingAttrs?.group)
+    if (group) {
+      return `+${group}`
+    }
+  }
 
-  const labels =
-    metadata.length > 0
-      ? uniqueLabels(metadata.map(getMetadataLabel))
-      : uniqueLabels(activeKey.commands.map((command) => getCommandLabel(command)))
-  if (labels.length > 0) return labels.join(" | ")
-  return activeKey.commands.map((command) => command.input).join(" | ")
+  return (
+    getMetadataText(firstMetadata?.bindingAttrs?.desc) ??
+    getMetadataText(firstMetadata?.commandAttrs?.desc) ??
+    getMetadataText(firstMetadata?.commandAttrs?.title) ??
+    firstMetadata?.command.input ??
+    activeKey.commands[0]?.input ??
+    ""
+  )
 }
 
 // -- styled text builders --------------------------------------------------

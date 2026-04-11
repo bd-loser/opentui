@@ -55,9 +55,12 @@ export type KeymapCommandHandler = (ctx: KeymapCommandContext) => KeymapCommandR
 
 export type KeymapBindingCommand = string | KeymapCommandHandler
 
+export type KeymapBindingEvent = "press" | "release"
+
 export type KeymapBindingInput = {
   key: KeyLike
   cmd?: KeymapBindingCommand
+  event?: KeymapBindingEvent
   consume?: boolean
   fallthrough?: boolean
 } & Record<string, unknown>
@@ -121,14 +124,6 @@ export interface KeymapCommand {
 
 export type ActionCommand = KeymapCommand
 
-export interface ExCommand {
-  name: string
-  aliases?: string[]
-  nargs?: "0" | "1" | "?" | "*" | "+"
-  run: (ctx: KeymapCommandContext & { raw: string; args: string[] }) => void | Promise<void>
-  [key: string]: unknown
-}
-
 export interface KeymapToken {
   token: string
   key: KeyLike
@@ -139,6 +134,7 @@ export interface KeymapActiveBinding {
   command?: KeymapBindingCommand
   commandAttrs?: Readonly<KeymapAttributes>
   attrs?: Readonly<KeymapAttributes>
+  event: KeymapBindingEvent
   consume: boolean
   fallthrough: boolean
 }

@@ -11,6 +11,7 @@ import type {
   KeymapActiveKeyOptions,
   KeymapAttributes,
   KeymapBindingCommand,
+  KeymapBindingEvent,
   KeymapBindingFieldCompiler,
   KeymapBindingInput,
   KeymapCommand,
@@ -74,7 +75,7 @@ const NOOP_KEYMAP_LOGGER: ResolvedKeymapLogger = {
   error() {},
 }
 
-export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "consume", "fallthrough"])
+export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "event", "consume", "fallthrough"])
 
 const RESERVED_LAYER_FIELDS = new Set(["target", "scope", "priority", "bindings"])
 
@@ -1092,6 +1093,18 @@ class KeymapManagerImpl implements KeymapManager {
     return command.attrs ? { name: command.name, attrs: command.attrs } : { name: command.name }
   }
 
+  private normalizeBindingEvent(event: unknown): KeymapBindingEvent {
+    if (event === undefined || event === "press") {
+      return "press"
+    }
+
+    if (event === "release") {
+      return "release"
+    }
+
+    throw new Error(`Invalid keymap binding event "${String(event)}": expected "press" or "release"`)
+  }
+
   private compileBindings(
     bindings: readonly KeymapBindingInput[],
     tokens: ReadonlyMap<string, ParsedKeyStroke>,
@@ -1100,7 +1113,12 @@ class KeymapManagerImpl implements KeymapManager {
     const compiledBindings: CompiledBinding[] = []
 
     for (const binding of bindings) {
+      if (typeof binding.key === "string") {
+        this.warnUnknownTokensInKeySequence(binding.key, tokens)
+      }
+
       const sequence = parseKeySequenceLike(binding.key, tokens)
+      const event = this.normalizeBindingEvent(binding.event)
       const mergedRequires: KeymapEventData = {}
       const mergedAttrs: KeymapAttributes = {}
       const matchers: RuntimeMatcher[] = []
@@ -1154,6 +1172,7 @@ class KeymapManagerImpl implements KeymapManager {
       const compiledBinding: CompiledBinding = {
         sequence,
         command,
+        event,
         requires: Object.entries(mergedRequires),
         matchers,
         conditionKeys: [...conditionKeys],
@@ -1173,8 +1192,15 @@ class KeymapManagerImpl implements KeymapManager {
         continue
       }
 
+      if (event === "release" && sequence.length > 1) {
+        throw new Error("Keymap release bindings only support a single key stroke")
+      }
+
       compiledBindings.push(compiledBinding)
-      this.insertBinding(root, compiledBinding)
+
+      if (event === "press") {
+        this.insertBinding(root, compiledBinding)
+      }
     }
 
     return {
@@ -1291,10 +1317,33 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     if (release) {
+      this.dispatchReleaseLayers(event)
       return
     }
 
     this.dispatchLayers(event)
+  }
+
+  private dispatchReleaseLayers(event: KeyEvent): void {
+    const focused = this.getFocusedRenderable()
+    const activeLayers = this.getActiveLayers(focused)
+    const strokeKey = buildBindingKey(normalizeEventKeyStroke(event))
+    const hasLayerConditions = this.layersWithConditions > 0
+
+    for (const layer of activeLayers) {
+      if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
+        continue
+      }
+
+      const result = this.runReleaseBindings(layer, strokeKey, event, focused)
+      if (!result.handled) {
+        continue
+      }
+
+      if (result.stop) {
+        return
+      }
+    }
   }
 
   private dispatchLayers(event: KeyEvent): void {
@@ -1374,6 +1423,42 @@ class KeymapManagerImpl implements KeymapManager {
         return
       }
     }
+  }
+
+  private runReleaseBindings(
+    layer: RegisteredLayer,
+    strokeKey: string,
+    event: KeyEvent,
+    focused: Renderable | null,
+  ): { handled: boolean; stop: boolean } {
+    let handled = false
+
+    for (const binding of layer.compiledBindings) {
+      if (binding.event !== "release") {
+        continue
+      }
+
+      const firstPart = binding.sequence[0]
+      if (!firstPart || buildBindingKey(firstPart.stroke) !== strokeKey) {
+        continue
+      }
+
+      if (!this.matchesBindingConditions(binding)) {
+        continue
+      }
+
+      const bindingHandled = this.runBinding(layer, binding, event, focused)
+      if (!bindingHandled) {
+        continue
+      }
+
+      handled = true
+      if (!binding.fallthrough) {
+        return { handled: true, stop: true }
+      }
+    }
+
+    return { handled, stop: false }
   }
 
   private getReachableChild(node: SequenceNode, stroke: ParsedKeyStroke): SequenceNode | undefined {
@@ -1482,6 +1567,7 @@ class KeymapManagerImpl implements KeymapManager {
       command: binding.command,
       commandAttrs: binding.commandAttrs,
       attrs: binding.attrs,
+      event: binding.event,
       consume: binding.consume,
       fallthrough: binding.fallthrough,
     }
@@ -2130,6 +2216,42 @@ class KeymapManagerImpl implements KeymapManager {
 
     this.warnedUnknownFields.add(warningKey)
     this.logger.warn(`[Keymap] Unknown ${kind} field "${fieldName}" was ignored`)
+  }
+
+  private warnUnknownToken(token: string, sequence: string): void {
+    const warningKey = `token:${token}`
+    if (this.warnedUnknownFields.has(warningKey)) {
+      return
+    }
+
+    this.warnedUnknownFields.add(warningKey)
+    this.logger.warn(`[Keymap] Unknown token "${token}" in key sequence "${sequence}" was ignored`)
+  }
+
+  private warnUnknownTokensInKeySequence(sequence: string, tokens: ReadonlyMap<string, ParsedKeyStroke>): void {
+    if (!sequence.includes("<")) {
+      return
+    }
+
+    let index = 0
+    while (index < sequence.length) {
+      const open = sequence.indexOf("<", index)
+      if (open === -1) {
+        break
+      }
+
+      const close = sequence.indexOf(">", open + 1)
+      if (close === -1) {
+        break
+      }
+
+      const token = normalizeTokenName(sequence.slice(open, close + 1))
+      if (!tokens.has(token)) {
+        this.warnUnknownToken(token, sequence)
+      }
+
+      index = close + 1
+    }
   }
 
   private resolvePendingSequence(focused = this.getFocusedRenderable()): PendingSequenceState | undefined {

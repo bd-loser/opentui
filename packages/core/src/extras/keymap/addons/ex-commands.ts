@@ -1,5 +1,13 @@
-import type { ExCommand, KeymapCommand, KeymapManager } from "../types.js"
+import type { KeymapCommand, KeymapCommandContext, KeymapManager } from "../types.js"
 import { normalizeCommandName, parseCommandInput } from "../utils.js"
+
+export interface ExCommand {
+  name: string
+  aliases?: string[]
+  nargs?: "0" | "1" | "?" | "*" | "+"
+  run: (ctx: KeymapCommandContext & { raw: string; args: string[] }) => void | Promise<void>
+  [key: string]: unknown
+}
 
 function normalizeExCommandName(name: string): string {
   const normalized = normalizeCommandName(name)

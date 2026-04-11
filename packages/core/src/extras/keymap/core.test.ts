@@ -1699,6 +1699,28 @@ describe("keymap", () => {
     ])
   })
 
+  test("logs unknown token warnings when logger is configured", () => {
+    const warnings: string[] = []
+    const manager = getKeymapManager(renderer, {
+      logger: {
+        warn(...args) {
+          warnings.push(args.map((value) => String(value)).join(" "))
+        },
+      },
+    })
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [
+        { key: "<leader>x", cmd: "noop" },
+        { key: "<leader>y", cmd: "noop" },
+      ],
+    })
+
+    expect(warnings).toEqual(['[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored'])
+  })
+
   test("logs runtime matcher failures through logger.error", () => {
     const warnings: string[] = []
     const errors: string[] = []
@@ -1860,6 +1882,63 @@ describe("keymap", () => {
     renderer.stdin.emit("data", Buffer.from("\x1b[97;1:3u"))
 
     expect(events).toEqual(["a:release"])
+  })
+
+  test("supports declarative release bindings", async () => {
+    renderer.destroy()
+    const testSetup = await createTestRenderer({ width: 40, height: 10, kittyKeyboard: true })
+    renderer = testSetup.renderer
+    mockInput = testSetup.mockInput
+
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "release-command",
+        run() {
+          calls.push("release")
+        },
+      },
+      {
+        name: "press-command",
+        run() {
+          calls.push("press")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [
+        { key: "a", cmd: "release-command", event: "release" },
+        { key: "b", cmd: "press-command" },
+      ],
+    })
+
+    expect(getActiveKeyNames(manager)).toEqual(["b"])
+
+    mockInput.pressKey("a")
+    expect(calls).toEqual([])
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[97;1:3u"))
+    expect(calls).toEqual(["release"])
+
+    mockInput.pressKey("b")
+    expect(calls).toEqual(["release", "press"])
+  })
+
+  test("rejects release bindings with multiple strokes", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+
+    expect(() => {
+      manager.registerLayer({
+        scope: "global",
+        bindings: [{ key: "dd", cmd: "noop", event: "release" }],
+      })
+    }).toThrow("Keymap release bindings only support a single key stroke")
   })
 
   test("ignores destroyed target layers and lets lower layers continue", () => {

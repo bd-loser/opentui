@@ -214,6 +214,10 @@ export function registerEditBufferKeymap(manager: KeymapManager, layer: KeymapLa
 
 export function compileEditBufferKeyBindings(bindings: KeymapBindings): EditBufferKeyBinding[] {
   return normalizeBindingInputs(bindings).map((binding) => {
+    if (binding.event !== undefined && binding.event !== "press") {
+      throw new Error('Edit-buffer key bindings only support event "press"')
+    }
+
     for (const [fieldName, value] of Object.entries(binding)) {
       if (RESERVED_BINDING_FIELDS.has(fieldName)) {
         continue

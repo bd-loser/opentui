@@ -305,6 +305,10 @@ describe("edit buffer keymap addon", () => {
       'Edit-buffer key bindings do not support the extra field "mode"',
     )
 
+    expect(() => compileEditBufferKeyBindings([{ key: "x", cmd: "delete-line", event: "release" }])).toThrow(
+      'Edit-buffer key bindings only support event "press"',
+    )
+
     expect(() => compileEditBufferKeyBindings([{ key: "x", cmd: "delete-line now" }])).toThrow(
       'Edit-buffer command "delete-line now" cannot include arguments',
     )

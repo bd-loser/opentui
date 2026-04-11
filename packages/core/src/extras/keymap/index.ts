@@ -2,13 +2,13 @@ export { getKeymapManager } from "./core.js"
 export { parseKeySequenceLike, stringifyKeySequence, stringifyKeyStroke } from "./utils.js"
 export type {
   ActionCommand,
-  ExCommand,
   KeyLike,
   KeymapActiveBinding,
   KeymapStringifiableKey,
   KeymapStringifyOptions,
   KeymapAttributes,
   KeymapBindingCommand,
+  KeymapBindingEvent,
   KeymapBindingFieldCompiler,
   KeymapBindingFieldContext,
   KeymapBindingInput,
@@ -54,5 +54,6 @@ export { registerLeader } from "./addons/leader.js"
 export { registerMetadataFields } from "./addons/metadata.js"
 export { registerTimedLeader } from "./addons/timed-leader.js"
 export type { KeymapEnabled, KeymapKeyedEnabled } from "./addons/enabled.js"
+export type { ExCommand } from "./addons/ex-commands.js"
 export type { LeaderOptions } from "./addons/leader.js"
 export type { TimedLeaderOptions } from "./addons/timed-leader.js"

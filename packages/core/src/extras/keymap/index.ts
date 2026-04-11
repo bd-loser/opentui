@@ -20,7 +20,6 @@ export type {
   KeymapCommandFieldContext,
   KeymapCommandContext,
   KeymapCommandResult,
-  KeymapEnabled,
   KeymapEventData,
   KeymapKeyInputContext,
   KeymapFocusLayer,
@@ -40,10 +39,12 @@ export type {
   ParsedKeyStroke,
   KeyStroke,
 } from "./core.js"
+export { registerEnabledField } from "./addons/enabled.js"
 export { registerExCommands } from "./addons/ex-commands.js"
 export { compileEditBufferKeyBindings, registerEditBufferKeymap } from "./addons/edit-buffer-keymap.js"
 export { registerLeader } from "./addons/leader.js"
 export { registerMetadataFields } from "./addons/metadata.js"
 export { registerTimedLeader } from "./addons/timed-leader.js"
+export type { KeymapEnabled, KeymapKeyedEnabled } from "./addons/enabled.js"
 export type { LeaderOptions } from "./addons/leader.js"
 export type { TimedLeaderOptions } from "./addons/timed-leader.js"

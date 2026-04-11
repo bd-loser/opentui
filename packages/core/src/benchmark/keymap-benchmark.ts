@@ -3,7 +3,7 @@ import path from "node:path"
 
 import { BoxRenderable } from "../renderables/Box.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../testing.js"
-import { getKeymapManager, type KeymapManager } from "../extras/keymap/index.js"
+import { getKeymapManager, registerEnabledField, type KeymapManager } from "../extras/keymap/index.js"
 
 const DEFAULT_ITERATIONS = 20_000
 const DEFAULT_WARMUP = 2_000
@@ -227,6 +227,39 @@ function registerModeLayerFields(manager: KeymapManager): void {
       ctx.require("vim.state", value)
     },
   })
+}
+
+function normalizeFlagKey(value: unknown, source: string): string {
+  if (typeof value !== "string") {
+    throw new Error(`${source} must be a string`)
+  }
+
+  const trimmed = value.trim()
+  if (!trimmed) {
+    throw new Error(`${source} cannot be empty`)
+  }
+
+  return trimmed
+}
+
+function registerNamedBindingFields(manager: KeymapManager): void {
+  manager.registerBindingFields({
+    activeWhen(value, ctx) {
+      ctx.require(normalizeFlagKey(value, "binding field activeWhen"), true)
+    },
+  })
+}
+
+function registerNamedLayerFields(manager: KeymapManager): void {
+  manager.registerLayerFields({
+    activeWhen(value, ctx) {
+      ctx.require(normalizeFlagKey(value, "layer field activeWhen"), true)
+    },
+  })
+}
+
+function createFlagKey(index: number): string {
+  return `flag-${index}`
 }
 
 async function createScenarioResources(): Promise<ScenarioResources> {
@@ -501,6 +534,109 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           resources.manager.getActiveKeys()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "active_keys_enabled_callback_heavy",
+    description: "Repeated getActiveKeys with many callback-enabled layers",
+    async setup() {
+      const resources = await createScenarioResources()
+      const enabledStates: boolean[] = []
+
+      registerEnabledField(resources.manager)
+
+      for (let index = 0; index < 320; index += 1) {
+        enabledStates.push(index % 3 !== 0)
+        resources.manager.registerLayer({
+          scope: "global",
+          enabled: () => enabledStates[index] ?? false,
+          bindings: [
+            { key: createKey(index), cmd: "noop" },
+            { key: createKey(index + 1), cmd: "noop" },
+          ],
+        })
+      }
+
+      return {
+        resources,
+        runIteration() {
+          resources.manager.getActiveKeys()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "active_keys_binding_sparse_data_churn",
+    description: "Repeated setData and getActiveKeys with per-binding dependency keys",
+    async setup() {
+      const resources = await createScenarioResources()
+      registerNamedBindingFields(resources.manager)
+
+      for (let index = 0; index < 320; index += 1) {
+        resources.manager.setData(createFlagKey(index), true)
+        resources.manager.registerLayer({
+          scope: "global",
+          bindings: [
+            {
+              key: createKey(index),
+              activeWhen: createFlagKey(index),
+              cmd: "noop",
+            },
+          ],
+        })
+      }
+
+      let iteration = 0
+
+      return {
+        resources,
+        runIteration() {
+          const key = createFlagKey(iteration % 320)
+          const nextValue = iteration % 2 === 0
+          resources.manager.setData(key, nextValue)
+          resources.manager.getActiveKeys()
+          iteration += 1
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "active_keys_layer_sparse_data_churn",
+    description: "Repeated setData and getActiveKeys with per-layer dependency keys",
+    async setup() {
+      const resources = await createScenarioResources()
+      registerNamedLayerFields(resources.manager)
+
+      for (let index = 0; index < 320; index += 1) {
+        resources.manager.setData(createFlagKey(index), true)
+        resources.manager.registerLayer({
+          scope: "global",
+          activeWhen: createFlagKey(index),
+          bindings: [{ key: createKey(index), cmd: "noop" }],
+        })
+      }
+
+      let iteration = 0
+
+      return {
+        resources,
+        runIteration() {
+          const key = createFlagKey(iteration % 320)
+          const nextValue = iteration % 2 === 0
+          resources.manager.setData(key, nextValue)
+          resources.manager.getActiveKeys()
+          iteration += 1
         },
         cleanup() {
           resources.renderer.destroy()

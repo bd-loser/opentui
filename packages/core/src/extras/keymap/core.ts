@@ -2310,8 +2310,18 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     this.pendingSequence = next
+    this.invalidateDerivedStateCaches()
     this.notifyPendingSequenceChange()
     this.queueStateChange()
+  }
+
+  private invalidateDerivedStateCaches(): void {
+    this.pendingSequenceCacheVersion = -1
+    this.pendingSequencePartsCacheVersion = -1
+    this.activeKeysFastCacheVersion = -1
+    this.activeKeysMetadataCacheVersion = -1
+    this.activeKeysWithBindingsCacheVersion = -1
+    this.activeKeysWithBindingsAndMetadataCacheVersion = -1
   }
 
   private isSamePendingSequence(current: PendingSequenceState | null, next: PendingSequenceState | null): boolean {

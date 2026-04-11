@@ -132,12 +132,6 @@ export interface KeymapActiveBinding {
   fallthrough: boolean
 }
 
-export interface KeymapActiveMetadata {
-  command: KeymapResolvedCommand
-  bindingAttrs?: Readonly<KeymapAttributes>
-  commandAttrs?: Readonly<KeymapAttributes>
-}
-
 export interface KeymapActiveKeyOptions {
   includeBindings?: boolean
   includeMetadata?: boolean
@@ -147,7 +141,8 @@ export interface KeymapActiveKey {
   stroke: ParsedKeyStroke
   display: string
   bindings?: KeymapActiveBinding[]
-  metadata?: KeymapActiveMetadata[]
+  bindingAttrs?: Readonly<KeymapAttributes>
+  commandAttrs?: Readonly<KeymapAttributes>
   commands: KeymapResolvedCommand[]
   continues: boolean
 }
@@ -226,8 +221,6 @@ interface RuntimeMatchable {
 interface CompiledBinding extends KeymapActiveBinding, RuntimeMatchable {
   activeBindingCacheVersion?: number
   activeBindingCache?: KeymapActiveBinding
-  activeMetadataCacheVersion?: number
-  activeMetadataCache?: KeymapActiveMetadata
 }
 
 interface DispatchActiveKeyResult {
@@ -1713,6 +1706,14 @@ class KeymapManagerImpl implements KeymapManager {
     return bindings.map((binding) => this.toActiveBinding(binding))
   }
 
+  private getActiveCommandAttrs(binding: CompiledBinding): Readonly<KeymapAttributes> | undefined {
+    if (this.commandsWithAttrs === 0) {
+      return undefined
+    }
+
+    return this.commands.get(binding.command.name)?.attrs
+  }
+
   private collectResolvedCommands(
     bindings: readonly CompiledBinding[],
     resolveAttrs: boolean,
@@ -1726,38 +1727,6 @@ class KeymapManagerImpl implements KeymapManager {
 
   private collectCommandsFast(bindings: readonly CompiledBinding[]): KeymapResolvedCommand[] {
     return bindings.map((binding) => binding.command)
-  }
-
-  private toActiveMetadata(binding: CompiledBinding): KeymapActiveMetadata {
-    if (binding.activeMetadataCacheVersion === this.commandMetadataVersion) {
-      const cached = binding.activeMetadataCache
-      if (cached) {
-        return cached
-      }
-    }
-
-    const metadata: KeymapActiveMetadata = {
-      command: binding.command,
-    }
-
-    if (binding.attrs) {
-      metadata.bindingAttrs = binding.attrs
-    }
-
-    if (this.commandsWithAttrs > 0) {
-      const registered = this.commands.get(binding.command.name)
-      if (registered?.attrs) {
-        metadata.commandAttrs = registered.attrs
-      }
-    }
-
-    binding.activeMetadataCacheVersion = this.commandMetadataVersion
-    binding.activeMetadataCache = metadata
-    return metadata
-  }
-
-  private collectActiveMetadata(bindings: readonly CompiledBinding[]): KeymapActiveMetadata[] {
-    return bindings.map((binding) => this.toActiveMetadata(binding))
   }
 
   private collectActiveKeysAtRoot(
@@ -1788,7 +1757,7 @@ class KeymapManagerImpl implements KeymapManager {
         if (!existing) {
           activeKeys.set(bindingKey, result.activeKey)
         } else {
-          this.appendDispatchActiveKey(existing, result.activeKey, includeBindings, includeMetadata)
+          this.appendDispatchActiveKey(existing, result.activeKey, includeBindings)
         }
 
         if (result.stop) {
@@ -1980,18 +1949,21 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     if (includeMetadata) {
-      activeKey.metadata = singleBinding ? [this.toActiveMetadata(singleBinding)] : this.collectActiveMetadata(bindings)
+      const metadataBinding = singleBinding ?? bindings[0]
+      if (metadataBinding?.attrs) {
+        activeKey.bindingAttrs = metadataBinding.attrs
+      }
+
+      const commandAttrs = metadataBinding ? this.getActiveCommandAttrs(metadataBinding) : undefined
+      if (commandAttrs) {
+        activeKey.commandAttrs = commandAttrs
+      }
     }
 
     return activeKey
   }
 
-  private appendDispatchActiveKey(
-    activeKey: KeymapActiveKey,
-    next: KeymapActiveKey,
-    includeBindings: boolean,
-    includeMetadata: boolean,
-  ): void {
+  private appendDispatchActiveKey(activeKey: KeymapActiveKey, next: KeymapActiveKey, includeBindings: boolean): void {
     activeKey.commands.push(...next.commands)
 
     if (next.continues) {
@@ -2010,18 +1982,6 @@ class KeymapManagerImpl implements KeymapManager {
       if (next.bindings && next.bindings.length > 0) {
         activeKey.bindings.push(...next.bindings)
       }
-    }
-
-    if (!includeMetadata) {
-      return
-    }
-
-    if (!activeKey.metadata) {
-      activeKey.metadata = []
-    }
-
-    if (next.metadata && next.metadata.length > 0) {
-      activeKey.metadata.push(...next.metadata)
     }
   }
 

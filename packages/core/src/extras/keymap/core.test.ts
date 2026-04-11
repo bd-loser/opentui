@@ -524,20 +524,13 @@ describe("keymap", () => {
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
     })
 
-    expect(getActiveKey(manager, "x", { includeMetadata: true })?.metadata).toBeUndefined()
+    expect(getActiveKey(manager, "x", { includeMetadata: true })?.bindingAttrs).toBeUndefined()
+    expect(getActiveKey(manager, "x", { includeMetadata: true })?.commandAttrs).toBeUndefined()
 
     enabled = true
 
-    expect(getActiveKey(manager, "x", { includeMetadata: true })?.metadata).toEqual([
-      {
-        command: {
-          input: "runtime-binding",
-          name: "runtime-binding",
-          args: [],
-        },
-        bindingAttrs: { label: "Runtime binding" },
-      },
-    ])
+    expect(getActiveKey(manager, "x", { includeMetadata: true })?.bindingAttrs).toEqual({ label: "Runtime binding" })
+    expect(getActiveKey(manager, "x", { includeMetadata: true })?.commandAttrs).toBeUndefined()
   })
 
   test("typed binding field matchers clear pending sequences when they stop matching", () => {
@@ -980,45 +973,30 @@ describe("keymap", () => {
     }
 
     expect(plain?.bindings).toBeUndefined()
-    expect(plain?.metadata).toBeUndefined()
+    expect(plain?.bindingAttrs).toBeUndefined()
+    expect(plain?.commandAttrs).toBeUndefined()
     expect(plain?.commands[0]?.attrs).toBeUndefined()
 
     expect(metadataOnly?.bindings).toBeUndefined()
     expect(metadataOnly?.commands[0]?.attrs).toBeUndefined()
-    expect(metadataOnly?.metadata).toEqual([
-      {
-        command: {
-          input: "save-file",
-          name: "save-file",
-          args: [],
-        },
-        bindingAttrs,
-        commandAttrs,
-      },
-    ])
+    expect(metadataOnly?.bindingAttrs).toEqual(bindingAttrs)
+    expect(metadataOnly?.commandAttrs).toEqual(commandAttrs)
 
-    expect(withBindings?.metadata).toBeUndefined()
+    expect(withBindings?.bindingAttrs).toBeUndefined()
+    expect(withBindings?.commandAttrs).toBeUndefined()
     expect(withBindings?.commands[0]?.attrs).toEqual(commandAttrs)
     expect(withBindings?.bindings?.[0]?.attrs).toEqual(bindingAttrs)
     expect(withBindings?.bindings?.[0]?.command.attrs).toEqual(commandAttrs)
 
+    expect(withBindingsAndMetadata?.bindingAttrs).toEqual(bindingAttrs)
+    expect(withBindingsAndMetadata?.commandAttrs).toEqual(commandAttrs)
     expect(withBindingsAndMetadata?.commands[0]?.attrs).toEqual(commandAttrs)
     expect(withBindingsAndMetadata?.bindings?.[0]?.attrs).toEqual(bindingAttrs)
     expect(withBindingsAndMetadata?.bindings?.[0]?.command.attrs).toEqual(commandAttrs)
-    expect(withBindingsAndMetadata?.metadata).toEqual([
-      {
-        command: {
-          input: "save-file",
-          name: "save-file",
-          args: [],
-        },
-        bindingAttrs,
-        commandAttrs,
-      },
-    ])
 
     expect(plainAgain?.bindings).toBeUndefined()
-    expect(plainAgain?.metadata).toBeUndefined()
+    expect(plainAgain?.bindingAttrs).toBeUndefined()
+    expect(plainAgain?.commandAttrs).toBeUndefined()
     expect(plainAgain?.commands[0]?.attrs).toBeUndefined()
   })
 
@@ -2410,15 +2388,13 @@ describe("keymap", () => {
 
     expect(activeX?.commands.map((command) => command.input)).toEqual(["help"])
     expect(activeX?.bindings?.map((binding) => binding.command.input)).toEqual(["help"])
-    expect(activeX?.metadata?.map((metadata) => metadata.command.input)).toEqual(["help"])
-    expect(activeX?.metadata?.map((metadata) => metadata.bindingAttrs?.["desc"])).toEqual(["Local x"])
+    expect(activeX?.bindingAttrs).toEqual({ desc: "Local x" })
 
     const activeY = getActiveKey(manager, "y", { includeBindings: true, includeMetadata: true })
 
     expect(activeY?.commands.map((command) => command.input)).toEqual(["save", "help"])
     expect(activeY?.bindings?.map((binding) => binding.command.input)).toEqual(["save", "help"])
-    expect(activeY?.metadata?.map((metadata) => metadata.command.input)).toEqual(["save", "help"])
-    expect(activeY?.metadata?.map((metadata) => metadata.bindingAttrs?.["desc"])).toEqual(["Local y", "Global y"])
+    expect(activeY?.bindingAttrs).toEqual({ desc: "Local y" })
   })
 
   test("getActiveKeys uses the first matching prefix layer before lower exact layers", () => {

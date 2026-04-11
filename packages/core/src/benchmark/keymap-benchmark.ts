@@ -296,6 +296,18 @@ function registerStateChangeReadListeners(manager: KeymapManager): () => void {
   }
 }
 
+function readActiveKeysRepeatedly(manager: KeymapManager, count: number): void {
+  for (let index = 0; index < count; index += 1) {
+    manager.getActiveKeys()
+  }
+}
+
+function readPendingSequencePartsRepeatedly(manager: KeymapManager, count: number): void {
+  for (let index = 0; index < count; index += 1) {
+    manager.getPendingSequenceParts()
+  }
+}
+
 function setupStateChangeFocusChurn(resources: ScenarioResources): {
   first: BoxRenderable
   second: BoxRenderable
@@ -405,6 +417,43 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "active_keys_focus_tree_repeat_reads_5x",
+    description: "Repeated getActiveKeys five times against the same focus tree state",
+    async setup() {
+      const resources = await createScenarioResources()
+      const focusChain = createFocusTree(resources, 6)
+
+      for (let index = 0; index < focusChain.length; index += 1) {
+        const target = focusChain[index]
+        if (!target) {
+          continue
+        }
+
+        for (let layerIndex = 0; layerIndex < 6; layerIndex += 1) {
+          registerTargetLayer(resources.manager, target, index * 10 + layerIndex)
+        }
+      }
+
+      for (let index = 0; index < 300; index += 1) {
+        const sibling = createFocusableBox(resources.renderer, `repeat-sibling-${index}`)
+        resources.renderer.root.add(sibling)
+        registerTargetLayer(resources.manager, sibling, index + 3000)
+      }
+
+      registerGlobalLayers(resources.manager, 150)
+
+      return {
+        resources,
+        runIteration() {
+          readActiveKeysRepeatedly(resources.manager, 5)
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "dispatch_focus_tree",
     description: "Repeated key dispatch with deep focus chain and many unrelated target layers",
     async setup() {
@@ -486,6 +535,48 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           resources.manager.getActiveKeys()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "pending_sequence_parts_repeat_reads_5x",
+    description: "Repeated pending sequence part reads against the same pending state",
+    async setup() {
+      const resources = await createScenarioResources()
+      const focusChain = createFocusTree(resources, 5)
+
+      for (let index = 0; index < focusChain.length; index += 1) {
+        const target = focusChain[index]
+        if (!target) {
+          continue
+        }
+
+        for (let layerIndex = 0; layerIndex < 5; layerIndex += 1) {
+          registerTargetLayer(resources.manager, target, index * 10 + layerIndex, createKey(layerIndex + 1))
+        }
+      }
+
+      registerGlobalLayers(resources.manager, 120)
+      resources.manager.registerLayer({
+        scope: "global",
+        bindings: [
+          { key: "ga", cmd: "noop" },
+          { key: "gb", cmd: "noop" },
+          { key: "gc", cmd: "noop" },
+          { key: "gd", cmd: "noop" },
+        ],
+      })
+
+      resources.mockInput.pressKey("g")
+
+      return {
+        resources,
+        runIteration() {
+          readPendingSequencePartsRepeatedly(resources.manager, 5)
         },
         cleanup() {
           resources.renderer.destroy()
@@ -751,6 +842,34 @@ const scenarios: BenchmarkScenario[] = [
         },
         cleanup() {
           offStateChange()
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "state_change_focus_churn_repeat_reads_5x",
+    description: "Repeated focus changes followed by five active key reads",
+    async setup() {
+      const resources = await createScenarioResources()
+      const { first, second } = setupStateChangeFocusChurn(resources)
+      let focusFirst = false
+
+      first.focus()
+
+      return {
+        resources,
+        runIteration() {
+          if (focusFirst) {
+            first.focus()
+          } else {
+            second.focus()
+          }
+
+          readActiveKeysRepeatedly(resources.manager, 5)
+          focusFirst = !focusFirst
+        },
+        cleanup() {
           resources.renderer.destroy()
         },
       }

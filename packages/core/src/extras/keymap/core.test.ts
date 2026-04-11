@@ -7,6 +7,8 @@ import {
   parseKeySequenceLike,
   stringifyKeySequence,
   stringifyKeyStroke,
+  type KeymapActiveKey,
+  type KeymapActiveKeyOptions,
   type KeymapManager,
 } from "./index.js"
 
@@ -25,8 +27,8 @@ function createFocusableBox(id: string): BoxRenderable {
 function getActiveKey(
   manager: KeymapManager,
   name: string,
-  options?: Parameters<KeymapManager["getActiveKeys"]>[0],
-): ReturnType<KeymapManager["getActiveKeys"]>[number] | undefined {
+  options?: KeymapActiveKeyOptions,
+): KeymapActiveKey | undefined {
   return manager.getActiveKeys(options).find((candidate) => candidate.stroke.name === name)
 }
 
@@ -40,8 +42,8 @@ function getActiveKeyNames(manager: KeymapManager): string[] {
 function getActiveKeyDisplay(
   manager: KeymapManager,
   display: string,
-  options?: Parameters<KeymapManager["getActiveKeys"]>[0],
-): ReturnType<KeymapManager["getActiveKeys"]>[number] | undefined {
+  options?: KeymapActiveKeyOptions,
+): KeymapActiveKey | undefined {
   return manager.getActiveKeys(options).find((candidate) => candidate.display === display)
 }
 

@@ -1626,7 +1626,7 @@ class KeymapManagerImpl implements KeymapManager {
 
   private getNodeDisplay(
     node: SequenceNode,
-    reachableBindings = this.getMatchingBindings(node.reachableBindings),
+    reachableBindings: readonly CompiledBinding[] = this.getMatchingBindings(node.reachableBindings),
   ): string {
     if (!node.stroke) {
       return ""

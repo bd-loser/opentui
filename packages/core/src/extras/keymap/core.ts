@@ -202,6 +202,14 @@ export interface KeymapRawInputContext {
   stop: () => void
 }
 
+export interface KeymapLogger {
+  warn(...args: unknown[]): void
+}
+
+export interface KeymapManagerOptions {
+  logger?: KeymapLogger
+}
+
 export interface KeymapManager {
   readonly renderer: CliRenderer
   destroy(): void
@@ -330,6 +338,10 @@ interface PendingSequenceState {
 
 const keymapManagersByRenderer = new WeakMap<CliRenderer, KeymapManagerImpl>()
 
+const NOOP_KEYMAP_LOGGER: KeymapLogger = {
+  warn() {},
+}
+
 export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "consume", "fallthrough"])
 
 const RESERVED_LAYER_FIELDS = new Set(["target", "scope", "priority", "bindings"])
@@ -437,8 +449,13 @@ function bindingUsesTokenSyntax(binding: KeymapBindingInput): boolean {
   return typeof binding.key === "string" && binding.key.includes("<")
 }
 
+function resolveKeymapLogger(logger?: KeymapLogger): KeymapLogger {
+  return logger ?? NOOP_KEYMAP_LOGGER
+}
+
 class KeymapManagerImpl implements KeymapManager {
   public readonly renderer: CliRenderer
+  private logger: KeymapLogger
 
   private layers = new Set<RegisteredLayer>()
   private globalLayers: RegisteredLayer[] = []
@@ -479,14 +496,16 @@ class KeymapManagerImpl implements KeymapManager {
   private stateChangeDepth = 0
   private stateChangePending = false
   private flushingStateChange = false
+  private warnedUnknownFields = new Set<string>()
 
   private readonly keypressListener: (event: KeyEvent) => void
   private readonly keyreleaseListener: (event: KeyEvent) => void
   private readonly rawListener: (sequence: string) => boolean
   private readonly focusedRenderableListener: (focused: Renderable | null) => void
 
-  constructor(renderer: CliRenderer) {
+  constructor(renderer: CliRenderer, options?: KeymapManagerOptions) {
     this.renderer = renderer
+    this.logger = resolveKeymapLogger(options?.logger)
     this.keypressListener = (event) => {
       this.handleKeyEvent(event, false)
     }
@@ -508,6 +527,14 @@ class KeymapManagerImpl implements KeymapManager {
 
   public get isDestroyed(): boolean {
     return this.destroyed
+  }
+
+  public applyOptions(options?: KeymapManagerOptions): void {
+    if (!options || options.logger === undefined) {
+      return
+    }
+
+    this.logger = resolveKeymapLogger(options.logger)
   }
 
   public destroy(): void {
@@ -560,6 +587,8 @@ class KeymapManagerImpl implements KeymapManager {
     this.stateChangeDepth = 0
     this.stateChangePending = false
     this.flushingStateChange = false
+    this.warnedUnknownFields.clear()
+    this.logger = NOOP_KEYMAP_LOGGER
 
     this.renderer.keyInput.off("keypress", this.keypressListener)
     this.renderer.keyInput.off("keyrelease", this.keyreleaseListener)
@@ -1017,6 +1046,7 @@ class KeymapManagerImpl implements KeymapManager {
 
           const compiler = this.commandFields.get(fieldName)
           if (!compiler) {
+            this.warnUnknownField("command", fieldName)
             continue
           }
 
@@ -1187,6 +1217,7 @@ class KeymapManagerImpl implements KeymapManager {
 
       const compiler = this.layerFields.get(fieldName)
       if (!compiler) {
+        this.warnUnknownField("layer", fieldName)
         continue
       }
 
@@ -1449,6 +1480,7 @@ class KeymapManagerImpl implements KeymapManager {
 
         const compiler = this.bindingFields.get(fieldName)
         if (!compiler) {
+          this.warnUnknownField("binding", fieldName)
           continue
         }
 
@@ -2452,6 +2484,16 @@ class KeymapManagerImpl implements KeymapManager {
     return this.readonlyData
   }
 
+  private warnUnknownField(kind: "binding" | "layer" | "command", fieldName: string): void {
+    const warningKey = `${kind}:${fieldName}`
+    if (this.warnedUnknownFields.has(warningKey)) {
+      return
+    }
+
+    this.warnedUnknownFields.add(warningKey)
+    this.logger.warn(`[Keymap] Unknown ${kind} field "${fieldName}" was ignored`)
+  }
+
   private resolvePendingSequence(focused = this.getFocusedRenderable()): PendingSequenceState | undefined {
     if (!this.pendingSequence) {
       return undefined
@@ -2479,17 +2521,18 @@ class KeymapManagerImpl implements KeymapManager {
   }
 }
 
-export function getKeymapManager(renderer: CliRenderer): KeymapManager {
+export function getKeymapManager(renderer: CliRenderer, options?: KeymapManagerOptions): KeymapManager {
   const existing = keymapManagersByRenderer.get(renderer)
   if (existing) {
     if (existing.isDestroyed) {
       keymapManagersByRenderer.delete(renderer)
     } else {
+      existing.applyOptions(options)
       return existing
     }
   }
 
-  const manager = new KeymapManagerImpl(renderer)
+  const manager = new KeymapManagerImpl(renderer, options)
   keymapManagersByRenderer.set(renderer, manager)
 
   renderer.once("destroy", () => {

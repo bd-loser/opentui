@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { Show, createSignal, onCleanup } from "solid-js"
+import { registerEnabledField } from "@opentui/core/extras"
+import { Show, createEffect, createSignal, onCleanup } from "solid-js"
 import { testRender, useKeymap, useKeymappings } from "../index.js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
@@ -133,6 +134,65 @@ describe("solid keymap hooks", () => {
 
     testSetup.mockInput.pressKey("x")
     expect(calls).toEqual(["target"])
+  })
+
+  test("useKeymap can reactively enable layers with explicit keyed invalidation", async () => {
+    const calls: string[] = []
+    let setEnabled!: (value: boolean) => void
+
+    function App() {
+      const manager = useKeymappings()
+      const [enabled, setEnabledSignal] = createSignal(false)
+      setEnabled = setEnabledSignal
+
+      const offEnabled = registerEnabledField(manager)
+      const offCommands = manager.registerCommands([
+        {
+          name: "reactive",
+          run() {
+            calls.push("reactive")
+          },
+        },
+      ])
+
+      createEffect(() => {
+        enabled()
+        manager.invalidateRuntimeKey("solid.enabled")
+      })
+
+      useKeymap({
+        scope: "global",
+        enabled: {
+          match: enabled,
+          keys: ["solid.enabled"],
+        },
+        bindings: { x: "reactive" },
+      })
+
+      onCleanup(() => {
+        offCommands()
+        offEnabled()
+      })
+
+      return <box width={20} height={6} />
+    }
+
+    testSetup = await testRender(() => <App />, { width: 20, height: 6 })
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual([])
+
+    setEnabled(true)
+    await Bun.sleep(0)
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual(["reactive"])
+
+    setEnabled(false)
+    await Bun.sleep(0)
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual(["reactive"])
   })
 
   test("useKeymap rejects local bindings without a target or ref", async () => {

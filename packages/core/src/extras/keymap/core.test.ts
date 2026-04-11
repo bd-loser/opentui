@@ -1604,8 +1604,18 @@ describe("keymap", () => {
     expect(calls).toEqual(["noop"])
   })
 
-  test("throws on unknown layer fields", () => {
+  test("ignores unknown layer fields", () => {
     const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "noop",
+        run() {
+          calls.push("noop")
+        },
+      },
+    ])
 
     expect(() => {
       manager.registerLayer({
@@ -1613,21 +1623,41 @@ describe("keymap", () => {
         mode: "normal",
         bindings: [{ key: "x", cmd: "noop" }],
       })
-    }).toThrow('Unknown keymap layer field "mode"')
+    }).not.toThrow()
+
+    expect(getActiveKey(manager, "x")).toBeDefined()
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["noop"])
   })
 
-  test("throws on unknown command fields", () => {
+  test("ignores unknown command fields", () => {
     const manager = getKeymapManager(renderer)
+    const calls: string[] = []
 
     expect(() => {
       manager.registerCommands([
         {
           name: "save-file",
           desc: "Save the current file",
-          run() {},
+          run() {
+            calls.push("save-file")
+          },
         },
       ])
-    }).toThrow('Unknown keymap command field "desc"')
+    }).not.toThrow()
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "save-file" }],
+    })
+
+    expect(getActiveKey(manager, "x")).toBeDefined()
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["save-file"])
   })
 
   test("throws on reserved command field registrations", () => {
@@ -2365,6 +2395,8 @@ describe("keymap", () => {
   test("can dispose layer, binding, and command field registrations", () => {
     const manager = getKeymapManager(renderer)
 
+    manager.registerCommands([{ name: "noop", run() {} }])
+
     const offLayerFields = manager.registerLayerFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
@@ -2378,7 +2410,9 @@ describe("keymap", () => {
         mode: "normal",
         bindings: [{ key: "x", cmd: "noop" }],
       })
-    }).toThrow('Unknown keymap layer field "mode"')
+    }).not.toThrow()
+
+    expect(getActiveKeyNames(manager)).toContain("x")
 
     const offBindingFields = manager.registerBindingFields({
       mode(value, ctx) {
@@ -2387,16 +2421,14 @@ describe("keymap", () => {
     })
     offBindingFields()
 
-    manager.registerCommands([{ name: "noop", run() {} }])
-
     expect(() => {
       manager.registerLayer({
         scope: "global",
-        bindings: [{ key: "x", mode: "normal", cmd: "noop" }],
+        bindings: [{ key: "y", mode: "normal", cmd: "noop" }],
       })
     }).not.toThrow()
 
-    expect(getActiveKeyNames(manager)).toContain("x")
+    expect(getActiveKeyNames(manager)).toContain("y")
 
     const offCommandFields = manager.registerCommandFields({
       desc(value, ctx) {
@@ -2408,12 +2440,19 @@ describe("keymap", () => {
     expect(() => {
       manager.registerCommands([
         {
-          name: "noop",
+          name: "noop-with-desc",
           desc: "No operation",
           run() {},
         },
       ])
-    }).toThrow('Unknown keymap command field "desc"')
+    }).not.toThrow()
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "z", cmd: "noop-with-desc" }],
+    })
+
+    expect(getActiveKeyNames(manager)).toContain("z")
   })
 
   test("getActiveKeys follows dispatch order and fallthrough across layers", () => {

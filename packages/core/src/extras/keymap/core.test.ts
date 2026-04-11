@@ -925,6 +925,103 @@ describe("keymap", () => {
     expect(seen).toEqual([attrs])
   })
 
+  test("keeps active key projections isolated across repeated reads", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerBindingFields({
+      desc(value, ctx) {
+        ctx.attr("desc", value)
+      },
+      group(value, ctx) {
+        ctx.attr("group", value)
+      },
+    })
+    manager.registerCommandFields({
+      desc(value, ctx) {
+        ctx.attr("desc", value)
+      },
+      title(value, ctx) {
+        ctx.attr("title", value)
+      },
+      category(value, ctx) {
+        ctx.attr("category", value)
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "save-file",
+        desc: "Save the current file",
+        title: "Save File",
+        category: "File",
+        run() {},
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
+    })
+
+    const plain = getActiveKey(manager, "x")
+    const metadataOnly = getActiveKey(manager, "x", { includeMetadata: true })
+    const withBindings = getActiveKey(manager, "x", { includeBindings: true })
+    const withBindingsAndMetadata = getActiveKey(manager, "x", { includeBindings: true, includeMetadata: true })
+    const plainAgain = getActiveKey(manager, "x")
+
+    const commandAttrs = {
+      desc: "Save the current file",
+      title: "Save File",
+      category: "File",
+    }
+    const bindingAttrs = {
+      desc: "Write current file",
+      group: "File",
+    }
+
+    expect(plain?.bindings).toBeUndefined()
+    expect(plain?.metadata).toBeUndefined()
+    expect(plain?.commands[0]?.attrs).toBeUndefined()
+
+    expect(metadataOnly?.bindings).toBeUndefined()
+    expect(metadataOnly?.commands[0]?.attrs).toBeUndefined()
+    expect(metadataOnly?.metadata).toEqual([
+      {
+        command: {
+          input: "save-file",
+          name: "save-file",
+          args: [],
+        },
+        bindingAttrs,
+        commandAttrs,
+      },
+    ])
+
+    expect(withBindings?.metadata).toBeUndefined()
+    expect(withBindings?.commands[0]?.attrs).toEqual(commandAttrs)
+    expect(withBindings?.bindings?.[0]?.attrs).toEqual(bindingAttrs)
+    expect(withBindings?.bindings?.[0]?.command.attrs).toEqual(commandAttrs)
+
+    expect(withBindingsAndMetadata?.commands[0]?.attrs).toEqual(commandAttrs)
+    expect(withBindingsAndMetadata?.bindings?.[0]?.attrs).toEqual(bindingAttrs)
+    expect(withBindingsAndMetadata?.bindings?.[0]?.command.attrs).toEqual(commandAttrs)
+    expect(withBindingsAndMetadata?.metadata).toEqual([
+      {
+        command: {
+          input: "save-file",
+          name: "save-file",
+          args: [],
+        },
+        bindingAttrs,
+        commandAttrs,
+      },
+    ])
+
+    expect(plainAgain?.bindings).toBeUndefined()
+    expect(plainAgain?.metadata).toBeUndefined()
+    expect(plainAgain?.commands[0]?.attrs).toBeUndefined()
+  })
+
   test("supports multi-key sequences and reports active continuation keys", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
@@ -2270,8 +2367,11 @@ describe("keymap", () => {
     }).toThrow('Unknown keymap command field "desc"')
   })
 
-  test("merges active bindings across layers while preserving metadata", () => {
+  test("getActiveKeys follows dispatch order and fallthrough across layers", () => {
     const manager = getKeymapManager(renderer)
+    const target = createFocusableBox("dispatch-active-target")
+
+    renderer.root.add(target)
 
     manager.registerBindingFields({
       desc(value, ctx) {
@@ -2291,21 +2391,41 @@ describe("keymap", () => {
 
     manager.registerLayer({
       scope: "global",
-      bindings: [{ key: "x", cmd: "save", desc: "Save file" }],
+      bindings: [
+        { key: "x", cmd: "save", desc: "Global x" },
+        { key: "y", cmd: "help", desc: "Global y" },
+      ],
     })
     manager.registerLayer({
-      scope: "global",
-      bindings: [{ key: "x", cmd: "help", desc: "Show help" }],
+      target,
+      bindings: [
+        { key: "x", cmd: "help", desc: "Local x" },
+        { key: "y", cmd: "save", desc: "Local y", fallthrough: true },
+      ],
     })
 
-    const activeKey = getActiveKey(manager, "x", { includeBindings: true })
+    target.focus()
 
-    expect(activeKey?.bindings?.map((binding) => binding.attrs?.["desc"]).sort()).toEqual(["Save file", "Show help"])
-    expect(activeKey?.commands.map((command) => command.attrs?.["category"]).sort()).toEqual(["File", "Help"])
+    const activeX = getActiveKey(manager, "x", { includeBindings: true, includeMetadata: true })
+
+    expect(activeX?.commands.map((command) => command.input)).toEqual(["help"])
+    expect(activeX?.bindings?.map((binding) => binding.command.input)).toEqual(["help"])
+    expect(activeX?.metadata?.map((metadata) => metadata.command.input)).toEqual(["help"])
+    expect(activeX?.metadata?.map((metadata) => metadata.bindingAttrs?.["desc"])).toEqual(["Local x"])
+
+    const activeY = getActiveKey(manager, "y", { includeBindings: true, includeMetadata: true })
+
+    expect(activeY?.commands.map((command) => command.input)).toEqual(["save", "help"])
+    expect(activeY?.bindings?.map((binding) => binding.command.input)).toEqual(["save", "help"])
+    expect(activeY?.metadata?.map((metadata) => metadata.command.input)).toEqual(["save", "help"])
+    expect(activeY?.metadata?.map((metadata) => metadata.bindingAttrs?.["desc"])).toEqual(["Local y", "Global y"])
   })
 
-  test("merges active keys across layers and falls back to canonical display when labels conflict", () => {
+  test("getActiveKeys uses the first matching prefix layer before lower exact layers", () => {
     const manager = getKeymapManager(renderer)
+    const target = createFocusableBox("prefix-dispatch-target")
+
+    renderer.root.add(target)
 
     manager.registerToken({
       token: "<leader>",
@@ -2319,21 +2439,21 @@ describe("keymap", () => {
 
     manager.registerLayer({
       scope: "global",
-      priority: 1,
       bindings: [{ key: "ctrl+x", cmd: "plain" }],
     })
     manager.registerLayer({
-      scope: "global",
+      target,
       bindings: [{ key: "<leader>a", cmd: "leader" }],
     })
+
+    target.focus()
 
     const activeKey = manager
       .getActiveKeys()
       .find((candidate) => candidate.stroke.name === "x" && candidate.stroke.ctrl)
 
-    expect(activeKey?.commands.map((command) => command.input).sort()).toEqual(["leader", "plain"])
+    expect(activeKey?.commands.map((command) => command.input)).toEqual(["leader"])
     expect(activeKey?.continues).toBe(true)
-    expect(activeKey?.display).toBe("ctrl+x")
   })
 
   test("validates command names and command inputs", () => {

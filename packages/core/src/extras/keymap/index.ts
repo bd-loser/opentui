@@ -5,7 +5,6 @@ export type {
   ExCommand,
   KeyLike,
   KeymapActiveBinding,
-  KeymapActiveMetadata,
   KeymapStringifiableKey,
   KeymapStringifyOptions,
   KeymapAttributes,

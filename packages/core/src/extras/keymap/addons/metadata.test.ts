@@ -67,17 +67,8 @@ describe("metadata addon", () => {
 
     expect(activeKey?.bindings).toBeUndefined()
     expect(activeKey?.commands[0]?.attrs).toBeUndefined()
-    expect(activeKey?.metadata).toEqual([
-      {
-        command: {
-          input: "save-file",
-          name: "save-file",
-          args: [],
-        },
-        bindingAttrs: { desc: "Write current file", group: "File" },
-        commandAttrs: { desc: "Save file", title: "Save", category: "File" },
-      },
-    ])
+    expect(activeKey?.bindingAttrs).toEqual({ desc: "Write current file", group: "File" })
+    expect(activeKey?.commandAttrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
   })
 
   test("can include both metadata and bindings", () => {
@@ -104,8 +95,8 @@ describe("metadata addon", () => {
       .find((candidate) => candidate.stroke.name === "x")
 
     expect(activeKey?.bindings?.[0]?.attrs).toEqual({ desc: "Write current file", group: "File" })
-    expect(activeKey?.metadata?.[0]?.bindingAttrs).toEqual({ desc: "Write current file", group: "File" })
-    expect(activeKey?.metadata?.[0]?.commandAttrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
+    expect(activeKey?.bindingAttrs).toEqual({ desc: "Write current file", group: "File" })
+    expect(activeKey?.commandAttrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
   })
 
   test("normalizes metadata strings and rejects invalid values", () => {

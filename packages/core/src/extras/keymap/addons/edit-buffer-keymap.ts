@@ -2,6 +2,7 @@ import type { EditBufferRenderable } from "../../../renderables/EditBufferRender
 import type { KeyBinding as EditBufferKeyBinding, TextareaAction } from "../../../renderables/Textarea.js"
 import {
   RESERVED_BINDING_FIELDS,
+  type KeymapBindingInput,
   type KeymapBindings,
   type KeymapCommand,
   type KeymapCommandContext,
@@ -178,9 +179,17 @@ function validateEditBufferCommandInput(input: string): void {
   }
 }
 
+function getEditBufferCommandInput(binding: KeymapBindingInput): string {
+  if (typeof binding.cmd !== "string") {
+    throw new Error("Edit-buffer key bindings require string commands")
+  }
+
+  return binding.cmd
+}
+
 function validateEditBufferKeymapBindings(bindings: KeymapBindings): void {
   for (const binding of normalizeBindingInputs(bindings)) {
-    validateEditBufferCommandInput(binding.cmd)
+    validateEditBufferCommandInput(getEditBufferCommandInput(binding))
   }
 }
 
@@ -227,8 +236,9 @@ export function compileEditBufferKeyBindings(bindings: KeymapBindings): EditBuff
       throw new Error("Edit-buffer key bindings only support a single key stroke")
     }
 
-    validateEditBufferCommandInput(binding.cmd)
-    const command = parseCommandInput(binding.cmd)
+    const input = getEditBufferCommandInput(binding)
+    validateEditBufferCommandInput(input)
+    const command = parseCommandInput(input)
 
     return {
       name: part.stroke.name,

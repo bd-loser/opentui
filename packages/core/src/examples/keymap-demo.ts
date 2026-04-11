@@ -104,7 +104,7 @@ function getActiveKeyLabel(activeKey: KeymapActiveKey): string {
     getMetadataText(activeKey.bindingAttrs?.desc) ??
     getMetadataText(activeKey.commandAttrs?.desc) ??
     getMetadataText(activeKey.commandAttrs?.title) ??
-    activeKey.commands[0]?.input ??
+    activeKey.command?.input ??
     ""
   )
 }

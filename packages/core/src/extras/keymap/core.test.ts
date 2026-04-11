@@ -1577,15 +1577,31 @@ describe("keymap", () => {
     }).toThrow('Conflicting keymap attribute for "label"')
   })
 
-  test("throws on unknown binding fields", () => {
+  test("ignores unknown binding fields", () => {
     const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "noop",
+        run() {
+          calls.push("noop")
+        },
+      },
+    ])
 
     expect(() => {
       manager.registerLayer({
         scope: "global",
         bindings: [{ key: "x", mode: "normal", cmd: "noop" }],
       })
-    }).toThrow('Unknown keymap binding field "mode"')
+    }).not.toThrow()
+
+    expect(getActiveKey(manager, "x")).toBeDefined()
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["noop"])
   })
 
   test("throws on unknown layer fields", () => {
@@ -2371,12 +2387,16 @@ describe("keymap", () => {
     })
     offBindingFields()
 
+    manager.registerCommands([{ name: "noop", run() {} }])
+
     expect(() => {
       manager.registerLayer({
         scope: "global",
-        bindings: [{ key: "x", mode: "normal", cmd: "noop" }] as any,
+        bindings: [{ key: "x", mode: "normal", cmd: "noop" }],
       })
-    }).toThrow('Unknown keymap binding field "mode"')
+    }).not.toThrow()
+
+    expect(getActiveKeyNames(manager)).toContain("x")
 
     const offCommandFields = manager.registerCommandFields({
       desc(value, ctx) {

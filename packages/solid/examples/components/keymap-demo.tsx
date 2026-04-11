@@ -47,31 +47,22 @@ function getMetadataText(value: unknown): string | undefined {
 }
 
 function getActiveKeyLabel(activeKey: { metadata?: readonly KeymapActiveMetadata[]; commands: readonly { input: string }[]; continues: boolean }): string {
-  const metadata = activeKey.metadata ?? []
-  if (activeKey.continues && metadata.length > 0) {
-    const firstGroup = getMetadataText(metadata[0]?.bindingAttrs?.group)
-    if (firstGroup && metadata.every((entry) => getMetadataText(entry.bindingAttrs?.group) === firstGroup)) {
-      return `+${firstGroup}`
+  const firstMetadata = activeKey.metadata?.[0]
+  if (activeKey.continues) {
+    const group = getMetadataText(firstMetadata?.bindingAttrs?.group)
+    if (group) {
+      return `+${group}`
     }
   }
 
-  const labels = new Set<string>()
-
-  for (const entry of metadata) {
-    const label =
-      getMetadataText(entry.bindingAttrs?.desc) ??
-      getMetadataText(entry.commandAttrs?.desc) ??
-      getMetadataText(entry.commandAttrs?.title) ??
-      entry.command.input
-
-    labels.add(label)
-  }
-
-  if (labels.size > 0) {
-    return [...labels].join(" | ")
-  }
-
-  return activeKey.commands.map((command) => command.input).join(" | ")
+  return (
+    getMetadataText(firstMetadata?.bindingAttrs?.desc) ??
+    getMetadataText(firstMetadata?.commandAttrs?.desc) ??
+    getMetadataText(firstMetadata?.commandAttrs?.title) ??
+    firstMetadata?.command.input ??
+    activeKey.commands[0]?.input ??
+    ""
+  )
 }
 
 // -- CounterPanel ----------------------------------------------------------

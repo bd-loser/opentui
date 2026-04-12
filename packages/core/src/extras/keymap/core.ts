@@ -135,7 +135,7 @@ class KeymapManagerImpl implements KeymapManager {
   private stateChangeDepth = 0
   private stateChangePending = false
   private flushingStateChange = false
-  private warnedUnknownFields = new Set<string>()
+  private usedWarningKeys = new Set<string>()
 
   private readonly keypressListener: (event: KeyEvent) => void
   private readonly keyreleaseListener: (event: KeyEvent) => void
@@ -226,7 +226,7 @@ class KeymapManagerImpl implements KeymapManager {
     this.stateChangeDepth = 0
     this.stateChangePending = false
     this.flushingStateChange = false
-    this.warnedUnknownFields.clear()
+    this.usedWarningKeys.clear()
     this.logger = NOOP_KEYMAP_LOGGER
 
     this.renderer.keyInput.off("keypress", this.keypressListener)
@@ -2208,24 +2208,21 @@ class KeymapManagerImpl implements KeymapManager {
     return this.readonlyData
   }
 
-  private warnUnknownField(kind: "binding" | "layer" | "command", fieldName: string): void {
-    const warningKey = `${kind}:${fieldName}`
-    if (this.warnedUnknownFields.has(warningKey)) {
+  private warnOnce(key: string, message: string): void {
+    if (this.usedWarningKeys.has(key)) {
       return
     }
 
-    this.warnedUnknownFields.add(warningKey)
-    this.logger.warn(`[Keymap] Unknown ${kind} field "${fieldName}" was ignored`)
+    this.usedWarningKeys.add(key)
+    this.logger.warn(message)
+  }
+
+  private warnUnknownField(kind: "binding" | "layer" | "command", fieldName: string): void {
+    this.warnOnce(`${kind}:${fieldName}`, `[Keymap] Unknown ${kind} field "${fieldName}" was ignored`)
   }
 
   private warnUnknownToken(token: string, sequence: string): void {
-    const warningKey = `token:${token}`
-    if (this.warnedUnknownFields.has(warningKey)) {
-      return
-    }
-
-    this.warnedUnknownFields.add(warningKey)
-    this.logger.warn(`[Keymap] Unknown token "${token}" in key sequence "${sequence}" was ignored`)
+    this.warnOnce(`token:${token}`, `[Keymap] Unknown token "${token}" in key sequence "${sequence}" was ignored`)
   }
 
   private warnUnknownTokensInKeySequence(sequence: string, tokens: ReadonlyMap<string, ParsedKeyStroke>): void {

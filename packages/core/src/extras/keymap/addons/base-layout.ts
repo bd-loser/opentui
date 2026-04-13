@@ -19,7 +19,7 @@ function getBaseLayoutKeyName(baseCode: number | undefined): string | undefined 
 }
 
 export function registerBaseLayoutFallback(manager: KeymapManager): () => void {
-  return manager.registerStrokeFallbackResolver(({ event, stroke }) => {
+  return manager.registerStrokeFallbackResolver((event, stroke) => {
     const name = getBaseLayoutKeyName(event.baseCode)
     if (!name || name === stroke.name) {
       return undefined

@@ -22,14 +22,7 @@ export interface ParsedKeyStroke extends KeyStroke {
   super: boolean
 }
 
-export interface KeymapStrokeFallbackResolverContext {
-  event: KeyEvent
-  stroke: ParsedKeyStroke
-}
-
-export type KeymapStrokeFallbackResolver = (
-  ctx: KeymapStrokeFallbackResolverContext,
-) => KeyStroke | readonly KeyStroke[] | undefined
+export type KeymapStrokeFallbackResolver = (event: KeyEvent, stroke: ParsedKeyStroke) => KeyStroke | undefined
 
 export interface ParsedKeyPart {
   stroke: ParsedKeyStroke

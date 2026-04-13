@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { KeyEvent } from "../../lib/KeyHandler.js"
 import { BoxRenderable } from "../../renderables/Box.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../../testing.js"
 import {
@@ -113,6 +114,147 @@ describe("keymap", () => {
     mockInput.pressKey("x")
 
     expect(calls).toEqual(["handled"])
+  })
+
+  test("prefers direct stroke matches over registered fallback strokes", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerStrokeFallbackResolver(({ event, stroke }) => {
+      if (event.name !== "x") {
+        return undefined
+      }
+
+      return {
+        name: "y",
+        ctrl: stroke.ctrl,
+        shift: stroke.shift,
+        meta: stroke.meta,
+        super: stroke.super,
+        hyper: stroke.hyper,
+      }
+    })
+
+    manager.registerCommands([
+      {
+        name: "fallback",
+        run() {
+          calls.push("fallback")
+        },
+      },
+      {
+        name: "direct",
+        run() {
+          calls.push("direct")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [
+        { key: "y", cmd: "fallback" },
+        { key: "x", cmd: "direct" },
+      ],
+    })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["direct"])
+  })
+
+  test("supports pending-sequence dispatch through registered fallback strokes", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerStrokeFallbackResolver(({ event, stroke }) => {
+      if (event.name !== "x") {
+        return undefined
+      }
+
+      return {
+        name: "g",
+        ctrl: stroke.ctrl,
+        shift: stroke.shift,
+        meta: stroke.meta,
+        super: stroke.super,
+        hyper: stroke.hyper,
+      }
+    })
+
+    manager.registerCommands([
+      {
+        name: "delete-line",
+        run() {
+          calls.push("delete-line")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "ga", cmd: "delete-line" }],
+    })
+
+    mockInput.pressKey("x")
+    expect(stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true })).toBe("g")
+
+    mockInput.pressKey("a")
+
+    expect(calls).toEqual(["delete-line"])
+    expect(manager.getPendingSequenceParts()).toEqual([])
+  })
+
+  test("supports release dispatch through registered fallback strokes", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerStrokeFallbackResolver(({ event, stroke }) => {
+      if (event.name !== "x") {
+        return undefined
+      }
+
+      return {
+        name: "y",
+        ctrl: stroke.ctrl,
+        shift: stroke.shift,
+        meta: stroke.meta,
+        super: stroke.super,
+        hyper: stroke.hyper,
+      }
+    })
+
+    manager.registerCommands([
+      {
+        name: "release-action",
+        run() {
+          calls.push("release")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "y", event: "release", cmd: "release-action" }],
+    })
+
+    renderer.keyInput.emit(
+      "keyrelease",
+      new KeyEvent({
+        name: "x",
+        ctrl: false,
+        meta: false,
+        shift: false,
+        option: false,
+        sequence: "x",
+        number: false,
+        raw: "x",
+        eventType: "release",
+        source: "raw",
+      }),
+    )
+
+    expect(calls).toEqual(["release"])
   })
 
   test("supports hyper key bindings", () => {

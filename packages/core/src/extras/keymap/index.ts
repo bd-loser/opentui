@@ -41,12 +41,15 @@ export type {
   KeymapRawInputContext,
   KeymapResolvedBindingCommand,
   KeymapScope,
+  KeymapStrokeFallbackResolver,
+  KeymapStrokeFallbackResolverContext,
   KeymapTargetLayer,
   KeymapToken,
   ParsedKeyPart,
   ParsedKeyStroke,
   KeyStroke,
 } from "./types.js"
+export { registerBaseLayoutFallback } from "./addons/base-layout.js"
 export { registerEnabledField } from "./addons/enabled.js"
 export { registerExCommands } from "./addons/ex-commands.js"
 export { compileEditBufferKeyBindings, registerEditBufferKeymap } from "./addons/edit-buffer-keymap.js"

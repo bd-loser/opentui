@@ -22,6 +22,15 @@ export interface ParsedKeyStroke extends KeyStroke {
   super: boolean
 }
 
+export interface KeymapStrokeFallbackResolverContext {
+  event: KeyEvent
+  stroke: ParsedKeyStroke
+}
+
+export type KeymapStrokeFallbackResolver = (
+  ctx: KeymapStrokeFallbackResolverContext,
+) => KeyStroke | readonly KeyStroke[] | undefined
+
 export interface ParsedKeyPart {
   stroke: ParsedKeyStroke
   display: string
@@ -216,6 +225,7 @@ export interface KeymapManager {
   registerBindingFields(fields: Record<string, KeymapBindingFieldCompiler>): () => void
   registerCommandFields(fields: Record<string, KeymapCommandFieldCompiler>): () => void
   registerCommandResolver(resolver: KeymapCommandResolver): () => void
+  registerStrokeFallbackResolver(resolver: KeymapStrokeFallbackResolver): () => void
   onKeyInput(fn: (ctx: KeymapKeyInputContext) => void, options?: { priority?: number; release?: boolean }): () => void
   onRawInput(fn: (ctx: KeymapRawInputContext) => void, options?: { priority?: number }): () => void
   registerCommands(commands: KeymapCommand[]): () => void

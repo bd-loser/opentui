@@ -374,7 +374,7 @@ function parseStringKeyPart(input: string): ParsedKeyPart {
   )
 }
 
-function normalizeKeyStroke(input: KeyStroke): ParsedKeyStroke {
+export function normalizeKeyStroke(input: KeyStroke): ParsedKeyStroke {
   return {
     name: normalizeKeyName(input.name),
     ctrl: input.ctrl ?? false,

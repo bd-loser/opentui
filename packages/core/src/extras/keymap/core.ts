@@ -32,6 +32,7 @@ import type {
   KeymapRawInputContext,
   KeymapResolvedBindingCommand,
   KeymapScope,
+  KeymapStrokeFallbackResolver,
   KeymapToken,
   ParsedKeyPart,
   ParsedKeyStroke,
@@ -59,6 +60,7 @@ import {
   normalizeBindingCommand,
   normalizeCommandName,
   normalizeEventKeyStroke,
+  normalizeKeyStroke,
   normalizeTokenName,
   parseKeyLike,
   parseKeySequenceLike,
@@ -105,6 +107,7 @@ class KeymapManagerImpl implements KeymapManager {
   private commandFields = new Map<string, KeymapCommandFieldCompiler>()
   private runtimeKeyDependents = new Map<string, Set<RuntimeMatchable>>()
   private commandResolvers: KeymapCommandResolver[] = []
+  private strokeFallbackResolvers: KeymapStrokeFallbackResolver[] = []
   private keyHooks: RegisteredKeyHook[] = []
   private rawHooks: RegisteredRawHook[] = []
   private stateChangeListeners: Array<() => void> = []
@@ -199,6 +202,7 @@ class KeymapManagerImpl implements KeymapManager {
     this.commandFields.clear()
     this.runtimeKeyDependents.clear()
     this.commandResolvers = []
+    this.strokeFallbackResolvers = []
     this.keyHooks = []
     this.rawHooks = []
     this.stateChangeListeners = []
@@ -629,6 +633,16 @@ class KeymapManagerImpl implements KeymapManager {
         })
       }
     })
+  }
+
+  public registerStrokeFallbackResolver(resolver: KeymapStrokeFallbackResolver): () => void {
+    this.assertNotDestroyed()
+
+    this.strokeFallbackResolvers = [...this.strokeFallbackResolvers, resolver]
+
+    return () => {
+      this.strokeFallbackResolvers = this.strokeFallbackResolvers.filter((candidate) => candidate !== resolver)
+    }
   }
 
   public onKeyInput(
@@ -1327,21 +1341,47 @@ class KeymapManagerImpl implements KeymapManager {
   private dispatchReleaseLayers(event: KeyEvent): void {
     const focused = this.getFocusedRenderable()
     const activeLayers = this.getActiveLayers(focused)
-    const strokeKey = buildBindingKey(normalizeEventKeyStroke(event))
     const hasLayerConditions = this.layersWithConditions > 0
 
-    for (const layer of activeLayers) {
+    if (this.strokeFallbackResolvers.length === 0) {
+      const strokeKey = buildBindingKey(normalizeEventKeyStroke(event))
+
+      for (const layer of activeLayers) {
+        if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
+          continue
+        }
+
+        const result = this.runReleaseBindings(layer, strokeKey, event, focused)
+        if (!result.handled) {
+          continue
+        }
+
+        if (result.stop) {
+          return
+        }
+      }
+
+      return
+    }
+
+    const strokeKeys = this.resolveStrokeFallbackKeys(event, normalizeEventKeyStroke(event))
+
+    layerLoop: for (const layer of activeLayers) {
       if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
         continue
       }
 
-      const result = this.runReleaseBindings(layer, strokeKey, event, focused)
-      if (!result.handled) {
-        continue
-      }
+      for (const strokeKey of strokeKeys) {
+        const result = this.runReleaseBindings(layer, strokeKey, event, focused)
+        if (!result.handled) {
+          continue
+        }
 
-      if (result.stop) {
-        return
+        if (result.stop) {
+          return
+        }
+
+        continue layerLoop
       }
     }
   }
@@ -1349,15 +1389,29 @@ class KeymapManagerImpl implements KeymapManager {
   private dispatchLayers(event: KeyEvent): void {
     const focused = this.getFocusedRenderable()
     const pending = this.resolvePendingSequence(focused)
-    const stroke = normalizeEventKeyStroke(event)
+
+    if (this.strokeFallbackResolvers.length === 0) {
+      const stroke = normalizeEventKeyStroke(event)
+
+      if (pending) {
+        this.dispatchPendingSequence(pending, stroke, event, focused)
+        return
+      }
+
+      const activeLayers = this.getActiveLayers(focused)
+      this.dispatchFromRoot(activeLayers, stroke, event, focused)
+      return
+    }
+
+    const strokeCandidates = this.resolveStrokeFallbackStrokes(event, normalizeEventKeyStroke(event))
 
     if (pending) {
-      this.dispatchPendingSequence(pending, stroke, event, focused)
+      this.dispatchPendingSequenceWithFallbacks(pending, strokeCandidates, event, focused)
       return
     }
 
     const activeLayers = this.getActiveLayers(focused)
-    this.dispatchFromRoot(activeLayers, stroke, event, focused)
+    this.dispatchFromRootWithFallbacks(activeLayers, strokeCandidates, event, focused)
   }
 
   private dispatchPendingSequence(
@@ -1383,6 +1437,40 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     this.runBindings(pending.layer, nextNode.bindings, event, focused)
+    this.setPendingSequence(null)
+  }
+
+  private dispatchPendingSequenceWithFallbacks(
+    pending: PendingSequenceState,
+    strokes: readonly ParsedKeyStroke[],
+    event: KeyEvent,
+    focused: Renderable | null,
+  ): void {
+    for (const stroke of strokes) {
+      const nextNode = this.getReachableChild(pending.node, stroke)
+      if (!nextNode) {
+        continue
+      }
+
+      if (nextNode.children.size > 0) {
+        this.setPendingSequence({
+          layer: pending.layer,
+          node: nextNode,
+        })
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+
+      const result = this.runBindings(pending.layer, nextNode.bindings, event, focused)
+      if (!result.handled) {
+        continue
+      }
+
+      this.setPendingSequence(null)
+      return
+    }
+
     this.setPendingSequence(null)
   }
 
@@ -1423,6 +1511,96 @@ class KeymapManagerImpl implements KeymapManager {
         return
       }
     }
+  }
+
+  private dispatchFromRootWithFallbacks(
+    activeLayers: RegisteredLayer[],
+    strokes: readonly ParsedKeyStroke[],
+    event: KeyEvent,
+    focused: Renderable | null,
+  ): void {
+    const hasLayerConditions = this.layersWithConditions > 0
+
+    layerLoop: for (const layer of activeLayers) {
+      if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
+        continue
+      }
+
+      for (const stroke of strokes) {
+        const nextNode = this.getReachableChild(layer.root, stroke)
+        if (!nextNode) {
+          continue
+        }
+
+        if (nextNode.children.size > 0) {
+          this.setPendingSequence({
+            layer,
+            node: nextNode,
+          })
+          event.preventDefault()
+          event.stopPropagation()
+          return
+        }
+
+        const result = this.runBindings(layer, nextNode.bindings, event, focused)
+        if (!result.handled) {
+          continue
+        }
+
+        if (result.stop) {
+          return
+        }
+
+        continue layerLoop
+      }
+    }
+  }
+
+  private resolveStrokeFallbackKeys(event: KeyEvent, primary: ParsedKeyStroke): string[] {
+    return this.resolveStrokeFallbackStrokes(event, primary).map((stroke) => buildBindingKey(stroke))
+  }
+
+  private resolveStrokeFallbackStrokes(event: KeyEvent, primary: ParsedKeyStroke): ParsedKeyStroke[] {
+    const candidates = [primary]
+    const seen = new Set<string>([buildBindingKey(primary)])
+    const contextStroke = Object.freeze(cloneStroke(primary)) as ParsedKeyStroke
+
+    for (const resolver of this.strokeFallbackResolvers) {
+      let resolved: ReturnType<KeymapStrokeFallbackResolver>
+
+      try {
+        resolved = resolver({ event, stroke: contextStroke })
+      } catch (error) {
+        this.logger.error("[Keymap] Error in stroke fallback resolver:", error)
+        continue
+      }
+
+      if (!resolved) {
+        continue
+      }
+
+      const fallbackStrokes = Array.isArray(resolved) ? resolved : [resolved]
+      for (const fallbackStroke of fallbackStrokes) {
+        let normalizedFallback: ParsedKeyStroke
+
+        try {
+          normalizedFallback = normalizeKeyStroke(fallbackStroke)
+        } catch (error) {
+          this.logger.error("[Keymap] Invalid stroke fallback candidate:", error)
+          continue
+        }
+
+        const key = buildBindingKey(normalizedFallback)
+        if (seen.has(key)) {
+          continue
+        }
+
+        seen.add(key)
+        candidates.push(normalizedFallback)
+      }
+    }
+
+    return candidates
   }
 
   private runReleaseBindings(

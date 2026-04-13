@@ -240,6 +240,10 @@ export function compileEditBufferKeyBindings(bindings: KeymapBindings): EditBuff
       throw new Error("Edit-buffer key bindings only support a single key stroke")
     }
 
+    if (part.stroke.hyper) {
+      throw new Error("Edit-buffer key bindings do not support the hyper modifier")
+    }
+
     const input = getEditBufferCommandInput(binding)
     validateEditBufferCommandInput(input)
     const command = parseCommandInput(input)

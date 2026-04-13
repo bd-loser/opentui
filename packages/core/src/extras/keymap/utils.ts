@@ -77,6 +77,7 @@ export function cloneStroke(stroke: ParsedKeyStroke): ParsedKeyStroke {
     shift: stroke.shift,
     meta: stroke.meta,
     super: stroke.super,
+    hyper: stroke.hyper || undefined,
   }
 }
 
@@ -115,7 +116,7 @@ export function sortLayersWithinScope(items: RegisteredLayer[]): RegisteredLayer
 }
 
 export function buildBindingKey(stroke: ParsedKeyStroke): string {
-  return `${stroke.name}:${stroke.ctrl ? 1 : 0}:${stroke.shift ? 1 : 0}:${stroke.meta ? 1 : 0}:${stroke.super ? 1 : 0}`
+  return `${stroke.name}:${stroke.ctrl ? 1 : 0}:${stroke.shift ? 1 : 0}:${stroke.meta ? 1 : 0}:${stroke.super ? 1 : 0}:${stroke.hyper ? 1 : 0}`
 }
 
 export function createSequenceNode(parent: SequenceNode | null, stroke: ParsedKeyStroke | null): SequenceNode {
@@ -205,6 +206,10 @@ function stringifyCanonicalStroke(stroke: ParsedKeyStroke): string {
     parts.push("super")
   }
 
+  if (stroke.hyper) {
+    parts.push("hyper")
+  }
+
   parts.push(stroke.name === "return" ? "enter" : stroke.name)
   return parts.join("+")
 }
@@ -287,6 +292,7 @@ function parseStringKeyPart(input: string): ParsedKeyPart {
   let shift = false
   let meta = false
   let superKey = false
+  let hyper = false
 
   for (const rawPart of parts) {
     const part = rawPart.trim()
@@ -312,6 +318,11 @@ function parseStringKeyPart(input: string): ParsedKeyPart {
 
     if (lowered === "super") {
       superKey = true
+      continue
+    }
+
+    if (lowered === "hyper") {
+      hyper = true
       continue
     }
 
@@ -344,6 +355,10 @@ function parseStringKeyPart(input: string): ParsedKeyPart {
     displayParts.push("super")
   }
 
+  if (hyper) {
+    displayParts.push("hyper")
+  }
+
   displayParts.push(displayName)
 
   return createParsedKeyPart(
@@ -353,6 +368,7 @@ function parseStringKeyPart(input: string): ParsedKeyPart {
       shift,
       meta,
       super: superKey,
+      hyper: hyper || undefined,
     },
     displayParts.join("+"),
   )
@@ -365,6 +381,7 @@ function normalizeKeyStroke(input: KeyStroke): ParsedKeyStroke {
     shift: input.shift ?? false,
     meta: input.meta ?? false,
     super: input.super ?? false,
+    hyper: input.hyper || undefined,
   }
 }
 
@@ -375,6 +392,7 @@ export function normalizeEventKeyStroke(event: KeyEvent): ParsedKeyStroke {
     shift: event.shift,
     meta: event.meta,
     super: event.super ?? false,
+    hyper: event.hyper || undefined,
   }
 }
 

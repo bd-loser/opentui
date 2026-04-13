@@ -115,6 +115,70 @@ describe("keymap", () => {
     expect(calls).toEqual(["handled"])
   })
 
+  test("supports hyper key bindings", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "plain",
+        run() {
+          calls.push("plain")
+        },
+      },
+      {
+        name: "hyper",
+        run() {
+          calls.push("hyper")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [
+        { key: "x", cmd: "plain" },
+        { key: "hyper+x", cmd: "hyper" },
+      ],
+    })
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[27;17;120~"))
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["hyper", "plain"])
+  })
+
+  test("passes lock-state flags to command handlers", async () => {
+    renderer.destroy()
+    const testSetup = await createTestRenderer({ width: 40, height: 10, kittyKeyboard: true })
+    renderer = testSetup.renderer
+    mockInput = testSetup.mockInput
+
+    const manager = getKeymapManager(renderer)
+    const calls: Array<{ capsLock: boolean; numLock: boolean }> = []
+
+    manager.registerCommands([
+      {
+        name: "inspect-locks",
+        run({ event }) {
+          calls.push({
+            capsLock: event.capsLock === true,
+            numLock: event.numLock === true,
+          })
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "a", cmd: "inspect-locks" }],
+    })
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[97;193u"))
+
+    expect(calls).toEqual([{ capsLock: true, numLock: true }])
+  })
+
   test("matches a target layer by default with focus-within semantics", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
@@ -2747,6 +2811,13 @@ describe("keymap", () => {
       },
     ])
     expect(stringifyKeyStroke(parseKeySequenceLike("meta+super+x")[0]!)).toBe("meta+super+x")
+    expect(parseKeySequenceLike("ctrl+hyper+x")).toEqual([
+      {
+        stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false, hyper: true },
+        display: "ctrl+hyper+x",
+      },
+    ])
+    expect(stringifyKeyStroke(parseKeySequenceLike("hyper+x")[0]!)).toBe("hyper+x")
     expect(parseKeySequenceLike("zz")).toEqual([
       {
         stroke: { name: "z", ctrl: false, shift: false, meta: false, super: false },

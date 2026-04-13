@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../../../testing.js"
 import { getKeymapManager } from "../index.js"
@@ -40,6 +41,34 @@ describe("timed leader addon", () => {
     })
 
     mockInput.pressKey("x", { ctrl: true })
+    mockInput.pressKey("a")
+
+    expect(calls).toEqual(["leader"])
+  })
+
+  test("supports hyper leader triggers", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "leader-action",
+        run() {
+          calls.push("leader")
+        },
+      },
+    ])
+
+    registerTimedLeader(manager, {
+      trigger: { name: "x", hyper: true },
+    })
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "<leader>a", cmd: "leader-action" }],
+    })
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[27;17;120~"))
     mockInput.pressKey("a")
 
     expect(calls).toEqual(["leader"])

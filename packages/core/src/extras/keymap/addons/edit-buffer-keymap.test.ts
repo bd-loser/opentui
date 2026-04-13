@@ -309,6 +309,10 @@ describe("edit buffer keymap addon", () => {
       'Edit-buffer key bindings only support event "press"',
     )
 
+    expect(() => compileEditBufferKeyBindings([{ key: "hyper+x", cmd: "delete-line" }])).toThrow(
+      "Edit-buffer key bindings do not support the hyper modifier",
+    )
+
     expect(() => compileEditBufferKeyBindings([{ key: "x", cmd: "delete-line now" }])).toThrow(
       'Edit-buffer command "delete-line now" cannot include arguments',
     )

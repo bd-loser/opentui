@@ -42,7 +42,6 @@ export type {
   KeymapResolvedBindingCommand,
   KeymapScope,
   KeymapStrokeFallbackResolver,
-  KeymapStrokeFallbackResolverContext,
   KeymapTargetLayer,
   KeymapToken,
   ParsedKeyPart,

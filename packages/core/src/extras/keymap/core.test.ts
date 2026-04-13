@@ -120,7 +120,7 @@ describe("keymap", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
-    manager.registerStrokeFallbackResolver(({ event, stroke }) => {
+    manager.registerStrokeFallbackResolver((event, stroke) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -167,7 +167,7 @@ describe("keymap", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
-    manager.registerStrokeFallbackResolver(({ event, stroke }) => {
+    manager.registerStrokeFallbackResolver((event, stroke) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -209,7 +209,7 @@ describe("keymap", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
-    manager.registerStrokeFallbackResolver(({ event, stroke }) => {
+    manager.registerStrokeFallbackResolver((event, stroke) => {
       if (event.name !== "x") {
         return undefined
       }

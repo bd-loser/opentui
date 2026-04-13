@@ -33,6 +33,7 @@ import type {
   KeymapResolvedBindingCommand,
   KeymapScope,
   KeymapStrokeFallbackResolver,
+  KeyStroke,
   KeymapToken,
   ParsedKeyPart,
   ParsedKeyStroke,
@@ -1342,29 +1343,7 @@ class KeymapManagerImpl implements KeymapManager {
     const focused = this.getFocusedRenderable()
     const activeLayers = this.getActiveLayers(focused)
     const hasLayerConditions = this.layersWithConditions > 0
-
-    if (this.strokeFallbackResolvers.length === 0) {
-      const strokeKey = buildBindingKey(normalizeEventKeyStroke(event))
-
-      for (const layer of activeLayers) {
-        if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
-          continue
-        }
-
-        const result = this.runReleaseBindings(layer, strokeKey, event, focused)
-        if (!result.handled) {
-          continue
-        }
-
-        if (result.stop) {
-          return
-        }
-      }
-
-      return
-    }
-
-    const strokeKeys = this.resolveStrokeFallbackKeys(event, normalizeEventKeyStroke(event))
+    const strokeKeys = this.resolveEventStrokeKeys(event)
 
     layerLoop: for (const layer of activeLayers) {
       if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
@@ -1389,38 +1368,24 @@ class KeymapManagerImpl implements KeymapManager {
   private dispatchLayers(event: KeyEvent): void {
     const focused = this.getFocusedRenderable()
     const pending = this.resolvePendingSequence(focused)
-
-    if (this.strokeFallbackResolvers.length === 0) {
-      const stroke = normalizeEventKeyStroke(event)
-
-      if (pending) {
-        this.dispatchPendingSequence(pending, stroke, event, focused)
-        return
-      }
-
-      const activeLayers = this.getActiveLayers(focused)
-      this.dispatchFromRoot(activeLayers, stroke, event, focused)
-      return
-    }
-
-    const strokeCandidates = this.resolveStrokeFallbackStrokes(event, normalizeEventKeyStroke(event))
+    const strokeKeys = this.resolveEventStrokeKeys(event)
 
     if (pending) {
-      this.dispatchPendingSequenceWithFallbacks(pending, strokeCandidates, event, focused)
+      this.dispatchPendingSequence(pending, strokeKeys, event, focused)
       return
     }
 
     const activeLayers = this.getActiveLayers(focused)
-    this.dispatchFromRootWithFallbacks(activeLayers, strokeCandidates, event, focused)
+    this.dispatchFromRoot(activeLayers, strokeKeys, event, focused)
   }
 
   private dispatchPendingSequence(
     pending: PendingSequenceState,
-    stroke: ParsedKeyStroke,
+    strokeKeys: readonly string[],
     event: KeyEvent,
     focused: Renderable | null,
   ): void {
-    const nextNode = this.getReachableChild(pending.node, stroke)
+    const nextNode = this.getReachableChild(pending.node, strokeKeys)
     if (!nextNode) {
       this.setPendingSequence(null)
       return
@@ -1440,54 +1405,20 @@ class KeymapManagerImpl implements KeymapManager {
     this.setPendingSequence(null)
   }
 
-  private dispatchPendingSequenceWithFallbacks(
-    pending: PendingSequenceState,
-    strokes: readonly ParsedKeyStroke[],
-    event: KeyEvent,
-    focused: Renderable | null,
-  ): void {
-    for (const stroke of strokes) {
-      const nextNode = this.getReachableChild(pending.node, stroke)
-      if (!nextNode) {
-        continue
-      }
-
-      if (nextNode.children.size > 0) {
-        this.setPendingSequence({
-          layer: pending.layer,
-          node: nextNode,
-        })
-        event.preventDefault()
-        event.stopPropagation()
-        return
-      }
-
-      const result = this.runBindings(pending.layer, nextNode.bindings, event, focused)
-      if (!result.handled) {
-        continue
-      }
-
-      this.setPendingSequence(null)
-      return
-    }
-
-    this.setPendingSequence(null)
-  }
-
   private dispatchFromRoot(
     activeLayers: RegisteredLayer[],
-    stroke: ParsedKeyStroke,
+    strokeKeys: readonly string[],
     event: KeyEvent,
     focused: Renderable | null,
   ): void {
     const hasLayerConditions = this.layersWithConditions > 0
 
-    for (const layer of activeLayers) {
+    layerLoop: for (const layer of activeLayers) {
       if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
         continue
       }
 
-      const nextNode = this.getReachableChild(layer.root, stroke)
+      const nextNode = this.getReachableChild(layer.root, strokeKeys)
       if (!nextNode) {
         continue
       }
@@ -1510,97 +1441,39 @@ class KeymapManagerImpl implements KeymapManager {
       if (result.stop) {
         return
       }
+      continue layerLoop
     }
   }
 
-  private dispatchFromRootWithFallbacks(
-    activeLayers: RegisteredLayer[],
-    strokes: readonly ParsedKeyStroke[],
-    event: KeyEvent,
-    focused: Renderable | null,
-  ): void {
-    const hasLayerConditions = this.layersWithConditions > 0
-
-    layerLoop: for (const layer of activeLayers) {
-      if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
-        continue
-      }
-
-      for (const stroke of strokes) {
-        const nextNode = this.getReachableChild(layer.root, stroke)
-        if (!nextNode) {
-          continue
-        }
-
-        if (nextNode.children.size > 0) {
-          this.setPendingSequence({
-            layer,
-            node: nextNode,
-          })
-          event.preventDefault()
-          event.stopPropagation()
-          return
-        }
-
-        const result = this.runBindings(layer, nextNode.bindings, event, focused)
-        if (!result.handled) {
-          continue
-        }
-
-        if (result.stop) {
-          return
-        }
-
-        continue layerLoop
-      }
-    }
-  }
-
-  private resolveStrokeFallbackKeys(event: KeyEvent, primary: ParsedKeyStroke): string[] {
-    return this.resolveStrokeFallbackStrokes(event, primary).map((stroke) => buildBindingKey(stroke))
-  }
-
-  private resolveStrokeFallbackStrokes(event: KeyEvent, primary: ParsedKeyStroke): ParsedKeyStroke[] {
-    const candidates = [primary]
-    const seen = new Set<string>([buildBindingKey(primary)])
-    const contextStroke = Object.freeze(cloneStroke(primary)) as ParsedKeyStroke
+  private resolveEventStrokeKeys(event: KeyEvent): string[] {
+    const stroke = normalizeEventKeyStroke(event)
+    const keys = [buildBindingKey(stroke)]
 
     for (const resolver of this.strokeFallbackResolvers) {
-      let resolved: ReturnType<KeymapStrokeFallbackResolver>
+      let fallback: KeyStroke | undefined
 
       try {
-        resolved = resolver({ event, stroke: contextStroke })
+        fallback = resolver(event, stroke)
       } catch (error) {
         this.logger.error("[Keymap] Error in stroke fallback resolver:", error)
         continue
       }
 
-      if (!resolved) {
+      if (!fallback) {
         continue
       }
 
-      const fallbackStrokes = Array.isArray(resolved) ? resolved : [resolved]
-      for (const fallbackStroke of fallbackStrokes) {
-        let normalizedFallback: ParsedKeyStroke
-
-        try {
-          normalizedFallback = normalizeKeyStroke(fallbackStroke)
-        } catch (error) {
-          this.logger.error("[Keymap] Invalid stroke fallback candidate:", error)
-          continue
+      try {
+        const key = buildBindingKey(normalizeKeyStroke(fallback))
+        if (!keys.includes(key)) {
+          keys.push(key)
         }
-
-        const key = buildBindingKey(normalizedFallback)
-        if (seen.has(key)) {
-          continue
-        }
-
-        seen.add(key)
-        candidates.push(normalizedFallback)
+      } catch (error) {
+        this.logger.error("[Keymap] Invalid stroke fallback candidate:", error)
       }
     }
 
-    return candidates
+    return keys
   }
 
   private runReleaseBindings(
@@ -1639,17 +1512,17 @@ class KeymapManagerImpl implements KeymapManager {
     return { handled, stop: false }
   }
 
-  private getReachableChild(node: SequenceNode, stroke: ParsedKeyStroke): SequenceNode | undefined {
-    const child = node.children.get(buildBindingKey(stroke))
-    if (!child) {
-      return undefined
+  private getReachableChild(node: SequenceNode, strokeKeys: readonly string[]): SequenceNode | undefined {
+    for (const strokeKey of strokeKeys) {
+      const child = node.children.get(strokeKey)
+      if (!child || !this.nodeHasReachableBindings(child)) {
+        continue
+      }
+
+      return child
     }
 
-    if (!this.nodeHasReachableBindings(child)) {
-      return undefined
-    }
-
-    return child
+    return undefined
   }
 
   private nodeHasReachableBindings(node: SequenceNode): boolean {

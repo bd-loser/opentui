@@ -19,7 +19,8 @@ function startsWithTrigger(sequence: readonly ParsedKeyStroke[], trigger: Parsed
     head.ctrl === trigger.ctrl &&
     head.shift === trigger.shift &&
     head.meta === trigger.meta &&
-    head.super === trigger.super
+    head.super === trigger.super &&
+    (head.hyper ?? false) === (trigger.hyper ?? false)
   )
 }
 

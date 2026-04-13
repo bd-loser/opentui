@@ -12,6 +12,7 @@ export interface KeyStroke {
   shift?: boolean
   meta?: boolean
   super?: boolean
+  hyper?: boolean
 }
 
 export interface ParsedKeyStroke extends KeyStroke {

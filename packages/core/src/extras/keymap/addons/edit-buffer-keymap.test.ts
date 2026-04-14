@@ -4,7 +4,7 @@ import { InputRenderable, InputRenderableEvents } from "../../../renderables/Inp
 import { TextareaRenderable } from "../../../renderables/Textarea.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../../../testing.js"
 import { getKeymapManager } from "../index.js"
-import { compileEditBufferKeyBindings, registerEditBufferKeymap } from "./edit-buffer-keymap.js"
+import { registerEditBufferKeymap } from "./edit-buffer-keymap.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
@@ -260,65 +260,5 @@ describe("edit buffer keymap addon", () => {
 
     expect(calls).toEqual([])
     expect(manager.getActiveKeys().find((candidate) => candidate.stroke.name === "x")).toBeUndefined()
-  })
-
-  test("compileEditBufferKeyBindings normalizes simple config", () => {
-    const bindings = compileEditBufferKeyBindings([
-      { key: "ctrl+d", cmd: "delete-line" },
-      { key: "return", cmd: "submit" },
-      { key: { name: "left", shift: true }, cmd: "select-left" },
-    ])
-
-    expect(bindings).toEqual([
-      { name: "d", ctrl: true, shift: undefined, meta: undefined, super: undefined, action: "delete-line" },
-      { name: "return", ctrl: undefined, shift: undefined, meta: undefined, super: undefined, action: "submit" },
-      { name: "left", ctrl: undefined, shift: true, meta: undefined, super: undefined, action: "select-left" },
-    ])
-  })
-
-  test("compileEditBufferKeyBindings supports object shorthand", () => {
-    const bindings = compileEditBufferKeyBindings({
-      "ctrl+d": "delete-line",
-      return: "submit",
-    })
-
-    expect(bindings).toEqual([
-      { name: "d", ctrl: true, shift: undefined, meta: undefined, super: undefined, action: "delete-line" },
-      { name: "return", ctrl: undefined, shift: undefined, meta: undefined, super: undefined, action: "submit" },
-    ])
-  })
-
-  test("compileEditBufferKeyBindings ignores unknown tokens and rejects unsupported config", () => {
-    expect(compileEditBufferKeyBindings([{ key: "<leader>x", cmd: "delete-line" }])).toEqual([
-      { name: "x", ctrl: undefined, shift: undefined, meta: undefined, super: undefined, action: "delete-line" },
-    ])
-
-    expect(() => compileEditBufferKeyBindings([{ key: "<leader>", cmd: "delete-line" }])).toThrow(
-      "Edit-buffer key bindings only support a single key stroke",
-    )
-
-    expect(() => compileEditBufferKeyBindings([{ key: "dd", cmd: "delete-line" }])).toThrow(
-      "Edit-buffer key bindings only support a single key stroke",
-    )
-
-    expect(() => compileEditBufferKeyBindings([{ key: "x", mode: "normal", cmd: "delete-line" }])).toThrow(
-      'Edit-buffer key bindings do not support the extra field "mode"',
-    )
-
-    expect(() => compileEditBufferKeyBindings([{ key: "x", cmd: "delete-line", event: "release" }])).toThrow(
-      'Edit-buffer key bindings only support event "press"',
-    )
-
-    expect(() => compileEditBufferKeyBindings([{ key: "hyper+x", cmd: "delete-line" }])).toThrow(
-      "Edit-buffer key bindings do not support the hyper modifier",
-    )
-
-    expect(() => compileEditBufferKeyBindings([{ key: "x", cmd: "delete-line now" }])).toThrow(
-      'Edit-buffer command "delete-line now" cannot include arguments',
-    )
-
-    expect(() => compileEditBufferKeyBindings([{ key: "x", cmd: "missing-command" }])).toThrow(
-      'Unknown edit-buffer command "missing-command"',
-    )
   })
 })

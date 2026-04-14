@@ -1,6 +1,5 @@
 import type { EditBufferRenderable } from "../../../renderables/EditBufferRenderable.js"
-import type { KeyBinding as EditBufferKeyBinding, TextareaAction } from "../../../renderables/Textarea.js"
-import { RESERVED_BINDING_FIELDS } from "../core.js"
+import type { TextareaAction } from "../../../renderables/Textarea.js"
 import type {
   KeymapBindingInput,
   KeymapBindings,
@@ -9,7 +8,6 @@ import type {
   KeymapLayer,
   KeymapManager,
 } from "../types.js"
-import { parseKeySequenceLike } from "../default-parser.js"
 import { normalizeBindingInputs, parseCommandInput } from "../utils.js"
 
 const editBufferCommandNames = [
@@ -211,51 +209,4 @@ export function registerEditBufferKeymap(manager: KeymapManager, layer: KeymapLa
     offLayer()
     offCommands?.()
   }
-}
-
-export function compileEditBufferKeyBindings(bindings: KeymapBindings): EditBufferKeyBinding[] {
-  return normalizeBindingInputs(bindings).map((binding) => {
-    if (binding.event !== undefined && binding.event !== "press") {
-      throw new Error('Edit-buffer key bindings only support event "press"')
-    }
-
-    for (const [fieldName, value] of Object.entries(binding)) {
-      if (RESERVED_BINDING_FIELDS.has(fieldName)) {
-        continue
-      }
-
-      if (value === undefined) {
-        continue
-      }
-
-      throw new Error(`Edit-buffer key bindings do not support the extra field "${fieldName}"`)
-    }
-
-    const parts = parseKeySequenceLike(binding.key)
-    if (parts.length !== 1) {
-      throw new Error("Edit-buffer key bindings only support a single key stroke")
-    }
-
-    const [part] = parts
-    if (!part) {
-      throw new Error("Edit-buffer key bindings only support a single key stroke")
-    }
-
-    if (part.stroke.hyper) {
-      throw new Error("Edit-buffer key bindings do not support the hyper modifier")
-    }
-
-    const input = getEditBufferCommandInput(binding)
-    validateEditBufferCommandInput(input)
-    const command = parseCommandInput(input)
-
-    return {
-      name: part.stroke.name,
-      ctrl: part.stroke.ctrl || undefined,
-      shift: part.stroke.shift || undefined,
-      meta: part.stroke.meta || undefined,
-      super: part.stroke.super || undefined,
-      action: command.name as TextareaAction,
-    }
-  })
 }

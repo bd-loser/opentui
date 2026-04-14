@@ -7,10 +7,6 @@ on:
         description: "Version being published"
         required: true
         type: string
-      packagesArtifactName:
-        description: "Artifact name containing packaged npm outputs"
-        required: true
-        type: string
       isDryRun:
         description: "Whether this is a dry run (npm publish --dry-run)"
         required: false
@@ -45,7 +41,7 @@ jobs:
       - name: Download npm packages artifact
         uses: actions/download-artifact@v4
         with:
-          name: ${{ inputs.packagesArtifactName }}
+          name: npm-packages-${{ inputs.version }}
 
       - name: Extract npm packages
         run: |

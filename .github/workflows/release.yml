@@ -106,7 +106,7 @@ jobs:
   # Build example executables
   build-examples:
     name: Build Examples
-    needs: [prepare, validate-version, build-native]
+    needs: [prepare, sign-windows-artifacts]
     uses: ./.github/workflows/build-examples.yml
     with:
       version: ${{ needs.prepare.outputs.fullTag }}
@@ -115,14 +115,13 @@ jobs:
   # Publish to npm
   npm-publish:
     name: NPM Publish
-    needs: [prepare, validate-version, build-native, sign-windows-artifacts]
+    needs: [prepare, sign-windows-artifacts]
     uses: ./.github/workflows/npm-latest-release.yml
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     with:
       version: ${{ needs.prepare.outputs.fullTag }}
       isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
-      packagesArtifactName: signed-npm-packages-${{ needs.prepare.outputs.fullTag }}
 
   sign-windows-artifacts:
     name: Sign Windows DLL Artifacts
@@ -140,13 +139,20 @@ jobs:
       AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
 
     steps:
+      - name: Skip code signing for dry runs
+        if: needs.prepare.outputs.isDryRun == 'true'
+        run: |
+          echo "Dry run release, skipping Windows code signing"
+
       - name: Download native binaries artifact
+        if: needs.prepare.outputs.isDryRun != 'true'
         uses: actions/download-artifact@v4
         with:
           name: native-binaries-${{ needs.prepare.outputs.fullTag }}
           path: artifacts/native
 
       - name: Download npm packages artifact
+        if: needs.prepare.outputs.isDryRun != 'true'
         uses: actions/download-artifact@v4
         with:
           name: npm-packages-${{ needs.prepare.outputs.fullTag }}
@@ -165,19 +171,6 @@ jobs:
           Expand-Archive -Path (Join-Path $artifactRoot "native\native-windows-x64.zip") -DestinationPath $signedNativeRoot -Force
           Expand-Archive -Path (Join-Path $artifactRoot "native\native-windows-arm64.zip") -DestinationPath $signedNativeRoot -Force
           Expand-Archive -Path (Join-Path $artifactRoot "npm\npm-packages.zip") -DestinationPath $signedNpmRoot -Force
-
-      - name: Prepare dry-run artifact passthrough
-        if: needs.prepare.outputs.isDryRun == 'true'
-        shell: pwsh
-        run: |
-          $signedNativeRoot = Join-Path $env:GITHUB_WORKSPACE "signed-native"
-          $signedNpmRoot = Join-Path $env:GITHUB_WORKSPACE "signed-npm-packages"
-          New-Item -ItemType Directory -Force -Path $signedNativeRoot | Out-Null
-          New-Item -ItemType Directory -Force -Path $signedNpmRoot | Out-Null
-
-          Copy-Item -Path (Join-Path $env:GITHUB_WORKSPACE "artifacts\native\native-windows-x64.zip") -Destination (Join-Path $signedNativeRoot "native-windows-x64.zip") -Force
-          Copy-Item -Path (Join-Path $env:GITHUB_WORKSPACE "artifacts\native\native-windows-arm64.zip") -Destination (Join-Path $signedNativeRoot "native-windows-arm64.zip") -Force
-          Copy-Item -Path (Join-Path $env:GITHUB_WORKSPACE "artifacts\npm\npm-packages.zip") -Destination (Join-Path $signedNpmRoot "npm-packages.zip") -Force
 
       - name: Azure login
         if: needs.prepare.outputs.isDryRun != 'true'
@@ -253,43 +246,44 @@ jobs:
             }
           }
 
-      - name: Repack signed native Windows artifacts
+      - name: Repack signed windows outputs
         if: needs.prepare.outputs.isDryRun != 'true'
-        working-directory: signed-native
         shell: pwsh
         run: |
-          Compress-Archive -Path "native-windows-x64" -DestinationPath "native-windows-x64.zip" -Force
-          Compress-Archive -Path "native-windows-arm64" -DestinationPath "native-windows-arm64.zip" -Force
+          Compress-Archive -Path "${{ github.workspace }}\signed-native\native-windows-x64" -DestinationPath "${{ github.workspace }}\artifacts\native\native-windows-x64.zip" -Force
+          Compress-Archive -Path "${{ github.workspace }}\signed-native\native-windows-arm64" -DestinationPath "${{ github.workspace }}\artifacts\native\native-windows-arm64.zip" -Force
+          Compress-Archive -Path "${{ github.workspace }}\signed-npm-packages\npm-packages" -DestinationPath "${{ github.workspace }}\artifacts\npm\npm-packages.zip" -Force
 
-      - name: Repack signed npm packages artifact
+      - name: Upload signed native binaries artifact
         if: needs.prepare.outputs.isDryRun != 'true'
-        working-directory: signed-npm-packages
-        shell: pwsh
-        run: |
-          Compress-Archive -Path "npm-packages" -DestinationPath "npm-packages.zip" -Force
-
-      - name: Upload signed native Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: signed-native-binaries-${{ needs.prepare.outputs.fullTag }}
+          name: native-binaries-${{ needs.prepare.outputs.fullTag }}
           path: |
-            signed-native/native-windows-x64.zip
-            signed-native/native-windows-arm64.zip
+            artifacts/native/native-darwin-x64.zip
+            artifacts/native/native-darwin-arm64.zip
+            artifacts/native/native-linux-x64.zip
+            artifacts/native/native-linux-arm64.zip
+            artifacts/native/native-windows-x64.zip
+            artifacts/native/native-windows-arm64.zip
           if-no-files-found: error
           retention-days: 30
+          overwrite: true
 
       - name: Upload signed npm packages artifact
+        if: needs.prepare.outputs.isDryRun != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: signed-npm-packages-${{ needs.prepare.outputs.fullTag }}
-          path: signed-npm-packages/npm-packages.zip
+          name: npm-packages-${{ needs.prepare.outputs.fullTag }}
+          path: artifacts/npm/npm-packages.zip
           if-no-files-found: error
           retention-days: 30
+          overwrite: true
 
   # Create GitHub release with assets
   github-release:
     name: Create GitHub Release
-    needs: [prepare, build-native, build-examples, npm-publish, sign-windows-artifacts]
+    needs: [prepare, build-examples, npm-publish]
     runs-on: ubuntu-latest
 
     steps:
@@ -314,11 +308,6 @@ jobs:
           # Verify artifact directories exist
           test -d "artifacts/native-binaries-$FULL_TAG" || (echo "❌ native-binaries artifact directory not found!" && exit 1)
           test -d "artifacts/example-executables-$FULL_TAG" || (echo "❌ example-executables artifact directory not found!" && exit 1)
-          test -d "artifacts/signed-native-binaries-$FULL_TAG" || (echo "❌ signed-native-binaries directory not found!" && exit 1)
-
-          echo "Overlaying signed Windows artifacts..."
-          cp "artifacts/signed-native-binaries-$FULL_TAG/native-windows-x64.zip" "artifacts/native-binaries-$FULL_TAG/native-windows-x64.zip"
-          cp "artifacts/signed-native-binaries-$FULL_TAG/native-windows-arm64.zip" "artifacts/native-binaries-$FULL_TAG/native-windows-arm64.zip"
 
           # Copy native binaries (unzip and rezip with versioned names)
           echo "Processing native binaries..."

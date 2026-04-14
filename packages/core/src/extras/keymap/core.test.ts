@@ -2096,6 +2096,55 @@ describe("keymap", () => {
     expect(warnings).toEqual(['[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored'])
   })
 
+  test("logs unresolved string commands through logger.warn", () => {
+    const warnings: string[] = []
+    const manager = getKeymapManager(renderer, {
+      logger: {
+        warn(...args) {
+          warnings.push(args.map((value) => String(value)).join(" "))
+        },
+      },
+    })
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "missing-command" }],
+    })
+
+    expect(warnings).toEqual(['[Keymap] Unresolved command "missing-command" for binding "x" in global layer'])
+  })
+
+  test("notifies unresolved command listeners with command, binding, scope, and target context", () => {
+    const manager = getKeymapManager(renderer)
+    const target = createFocusableBox("unresolved-target")
+    const calls: Array<{ command: string; binding: string; scope: string; targetId?: string }> = []
+
+    renderer.root.add(target)
+
+    manager.onUnresolvedCommand((ctx) => {
+      calls.push({
+        command: ctx.command,
+        binding: stringifyKeySequence(ctx.binding.sequence, { preferDisplay: true }),
+        scope: ctx.scope,
+        targetId: ctx.target?.id,
+      })
+    })
+
+    manager.registerLayer({
+      target,
+      bindings: [{ key: "x", cmd: "missing-command" }],
+    })
+
+    expect(calls).toEqual([
+      {
+        command: "missing-command",
+        binding: "x",
+        scope: "focus-within",
+        targetId: "unresolved-target",
+      },
+    ])
+  })
+
   test("logs runtime matcher failures through logger.error", () => {
     const warnings: string[] = []
     const errors: string[] = []

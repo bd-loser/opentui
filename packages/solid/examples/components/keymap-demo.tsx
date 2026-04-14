@@ -110,7 +110,7 @@ function CounterPanel(props: {
     bindings: [
       { key: "j", cmd: incrementCommand, desc: `${props.label} +${props.step}` },
       { key: "k", cmd: decrementCommand, desc: `${props.label} -${props.step}` },
-      { key: "enter", cmd: `:w ${props.saveTarget}`, desc: `Write ${props.label.toLowerCase()} panel` },
+      { key: "return", cmd: `:w ${props.saveTarget}`, desc: `Write ${props.label.toLowerCase()} panel` },
     ],
   })
 

@@ -225,6 +225,16 @@ export interface KeymapUnresolvedCommandContext {
   target?: Renderable
 }
 
+export interface KeymapHooks {
+  state: void
+  pendingSequence: readonly ParsedKeyStroke[]
+  unresolvedCommand: KeymapUnresolvedCommandContext
+}
+
+export type KeymapHookName = keyof KeymapHooks
+
+export type KeymapHookListener<TValue> = [TValue] extends [void] ? () => void : (value: TValue) => void
+
 export interface KeymapLogger {
   warn?(...args: unknown[]): void
   error?(...args: unknown[]): void
@@ -245,9 +255,7 @@ export interface KeymapManager {
   clearPendingSequence(): void
   popPendingSequence(): boolean
   getActiveKeys(options?: KeymapActiveKeyOptions): readonly KeymapActiveKey[]
-  onStateChange(fn: () => void): () => void
-  onPendingSequenceChange(fn: (sequence: readonly ParsedKeyStroke[]) => void): () => void
-  onUnresolvedCommand(fn: (ctx: KeymapUnresolvedCommandContext) => void): () => void
+  hook<TName extends KeymapHookName>(name: TName, fn: KeymapHookListener<KeymapHooks[TName]>): () => void
   registerLayer(layer: KeymapLayer): () => void
   registerLayerFields(fields: Record<string, KeymapLayerFieldCompiler>): () => void
   registerToken(token: KeymapToken): () => void

@@ -1386,7 +1386,7 @@ describe("keymap", () => {
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
-    manager.onPendingSequenceChange((sequence) => {
+    manager.hook("pendingSequence", (sequence) => {
       changes.push(sequence.map((stroke) => stroke.name).join(""))
     })
 
@@ -1414,7 +1414,7 @@ describe("keymap", () => {
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
-    manager.onStateChange(() => {
+    manager.hook("state", () => {
       const pending = stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
       const active = getActiveKeyNames(manager).join(",") || "<none>"
       snapshots.push(`${pending}:${active}`)
@@ -1448,7 +1448,7 @@ describe("keymap", () => {
     manager.setData("vim.mode", "normal")
     mockInput.pressKey("d")
 
-    manager.onStateChange(() => {
+    manager.hook("state", () => {
       const pending = stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
       const active = getActiveKeyNames(manager).join(",") || "<none>"
       snapshots.push(`${pending}:${active}`)
@@ -1473,7 +1473,7 @@ describe("keymap", () => {
       bindings: [{ key: "x", cmd: "local" }],
     })
 
-    manager.onStateChange(() => {
+    manager.hook("state", () => {
       snapshots.push(getActiveKeyNames(manager).join(",") || "<none>")
     })
 
@@ -1499,7 +1499,7 @@ describe("keymap", () => {
     target.focus()
     mockInput.pressKey("d")
 
-    manager.onStateChange(() => {
+    manager.hook("state", () => {
       const pending = stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
       const active = getActiveKeyNames(manager).join(",") || "<none>"
       snapshots.push(`${pending}:${active}`)
@@ -1593,7 +1593,7 @@ describe("keymap", () => {
       bindings: [{ key: "x", cmd: "local" }],
     })
 
-    const off = manager.onStateChange(() => {
+    const off = manager.hook("state", () => {
       snapshots.push(getActiveKeyNames(manager).join(",") || "<none>")
     })
 
@@ -1601,6 +1601,36 @@ describe("keymap", () => {
     target.focus()
 
     expect(snapshots).toEqual([])
+  })
+
+  test("uses a stable state change listener snapshot when listeners unsubscribe mid-notification", () => {
+    const manager = getKeymapManager(renderer)
+    const target = createFocusableBox("state-snapshot-target")
+    const calls: string[] = []
+
+    renderer.root.add(target)
+
+    manager.registerCommands([{ name: "local", run() {} }])
+    manager.registerLayer({
+      target,
+      bindings: [{ key: "x", cmd: "local" }],
+    })
+
+    let offSecond!: () => void
+
+    manager.hook("state", () => {
+      calls.push(`first:${getActiveKeyNames(manager).join(",") || "<none>"}`)
+      offSecond()
+    })
+
+    offSecond = manager.hook("state", () => {
+      calls.push(`second:${getActiveKeyNames(manager).join(",") || "<none>"}`)
+    })
+
+    target.focus()
+    target.blur()
+
+    expect(calls).toEqual(["first:x", "second:x", "first:<none>"])
   })
 
   test("supports token aliases inside longer sequences", () => {
@@ -2121,7 +2151,7 @@ describe("keymap", () => {
 
     renderer.root.add(target)
 
-    manager.onUnresolvedCommand((ctx) => {
+    manager.hook("unresolvedCommand", (ctx) => {
       calls.push({
         command: ctx.command,
         binding: stringifyKeySequence(ctx.binding.sequence, { preferDisplay: true }),
@@ -2803,7 +2833,7 @@ describe("keymap", () => {
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
-    const off = manager.onPendingSequenceChange((sequence) => {
+    const off = manager.hook("pendingSequence", (sequence) => {
       changes.push(sequence.map((stroke) => stroke.name).join(""))
     })
 
@@ -2827,12 +2857,12 @@ describe("keymap", () => {
 
     let offSecond!: () => void
 
-    manager.onPendingSequenceChange((sequence) => {
+    manager.hook("pendingSequence", (sequence) => {
       calls.push(`first:${sequence.map((stroke) => stroke.name).join("")}`)
       offSecond()
     })
 
-    offSecond = manager.onPendingSequenceChange((sequence) => {
+    offSecond = manager.hook("pendingSequence", (sequence) => {
       calls.push(`second:${sequence.map((stroke) => stroke.name).join("")}`)
     })
 
@@ -2840,6 +2870,36 @@ describe("keymap", () => {
     manager.clearPendingSequence()
 
     expect(calls).toEqual(["first:d", "second:d", "first:"])
+  })
+
+  test("logs pending sequence listener failures and continues notifying remaining listeners", () => {
+    const errors: string[] = []
+    const changes: string[] = []
+    const manager = getKeymapManager(renderer, {
+      logger: {
+        error(...args) {
+          errors.push(args.map((value) => String(value)).join(" "))
+        },
+      },
+    })
+
+    manager.registerCommands([{ name: "delete-ca", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "dca", cmd: "delete-ca" }],
+    })
+
+    manager.hook("pendingSequence", () => {
+      throw new Error("boom")
+    })
+    manager.hook("pendingSequence", (sequence) => {
+      changes.push(sequence.map((stroke) => stroke.name).join(""))
+    })
+
+    mockInput.pressKey("d")
+
+    expect(changes).toEqual(["d"])
+    expect(errors.some((message) => message.includes("Error in pending sequence hook:"))).toBe(true)
   })
 
   test("recompiles tokenized layers when tokens are registered and disposed", () => {

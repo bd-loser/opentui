@@ -16,6 +16,7 @@ import type {
   KeymapBindingEvent,
   KeymapBindingFieldCompiler,
   KeymapBindingInput,
+  KeymapBindingParserContext,
   KeymapParsedBindingInput,
   KeymapCommand,
   KeymapCommandContext,
@@ -52,7 +53,6 @@ import type {
   SequenceNode,
 } from "./types.js"
 import {
-  bindingUsesTokenSyntax,
   buildBindingKey,
   cloneStroke,
   createParsedKeyPart,
@@ -64,16 +64,13 @@ import {
   normalizeBindingCommand,
   normalizeCommandName,
   normalizeEventKeyStroke,
-  normalizeKeyName,
   normalizeKeyStroke,
-  normalizeTokenName,
-  parseKeyLike,
-  parseKeySequenceLike,
   snapshotBindingInputs,
   sortByPriorityAndOrder,
   sortLayersWithinScope,
   stringifyKeyStroke,
 } from "./utils.js"
+import { defaultBindingParser, parseKeyLike } from "./default-parser.js"
 
 const keymapManagersByRenderer = new WeakMap<CliRenderer, KeymapManagerImpl>()
 
@@ -105,6 +102,82 @@ function cloneParsedBindingInput(binding: KeymapParsedBindingInput): KeymapParse
   return {
     ...binding,
     sequence: binding.sequence.map((part) => createParsedKeyPart(part.stroke, part.display)),
+  }
+}
+
+function parseBindingSequenceWithParsers(
+  key: KeyLike,
+  parsers: readonly KeymapBindingParser[],
+  options?: {
+    tokens?: ReadonlyMap<string, ParsedKeyStroke>
+    layer?: Readonly<Record<string, unknown>>
+  },
+): {
+  parts: ParsedKeyPart[]
+  usedTokens: readonly string[]
+  unknownTokens: readonly string[]
+  hasTokenBindings: boolean
+} {
+  if (typeof key !== "string") {
+    return {
+      parts: [createParsedKeyPart(normalizeKeyStroke(key))],
+      usedTokens: [],
+      unknownTokens: [],
+      hasTokenBindings: false,
+    }
+  }
+
+  if (key.length === 0) {
+    throw new Error("Invalid key sequence: sequence cannot be empty")
+  }
+
+  if (parsers.length === 0) {
+    throw new Error("No keymap binding parsers are registered")
+  }
+
+  const tokens = options?.tokens ?? new Map<string, ParsedKeyStroke>()
+  const layer = options?.layer ?? EMPTY_COMPILE_FIELDS
+  const parts: ParsedKeyPart[] = []
+  const usedTokens = new Set<string>()
+  const unknownTokens = new Set<string>()
+
+  let index = 0
+  while (index < key.length) {
+    let matched = false
+
+    for (const parser of parsers) {
+      const result = parser({ input: key, index, layer, tokens } satisfies KeymapBindingParserContext)
+      if (!result) {
+        continue
+      }
+
+      if (result.nextIndex <= index || result.nextIndex > key.length) {
+        throw new Error(`Keymap binding parser must advance the input for "${key}" at index ${index}`)
+      }
+
+      parts.push(...result.parts)
+      for (const tokenName of result.usedTokens ?? []) {
+        usedTokens.add(tokenName.trim().toLowerCase())
+      }
+      for (const tokenName of result.unknownTokens ?? []) {
+        unknownTokens.add(tokenName.trim().toLowerCase())
+      }
+
+      index = result.nextIndex
+      matched = true
+      break
+    }
+
+    if (!matched) {
+      throw new Error(`No keymap binding parser handled input at index ${index} in "${key}"`)
+    }
+  }
+
+  return {
+    parts,
+    usedTokens: [...usedTokens],
+    unknownTokens: [...unknownTokens],
+    hasTokenBindings: usedTokens.size > 0 || unknownTokens.size > 0,
   }
 }
 
@@ -175,6 +248,7 @@ class KeymapManagerImpl implements KeymapManager {
   constructor(renderer: CliRenderer, options?: KeymapManagerOptions) {
     this.renderer = renderer
     this.logger = resolveKeymapLogger(options?.logger)
+    this.bindingParsers = [defaultBindingParser]
     this.keypressListener = (event) => {
       this.handleKeyEvent(event, false)
     }
@@ -477,8 +551,7 @@ class KeymapManagerImpl implements KeymapManager {
       const scope = this.normalizeScope(layer)
       const bindingInputs = snapshotBindingInputs(layer.bindings)
       const { requires, matchers, conditionKeys, hasUnkeyedMatchers, compileFields } = this.compileLayerRuntimeState(layer)
-      const singleKeyNames = this.collectSingleKeyNames(compileFields)
-      const compiledBindings = this.compileBindings(bindingInputs, this.tokens, compileFields, singleKeyNames)
+      const compiledBindings = this.compileBindings(bindingInputs, this.tokens, compileFields)
       const target = layer.target
       if (target && target.isDestroyed) {
         throw new Error("Cannot register a keymap layer for a destroyed renderable")
@@ -495,11 +568,10 @@ class KeymapManagerImpl implements KeymapManager {
         hasUnkeyedMatchers,
         matchCacheDirty: true,
         compileFields,
-        singleKeyNames,
         bindingInputs,
         compiledBindings: compiledBindings.bindings,
         hasUnkeyedBindings: compiledBindings.bindings.some((binding) => binding.hasUnkeyedMatchers),
-        hasTokenBindings: bindingInputs.some((binding) => bindingUsesTokenSyntax(binding)),
+        hasTokenBindings: compiledBindings.hasTokenBindings,
         root: compiledBindings.root,
       }
 
@@ -570,7 +642,17 @@ class KeymapManagerImpl implements KeymapManager {
     }
   }
 
-  public registerBindingParser(parser: KeymapBindingParser): () => void {
+  public prependBindingParser(parser: KeymapBindingParser): () => void {
+    this.assertNotDestroyed()
+
+    this.bindingParsers = [parser, ...this.bindingParsers]
+
+    return () => {
+      this.bindingParsers = this.bindingParsers.filter((candidate) => candidate !== parser)
+    }
+  }
+
+  public appendBindingParser(parser: KeymapBindingParser): () => void {
     this.assertNotDestroyed()
 
     this.bindingParsers = [...this.bindingParsers, parser]
@@ -580,12 +662,17 @@ class KeymapManagerImpl implements KeymapManager {
     }
   }
 
+  public clearBindingParsers(): void {
+    this.assertNotDestroyed()
+    this.bindingParsers = []
+  }
+
   public registerToken(token: KeymapToken): () => void {
     this.assertNotDestroyed()
 
-    const normalizedToken = normalizeTokenName(token.token)
-    if (!normalizedToken.startsWith("<") || !normalizedToken.endsWith(">")) {
-      throw new Error(`Invalid token "${token.token}": tokens must use angle-bracket syntax like <leader>`)
+    const normalizedToken = token.token.trim().toLowerCase()
+    if (!normalizedToken) {
+      throw new Error("Invalid keymap token: token cannot be empty")
     }
 
     if (this.tokens.has(normalizedToken)) {
@@ -1059,7 +1146,7 @@ class KeymapManagerImpl implements KeymapManager {
           continue
         }
 
-        nextCompilations.set(layer, this.compileBindings(layer.bindingInputs, nextTokens, layer.compileFields, layer.singleKeyNames))
+        nextCompilations.set(layer, this.compileBindings(layer.bindingInputs, nextTokens, layer.compileFields))
       }
 
       this.tokens = nextTokens
@@ -1180,17 +1267,22 @@ class KeymapManagerImpl implements KeymapManager {
     bindings: readonly KeymapBindingInput[],
     tokens: ReadonlyMap<string, ParsedKeyStroke>,
     compileFields?: Readonly<Record<string, unknown>>,
-    singleKeyNames?: ReadonlySet<string>,
   ): CompiledBindingsResult {
     const root = createSequenceNode(null, null)
     const compiledBindings: CompiledBinding[] = []
+    let hasTokenBindings = false
 
     for (const binding of bindings) {
-      if (typeof binding.key === "string") {
-        this.warnUnknownTokensInKeySequence(binding.key, tokens)
-      }
+      const parsed = parseBindingSequenceWithParsers(binding.key, this.bindingParsers, {
+        tokens,
+        layer: compileFields,
+      })
+      const sequence = parsed.parts
+      hasTokenBindings ||= parsed.hasTokenBindings
 
-      const sequence = parseKeySequenceLike(binding.key, tokens, singleKeyNames)
+      for (const tokenName of parsed.unknownTokens) {
+        this.warnUnknownToken(tokenName, typeof binding.key === "string" ? binding.key : String(binding.key.name))
+      }
 
       for (const compiledInput of this.expandParsedBindings(binding, sequence, compileFields)) {
         const event = this.normalizeBindingEvent(compiledInput.event)
@@ -1284,31 +1376,8 @@ class KeymapManagerImpl implements KeymapManager {
     return {
       root,
       bindings: compiledBindings,
+      hasTokenBindings,
     }
-  }
-
-  private collectSingleKeyNames(compileFields?: Readonly<Record<string, unknown>>): ReadonlySet<string> | undefined {
-    if (this.bindingParsers.length === 0) {
-      return undefined
-    }
-
-    const layer = compileFields ?? EMPTY_COMPILE_FIELDS
-    const singleKeyNames = new Set<string>()
-
-    for (const parser of this.bindingParsers) {
-      try {
-        parser({
-          layer,
-          add: (name) => {
-            singleKeyNames.add(normalizeKeyName(name))
-          },
-        })
-      } catch (error) {
-        this.logger.error("[Keymap] Error in binding parser:", error)
-      }
-    }
-
-    return singleKeyNames.size > 0 ? singleKeyNames : undefined
   }
 
   private expandParsedBindings(
@@ -2424,7 +2493,7 @@ class KeymapManagerImpl implements KeymapManager {
         break
       }
 
-      const token = normalizeTokenName(sequence.slice(open, close + 1))
+      const token = sequence.slice(open, close + 1).trim().toLowerCase()
       if (!tokens.has(token)) {
         this.warnUnknownToken(token, sequence)
       }

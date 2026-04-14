@@ -2,7 +2,6 @@ import type { KeyEvent } from "../../lib/KeyHandler.js"
 import type {
   KeymapAttributes,
   KeymapBindingCommand,
-  KeyLike,
   KeyStroke,
   KeymapBindingInput,
   KeymapBindings,
@@ -15,64 +14,6 @@ import type {
   RegisteredLayer,
   SequenceNode,
 } from "./types.js"
-
-const namedSingleStrokeKeys = new Set<string>([
-  "space",
-  "tab",
-  "linefeed",
-  "return",
-  "escape",
-  "backspace",
-  "delete",
-  "insert",
-  "home",
-  "end",
-  "pageup",
-  "pagedown",
-  "left",
-  "right",
-  "up",
-  "down",
-  "kp0",
-  "kp1",
-  "kp2",
-  "kp3",
-  "kp4",
-  "kp5",
-  "kp6",
-  "kp7",
-  "kp8",
-  "kp9",
-  "kpdecimal",
-  "kpdivide",
-  "kpmultiply",
-  "kpminus",
-  "kpplus",
-  "kpenter",
-  "kpequal",
-  "kpseparator",
-  "kpleft",
-  "kpright",
-  "kpup",
-  "kpdown",
-  "kppageup",
-  "kppagedown",
-  "kphome",
-  "kpend",
-  "kpinsert",
-  "kpdelete",
-  "clear",
-])
-
-for (let index = 1; index <= 24; index += 1) {
-  namedSingleStrokeKeys.add(`f${index}`)
-}
-
-const emptyTokens = new Map<string, ParsedKeyStroke>()
-
-export function normalizeTokenName(token: string): string {
-  return token.trim().toLowerCase()
-}
 
 export function normalizeKeyName(name: string): string {
   if (name === " ") {
@@ -197,10 +138,6 @@ export function snapshotBindingInputs(bindings: KeymapBindings): KeymapBindingIn
   return normalizeBindingInputs(bindings).map((binding) => cloneBindingInput(binding))
 }
 
-export function bindingUsesTokenSyntax(binding: KeymapBindingInput): boolean {
-  return typeof binding.key === "string" && binding.key.includes("<")
-}
-
 function hasDisplayStroke(
   input: KeymapStringifiableKey,
 ): input is ParsedKeyPart | { stroke: ParsedKeyStroke; display?: string } {
@@ -262,145 +199,6 @@ export function stringifyKeySequence(
   return input.map((part) => stringifyKeyStroke(part, options)).join("")
 }
 
-function isNamedSingleStrokeKey(input: string, extraNames?: ReadonlySet<string>): boolean {
-  const normalized = input.trim().toLowerCase()
-  if (!normalized) {
-    return false
-  }
-
-  if (namedSingleStrokeKeys.has(normalized)) {
-    return true
-  }
-
-  if (extraNames?.has(normalized)) {
-    return true
-  }
-
-  return /^f\d{1,2}$/i.test(normalized)
-}
-
-function isSingleStrokeString(
-  input: string,
-  tokens: ReadonlyMap<string, ParsedKeyStroke>,
-  extraNames?: ReadonlySet<string>,
-): boolean {
-  if (input === " " || input === "+") {
-    return true
-  }
-
-  if (input.length === 1) {
-    return true
-  }
-
-  if (tokens.has(normalizeTokenName(input))) {
-    return true
-  }
-
-  if (input.includes("+")) {
-    return true
-  }
-
-  return isNamedSingleStrokeKey(input, extraNames)
-}
-
-function parseStringKeyPart(input: string): ParsedKeyPart {
-  if (input === " ") {
-    return createParsedKeyPart({ name: "space", ctrl: false, shift: false, meta: false, super: false }, "space")
-  }
-
-  if (input === "+") {
-    return createParsedKeyPart({ name: "+", ctrl: false, shift: false, meta: false, super: false }, "+")
-  }
-
-  const parts = input.split("+")
-  let name = ""
-  let displayName = ""
-  let ctrl = false
-  let shift = false
-  let meta = false
-  let superKey = false
-  let hyper = false
-
-  for (const rawPart of parts) {
-    const part = rawPart.trim()
-    if (!part) {
-      continue
-    }
-
-    const lowered = part.toLowerCase()
-    if (lowered === "ctrl" || lowered === "control") {
-      ctrl = true
-      continue
-    }
-
-    if (lowered === "shift") {
-      shift = true
-      continue
-    }
-
-    if (lowered === "meta" || lowered === "alt" || lowered === "option") {
-      meta = true
-      continue
-    }
-
-    if (lowered === "super") {
-      superKey = true
-      continue
-    }
-
-    if (lowered === "hyper") {
-      hyper = true
-      continue
-    }
-
-    if (name) {
-      throw new Error(`Invalid key "${input}": multiple key names are not supported`)
-    }
-
-    name = normalizeKeyName(part)
-    displayName = lowered
-  }
-
-  if (!name) {
-    throw new Error(`Invalid key "${input}": missing key name`)
-  }
-
-  const displayParts: string[] = []
-  if (ctrl) {
-    displayParts.push("ctrl")
-  }
-
-  if (shift) {
-    displayParts.push("shift")
-  }
-
-  if (meta) {
-    displayParts.push("meta")
-  }
-
-  if (superKey) {
-    displayParts.push("super")
-  }
-
-  if (hyper) {
-    displayParts.push("hyper")
-  }
-
-  displayParts.push(displayName)
-
-  return createParsedKeyPart(
-    {
-      name,
-      ctrl,
-      shift,
-      meta,
-      super: superKey,
-      hyper: hyper || undefined,
-    },
-    displayParts.join("+"),
-  )
-}
-
 export function normalizeKeyStroke(input: KeyStroke): ParsedKeyStroke {
   return {
     name: normalizeKeyName(input.name),
@@ -421,78 +219,6 @@ export function normalizeEventKeyStroke(event: KeyEvent): ParsedKeyStroke {
     super: event.super ?? false,
     hyper: event.hyper || undefined,
   }
-}
-
-function parseStringSequence(
-  input: string,
-  tokens: ReadonlyMap<string, ParsedKeyStroke>,
-): ParsedKeyPart[] {
-  const parts: ParsedKeyPart[] = []
-  let index = 0
-
-  while (index < input.length) {
-    const char = input[index]
-    if (char === "<") {
-      const end = input.indexOf(">", index)
-      if (end === -1) {
-        throw new Error(`Invalid key sequence "${input}": unterminated token`)
-      }
-
-      const tokenName = normalizeTokenName(input.slice(index, end + 1))
-      const token = tokens.get(tokenName)
-      if (!token) {
-        index = end + 1
-        continue
-      }
-
-      parts.push(createParsedKeyPart(token, tokenName))
-      index = end + 1
-      continue
-    }
-
-    parts.push(parseStringKeyPart(char))
-    index += 1
-  }
-  return parts
-}
-
-export function parseKeyLike(key: KeyLike, extraNames?: ReadonlySet<string>): ParsedKeyStroke {
-  if (typeof key === "string" && !isSingleStrokeString(key, emptyTokens, extraNames)) {
-    throw new Error(`Invalid key "${key}": expected a single key stroke`)
-  }
-
-  const [part] = parseKeySequenceLike(key, emptyTokens, extraNames)
-  if (!part) {
-    throw new Error(`Invalid key "${String(key)}": expected a single key stroke`)
-  }
-
-  return cloneStroke(part.stroke)
-}
-
-export function parseKeySequenceLike(
-  key: KeyLike,
-  tokens: ReadonlyMap<string, ParsedKeyStroke> = emptyTokens,
-  extraNames?: ReadonlySet<string>,
-): ParsedKeyPart[] {
-  if (typeof key !== "string") {
-    return [createParsedKeyPart(normalizeKeyStroke(key))]
-  }
-
-  if (key.length === 0) {
-    throw new Error("Invalid key sequence: sequence cannot be empty")
-  }
-
-  if (isSingleStrokeString(key, tokens, extraNames)) {
-    const normalizedToken = normalizeTokenName(key)
-    const token = tokens.get(normalizedToken)
-    if (token) {
-      return [createParsedKeyPart(token, normalizedToken)]
-    }
-
-    return [parseStringKeyPart(key)]
-  }
-
-  return parseStringSequence(key, tokens)
 }
 
 export function parseCommandInput(input: string): KeymapParsedCommand {

@@ -354,7 +354,7 @@ class KeymapManagerImpl implements KeymapManager {
         delete this.data[name]
         this.dataVersion += 1
         this.invalidateRuntimeConditionKey(name)
-        this.resolvePendingSequence()
+        this.ensureValidPendingSequence()
         this.queueStateChange()
         return
       }
@@ -366,7 +366,7 @@ class KeymapManagerImpl implements KeymapManager {
       this.data[name] = value
       this.dataVersion += 1
       this.invalidateRuntimeConditionKey(name)
-      this.resolvePendingSequence()
+      this.ensureValidPendingSequence()
       this.queueStateChange()
     })
   }
@@ -380,7 +380,7 @@ class KeymapManagerImpl implements KeymapManager {
     this.assertNotDestroyed()
     this.runWithStateChangeBatch(() => {
       this.invalidateRuntimeConditionKey(name)
-      this.resolvePendingSequence()
+      this.ensureValidPendingSequence()
       this.queueStateChange()
     })
   }
@@ -392,7 +392,7 @@ class KeymapManagerImpl implements KeymapManager {
       return this.pendingSequenceCache
     }
 
-    const pending = this.resolvePendingSequence()
+    const pending = this.ensureValidPendingSequence()
     const canUseCache = !pending || this.layerCanCacheActiveKeys(pending.layer)
 
     const sequence = pending ? this.collectSequenceStrokesFromNode(pending.node) : []
@@ -412,7 +412,7 @@ class KeymapManagerImpl implements KeymapManager {
       return this.pendingSequencePartsCache
     }
 
-    const pending = this.resolvePendingSequence()
+    const pending = this.ensureValidPendingSequence()
     const canUseCache = !pending || this.layerCanCacheActiveKeys(pending.layer)
 
     const parts = pending ? this.collectSequencePartsFromNode(pending.node) : []
@@ -433,7 +433,7 @@ class KeymapManagerImpl implements KeymapManager {
   public popPendingSequence(): boolean {
     this.assertNotDestroyed()
 
-    const pending = this.resolvePendingSequence()
+    const pending = this.ensureValidPendingSequence()
     if (!pending) {
       return false
     }
@@ -479,7 +479,7 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     const focused = this.getFocusedRenderable()
-    const pending = this.resolvePendingSequence()
+    const pending = this.ensureValidPendingSequence()
     let activeLayers: RegisteredLayer[] = []
     if (!pending) {
       activeLayers = this.getActiveLayers(focused)
@@ -1190,7 +1190,7 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     this.commandMetadataVersion += 1
-    this.resolvePendingSequence()
+    this.ensureValidPendingSequence()
   }
 
   private resolveCompiledBindingCommand(binding: CompiledBinding): void {
@@ -1570,7 +1570,7 @@ class KeymapManagerImpl implements KeymapManager {
 
   private dispatchLayers(event: KeyEvent): void {
     const focused = this.getFocusedRenderable()
-    const pending = this.resolvePendingSequence()
+    const pending = this.ensureValidPendingSequence()
     const strokeKeys = this.resolveEventStrokeKeys(event)
 
     if (pending) {
@@ -2505,7 +2505,7 @@ class KeymapManagerImpl implements KeymapManager {
     }
   }
 
-  private resolvePendingSequence(): PendingSequenceState | undefined {
+  private ensureValidPendingSequence(): PendingSequenceState | undefined {
     if (!this.pendingSequence) {
       return undefined
     }

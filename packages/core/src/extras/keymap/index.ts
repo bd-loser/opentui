@@ -1,5 +1,7 @@
 export { getKeymapManager } from "./core.js"
-export { parseKeySequenceLike, stringifyKeySequence, stringifyKeyStroke } from "./utils.js"
+export { defaultBindingParser, parseKeySequenceLike } from "./default-parser.js"
+export { namedSingleStrokeKeyNames, namedSingleStrokeKeys } from "./named-keys.js"
+export { stringifyKeySequence, stringifyKeyStroke } from "./utils.js"
 export type {
   ActionCommand,
   KeyLike,
@@ -12,6 +14,7 @@ export type {
   KeymapBindingCompilerContext,
   KeymapBindingParser,
   KeymapBindingParserContext,
+  KeymapBindingParserResult,
   KeymapBindingEvent,
   KeymapBindingFieldCompiler,
   KeymapBindingFieldContext,

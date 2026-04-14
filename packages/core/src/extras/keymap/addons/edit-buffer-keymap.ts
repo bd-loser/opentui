@@ -9,7 +9,8 @@ import type {
   KeymapLayer,
   KeymapManager,
 } from "../types.js"
-import { normalizeBindingInputs, parseCommandInput, parseKeySequenceLike } from "../utils.js"
+import { parseKeySequenceLike } from "../default-parser.js"
+import { normalizeBindingInputs, parseCommandInput } from "../utils.js"
 
 const editBufferCommandNames = [
   "move-left",

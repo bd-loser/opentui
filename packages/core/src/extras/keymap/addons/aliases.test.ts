@@ -17,7 +17,7 @@ describe("aliases field addon", () => {
     renderer?.destroy()
   })
 
-  test("adds canonical bindings from layer-local aliases", () => {
+  test("adds canonical bindings from already-parsed alias strokes", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
@@ -33,7 +33,7 @@ describe("aliases field addon", () => {
     manager.registerLayer({
       scope: "global",
       aliases: { myenter: "return" },
-      bindings: [{ key: "myenter", cmd: "submit" }],
+      bindings: [{ key: { name: "myenter" }, cmd: "submit" }],
     })
 
     mockInput.pressEnter()
@@ -43,7 +43,7 @@ describe("aliases field addon", () => {
     expect(calls).toEqual(["submit"])
   })
 
-  test("supports enter-style aliases without core alias parsing", () => {
+  test("supports enter-style aliases for object key bindings", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
@@ -59,7 +59,7 @@ describe("aliases field addon", () => {
     manager.registerLayer({
       scope: "global",
       aliases: { enter: "return" },
-      bindings: [{ key: "enter", cmd: "submit" }],
+      bindings: [{ key: { name: "enter" }, cmd: "submit" }],
     })
 
     mockInput.pressEnter()
@@ -75,7 +75,7 @@ describe("aliases field addon", () => {
     manager.registerLayer({
       scope: "global",
       aliases: { enter: "return" },
-      bindings: [{ key: "enter", cmd: "submit" }],
+      bindings: [{ key: { name: "enter" }, cmd: "submit" }],
     })
 
     const names = manager.getActiveKeys().map((candidate) => candidate.stroke.name)
@@ -106,11 +106,11 @@ describe("aliases field addon", () => {
     manager.registerLayer({
       scope: "global",
       aliases: { myenter: "return" },
-      bindings: [{ key: "myenter", cmd: "aliased" }],
+      bindings: [{ key: { name: "myenter" }, cmd: "aliased" }],
     })
     manager.registerLayer({
       scope: "global",
-      bindings: [{ key: "myenter", cmd: "plain", consume: false }],
+      bindings: [{ key: { name: "myenter" }, cmd: "plain", consume: false }],
     })
 
     mockInput.pressEnter()

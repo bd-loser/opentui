@@ -47,17 +47,6 @@ export function registerAliasesField(manager: KeymapManager): () => void {
     },
   })
 
-  const offBindingParser = manager.registerBindingParser(({ layer, add }) => {
-    const aliases = getAliases(layer)
-    if (!aliases) {
-      return
-    }
-
-    for (const name of Object.keys(aliases)) {
-      add(name)
-    }
-  })
-
   const offBindingCompiler = manager.registerBindingCompiler((binding, ctx) => {
     const aliases = getAliases(ctx.layer)
     if (!aliases) {
@@ -90,7 +79,6 @@ export function registerAliasesField(manager: KeymapManager): () => void {
   })
 
   return () => {
-    offBindingParser()
     offBindingCompiler()
     offLayerField()
   }

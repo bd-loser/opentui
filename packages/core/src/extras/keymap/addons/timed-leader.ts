@@ -1,5 +1,5 @@
 import type { KeymapManager, ParsedKeyStroke } from "../types.js"
-import { parseKeyLike } from "../utils.js"
+import { parseKeyLike } from "../default-parser.js"
 import { registerLeader, type LeaderOptions } from "./leader.js"
 
 export interface TimedLeaderOptions extends LeaderOptions {

@@ -411,7 +411,7 @@ const examples: Example[] = [
   },
   {
     name: "Keymap Demo",
-    description: "Global and local keymaps with action commands, ex commands, and a ctrl+x leader extension",
+    description: "Global and local keymaps with counters, leader commands, and three switchable textareas",
     run: keymapDemo.run,
     destroy: keymapDemo.destroy,
   },

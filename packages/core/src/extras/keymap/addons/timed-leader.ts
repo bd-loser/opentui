@@ -69,7 +69,7 @@ export function registerTimedLeader(manager: KeymapManager, options: TimedLeader
   }
 
   const offLeader = registerLeader(manager, options)
-  const offPendingSequenceChange = manager.onPendingSequenceChange((sequence) => {
+  const offPendingSequenceChange = manager.hook("pendingSequence", (sequence) => {
     syncArmedState(sequence)
   })
   syncArmedState(manager.getPendingSequence())

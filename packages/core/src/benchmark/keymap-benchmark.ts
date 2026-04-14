@@ -308,7 +308,7 @@ function registerExternalBindingFields(manager: KeymapManager, flags: Record<str
 function registerStateChangeNoopListener(manager: KeymapManager): () => void {
   let events = 0
 
-  return manager.onStateChange(() => {
+  return manager.hook("state", () => {
     events += 1
   })
 }
@@ -316,10 +316,10 @@ function registerStateChangeNoopListener(manager: KeymapManager): () => void {
 function registerStateChangeReadListeners(manager: KeymapManager): () => void {
   let sink = 0
 
-  const offActiveKeys = manager.onStateChange(() => {
+  const offActiveKeys = manager.hook("state", () => {
     sink += manager.getActiveKeys().length
   })
-  const offPendingSequence = manager.onStateChange(() => {
+  const offPendingSequence = manager.hook("state", () => {
     sink += manager.getPendingSequenceParts().length
   })
 
@@ -333,10 +333,10 @@ function registerStateChangeReadListeners(manager: KeymapManager): () => void {
 function registerStateChangeMetadataListeners(manager: KeymapManager): () => void {
   let sink = 0
 
-  const offActiveKeys = manager.onStateChange(() => {
+  const offActiveKeys = manager.hook("state", () => {
     sink += manager.getActiveKeys({ includeMetadata: true }).length
   })
-  const offPendingSequence = manager.onStateChange(() => {
+  const offPendingSequence = manager.hook("state", () => {
     sink += manager.getPendingSequenceParts().length
   })
 
@@ -350,10 +350,10 @@ function registerStateChangeMetadataListeners(manager: KeymapManager): () => voi
 function registerStateChangeBindingListeners(manager: KeymapManager): () => void {
   let sink = 0
 
-  const offActiveKeys = manager.onStateChange(() => {
+  const offActiveKeys = manager.hook("state", () => {
     sink += manager.getActiveKeys({ includeBindings: true }).length
   })
-  const offPendingSequence = manager.onStateChange(() => {
+  const offPendingSequence = manager.hook("state", () => {
     sink += manager.getPendingSequenceParts().length
   })
 

@@ -580,7 +580,7 @@ function registerKeymaps(renderer: CliRenderer): void {
   )
 
   disposers.push(
-    manager.onStateChange(() => {
+    manager.hook("state", () => {
       renderStatus(renderer)
     }),
   )

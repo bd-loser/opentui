@@ -168,7 +168,7 @@ function useKeymapStateVersion(manager: KeymapManager): Accessor<number> {
   let dispose: (() => void) | undefined
 
   onMount(() => {
-    dispose = manager.onStateChange(() => {
+    dispose = manager.hook("state", () => {
       setVersion((value) => value + 1)
     })
 

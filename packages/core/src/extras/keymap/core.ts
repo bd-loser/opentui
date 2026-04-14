@@ -17,6 +17,9 @@ import type {
   KeymapBindingFieldCompiler,
   KeymapBindingInput,
   KeymapBindingParserContext,
+  KeymapHookListener,
+  KeymapHookName,
+  KeymapHooks,
   KeymapParsedBindingInput,
   KeymapCommand,
   KeymapCommandContext,
@@ -87,6 +90,67 @@ const RESERVED_LAYER_FIELDS = new Set(["target", "scope", "priority", "bindings"
 
 const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
 const EMPTY_COMPILE_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
+
+type EmitterListener<TValue> = [TValue] extends [void] ? () => void : (value: TValue) => void
+
+type EmitterArgs<TValue> = [TValue] extends [void] ? [] : [TValue]
+
+type EmitterListeners<TEvents extends Record<string, unknown>> = Partial<{
+  [TName in keyof TEvents]: readonly EmitterListener<TEvents[TName]>[]
+}>
+
+class Emitter<TEvents extends Record<string, unknown>> {
+  private listeners: EmitterListeners<TEvents> = Object.create(null) as EmitterListeners<TEvents>
+
+  constructor(private readonly onError: (name: keyof TEvents, error: unknown) => void) {}
+
+  public hook<TName extends keyof TEvents>(name: TName, listener: EmitterListener<TEvents[TName]>): () => void {
+    const current = this.listeners[name] ?? []
+    this.listeners[name] = [...current, listener] as readonly EmitterListener<TEvents[TName]>[]
+
+    return () => {
+      const current = this.listeners[name]
+      if (!current || current.length === 0) {
+        return
+      }
+
+      const next = current.filter((candidate) => candidate !== listener) as readonly EmitterListener<TEvents[TName]>[]
+      if (next.length === 0) {
+        delete this.listeners[name]
+        return
+      }
+
+      this.listeners[name] = next
+    }
+  }
+
+  public has<TName extends keyof TEvents>(name: TName): boolean {
+    return (this.listeners[name]?.length ?? 0) > 0
+  }
+
+  public clear(): void {
+    this.listeners = Object.create(null) as EmitterListeners<TEvents>
+  }
+
+  public emit<TName extends keyof TEvents>(name: TName, ...args: EmitterArgs<TEvents[TName]>): void {
+    const listeners = this.listeners[name] as readonly EmitterListener<TEvents[TName]>[] | undefined
+    if (!listeners || listeners.length === 0) {
+      return
+    }
+
+    for (const listener of listeners) {
+      try {
+        if (args.length === 0) {
+          ;(listener as () => void)()
+        } else {
+          ;(listener as (value: TEvents[TName]) => void)(args[0] as TEvents[TName])
+        }
+      } catch (error) {
+        this.onError(name, error)
+      }
+    }
+  }
+}
 
 function cloneCompileFieldValue(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -212,9 +276,7 @@ class KeymapManagerImpl implements KeymapManager {
   private strokeFallbackResolvers: KeymapStrokeFallbackResolver[] = []
   private keyHooks: RegisteredKeyHook[] = []
   private rawHooks: RegisteredRawHook[] = []
-  private stateChangeListeners: Array<() => void> = []
-  private pendingSequenceListeners: Array<(sequence: readonly ParsedKeyStroke[]) => void> = []
-  private unresolvedCommandListeners: Array<(ctx: KeymapUnresolvedCommandContext) => void> = []
+  private hooks: Emitter<KeymapHooks>
   private commands = new Map<string, RegisteredCommand>()
   private commandMetadataVersion = 0
   private layersWithConditions = 0
@@ -251,6 +313,9 @@ class KeymapManagerImpl implements KeymapManager {
   constructor(renderer: CliRenderer, options?: KeymapManagerOptions) {
     this.renderer = renderer
     this.logger = resolveKeymapLogger(options?.logger)
+    this.hooks = new Emitter<KeymapHooks>((name, error) => {
+      this.reportHookError(name, error)
+    })
     this.bindingParsers = [defaultBindingParser]
     this.keypressListener = (event) => {
       this.handleKeyEvent(event, false)
@@ -311,9 +376,7 @@ class KeymapManagerImpl implements KeymapManager {
     this.strokeFallbackResolvers = []
     this.keyHooks = []
     this.rawHooks = []
-    this.stateChangeListeners = []
-    this.pendingSequenceListeners = []
-    this.unresolvedCommandListeners = []
+    this.hooks.clear()
     this.commands.clear()
     this.commandMetadataVersion = 0
     this.layersWithConditions = 0
@@ -528,34 +591,10 @@ class KeymapManagerImpl implements KeymapManager {
     return activeKeys
   }
 
-  public onStateChange(fn: () => void): () => void {
+  public hook<TName extends KeymapHookName>(name: TName, fn: KeymapHookListener<KeymapHooks[TName]>): () => void {
     this.assertNotDestroyed()
 
-    this.stateChangeListeners = [...this.stateChangeListeners, fn]
-
-    return () => {
-      this.stateChangeListeners = this.stateChangeListeners.filter((candidate) => candidate !== fn)
-    }
-  }
-
-  public onPendingSequenceChange(fn: (sequence: readonly ParsedKeyStroke[]) => void): () => void {
-    this.assertNotDestroyed()
-
-    this.pendingSequenceListeners = [...this.pendingSequenceListeners, fn]
-
-    return () => {
-      this.pendingSequenceListeners = this.pendingSequenceListeners.filter((candidate) => candidate !== fn)
-    }
-  }
-
-  public onUnresolvedCommand(fn: (ctx: KeymapUnresolvedCommandContext) => void): () => void {
-    this.assertNotDestroyed()
-
-    this.unresolvedCommandListeners = [...this.unresolvedCommandListeners, fn]
-
-    return () => {
-      this.unresolvedCommandListeners = this.unresolvedCommandListeners.filter((candidate) => candidate !== fn)
-    }
+    return this.hooks.hook(name, fn)
   }
 
   public registerLayer(layer: KeymapLayer): () => void {
@@ -948,7 +987,7 @@ class KeymapManagerImpl implements KeymapManager {
   private queueStateChange(): void {
     this.derivedStateVersion += 1
 
-    if (this.stateChangeListeners.length === 0) {
+    if (!this.hooks.has("state")) {
       return
     }
 
@@ -968,19 +1007,25 @@ class KeymapManagerImpl implements KeymapManager {
     try {
       while (this.stateChangePending && this.stateChangeDepth === 0) {
         this.stateChangePending = false
-
-        const listeners = [...this.stateChangeListeners]
-        for (const listener of listeners) {
-          try {
-            listener()
-          } catch (error) {
-            this.logger.error("[Keymap] Error in state change hook:", error)
-          }
-        }
+        this.hooks.emit("state")
       }
     } finally {
       this.flushingStateChange = false
     }
+  }
+
+  private reportHookError(name: KeymapHookName, error: unknown): void {
+    if (name === "state") {
+      this.logger.error("[Keymap] Error in state change hook:", error)
+      return
+    }
+
+    if (name === "pendingSequence") {
+      this.logger.error("[Keymap] Error in pending sequence hook:", error)
+      return
+    }
+
+    this.logger.error("[Keymap] Error in unresolved command hook:", error)
   }
 
   private assertNotDestroyed(): void {
@@ -2383,19 +2428,12 @@ class KeymapManagerImpl implements KeymapManager {
   }
 
   private notifyPendingSequenceChange(): void {
-    if (this.pendingSequenceListeners.length === 0) {
+    if (!this.hooks.has("pendingSequence")) {
       return
     }
 
     const sequence = this.pendingSequence ? this.collectSequenceStrokesFromNode(this.pendingSequence.node) : []
-    const listeners = [...this.pendingSequenceListeners]
-    for (const listener of listeners) {
-      try {
-        listener(sequence)
-      } catch (error) {
-        this.logger.error("[Keymap] Error in pending sequence hook:", error)
-      }
-    }
+    this.hooks.emit("pendingSequence", sequence)
   }
 
   private getFocusedRenderable(): Renderable | null {
@@ -2501,7 +2539,7 @@ class KeymapManagerImpl implements KeymapManager {
       `[Keymap] Unresolved command "${command}" for binding "${sequence}" in ${binding.sourceScope} layer`,
     )
 
-    if (this.unresolvedCommandListeners.length === 0) {
+    if (!this.hooks.has("unresolvedCommand")) {
       return
     }
 
@@ -2512,14 +2550,7 @@ class KeymapManagerImpl implements KeymapManager {
       target: binding.sourceTarget,
     }
 
-    const listeners = [...this.unresolvedCommandListeners]
-    for (const listener of listeners) {
-      try {
-        listener(context)
-      } catch (error) {
-        this.logger.error("[Keymap] Error in unresolved command hook:", error)
-      }
-    }
+    this.hooks.emit("unresolvedCommand", context)
   }
 
   private warnOnce(key: string, message: string): void {

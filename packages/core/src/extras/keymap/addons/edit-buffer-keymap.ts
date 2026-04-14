@@ -1,14 +1,6 @@
 import type { EditBufferRenderable } from "../../../renderables/EditBufferRenderable.js"
 import type { TextareaAction } from "../../../renderables/Textarea.js"
-import type {
-  KeymapBindingInput,
-  KeymapBindings,
-  KeymapCommand,
-  KeymapCommandContext,
-  KeymapLayer,
-  KeymapManager,
-} from "../types.js"
-import { normalizeBindingInputs, parseCommandInput } from "../utils.js"
+import type { KeymapCommand, KeymapCommandContext, KeymapManager } from "../types.js"
 
 const editBufferCommandNames = [
   "move-left",
@@ -125,7 +117,7 @@ function createEditBufferCommands(): KeymapCommand[] {
   ]
 }
 
-function ensureEditBufferCommandsRegistered(manager: KeymapManager): () => void {
+export function registerEditBufferCommands(manager: KeymapManager): () => void {
   const existing = editBufferCommandRegistrations.get(manager)
   if (existing) {
     existing.count += 1
@@ -162,51 +154,5 @@ function ensureEditBufferCommandsRegistered(manager: KeymapManager): () => void 
 
     registration.dispose()
     editBufferCommandRegistrations.delete(manager)
-  }
-}
-
-const editBufferCommandNameSet = new Set<string>(editBufferCommandNames)
-
-function validateEditBufferCommandInput(input: string): void {
-  const command = parseCommandInput(input)
-  if (command.args.length > 0) {
-    throw new Error(`Edit-buffer command "${input}" cannot include arguments`)
-  }
-
-  if (!editBufferCommandNameSet.has(command.name)) {
-    throw new Error(`Unknown edit-buffer command "${command.name}"`)
-  }
-}
-
-function getEditBufferCommandInput(binding: KeymapBindingInput): string {
-  if (typeof binding.cmd !== "string") {
-    throw new Error("Edit-buffer key bindings require string commands")
-  }
-
-  return binding.cmd
-}
-
-function validateEditBufferKeymapBindings(bindings: KeymapBindings): void {
-  for (const binding of normalizeBindingInputs(bindings)) {
-    validateEditBufferCommandInput(getEditBufferCommandInput(binding))
-  }
-}
-
-export function registerEditBufferKeymap(manager: KeymapManager, layer: KeymapLayer): () => void {
-  validateEditBufferKeymapBindings(layer.bindings)
-
-  const offLayer = manager.registerLayer(layer)
-  let offCommands: (() => void) | undefined
-
-  try {
-    offCommands = ensureEditBufferCommandsRegistered(manager)
-  } catch (error) {
-    offLayer()
-    throw error
-  }
-
-  return () => {
-    offLayer()
-    offCommands?.()
   }
 }

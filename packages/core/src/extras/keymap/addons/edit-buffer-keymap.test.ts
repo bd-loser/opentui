@@ -76,6 +76,28 @@ describe("edit buffer keymap addon", () => {
     expect(textarea.plainText).toBe("Line 1\nLine 3")
   })
 
+  test("passes uncaptured input through to the focused textarea", () => {
+    const manager = getKeymapManager(renderer)
+
+    registerEditBufferCommands(manager)
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "left", cmd: "move-left" }],
+    })
+
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 4,
+      initialValue: "",
+    })
+    renderer.root.add(textarea)
+
+    textarea.focus()
+    mockInput.pressKey("x")
+
+    expect(textarea.plainText).toBe("x")
+  })
+
   test("does not double-run textarea actions when a global binding uses the same stroke", () => {
     const manager = getKeymapManager(renderer)
 

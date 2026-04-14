@@ -172,6 +172,25 @@ export interface KeymapLayerFieldContext {
 
 export type KeymapLayerFieldCompiler = (value: unknown, ctx: KeymapLayerFieldContext) => void
 
+export interface KeymapBindingParserContext {
+  layer: Readonly<Record<string, unknown>>
+  add(name: string): void
+}
+
+export type KeymapBindingParser = (ctx: KeymapBindingParserContext) => void
+
+export interface KeymapParsedBindingInput extends Omit<KeymapBindingInput, "key"> {
+  sequence: ParsedKeyPart[]
+}
+
+export interface KeymapBindingCompilerContext {
+  layer: Readonly<Record<string, unknown>>
+  add(binding: KeymapParsedBindingInput): void
+  skipOriginal(): void
+}
+
+export type KeymapBindingCompiler = (binding: KeymapParsedBindingInput, ctx: KeymapBindingCompilerContext) => void
+
 export interface KeymapCommandFieldContext {
   attr(name: string, value: unknown): void
 }
@@ -215,6 +234,8 @@ export interface KeymapManager {
   registerLayer(layer: KeymapLayer): () => void
   registerLayerFields(fields: Record<string, KeymapLayerFieldCompiler>): () => void
   registerToken(token: KeymapToken): () => void
+  registerBindingParser(parser: KeymapBindingParser): () => void
+  registerBindingCompiler(compiler: KeymapBindingCompiler): () => void
   registerBindingFields(fields: Record<string, KeymapBindingFieldCompiler>): () => void
   registerCommandFields(fields: Record<string, KeymapCommandFieldCompiler>): () => void
   registerCommandResolver(resolver: KeymapCommandResolver): () => void
@@ -294,6 +315,8 @@ export interface RegisteredLayer {
   hasUnkeyedMatchers: boolean
   matchCacheDirty?: boolean
   matchCache?: boolean
+  compileFields?: Readonly<Record<string, unknown>>
+  singleKeyNames?: ReadonlySet<string>
   bindingInputs: readonly KeymapBindingInput[]
   compiledBindings: readonly CompiledBinding[]
   hasUnkeyedBindings: boolean

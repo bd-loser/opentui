@@ -6,6 +6,7 @@ import { createTestRenderer, type MockInput, type TestRenderer } from "../../tes
 import {
   getKeymapManager,
   parseKeySequenceLike,
+  registerAliasesField,
   stringifyKeySequence,
   stringifyKeyStroke,
   type KeymapActiveKey,
@@ -1511,6 +1512,8 @@ describe("keymap", () => {
   test("falls back to canonical live display when the same stroke has multiple preserved labels", () => {
     const manager = getKeymapManager(renderer)
 
+    registerAliasesField(manager)
+
     manager.registerCommands([
       { name: "submit-enter", run() {} },
       { name: "submit-return", run() {} },
@@ -1518,6 +1521,7 @@ describe("keymap", () => {
 
     manager.registerLayer({
       scope: "global",
+      aliases: { enter: "return" },
       bindings: [
         { key: "enter", cmd: "submit-enter" },
         { key: "return", cmd: "submit-return" },

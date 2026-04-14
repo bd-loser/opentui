@@ -407,7 +407,7 @@ function registerKeymaps(renderer: CliRenderer): void {
         bindings: [
           { key: "j", cmd: "alpha-up" },
           { key: "k", cmd: "alpha-down" },
-          { key: "enter", cmd: ":w alpha-panel.txt", desc: "Write alpha panel" },
+          { key: "return", cmd: ":w alpha-panel.txt", desc: "Write alpha panel" },
         ],
       }),
     )
@@ -420,7 +420,7 @@ function registerKeymaps(renderer: CliRenderer): void {
         bindings: [
           { key: "j", cmd: "beta-up" },
           { key: "k", cmd: "beta-down" },
-          { key: "enter", cmd: ":w beta-panel.txt", desc: "Write beta panel" },
+          { key: "return", cmd: ":w beta-panel.txt", desc: "Write beta panel" },
         ],
       }),
     )

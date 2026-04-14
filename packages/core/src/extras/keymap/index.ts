@@ -8,10 +8,15 @@ export type {
   KeymapStringifyOptions,
   KeymapAttributes,
   KeymapBindingCommand,
+  KeymapBindingCompiler,
+  KeymapBindingCompilerContext,
+  KeymapBindingParser,
+  KeymapBindingParserContext,
   KeymapBindingEvent,
   KeymapBindingFieldCompiler,
   KeymapBindingFieldContext,
   KeymapBindingInput,
+  KeymapParsedBindingInput,
   KeymapBindingShorthand,
   KeymapBindings,
   KeymapActiveKey,
@@ -49,6 +54,7 @@ export type {
   KeyStroke,
 } from "./types.js"
 export { registerBaseLayoutFallback } from "./addons/base-layout.js"
+export { registerAliasesField } from "./addons/aliases.js"
 export { registerEnabledField } from "./addons/enabled.js"
 export { registerExCommands } from "./addons/ex-commands.js"
 export { compileEditBufferKeyBindings, registerEditBufferKeymap } from "./addons/edit-buffer-keymap.js"
@@ -56,6 +62,7 @@ export { registerLeader } from "./addons/leader.js"
 export { registerMetadataFields } from "./addons/metadata.js"
 export { registerTimedLeader } from "./addons/timed-leader.js"
 export type { KeymapEnabled, KeymapKeyedEnabled } from "./addons/enabled.js"
+export type { KeymapAliases } from "./addons/aliases.js"
 export type { ExCommand } from "./addons/ex-commands.js"
 export type { LeaderOptions } from "./addons/leader.js"
 export type { TimedLeaderOptions } from "./addons/timed-leader.js"

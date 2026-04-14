@@ -1,5 +1,4 @@
 import type { KeyEvent } from "../../lib/KeyHandler.js"
-import { defaultKeyAliases } from "../../lib/keymapping.js"
 import type {
   KeymapAttributes,
   KeymapBindingCommand,
@@ -20,10 +19,9 @@ import type {
 const namedSingleStrokeKeys = new Set<string>([
   "space",
   "tab",
+  "linefeed",
   "return",
-  "enter",
   "escape",
-  "esc",
   "backspace",
   "delete",
   "insert",
@@ -35,8 +33,35 @@ const namedSingleStrokeKeys = new Set<string>([
   "right",
   "up",
   "down",
-  ...Object.keys(defaultKeyAliases),
-  ...Object.values(defaultKeyAliases),
+  "kp0",
+  "kp1",
+  "kp2",
+  "kp3",
+  "kp4",
+  "kp5",
+  "kp6",
+  "kp7",
+  "kp8",
+  "kp9",
+  "kpdecimal",
+  "kpdivide",
+  "kpmultiply",
+  "kpminus",
+  "kpplus",
+  "kpenter",
+  "kpequal",
+  "kpseparator",
+  "kpleft",
+  "kpright",
+  "kpup",
+  "kpdown",
+  "kppageup",
+  "kppagedown",
+  "kphome",
+  "kpend",
+  "kpinsert",
+  "kpdelete",
+  "clear",
 ])
 
 for (let index = 1; index <= 24; index += 1) {
@@ -60,12 +85,6 @@ export function normalizeKeyName(name: string): string {
   }
 
   next = next.toLowerCase()
-
-  const seen = new Set<string>()
-  while (defaultKeyAliases[next] && !seen.has(next)) {
-    seen.add(next)
-    next = defaultKeyAliases[next]!
-  }
 
   return next
 }
@@ -243,7 +262,7 @@ export function stringifyKeySequence(
   return input.map((part) => stringifyKeyStroke(part, options)).join("")
 }
 
-function isNamedSingleStrokeKey(input: string): boolean {
+function isNamedSingleStrokeKey(input: string, extraNames?: ReadonlySet<string>): boolean {
   const normalized = input.trim().toLowerCase()
   if (!normalized) {
     return false
@@ -253,10 +272,18 @@ function isNamedSingleStrokeKey(input: string): boolean {
     return true
   }
 
+  if (extraNames?.has(normalized)) {
+    return true
+  }
+
   return /^f\d{1,2}$/i.test(normalized)
 }
 
-function isSingleStrokeString(input: string, tokens: ReadonlyMap<string, ParsedKeyStroke>): boolean {
+function isSingleStrokeString(
+  input: string,
+  tokens: ReadonlyMap<string, ParsedKeyStroke>,
+  extraNames?: ReadonlySet<string>,
+): boolean {
   if (input === " " || input === "+") {
     return true
   }
@@ -273,7 +300,7 @@ function isSingleStrokeString(input: string, tokens: ReadonlyMap<string, ParsedK
     return true
   }
 
-  return isNamedSingleStrokeKey(input)
+  return isNamedSingleStrokeKey(input, extraNames)
 }
 
 function parseStringKeyPart(input: string): ParsedKeyPart {
@@ -396,7 +423,10 @@ export function normalizeEventKeyStroke(event: KeyEvent): ParsedKeyStroke {
   }
 }
 
-function parseStringSequence(input: string, tokens: ReadonlyMap<string, ParsedKeyStroke>): ParsedKeyPart[] {
+function parseStringSequence(
+  input: string,
+  tokens: ReadonlyMap<string, ParsedKeyStroke>,
+): ParsedKeyPart[] {
   const parts: ParsedKeyPart[] = []
   let index = 0
 
@@ -426,12 +456,12 @@ function parseStringSequence(input: string, tokens: ReadonlyMap<string, ParsedKe
   return parts
 }
 
-export function parseKeyLike(key: KeyLike): ParsedKeyStroke {
-  if (typeof key === "string" && !isSingleStrokeString(key, emptyTokens)) {
+export function parseKeyLike(key: KeyLike, extraNames?: ReadonlySet<string>): ParsedKeyStroke {
+  if (typeof key === "string" && !isSingleStrokeString(key, emptyTokens, extraNames)) {
     throw new Error(`Invalid key "${key}": expected a single key stroke`)
   }
 
-  const [part] = parseKeySequenceLike(key)
+  const [part] = parseKeySequenceLike(key, emptyTokens, extraNames)
   if (!part) {
     throw new Error(`Invalid key "${String(key)}": expected a single key stroke`)
   }
@@ -442,6 +472,7 @@ export function parseKeyLike(key: KeyLike): ParsedKeyStroke {
 export function parseKeySequenceLike(
   key: KeyLike,
   tokens: ReadonlyMap<string, ParsedKeyStroke> = emptyTokens,
+  extraNames?: ReadonlySet<string>,
 ): ParsedKeyPart[] {
   if (typeof key !== "string") {
     return [createParsedKeyPart(normalizeKeyStroke(key))]
@@ -451,7 +482,7 @@ export function parseKeySequenceLike(
     throw new Error("Invalid key sequence: sequence cannot be empty")
   }
 
-  if (isSingleStrokeString(key, tokens)) {
+  if (isSingleStrokeString(key, tokens, extraNames)) {
     const normalizedToken = normalizeTokenName(key)
     const token = tokens.get(normalizedToken)
     if (token) {

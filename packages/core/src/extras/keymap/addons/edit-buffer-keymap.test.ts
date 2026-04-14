@@ -265,7 +265,7 @@ describe("edit buffer keymap addon", () => {
   test("compileEditBufferKeyBindings normalizes simple config", () => {
     const bindings = compileEditBufferKeyBindings([
       { key: "ctrl+d", cmd: "delete-line" },
-      { key: "enter", cmd: "submit" },
+      { key: "return", cmd: "submit" },
       { key: { name: "left", shift: true }, cmd: "select-left" },
     ])
 
@@ -279,7 +279,7 @@ describe("edit buffer keymap addon", () => {
   test("compileEditBufferKeyBindings supports object shorthand", () => {
     const bindings = compileEditBufferKeyBindings({
       "ctrl+d": "delete-line",
-      enter: "submit",
+      return: "submit",
     })
 
     expect(bindings).toEqual([

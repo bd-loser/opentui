@@ -206,6 +206,102 @@ describe("keymap", () => {
     expect(manager.getPendingSequenceParts()).toEqual([])
   })
 
+  test("supports custom binding parsers ahead of the default parser", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.prependBindingParser(({ input, index, tokens }) => {
+      if (input[index] !== "[") {
+        return undefined
+      }
+
+      const end = input.indexOf("]", index)
+      if (end === -1) {
+        throw new Error(`Invalid key sequence "${input}": unterminated token`)
+      }
+
+      const tokenName = input.slice(index, end + 1).trim().toLowerCase()
+      const token = tokens.get(tokenName)
+      if (!token) {
+        return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
+      }
+
+      return {
+        parts: [{ stroke: token, display: tokenName }],
+        nextIndex: end + 1,
+        usedTokens: [tokenName],
+      }
+    })
+
+    manager.registerToken({ token: "[leader]", key: { name: "x", ctrl: true } })
+    manager.registerCommands([{ name: "leader-action", run() { calls.push("leader") } }])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "[leader]d", cmd: "leader-action" }],
+    })
+
+    mockInput.pressKey("x", { ctrl: true })
+    mockInput.pressKey("d")
+
+    expect(calls).toEqual(["leader"])
+  })
+
+  test("clearBindingParsers allows replacing the default parser", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.clearBindingParsers()
+    manager.appendBindingParser(({ input, index, tokens }) => {
+      if (input[index] !== "[") {
+        return undefined
+      }
+
+      const end = input.indexOf("]", index)
+      if (end === -1) {
+        throw new Error(`Invalid key sequence "${input}": unterminated token`)
+      }
+
+      const tokenName = input.slice(index, end + 1).trim().toLowerCase()
+      const token = tokens.get(tokenName)
+      if (!token) {
+        return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
+      }
+
+      return {
+        parts: [{ stroke: token, display: tokenName }],
+        nextIndex: end + 1,
+        usedTokens: [tokenName],
+      }
+    })
+
+    manager.registerToken({ token: "[leader]", key: { name: "x", ctrl: true } })
+    manager.registerCommands([{ name: "leader-only", run() { calls.push("leader") } }])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "[leader]", cmd: "leader-only" }],
+    })
+
+    mockInput.pressKey("x", { ctrl: true })
+
+    expect(calls).toEqual(["leader"])
+  })
+
+  test("throws when a binding parser does not advance the input", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.clearBindingParsers()
+    manager.appendBindingParser(() => {
+      return { parts: [], nextIndex: 0 }
+    })
+
+    expect(() => {
+      manager.registerLayer({
+        scope: "global",
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+    }).toThrow('Keymap binding parser must advance the input for "x" at index 0')
+  })
+
   test("supports release dispatch through registered fallback strokes", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
@@ -1523,7 +1619,7 @@ describe("keymap", () => {
       scope: "global",
       aliases: { enter: "return" },
       bindings: [
-        { key: "enter", cmd: "submit-enter" },
+        { key: { name: "enter" }, cmd: "submit-enter" },
         { key: "return", cmd: "submit-return" },
       ],
     })

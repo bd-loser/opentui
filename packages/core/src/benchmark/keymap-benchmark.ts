@@ -3,7 +3,14 @@ import path from "node:path"
 
 import { BoxRenderable } from "../renderables/Box.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../testing.js"
-import { getKeymapManager, registerEnabledField, registerMetadataFields, type KeymapManager } from "../extras/keymap/index.js"
+import {
+  defaultBindingParser,
+  getKeymapManager,
+  registerEnabledField,
+  registerMetadataFields,
+  type KeymapBindingParser,
+  type KeymapManager,
+} from "../extras/keymap/index.js"
 
 const DEFAULT_ITERATIONS = 20_000
 const DEFAULT_WARMUP = 2_000
@@ -180,6 +187,33 @@ function createFocusableBox(renderer: TestRenderer, id: string): BoxRenderable {
 
 function createKey(index: number): string {
   return KEY_POOL[index % KEY_POOL.length] ?? "x"
+}
+
+const noopBindingParser: KeymapBindingParser = () => undefined
+
+function createBracketTokenParser(): KeymapBindingParser {
+  return ({ input, index, tokens }) => {
+    if (input[index] !== "[") {
+      return undefined
+    }
+
+    const end = input.indexOf("]", index)
+    if (end === -1) {
+      throw new Error(`Invalid key sequence "${input}": unterminated token`)
+    }
+
+    const tokenName = input.slice(index, end + 1).trim().toLowerCase()
+    const token = tokens.get(tokenName)
+    if (!token) {
+      return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
+    }
+
+    return {
+      parts: [{ stroke: token, display: tokenName }],
+      nextIndex: end + 1,
+      usedTokens: [tokenName],
+    }
+  }
 }
 
 function registerGlobalLayers(manager: KeymapManager, count: number, cmd = "noop"): void {
@@ -485,6 +519,80 @@ function createFocusTree(resources: ScenarioResources, depth: number): BoxRender
 }
 
 const scenarios: BenchmarkScenario[] = [
+  {
+    name: "compile_layer_default_parser",
+    description: "Repeated layer registration using the default binding parser",
+    async setup() {
+      const resources = await createScenarioResources()
+      resources.manager.registerToken({ token: "<leader>", key: { name: "x", ctrl: true } })
+
+      return {
+        resources,
+        runIteration() {
+          const off = resources.manager.registerLayer({
+            scope: "global",
+            bindings: [{ key: "g<leader>d", cmd: "noop" }],
+          })
+          off()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "compile_layer_many_noop_parsers",
+    description: "Repeated layer registration with many no-op parsers ahead of default",
+    async setup() {
+      const resources = await createScenarioResources()
+      resources.manager.registerToken({ token: "<leader>", key: { name: "x", ctrl: true } })
+
+      for (let index = 0; index < 32; index += 1) {
+        resources.manager.prependBindingParser(noopBindingParser)
+      }
+
+      return {
+        resources,
+        runIteration() {
+          const off = resources.manager.registerLayer({
+            scope: "global",
+            bindings: [{ key: "g<leader>d", cmd: "noop" }],
+          })
+          off()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "compile_layer_replaced_parser_chain",
+    description: "Repeated layer registration after replacing the parser chain",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.manager.clearBindingParsers()
+      resources.manager.appendBindingParser(createBracketTokenParser())
+      resources.manager.appendBindingParser(defaultBindingParser)
+      resources.manager.registerToken({ token: "[leader]", key: { name: "x", ctrl: true } })
+
+      return {
+        resources,
+        runIteration() {
+          const off = resources.manager.registerLayer({
+            scope: "global",
+            bindings: [{ key: "g[leader]d", cmd: "noop" }],
+          })
+          off()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
   {
     name: "active_keys_global_layers",
     description: "Repeated getActiveKeys with many global layers",

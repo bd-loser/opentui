@@ -173,11 +173,20 @@ export interface KeymapLayerFieldContext {
 export type KeymapLayerFieldCompiler = (value: unknown, ctx: KeymapLayerFieldContext) => void
 
 export interface KeymapBindingParserContext {
+  input: string
+  index: number
   layer: Readonly<Record<string, unknown>>
-  add(name: string): void
+  tokens: ReadonlyMap<string, ParsedKeyStroke>
 }
 
-export type KeymapBindingParser = (ctx: KeymapBindingParserContext) => void
+export interface KeymapBindingParserResult {
+  parts: ParsedKeyPart[]
+  nextIndex: number
+  usedTokens?: readonly string[]
+  unknownTokens?: readonly string[]
+}
+
+export type KeymapBindingParser = (ctx: KeymapBindingParserContext) => KeymapBindingParserResult | undefined
 
 export interface KeymapParsedBindingInput extends Omit<KeymapBindingInput, "key"> {
   sequence: ParsedKeyPart[]
@@ -234,7 +243,9 @@ export interface KeymapManager {
   registerLayer(layer: KeymapLayer): () => void
   registerLayerFields(fields: Record<string, KeymapLayerFieldCompiler>): () => void
   registerToken(token: KeymapToken): () => void
-  registerBindingParser(parser: KeymapBindingParser): () => void
+  prependBindingParser(parser: KeymapBindingParser): () => void
+  appendBindingParser(parser: KeymapBindingParser): () => void
+  clearBindingParsers(): void
   registerBindingCompiler(compiler: KeymapBindingCompiler): () => void
   registerBindingFields(fields: Record<string, KeymapBindingFieldCompiler>): () => void
   registerCommandFields(fields: Record<string, KeymapCommandFieldCompiler>): () => void
@@ -293,6 +304,7 @@ export interface RegisteredCommand {
 export interface CompiledBindingsResult {
   root: SequenceNode
   bindings: readonly CompiledBinding[]
+  hasTokenBindings: boolean
 }
 
 export interface SequenceNode {
@@ -316,7 +328,6 @@ export interface RegisteredLayer {
   matchCacheDirty?: boolean
   matchCache?: boolean
   compileFields?: Readonly<Record<string, unknown>>
-  singleKeyNames?: ReadonlySet<string>
   bindingInputs: readonly KeymapBindingInput[]
   compiledBindings: readonly CompiledBinding[]
   hasUnkeyedBindings: boolean

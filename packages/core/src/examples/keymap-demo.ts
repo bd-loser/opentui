@@ -13,6 +13,7 @@ import {
 } from "../index.js"
 import {
   getKeymapManager,
+  registerEnabledField,
   registerEditBufferCommands,
   registerExCommands,
   registerMetadataFields,
@@ -424,6 +425,7 @@ function registerKeymaps(renderer: CliRenderer): void {
   const manager = getKeymapManager(renderer)
   keymapManager = manager
 
+  disposers.push(registerEnabledField(manager))
   disposers.push(registerMetadataFields(manager))
   disposers.push(registerEditBufferCommands(manager))
 
@@ -554,6 +556,15 @@ function registerKeymaps(renderer: CliRenderer): void {
         { key: "<leader>", group: "Leader" },
         { key: "<leader>s", cmd: ":w session.log", desc: "Write session log", group: "Leader" },
         { key: "<leader>h", cmd: "toggle-help", desc: "Toggle help", group: "Leader" },
+      ],
+    }),
+  )
+
+  disposers.push(
+    manager.registerLayer({
+      scope: "global",
+      enabled: () => manager.renderer.currentFocusedEditor !== null,
+      bindings: [
         { key: "left", cmd: "move-left", desc: "Cursor left" },
         { key: "right", cmd: "move-right", desc: "Cursor right" },
         { key: "up", cmd: "move-up", desc: "Cursor up" },

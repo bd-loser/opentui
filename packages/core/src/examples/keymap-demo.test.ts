@@ -33,6 +33,7 @@ describe("keymap demo example", () => {
     expect(frame).toContain("2. Draft")
     expect(frame).toContain("3. Scratch")
     expect(frame).toContain("Which Key")
+    expect(frame).not.toContain("Delete backward")
 
     testSetup.mockInput.pressEnter()
     await testSetup.renderOnce()
@@ -62,6 +63,7 @@ describe("keymap demo example", () => {
     testSetup.mockInput.pressTab()
     await testSetup.renderOnce()
     expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-editor-1")
+    expect(testSetup.captureCharFrame()).toContain("Delete backward")
 
     testSetup.mockInput.pressTab()
     await testSetup.renderOnce()

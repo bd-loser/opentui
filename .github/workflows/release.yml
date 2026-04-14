@@ -123,10 +123,115 @@ jobs:
       version: ${{ needs.prepare.outputs.fullTag }}
       isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
 
+  sign-windows-artifacts:
+    name: Sign Windows Artifacts
+    needs: [prepare, build-native, build-examples]
+    runs-on: windows-2025
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
+      AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE }}
+      AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+
+    steps:
+      - name: Download native binaries artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: native-binaries-${{ needs.prepare.outputs.fullTag }}
+          path: artifacts/native
+
+      - name: Download example executables artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: example-executables-${{ needs.prepare.outputs.fullTag }}
+          path: artifacts/examples
+
+      - name: Extract Windows artifacts
+        shell: pwsh
+        run: |
+          $artifactRoot = Join-Path $env:GITHUB_WORKSPACE "artifacts"
+          $signedRoot = Join-Path $env:GITHUB_WORKSPACE "signed-windows"
+          New-Item -ItemType Directory -Force -Path $signedRoot | Out-Null
+
+          Expand-Archive -Path (Join-Path $artifactRoot "native\native-windows-x64.zip") -DestinationPath $signedRoot -Force
+          Expand-Archive -Path (Join-Path $artifactRoot "native\native-windows-arm64.zip") -DestinationPath $signedRoot -Force
+          Expand-Archive -Path (Join-Path $artifactRoot "examples\examples-windows-x64.zip") -DestinationPath $signedRoot -Force
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign Windows artifacts
+        uses: azure/artifact-signing-action@v1
+        with:
+          endpoint: ${{ env.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ env.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ env.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE }}
+          files: |
+            ${{ github.workspace }}\signed-windows\native-windows-x64\opentui.dll
+            ${{ github.workspace }}\signed-windows\native-windows-arm64\opentui.dll
+            ${{ github.workspace }}\signed-windows\examples-windows-x64\opentui-examples.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: false
+          exclude-azure-powershell-credential: true
+          exclude-azure-developer-cli-credential: true
+          exclude-interactive-browser-credential: true
+
+      - name: Verify Windows signatures
+        shell: pwsh
+        run: |
+          $files = @(
+            "${{ github.workspace }}\signed-windows\native-windows-x64\opentui.dll",
+            "${{ github.workspace }}\signed-windows\native-windows-arm64\opentui.dll",
+            "${{ github.workspace }}\signed-windows\examples-windows-x64\opentui-examples.exe"
+          )
+
+          foreach ($file in $files) {
+            $sig = Get-AuthenticodeSignature $file
+            if ($sig.Status -ne "Valid") {
+              throw "Invalid signature for ${file}: $($sig.Status)"
+            }
+          }
+
+      - name: Repack signed Windows artifacts
+        working-directory: signed-windows
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "native-windows-x64" -DestinationPath "native-windows-x64.zip" -Force
+          Compress-Archive -Path "native-windows-arm64" -DestinationPath "native-windows-arm64.zip" -Force
+          Compress-Archive -Path "examples-windows-x64" -DestinationPath "examples-windows-x64.zip" -Force
+
+      - name: Upload signed Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-windows-artifacts-${{ needs.prepare.outputs.fullTag }}
+          path: |
+            signed-windows/native-windows-x64.zip
+            signed-windows/native-windows-arm64.zip
+            signed-windows/examples-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
+
   # Create GitHub release with assets
   github-release:
     name: Create GitHub Release
-    needs: [prepare, build-native, build-examples, npm-publish]
+    needs: [prepare, build-native, build-examples, npm-publish, sign-windows-artifacts]
     runs-on: ubuntu-latest
 
     steps:
@@ -151,6 +256,12 @@ jobs:
           # Verify artifact directories exist
           test -d "artifacts/native-binaries-$FULL_TAG" || (echo "❌ native-binaries artifact directory not found!" && exit 1)
           test -d "artifacts/example-executables-$FULL_TAG" || (echo "❌ example-executables artifact directory not found!" && exit 1)
+          test -d "artifacts/signed-windows-artifacts-$FULL_TAG" || (echo "❌ signed-windows-artifacts directory not found!" && exit 1)
+
+          echo "Overlaying signed Windows artifacts..."
+          cp "artifacts/signed-windows-artifacts-$FULL_TAG/native-windows-x64.zip" "artifacts/native-binaries-$FULL_TAG/native-windows-x64.zip"
+          cp "artifacts/signed-windows-artifacts-$FULL_TAG/native-windows-arm64.zip" "artifacts/native-binaries-$FULL_TAG/native-windows-arm64.zip"
+          cp "artifacts/signed-windows-artifacts-$FULL_TAG/examples-windows-x64.zip" "artifacts/example-executables-$FULL_TAG/examples-windows-x64.zip"
 
           # Copy native binaries (unzip and rezip with versioned names)
           echo "Processing native binaries..."

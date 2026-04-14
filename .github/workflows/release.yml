@@ -115,17 +115,18 @@ jobs:
   # Publish to npm
   npm-publish:
     name: NPM Publish
-    needs: [prepare, validate-version, build-native]
+    needs: [prepare, validate-version, build-native, sign-windows-artifacts]
     uses: ./.github/workflows/npm-latest-release.yml
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     with:
       version: ${{ needs.prepare.outputs.fullTag }}
       isDryRun: ${{ needs.prepare.outputs.isDryRun == 'true' }}
+      packagesArtifactName: signed-npm-packages-${{ needs.prepare.outputs.fullTag }}
 
   sign-windows-artifacts:
-    name: Sign Windows Artifacts
-    needs: [prepare, build-native, build-examples]
+    name: Sign Windows DLL Artifacts
+    needs: [prepare, build-native]
     runs-on: windows-2025
     permissions:
       id-token: write
@@ -145,22 +146,24 @@ jobs:
           name: native-binaries-${{ needs.prepare.outputs.fullTag }}
           path: artifacts/native
 
-      - name: Download example executables artifact
+      - name: Download npm packages artifact
         uses: actions/download-artifact@v4
         with:
-          name: example-executables-${{ needs.prepare.outputs.fullTag }}
-          path: artifacts/examples
+          name: npm-packages-${{ needs.prepare.outputs.fullTag }}
+          path: artifacts/npm
 
-      - name: Extract Windows artifacts
+      - name: Extract Windows DLL artifacts
         shell: pwsh
         run: |
           $artifactRoot = Join-Path $env:GITHUB_WORKSPACE "artifacts"
-          $signedRoot = Join-Path $env:GITHUB_WORKSPACE "signed-windows"
-          New-Item -ItemType Directory -Force -Path $signedRoot | Out-Null
+          $signedNativeRoot = Join-Path $env:GITHUB_WORKSPACE "signed-native"
+          $signedNpmRoot = Join-Path $env:GITHUB_WORKSPACE "signed-npm-packages"
+          New-Item -ItemType Directory -Force -Path $signedNativeRoot | Out-Null
+          New-Item -ItemType Directory -Force -Path $signedNpmRoot | Out-Null
 
-          Expand-Archive -Path (Join-Path $artifactRoot "native\native-windows-x64.zip") -DestinationPath $signedRoot -Force
-          Expand-Archive -Path (Join-Path $artifactRoot "native\native-windows-arm64.zip") -DestinationPath $signedRoot -Force
-          Expand-Archive -Path (Join-Path $artifactRoot "examples\examples-windows-x64.zip") -DestinationPath $signedRoot -Force
+          Expand-Archive -Path (Join-Path $artifactRoot "native\native-windows-x64.zip") -DestinationPath $signedNativeRoot -Force
+          Expand-Archive -Path (Join-Path $artifactRoot "native\native-windows-arm64.zip") -DestinationPath $signedNativeRoot -Force
+          Expand-Archive -Path (Join-Path $artifactRoot "npm\npm-packages.zip") -DestinationPath $signedNpmRoot -Force
 
       - name: Azure login
         uses: azure/login@v2
@@ -169,16 +172,17 @@ jobs:
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Sign Windows artifacts
+      - name: Sign Windows DLLs
         uses: azure/artifact-signing-action@v1
         with:
           endpoint: ${{ env.AZURE_TRUSTED_SIGNING_ENDPOINT }}
           signing-account-name: ${{ env.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
           certificate-profile-name: ${{ env.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE }}
           files: |
-            ${{ github.workspace }}\signed-windows\native-windows-x64\opentui.dll
-            ${{ github.workspace }}\signed-windows\native-windows-arm64\opentui.dll
-            ${{ github.workspace }}\signed-windows\examples-windows-x64\opentui-examples.exe
+            ${{ github.workspace }}\signed-native\native-windows-x64\opentui.dll
+            ${{ github.workspace }}\signed-native\native-windows-arm64\opentui.dll
+            ${{ github.workspace }}\signed-npm-packages\npm-packages\core-native-packages\core-win32-x64\opentui.dll
+            ${{ github.workspace }}\signed-npm-packages\npm-packages\core-native-packages\core-win32-arm64\opentui.dll
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
@@ -193,13 +197,14 @@ jobs:
           exclude-azure-developer-cli-credential: true
           exclude-interactive-browser-credential: true
 
-      - name: Verify Windows signatures
+      - name: Verify Windows DLL signatures
         shell: pwsh
         run: |
           $files = @(
-            "${{ github.workspace }}\signed-windows\native-windows-x64\opentui.dll",
-            "${{ github.workspace }}\signed-windows\native-windows-arm64\opentui.dll",
-            "${{ github.workspace }}\signed-windows\examples-windows-x64\opentui-examples.exe"
+            "${{ github.workspace }}\signed-native\native-windows-x64\opentui.dll",
+            "${{ github.workspace }}\signed-native\native-windows-arm64\opentui.dll",
+            "${{ github.workspace }}\signed-npm-packages\npm-packages\core-native-packages\core-win32-x64\opentui.dll",
+            "${{ github.workspace }}\signed-npm-packages\npm-packages\core-native-packages\core-win32-arm64\opentui.dll"
           )
 
           foreach ($file in $files) {
@@ -209,22 +214,34 @@ jobs:
             }
           }
 
-      - name: Repack signed Windows artifacts
-        working-directory: signed-windows
+      - name: Repack signed native Windows artifacts
+        working-directory: signed-native
         shell: pwsh
         run: |
           Compress-Archive -Path "native-windows-x64" -DestinationPath "native-windows-x64.zip" -Force
           Compress-Archive -Path "native-windows-arm64" -DestinationPath "native-windows-arm64.zip" -Force
-          Compress-Archive -Path "examples-windows-x64" -DestinationPath "examples-windows-x64.zip" -Force
 
-      - name: Upload signed Windows artifacts
+      - name: Repack signed npm packages artifact
+        working-directory: signed-npm-packages
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "npm-packages" -DestinationPath "npm-packages.zip" -Force
+
+      - name: Upload signed native Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: signed-windows-artifacts-${{ needs.prepare.outputs.fullTag }}
+          name: signed-native-binaries-${{ needs.prepare.outputs.fullTag }}
           path: |
-            signed-windows/native-windows-x64.zip
-            signed-windows/native-windows-arm64.zip
-            signed-windows/examples-windows-x64.zip
+            signed-native/native-windows-x64.zip
+            signed-native/native-windows-arm64.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload signed npm packages artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-npm-packages-${{ needs.prepare.outputs.fullTag }}
+          path: signed-npm-packages/npm-packages.zip
           if-no-files-found: error
           retention-days: 30
 
@@ -256,12 +273,11 @@ jobs:
           # Verify artifact directories exist
           test -d "artifacts/native-binaries-$FULL_TAG" || (echo "❌ native-binaries artifact directory not found!" && exit 1)
           test -d "artifacts/example-executables-$FULL_TAG" || (echo "❌ example-executables artifact directory not found!" && exit 1)
-          test -d "artifacts/signed-windows-artifacts-$FULL_TAG" || (echo "❌ signed-windows-artifacts directory not found!" && exit 1)
+          test -d "artifacts/signed-native-binaries-$FULL_TAG" || (echo "❌ signed-native-binaries directory not found!" && exit 1)
 
           echo "Overlaying signed Windows artifacts..."
-          cp "artifacts/signed-windows-artifacts-$FULL_TAG/native-windows-x64.zip" "artifacts/native-binaries-$FULL_TAG/native-windows-x64.zip"
-          cp "artifacts/signed-windows-artifacts-$FULL_TAG/native-windows-arm64.zip" "artifacts/native-binaries-$FULL_TAG/native-windows-arm64.zip"
-          cp "artifacts/signed-windows-artifacts-$FULL_TAG/examples-windows-x64.zip" "artifacts/example-executables-$FULL_TAG/examples-windows-x64.zip"
+          cp "artifacts/signed-native-binaries-$FULL_TAG/native-windows-x64.zip" "artifacts/native-binaries-$FULL_TAG/native-windows-x64.zip"
+          cp "artifacts/signed-native-binaries-$FULL_TAG/native-windows-arm64.zip" "artifacts/native-binaries-$FULL_TAG/native-windows-arm64.zip"
 
           # Copy native binaries (unzip and rezip with versioned names)
           echo "Processing native binaries..."

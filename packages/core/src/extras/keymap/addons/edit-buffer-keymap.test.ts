@@ -4,7 +4,7 @@ import { InputRenderable, InputRenderableEvents } from "../../../renderables/Inp
 import { TextareaRenderable } from "../../../renderables/Textarea.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../../../testing.js"
 import { getKeymapManager } from "../index.js"
-import { registerEditBufferKeymap } from "./edit-buffer-keymap.js"
+import { registerEditBufferCommands } from "./edit-buffer-keymap.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
@@ -20,8 +20,23 @@ describe("edit buffer keymap addon", () => {
     renderer?.destroy()
   })
 
-  test("registerEditBufferKeymap can drive textarea actions", () => {
+  test("registerEditBufferCommands resolves plain layers that were registered first", () => {
     const manager = getKeymapManager(renderer)
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
+    })
+
+    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
+      false,
+    )
+
+    registerEditBufferCommands(manager)
+
+    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
+      true,
+    )
 
     const textarea = new TextareaRenderable(renderer, {
       width: 20,
@@ -29,11 +44,6 @@ describe("edit buffer keymap addon", () => {
       initialValue: "Line 1\nLine 2\nLine 3",
     })
     renderer.root.add(textarea)
-
-    registerEditBufferKeymap(manager, {
-      scope: "global",
-      bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
-    })
 
     textarea.focus()
     textarea.gotoLine(1)
@@ -42,8 +52,14 @@ describe("edit buffer keymap addon", () => {
     expect(textarea.plainText).toBe("Line 1\nLine 3")
   })
 
-  test("registerEditBufferKeymap supports sequence bindings", () => {
+  test("supports sequence bindings through plain layers", () => {
     const manager = getKeymapManager(renderer)
+
+    registerEditBufferCommands(manager)
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
 
     const textarea = new TextareaRenderable(renderer, {
       width: 20,
@@ -51,11 +67,6 @@ describe("edit buffer keymap addon", () => {
       initialValue: "Line 1\nLine 2\nLine 3",
     })
     renderer.root.add(textarea)
-
-    registerEditBufferKeymap(manager, {
-      scope: "global",
-      bindings: [{ key: "dd", cmd: "delete-line" }],
-    })
 
     textarea.focus()
     textarea.gotoLine(1)
@@ -65,10 +76,16 @@ describe("edit buffer keymap addon", () => {
     expect(textarea.plainText).toBe("Line 1\nLine 3")
   })
 
-  test("registerEditBufferKeymap supports submit on input renderables", () => {
+  test("supports submit on input renderables through plain layers", () => {
     const manager = getKeymapManager(renderer)
-
     let submitted = 0
+
+    registerEditBufferCommands(manager)
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "submit" }],
+    })
+
     const input = new InputRenderable(renderer, {
       width: 20,
       value: "Hello",
@@ -78,11 +95,6 @@ describe("edit buffer keymap addon", () => {
     })
     renderer.root.add(input)
 
-    registerEditBufferKeymap(manager, {
-      scope: "global",
-      bindings: [{ key: "x", cmd: "submit" }],
-    })
-
     input.focus()
     mockInput.pressKey("x")
 
@@ -90,18 +102,17 @@ describe("edit buffer keymap addon", () => {
     expect(input.value).toBe("Hello")
   })
 
-  test("registerEditBufferKeymap keeps shared commands alive across layers", () => {
+  test("keeps shared commands alive across registrations", () => {
     const manager = getKeymapManager(renderer)
-    const offFirst = registerEditBufferKeymap(manager, {
-      scope: "global",
-      bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
-    })
-    const offSecond = registerEditBufferKeymap(manager, {
+    let submitted = 0
+
+    const offFirst = registerEditBufferCommands(manager)
+    const offSecond = registerEditBufferCommands(manager)
+    manager.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
     })
 
-    let submitted = 0
     const input = new InputRenderable(renderer, {
       width: 20,
       value: "Hello",
@@ -132,12 +143,13 @@ describe("edit buffer keymap addon", () => {
         },
       },
     ])
-
     manager.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "fallback" }],
     })
-    registerEditBufferKeymap(manager, {
+
+    registerEditBufferCommands(manager)
+    manager.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
     })
@@ -170,10 +182,12 @@ describe("edit buffer keymap addon", () => {
   test("disposes single registrations cleanly and supports re-registration", () => {
     const manager = getKeymapManager(renderer)
 
-    const off = registerEditBufferKeymap(manager, {
+    manager.registerLayer({
       scope: "global",
       bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
     })
+
+    const off = registerEditBufferCommands(manager)
 
     expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
       true,
@@ -186,10 +200,7 @@ describe("edit buffer keymap addon", () => {
       false,
     )
 
-    registerEditBufferKeymap(manager, {
-      scope: "global",
-      bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
-    })
+    registerEditBufferCommands(manager)
 
     expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
       true,
@@ -205,11 +216,17 @@ describe("edit buffer keymap addon", () => {
     textarea.focus()
     textarea.gotoLine(1)
     mockInput.pressKey("d", { ctrl: true })
+
     expect(textarea.plainText).toBe("Line 1\nLine 3")
   })
 
-  test("keeps shared commands registered until the last layer is removed regardless of dispose order", () => {
+  test("keeps shared commands registered until the last registration is removed regardless of dispose order", () => {
     const manager = getKeymapManager(renderer)
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
+    })
 
     const textarea = new TextareaRenderable(renderer, {
       width: 20,
@@ -218,47 +235,39 @@ describe("edit buffer keymap addon", () => {
     })
     renderer.root.add(textarea)
 
-    const offFirst = registerEditBufferKeymap(manager, {
-      scope: "global",
-      bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
-    })
-    const offSecond = registerEditBufferKeymap(manager, {
-      scope: "global",
-      bindings: [{ key: "x", cmd: "submit" }],
-    })
+    const offFirst = registerEditBufferCommands(manager)
+    const offSecond = registerEditBufferCommands(manager)
 
     textarea.focus()
     textarea.gotoLine(1)
 
     offSecond()
     mockInput.pressKey("d", { ctrl: true })
+
     expect(textarea.plainText).toBe("Line 1\nLine 3")
 
     offFirst()
     offSecond()
   })
 
-  test("rolls back the layer if command registration fails", () => {
+  test("throws on command name collisions without partially registering the batch", () => {
     const manager = getKeymapManager(renderer)
-    const calls: string[] = []
 
     manager.registerCommands([
       {
         name: "delete-line",
-        run() {
-          calls.push("shadow")
-        },
+        run() {},
       },
     ])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "submit" }],
+    })
 
     expect(() => {
-      registerEditBufferKeymap(manager, {
-        scope: "global",
-        bindings: [{ key: "x", cmd: "delete-line" }],
-      })
+      registerEditBufferCommands(manager)
     }).toThrow('Keymap command "delete-line" is already registered')
 
-    expect(calls).toEqual([])
     expect(manager.getActiveKeys().find((candidate) => candidate.stroke.name === "x")).toBeUndefined()
   })
 })

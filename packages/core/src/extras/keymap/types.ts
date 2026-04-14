@@ -218,6 +218,13 @@ export interface KeymapRawInputContext {
   stop: () => void
 }
 
+export interface KeymapUnresolvedCommandContext {
+  command: string
+  binding: KeymapParsedBindingInput
+  scope: KeymapScope
+  target?: Renderable
+}
+
 export interface KeymapLogger {
   warn?(...args: unknown[]): void
   error?(...args: unknown[]): void
@@ -240,6 +247,7 @@ export interface KeymapManager {
   getActiveKeys(options?: KeymapActiveKeyOptions): readonly KeymapActiveKey[]
   onStateChange(fn: () => void): () => void
   onPendingSequenceChange(fn: (sequence: readonly ParsedKeyStroke[]) => void): () => void
+  onUnresolvedCommand(fn: (ctx: KeymapUnresolvedCommandContext) => void): () => void
   registerLayer(layer: KeymapLayer): () => void
   registerLayerFields(fields: Record<string, KeymapLayerFieldCompiler>): () => void
   registerToken(token: KeymapToken): () => void
@@ -275,6 +283,11 @@ export interface CompiledBinding extends KeymapActiveBinding, RuntimeMatchable {
   run?: KeymapCommandHandler
   activeBindingCacheVersion?: number
   activeBindingCache?: KeymapActiveBinding
+  sourceBinding: KeymapParsedBindingInput
+  sourceScope: KeymapScope
+  sourceTarget?: Renderable
+  sourceLayerOrder: number
+  sourceBindingIndex: number
 }
 
 export interface ActiveKeySelection {

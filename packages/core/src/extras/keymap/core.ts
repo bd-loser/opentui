@@ -39,6 +39,7 @@ import type {
   KeymapStrokeFallbackResolver,
   KeyStroke,
   KeymapToken,
+  KeymapUnresolvedCommandContext,
   ParsedKeyPart,
   ParsedKeyStroke,
   PendingSequenceState,
@@ -68,6 +69,7 @@ import {
   snapshotBindingInputs,
   sortByPriorityAndOrder,
   sortLayersWithinScope,
+  stringifyKeySequence,
   stringifyKeyStroke,
 } from "./utils.js"
 import { defaultBindingParser, parseKeyLike } from "./default-parser.js"
@@ -212,6 +214,7 @@ class KeymapManagerImpl implements KeymapManager {
   private rawHooks: RegisteredRawHook[] = []
   private stateChangeListeners: Array<() => void> = []
   private pendingSequenceListeners: Array<(sequence: readonly ParsedKeyStroke[]) => void> = []
+  private unresolvedCommandListeners: Array<(ctx: KeymapUnresolvedCommandContext) => void> = []
   private commands = new Map<string, RegisteredCommand>()
   private commandMetadataVersion = 0
   private layersWithConditions = 0
@@ -310,6 +313,7 @@ class KeymapManagerImpl implements KeymapManager {
     this.rawHooks = []
     this.stateChangeListeners = []
     this.pendingSequenceListeners = []
+    this.unresolvedCommandListeners = []
     this.commands.clear()
     this.commandMetadataVersion = 0
     this.layersWithConditions = 0
@@ -544,21 +548,32 @@ class KeymapManagerImpl implements KeymapManager {
     }
   }
 
+  public onUnresolvedCommand(fn: (ctx: KeymapUnresolvedCommandContext) => void): () => void {
+    this.assertNotDestroyed()
+
+    this.unresolvedCommandListeners = [...this.unresolvedCommandListeners, fn]
+
+    return () => {
+      this.unresolvedCommandListeners = this.unresolvedCommandListeners.filter((candidate) => candidate !== fn)
+    }
+  }
+
   public registerLayer(layer: KeymapLayer): () => void {
     this.assertNotDestroyed()
 
     return this.runWithStateChangeBatch(() => {
       const scope = this.normalizeScope(layer)
       const bindingInputs = snapshotBindingInputs(layer.bindings)
+      const order = this.order++
       const { requires, matchers, conditionKeys, hasUnkeyedMatchers, compileFields } = this.compileLayerRuntimeState(layer)
-      const compiledBindings = this.compileBindings(bindingInputs, this.tokens, compileFields)
+      const compiledBindings = this.compileBindings(bindingInputs, this.tokens, scope, layer.target, order, compileFields)
       const target = layer.target
       if (target && target.isDestroyed) {
         throw new Error("Cannot register a keymap layer for a destroyed renderable")
       }
 
       const registeredLayer: RegisteredLayer = {
-        order: this.order++,
+        order,
         target,
         scope,
         priority: layer.priority ?? 0,
@@ -1149,7 +1164,10 @@ class KeymapManagerImpl implements KeymapManager {
           continue
         }
 
-        nextCompilations.set(layer, this.compileBindings(layer.bindingInputs, nextTokens, layer.compileFields))
+        nextCompilations.set(
+          layer,
+          this.compileBindings(layer.bindingInputs, nextTokens, layer.scope, layer.target, layer.order, layer.compileFields),
+        )
       }
 
       this.tokens = nextTokens
@@ -1201,6 +1219,10 @@ class KeymapManagerImpl implements KeymapManager {
 
     const resolved = this.resolveBindingCommand(binding.command)
     if (!resolved) {
+      if (typeof binding.command === "string") {
+        this.handleUnresolvedCommand(binding.command, binding)
+      }
+
       return
     }
 
@@ -1269,13 +1291,16 @@ class KeymapManagerImpl implements KeymapManager {
   private compileBindings(
     bindings: readonly KeymapBindingInput[],
     tokens: ReadonlyMap<string, ParsedKeyStroke>,
+    sourceScope: KeymapScope,
+    sourceTarget: Renderable | undefined,
+    sourceLayerOrder: number,
     compileFields?: Readonly<Record<string, unknown>>,
   ): CompiledBindingsResult {
     const root = createSequenceNode(null, null)
     const compiledBindings: CompiledBinding[] = []
     let hasTokenBindings = false
 
-    for (const binding of bindings) {
+    for (const [bindingIndex, binding] of bindings.entries()) {
       const parsed = parseBindingSequenceWithParsers(binding.key, this.bindingParsers, {
         tokens,
         layer: compileFields,
@@ -1345,6 +1370,11 @@ class KeymapManagerImpl implements KeymapManager {
           sequence,
           command,
           event,
+          sourceBinding: cloneParsedBindingInput(compiledInput),
+          sourceScope,
+          sourceTarget,
+          sourceLayerOrder,
+          sourceBindingIndex: bindingIndex,
           requires: Object.entries(mergedRequires),
           matchers,
           conditionKeys: [...conditionKeys],
@@ -2460,6 +2490,36 @@ class KeymapManagerImpl implements KeymapManager {
     this.readonlyData = Object.freeze({ ...this.data })
     this.readonlyDataVersion = this.dataVersion
     return this.readonlyData
+  }
+
+  private handleUnresolvedCommand(command: string, binding: CompiledBinding): void {
+    const sequence = stringifyKeySequence(binding.sourceBinding.sequence, { preferDisplay: true })
+    const warningKey = `unresolved:${binding.sourceLayerOrder}:${binding.sourceBindingIndex}:${command}:${sequence}`
+
+    this.warnOnce(
+      warningKey,
+      `[Keymap] Unresolved command "${command}" for binding "${sequence}" in ${binding.sourceScope} layer`,
+    )
+
+    if (this.unresolvedCommandListeners.length === 0) {
+      return
+    }
+
+    const context: KeymapUnresolvedCommandContext = {
+      command,
+      binding: cloneParsedBindingInput(binding.sourceBinding),
+      scope: binding.sourceScope,
+      target: binding.sourceTarget,
+    }
+
+    const listeners = [...this.unresolvedCommandListeners]
+    for (const listener of listeners) {
+      try {
+        listener(context)
+      } catch (error) {
+        this.logger.error("[Keymap] Error in unresolved command hook:", error)
+      }
+    }
   }
 
   private warnOnce(key: string, message: string): void {

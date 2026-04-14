@@ -47,6 +47,7 @@ export type {
   KeymapManagerOptions,
   KeymapParsedCommand,
   KeymapRawInputContext,
+  KeymapUnresolvedCommandContext,
   KeymapResolvedBindingCommand,
   KeymapScope,
   KeymapStrokeFallbackResolver,

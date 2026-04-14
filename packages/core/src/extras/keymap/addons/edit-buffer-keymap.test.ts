@@ -76,6 +76,30 @@ describe("edit buffer keymap addon", () => {
     expect(textarea.plainText).toBe("Line 1\nLine 3")
   })
 
+  test("does not double-run textarea actions when a global binding uses the same stroke", () => {
+    const manager = getKeymapManager(renderer)
+
+    registerEditBufferCommands(manager)
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "backspace", cmd: "backspace" }],
+    })
+
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 4,
+      initialValue: "abc",
+    })
+    renderer.root.add(textarea)
+
+    textarea.focus()
+    textarea.cursorOffset = 3
+    mockInput.pressBackspace()
+
+    expect(textarea.plainText).toBe("ab")
+    expect(textarea.cursorOffset).toBe(2)
+  })
+
   test("supports submit on input renderables through plain layers", () => {
     const manager = getKeymapManager(renderer)
     let submitted = 0

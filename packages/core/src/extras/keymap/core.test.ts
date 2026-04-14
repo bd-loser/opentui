@@ -1511,6 +1511,75 @@ describe("keymap", () => {
     expect(manager.getPendingSequence()).toEqual([])
   })
 
+  test("clears global pending sequences when focus changes to another renderable", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    const first = createFocusableBox("global-pending-first")
+    const second = createFocusableBox("global-pending-second")
+    renderer.root.add(first)
+    renderer.root.add(second)
+
+    manager.registerCommands([
+      {
+        name: "global-delete",
+        run() {
+          calls.push("global")
+        },
+      },
+      {
+        name: "local-delete",
+        run() {
+          calls.push("local")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "dd", cmd: "global-delete" }],
+    })
+    manager.registerLayer({
+      target: second,
+      bindings: [{ key: "d", cmd: "local-delete" }],
+    })
+
+    first.focus()
+    mockInput.pressKey("d")
+
+    expect(manager.getPendingSequence()).toHaveLength(1)
+
+    second.focus()
+
+    expect(manager.getPendingSequence()).toEqual([])
+
+    mockInput.pressKey("d")
+
+    expect(calls).toEqual(["local"])
+  })
+
+  test("clears global pending sequences when direct blur clears focus", () => {
+    const manager = getKeymapManager(renderer)
+    const target = createFocusableBox("global-pending-blur")
+
+    renderer.root.add(target)
+
+    manager.registerCommands([{ name: "global-delete", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "dd", cmd: "global-delete" }],
+    })
+
+    target.focus()
+    mockInput.pressKey("d")
+
+    expect(manager.getPendingSequence()).toHaveLength(1)
+
+    target.blur()
+
+    expect(manager.getPendingSequence()).toEqual([])
+  })
+
   test("can unsubscribe state change listeners", () => {
     const manager = getKeymapManager(renderer)
     const target = createFocusableBox("unsubscribe-target")

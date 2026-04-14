@@ -479,7 +479,7 @@ class KeymapManagerImpl implements KeymapManager {
     }
 
     const focused = this.getFocusedRenderable()
-    const pending = this.resolvePendingSequence(focused)
+    const pending = this.resolvePendingSequence()
     let activeLayers: RegisteredLayer[] = []
     if (!pending) {
       activeLayers = this.getActiveLayers(focused)
@@ -907,9 +907,12 @@ class KeymapManagerImpl implements KeymapManager {
     })
   }
 
-  private handleFocusedRenderableChange(focused: Renderable | null): void {
+  private handleFocusedRenderableChange(_focused: Renderable | null): void {
     this.runWithStateChangeBatch(() => {
-      this.resolvePendingSequence(focused)
+      // Any focus change breaks a pending sequence. Prefix dispatch is captured
+      // against the state that started it, and changing focus can change the
+      // active bindings and their precedence.
+      this.setPendingSequence(null)
       this.queueStateChange()
     })
   }
@@ -1567,7 +1570,7 @@ class KeymapManagerImpl implements KeymapManager {
 
   private dispatchLayers(event: KeyEvent): void {
     const focused = this.getFocusedRenderable()
-    const pending = this.resolvePendingSequence(focused)
+    const pending = this.resolvePendingSequence()
     const strokeKeys = this.resolveEventStrokeKeys(event)
 
     if (pending) {
@@ -2502,10 +2505,12 @@ class KeymapManagerImpl implements KeymapManager {
     }
   }
 
-  private resolvePendingSequence(focused = this.getFocusedRenderable()): PendingSequenceState | undefined {
+  private resolvePendingSequence(): PendingSequenceState | undefined {
     if (!this.pendingSequence) {
       return undefined
     }
+
+    const focused = this.getFocusedRenderable()
 
     if (
       !this.layers.has(this.pendingSequence.layer) ||

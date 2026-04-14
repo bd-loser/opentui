@@ -181,8 +181,6 @@ jobs:
           files: |
             ${{ github.workspace }}\signed-native\native-windows-x64\opentui.dll
             ${{ github.workspace }}\signed-native\native-windows-arm64\opentui.dll
-            ${{ github.workspace }}\signed-npm-packages\npm-packages\core-native-packages\core-win32-x64\opentui.dll
-            ${{ github.workspace }}\signed-npm-packages\npm-packages\core-native-packages\core-win32-arm64\opentui.dll
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
@@ -202,15 +200,38 @@ jobs:
         run: |
           $files = @(
             "${{ github.workspace }}\signed-native\native-windows-x64\opentui.dll",
-            "${{ github.workspace }}\signed-native\native-windows-arm64\opentui.dll",
-            "${{ github.workspace }}\signed-npm-packages\npm-packages\core-native-packages\core-win32-x64\opentui.dll",
-            "${{ github.workspace }}\signed-npm-packages\npm-packages\core-native-packages\core-win32-arm64\opentui.dll"
+            "${{ github.workspace }}\signed-native\native-windows-arm64\opentui.dll"
           )
 
           foreach ($file in $files) {
             $sig = Get-AuthenticodeSignature $file
             if ($sig.Status -ne "Valid") {
               throw "Invalid signature for ${file}: $($sig.Status)"
+            }
+          }
+
+      - name: Copy signed DLLs into npm packages
+        shell: pwsh
+        run: |
+          $pairs = @(
+            @{
+              Source = "${{ github.workspace }}\signed-native\native-windows-x64\opentui.dll"
+              Destination = "${{ github.workspace }}\signed-npm-packages\npm-packages\core-native-packages\core-win32-x64\opentui.dll"
+            },
+            @{
+              Source = "${{ github.workspace }}\signed-native\native-windows-arm64\opentui.dll"
+              Destination = "${{ github.workspace }}\signed-npm-packages\npm-packages\core-native-packages\core-win32-arm64\opentui.dll"
+            }
+          )
+
+          foreach ($pair in $pairs) {
+            Copy-Item -Path $pair.Source -Destination $pair.Destination -Force
+
+            $sourceHash = (Get-FileHash $pair.Source -Algorithm SHA256).Hash
+            $destinationHash = (Get-FileHash $pair.Destination -Algorithm SHA256).Hash
+
+            if ($sourceHash -ne $destinationHash) {
+              throw "Signed DLL copy mismatch: $($pair.Source) -> $($pair.Destination)"
             }
           }
 

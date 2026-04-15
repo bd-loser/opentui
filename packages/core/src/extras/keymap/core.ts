@@ -52,10 +52,8 @@ import type {
   ParsedKeyStroke,
   PendingSequenceState,
   RegisteredCommand,
-  RegisteredKeyHook,
   RegisteredLayer,
   RegisteredLayerBucket,
-  RegisteredRawHook,
   ResolvedKeymapLogger,
   RuntimeMatchable,
   RuntimeMatcher,
@@ -77,7 +75,7 @@ import {
   stringifyKeyStroke,
 } from "./utils.js"
 import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./default-parser.js"
-import { Emitter } from "./emitter.js"
+import { Emitter, OrderedEmitter } from "./emitter.js"
 
 const keymapManagersByRenderer = new WeakMap<CliRenderer, KeymapManagerImpl>()
 
@@ -281,8 +279,8 @@ class KeymapManagerImpl implements KeymapManager {
   private runtimeKeyDependents = new Map<string, Set<RuntimeMatchable>>()
   private commandResolvers: KeymapCommandResolver[] = []
   private eventMatchResolvers: KeymapEventMatchResolver[] = []
-  private keyHooks: RegisteredKeyHook[] = []
-  private rawHooks: RegisteredRawHook[] = []
+  private keyHooks = new OrderedEmitter<(ctx: KeymapKeyInputContext) => void, { priority: number; release: boolean }>()
+  private rawHooks = new OrderedEmitter<(ctx: KeymapRawInputContext) => void, { priority: number }>()
   private hooks: Emitter<KeymapHooks>
   private commands = new Map<string, RegisteredCommand>()
   private commandMetadataVersion = 0
@@ -385,8 +383,8 @@ class KeymapManagerImpl implements KeymapManager {
     this.runtimeKeyDependents.clear()
     this.commandResolvers = []
     this.eventMatchResolvers = []
-    this.keyHooks = []
-    this.rawHooks = []
+    this.keyHooks.clear()
+    this.rawHooks.clear()
     this.hooks.clear()
     this.commands.clear()
     this.commandMetadataVersion = 0
@@ -905,34 +903,18 @@ class KeymapManagerImpl implements KeymapManager {
   ): () => void {
     this.assertNotDestroyed()
 
-    const hook: RegisteredKeyHook = {
-      order: this.order++,
+    return this.keyHooks.hook(fn, {
       priority: options?.priority ?? 0,
       release: options?.release ?? false,
-      fn,
-    }
-
-    this.keyHooks = sortByPriorityAndOrder([...this.keyHooks, hook])
-
-    return () => {
-      this.keyHooks = this.keyHooks.filter((candidate) => candidate !== hook)
-    }
+    })
   }
 
   public onRawInput(fn: (ctx: KeymapRawInputContext) => void, options?: { priority?: number }): () => void {
     this.assertNotDestroyed()
 
-    const hook: RegisteredRawHook = {
-      order: this.order++,
+    return this.rawHooks.hook(fn, {
       priority: options?.priority ?? 0,
-      fn,
-    }
-
-    this.rawHooks = sortByPriorityAndOrder([...this.rawHooks, hook])
-
-    return () => {
-      this.rawHooks = this.rawHooks.filter((candidate) => candidate !== hook)
-    }
+    })
   }
 
   public registerCommands(commands: KeymapCommand[]): () => void {
@@ -1638,12 +1620,12 @@ class KeymapManagerImpl implements KeymapManager {
       return false
     }
 
-    if (this.rawHooks.length === 0) {
+    const hooks = this.rawHooks.snapshot()
+    if (hooks.length === 0) {
       return false
     }
 
     let stopped = false
-    const hooks = [...this.rawHooks]
     const context: KeymapRawInputContext = {
       sequence,
       stop() {
@@ -1653,7 +1635,7 @@ class KeymapManagerImpl implements KeymapManager {
 
     for (const hook of hooks) {
       try {
-        hook.fn(context)
+        hook.listener(context)
       } catch (error) {
         this.logger.error("[Keymap] Error in raw input hook:", error)
       }
@@ -1671,7 +1653,7 @@ class KeymapManagerImpl implements KeymapManager {
       return
     }
 
-    const hooks = this.keyHooks
+    const hooks = this.keyHooks.snapshot()
     const context: KeymapKeyInputContext = {
       event,
       setData: (name, value) => {
@@ -1700,7 +1682,7 @@ class KeymapManagerImpl implements KeymapManager {
       }
 
       try {
-        hook.fn(context)
+        hook.listener(context)
       } catch (error) {
         this.logger.error("[Keymap] Error in key input hook:", error)
       }

@@ -389,19 +389,6 @@ export interface RegisteredLayerBucket {
   focusWithinLayers: RegisteredLayer[]
 }
 
-export interface RegisteredKeyHook {
-  order: number
-  priority: number
-  release: boolean
-  fn: (ctx: KeymapKeyInputContext) => void
-}
-
-export interface RegisteredRawHook {
-  order: number
-  priority: number
-  fn: (ctx: KeymapRawInputContext) => void
-}
-
 export interface PendingSequenceState {
   layer: RegisteredLayer
   node: SequenceNode

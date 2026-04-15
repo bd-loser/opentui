@@ -2,6 +2,13 @@ type EmitterListener<TValue> = [TValue] extends [void] ? () => void : (value: TV
 
 type EmitterArgs<TValue> = [TValue] extends [void] ? [] : [TValue]
 
+export type OrderedEmitterListener<TListener, TOptions extends { priority: number }> = Readonly<
+  TOptions & {
+    listener: TListener
+    order: number
+  }
+>
+
 type EmitterListeners<TEvents extends Record<string, unknown>> = Partial<{
   [TName in keyof TEvents]: readonly EmitterListener<TEvents[TName]>[]
 }>
@@ -56,5 +63,49 @@ export class Emitter<TEvents extends Record<string, unknown>> {
         this.onError(name, error)
       }
     }
+  }
+}
+
+export class OrderedEmitter<TListener, TOptions extends { priority: number }> {
+  private listeners: readonly OrderedEmitterListener<TListener, TOptions>[] = []
+  private order = 0
+
+  public hook(listener: TListener, options: TOptions): () => void {
+    const registered = { ...options, listener, order: this.order++ } as OrderedEmitterListener<TListener, TOptions>
+
+    this.listeners = [...this.listeners, registered].sort((left, right) => {
+      const priorityDiff = right.priority - left.priority
+      if (priorityDiff !== 0) {
+        return priorityDiff
+      }
+
+      return left.order - right.order
+    })
+
+    return () => {
+      const current = this.listeners
+      if (current.length === 0) {
+        return
+      }
+
+      const next = current.filter((candidate) => candidate !== registered)
+      if (next.length === current.length) {
+        return
+      }
+
+      this.listeners = next
+    }
+  }
+
+  public has(): boolean {
+    return this.listeners.length > 0
+  }
+
+  public snapshot(): readonly OrderedEmitterListener<TListener, TOptions>[] {
+    return this.listeners
+  }
+
+  public clear(): void {
+    this.listeners = []
   }
 }

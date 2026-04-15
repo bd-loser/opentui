@@ -1,8 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import type { TextareaRenderable } from "@opentui/core"
+import { getKeymapManager } from "@opentui/core/extras"
 import { testRender } from "../index.js"
 import KeymapDemo from "../examples/components/keymap-demo.js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
+
+function getEditor(id: string): TextareaRenderable {
+  return testSetup.renderer.root.findDescendantById(id) as TextareaRenderable
+}
+
+function getFrameWidths(): number[] {
+  return ["notes", "draft", "scratch"].map((id) => {
+    return testSetup.renderer.root.findDescendantById(`keymap-demo-editor-frame-${id}`)!.width
+  })
+}
 
 describe("solid keymap example", () => {
   beforeEach(async () => {
@@ -17,42 +29,94 @@ describe("solid keymap example", () => {
     }
   })
 
-  test("renders and responds to global and local keymaps", async () => {
-    testSetup = await testRender(() => <KeymapDemo />, { width: 60, height: 20 })
+  test("renders the core-aligned keymap demo and supports textarea focus cycling", async () => {
+    testSetup = await testRender(() => <KeymapDemo />, { width: 70, height: 24 })
     await testSetup.renderOnce()
 
     let frame = testSetup.captureCharFrame()
+    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-alpha")
+    expect(frame).toContain("Alpha")
+    expect(frame).toContain("Beta")
+    expect(frame).toContain("1. Notes")
+    expect(frame).toContain("2. Draft")
+    expect(frame).toContain("3. Scratch")
     expect(frame).toContain("Which Key")
 
     testSetup.mockInput.pressEnter()
     await testSetup.renderOnce()
     frame = testSetup.captureCharFrame()
-    expect(frame).toContain("Ex command:")
-    expect(frame).toContain("wrote")
-    expect(frame).toContain("alpha-panel.txt")
+    expect(frame).toContain("Wrote alpha-panel.txt")
 
     testSetup.mockInput.pressKey("x", { ctrl: true })
     await testSetup.renderOnce()
     frame = testSetup.captureCharFrame()
-    expect(frame).toContain("Prefix: <leader>")
-    expect(frame).toContain("s -> Write session log")
+    expect(frame).toContain("Which Key")
+    expect(frame).toContain("<leader>")
+    expect(frame).toContain("Write session log")
 
     testSetup.mockInput.pressKey("s")
     await testSetup.renderOnce()
     frame = testSetup.captureCharFrame()
-    expect(frame).toContain("session.log")
-    expect(frame).toContain("wrote")
+    expect(frame).toContain("Wrote session.log")
 
     testSetup.mockInput.pressTab()
     await testSetup.renderOnce()
+    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-beta")
+
     testSetup.mockInput.pressKey("j")
     await testSetup.renderOnce()
     expect(testSetup.captureCharFrame()).toContain("Count: 5")
 
-    testSetup.mockInput.pressKey("r", { ctrl: true })
+    testSetup.mockInput.pressTab()
     await testSetup.renderOnce()
-    frame = testSetup.captureCharFrame()
-    expect(frame).toContain("Count: 0")
-    expect(frame).toContain("reset through :reset")
+    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-editor-1")
+    expect(
+      getKeymapManager(testSetup.renderer)
+        .getActiveKeys({ includeMetadata: true })
+        .find((candidate) => candidate.stroke.name === "d")?.bindingAttrs,
+    ).toEqual({ group: "Delete" })
+
+    testSetup.mockInput.pressTab()
+    await testSetup.renderOnce()
+    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-editor-2")
+
+    const draftEditor = getEditor("keymap-demo-editor-2")
+    testSetup.mockInput.pressKey("d")
+    testSetup.mockInput.pressKey("d")
+    await testSetup.renderOnce()
+    expect(draftEditor.plainText).not.toContain("Draft editor")
+
+    testSetup.mockInput.pressTab()
+    await testSetup.renderOnce()
+    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-editor-3")
+
+    const scratchEditor = getEditor("keymap-demo-editor-3")
+    testSetup.mockInput.pressKey("x")
+    await testSetup.renderOnce()
+    expect(scratchEditor.plainText).toBe("x")
+  })
+
+  test("keeps editor columns stable while typing in a wrapped textarea", async () => {
+    testSetup = await testRender(() => <KeymapDemo />, { width: 70, height: 24 })
+    await testSetup.renderOnce()
+
+    testSetup.mockInput.pressTab()
+    await testSetup.renderOnce()
+    testSetup.mockInput.pressTab()
+    await testSetup.renderOnce()
+
+    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-editor-1")
+
+    const initialWidths = getFrameWidths()
+    const initialLength = getEditor("keymap-demo-editor-1").plainText.length
+    expect(Math.max(...initialWidths) - Math.min(...initialWidths)).toBeLessThanOrEqual(1)
+
+    for (let i = 0; i < 24; i += 1) {
+      testSetup.mockInput.pressKey("x")
+      await testSetup.renderOnce()
+    }
+
+    expect(getEditor("keymap-demo-editor-1").plainText.length).toBe(initialLength + 24)
+    expect(getFrameWidths()).toEqual(initialWidths)
   })
 })

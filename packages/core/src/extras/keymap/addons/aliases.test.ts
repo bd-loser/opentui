@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../../../testing.js"
-import { getKeymapManager } from "../index.js"
+import { getKeymapManager, stringifyKeyStroke } from "../index.js"
 import { registerAliasesField } from "./aliases.js"
 
 let renderer: TestRenderer
@@ -117,5 +117,29 @@ describe("aliases field addon", () => {
 
     expect(calls).toEqual(["aliased"])
     expect(manager.getPendingSequenceParts()).toEqual([])
+  })
+
+  test("keeps the first preserved alias label when canonical and alias labels collide", () => {
+    const manager = getKeymapManager(renderer)
+
+    registerAliasesField(manager)
+
+    manager.registerCommands([
+      { name: "submit-enter", run() {} },
+      { name: "submit-return", run() {} },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      aliases: { enter: "return" },
+      bindings: [
+        { key: { name: "enter" }, cmd: "submit-enter" },
+        { key: "return", cmd: "submit-return" },
+      ],
+    })
+
+    const activeEnter = manager.getActiveKeys().find((candidate) => candidate.stroke.name === "return")
+    expect(activeEnter?.display).toBe("enter")
+    expect(stringifyKeyStroke(activeEnter!, { preferDisplay: true })).toBe("enter")
   })
 })

@@ -5,9 +5,8 @@ import { BoxRenderable } from "../../renderables/Box.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../../testing.js"
 import {
   defaultBindingParser,
+  defaultBindingSyntax,
   getKeymapManager,
-  parseKeySequenceLike,
-  registerAliasesField,
   stringifyKeySequence,
   stringifyKeyStroke,
   type KeymapActiveKey,
@@ -51,20 +50,12 @@ function getActiveKeyDisplay(
 }
 
 function getMatchKeyForEventName(event: KeyEvent, name: string): string {
-  const [part] = parseKeySequenceLike({
-    name,
-    ctrl: event.ctrl,
-    shift: event.shift,
-    meta: event.meta,
-    super: event.super ?? false,
-    hyper: event.hyper || undefined,
-  })
-
-  if (!part) {
-    throw new Error(`Expected parsed key part for "${name}"`)
+  const normalizedName = name === " " ? "space" : name.trim().toLowerCase()
+  if (!normalizedName) {
+    throw new Error("Expected non-empty key name")
   }
 
-  return part.matchKey
+  return `${normalizedName}:${event.ctrl ? 1 : 0}:${event.shift ? 1 : 0}:${event.meta ? 1 : 0}:${event.super ? 1 : 0}:${event.hyper ? 1 : 0}`
 }
 
 describe("keymap", () => {
@@ -307,24 +298,7 @@ describe("keymap", () => {
       manager.registerToken({ token: "<leader>", key: { name: "x", ctrl: true } })
     }).toThrow("No keymap binding syntax is registered")
 
-    manager.setBindingSyntax({
-      normalizeTokenName(token) {
-        const normalized = token.trim().toLowerCase()
-        if (!normalized) {
-          throw new Error("Invalid keymap token: token cannot be empty")
-        }
-
-        return normalized
-      },
-      parseObjectKey(key) {
-        const [part] = parseKeySequenceLike(key)
-        if (!part) {
-          throw new Error(`Invalid key "${String(key)}": expected a single key stroke`)
-        }
-
-        return part
-      },
-    })
+    manager.setBindingSyntax(defaultBindingSyntax)
 
     manager.registerCommands([
       {
@@ -396,12 +370,7 @@ describe("keymap", () => {
         return normalized
       },
       parseObjectKey(key) {
-        const [part] = parseKeySequenceLike(key)
-        if (!part) {
-          throw new Error(`Invalid key "${String(key)}": expected a single key stroke`)
-        }
-
-        return part
+        return defaultBindingSyntax.parseObjectKey(key)
       },
     })
 
@@ -2104,30 +2073,6 @@ describe("keymap", () => {
 
     expect(getActiveKeyDisplay(manager, "<leader>")?.command).toBeUndefined()
     expect(stringifyKeyStroke(getActiveKeyDisplay(manager, "<leader>")!, { preferDisplay: true })).toBe("<leader>")
-  })
-
-  test("falls back to canonical live display when the same stroke has multiple preserved labels", () => {
-    const manager = getKeymapManager(renderer)
-
-    registerAliasesField(manager)
-
-    manager.registerCommands([
-      { name: "submit-enter", run() {} },
-      { name: "submit-return", run() {} },
-    ])
-
-    manager.registerLayer({
-      scope: "global",
-      aliases: { enter: "return" },
-      bindings: [
-        { key: { name: "enter" }, cmd: "submit-enter" },
-        { key: "return", cmd: "submit-return" },
-      ],
-    })
-
-    const activeEnter = manager.getActiveKeys().find((candidate) => candidate.stroke.name === "return")
-    expect(activeEnter?.display).toBe("enter")
-    expect(stringifyKeyStroke(activeEnter!, { preferDisplay: true })).toBe("enter")
   })
 
   test("supports branching sequences", () => {

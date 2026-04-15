@@ -4,6 +4,7 @@ import { KeyEvent } from "../../lib/KeyHandler.js"
 import { BoxRenderable } from "../../renderables/Box.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../../testing.js"
 import {
+  defaultBindingParser,
   getKeymapManager,
   parseKeySequenceLike,
   registerAliasesField,
@@ -287,6 +288,142 @@ describe("keymap", () => {
     mockInput.pressKey("x", { ctrl: true })
 
     expect(calls).toEqual(["leader"])
+  })
+
+  test("clearBindingSyntax disables object keys and token registration until syntax is restored", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.clearBindingSyntax()
+
+    expect(() => {
+      manager.registerLayer({
+        scope: "global",
+        bindings: [{ key: { name: "x" }, cmd: "object" }],
+      })
+    }).toThrow("No keymap binding syntax is registered")
+
+    expect(() => {
+      manager.registerToken({ token: "<leader>", key: { name: "x", ctrl: true } })
+    }).toThrow("No keymap binding syntax is registered")
+
+    manager.setBindingSyntax({
+      normalizeTokenName(token) {
+        const normalized = token.trim().toLowerCase()
+        if (!normalized) {
+          throw new Error("Invalid keymap token: token cannot be empty")
+        }
+
+        return normalized
+      },
+      parseObjectKey(key) {
+        const [part] = parseKeySequenceLike(key)
+        if (!part) {
+          throw new Error(`Invalid key "${String(key)}": expected a single key stroke`)
+        }
+
+        return part
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "object",
+        run() {
+          calls.push("object")
+        },
+      },
+      {
+        name: "token",
+        run() {
+          calls.push("token")
+        },
+      },
+    ])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: { name: "x" }, cmd: "object" }],
+    })
+    manager.registerToken({ token: "<leader>", key: { name: "x", ctrl: true } })
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "<leader>", cmd: "token" }],
+    })
+
+    mockInput.pressKey("x")
+    mockInput.pressKey("x", { ctrl: true })
+
+    expect(calls).toEqual(["object", "token"])
+  })
+
+  test("supports case-sensitive token names when parser and binding syntax are case-sensitive", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.clearBindingParsers()
+    manager.appendBindingParser(({ input, index, tokens }) => {
+      if (input[index] !== "[") {
+        return undefined
+      }
+
+      const end = input.indexOf("]", index)
+      if (end === -1) {
+        throw new Error(`Invalid key sequence "${input}": unterminated token`)
+      }
+
+      const tokenName = input.slice(index, end + 1).trim()
+      const token = tokens.get(tokenName)
+      if (!token) {
+        return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
+      }
+
+      return {
+        parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
+        nextIndex: end + 1,
+        usedTokens: [tokenName],
+      }
+    })
+    manager.appendBindingParser(defaultBindingParser)
+
+    manager.clearBindingSyntax()
+    manager.setBindingSyntax({
+      normalizeTokenName(token) {
+        const normalized = token.trim()
+        if (!normalized) {
+          throw new Error("Invalid keymap token: token cannot be empty")
+        }
+
+        return normalized
+      },
+      parseObjectKey(key) {
+        const [part] = parseKeySequenceLike(key)
+        if (!part) {
+          throw new Error(`Invalid key "${String(key)}": expected a single key stroke`)
+        }
+
+        return part
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "case-token",
+        run() {
+          calls.push("case-token")
+        },
+      },
+    ])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "[Leader]d", cmd: "case-token" }],
+    })
+
+    manager.registerToken({ token: "[Leader]", key: { name: "x", ctrl: true } })
+
+    mockInput.pressKey("x", { ctrl: true })
+    mockInput.pressKey("d")
+
+    expect(calls).toEqual(["case-token"])
   })
 
   test("clearEventMatchResolvers disables default event matching until custom resolvers are added", () => {

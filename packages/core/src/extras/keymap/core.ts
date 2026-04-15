@@ -14,6 +14,7 @@ import type {
   KeymapBindingExpander,
   KeymapBindingExpanderContext,
   KeymapBindingParser,
+  KeymapBindingSyntax,
   KeymapBindingCommand,
   KeymapBindingEvent,
   KeymapBindingFieldCompiler,
@@ -43,6 +44,7 @@ import type {
   KeymapResolvedBindingCommand,
   KeymapScope,
   KeymapEventMatchResolver,
+  KeyStroke,
   KeymapToken,
   KeymapUnresolvedCommandContext,
   ParsedKeyPart,
@@ -69,14 +71,13 @@ import {
   mergeRequirement,
   normalizeBindingCommand,
   normalizeCommandName,
-  normalizeKeyStroke,
   snapshotBindingInputs,
   sortByPriorityAndOrder,
   sortLayersWithinScope,
   stringifyKeySequence,
   stringifyKeyStroke,
 } from "./utils.js"
-import { defaultBindingParser, defaultEventMatchResolver } from "./default-parser.js"
+import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./default-parser.js"
 import { Emitter } from "./emitter.js"
 
 const keymapManagersByRenderer = new WeakMap<CliRenderer, KeymapManagerImpl>()
@@ -156,7 +157,7 @@ function expandBindingInputWithExpanders(
 }
 
 function parseBindingSequenceWithParsers(
-  key: KeyLike,
+  key: string,
   parsers: readonly KeymapBindingParser[],
   options?: {
     tokens?: ReadonlyMap<string, ParsedKeyToken>
@@ -168,15 +169,6 @@ function parseBindingSequenceWithParsers(
   unknownTokens: readonly string[]
   hasTokenBindings: boolean
 } {
-  if (typeof key !== "string") {
-    return {
-      parts: [createParsedKeyPart(normalizeKeyStroke(key))],
-      usedTokens: [],
-      unknownTokens: [],
-      hasTokenBindings: false,
-    }
-  }
-
   if (key.length === 0) {
     throw new Error("Invalid key sequence: sequence cannot be empty")
   }
@@ -207,10 +199,10 @@ function parseBindingSequenceWithParsers(
 
       parts.push(...result.parts)
       for (const tokenName of result.usedTokens ?? []) {
-        usedTokens.add(tokenName.trim().toLowerCase())
+        usedTokens.add(tokenName)
       }
       for (const tokenName of result.unknownTokens ?? []) {
-        unknownTokens.add(tokenName.trim().toLowerCase())
+        unknownTokens.add(tokenName)
       }
 
       index = result.nextIndex
@@ -237,8 +229,18 @@ function parseSingleKeyPartWithParsers(
   options?: {
     tokens?: ReadonlyMap<string, ParsedKeyToken>
     layer?: Readonly<Record<string, unknown>>
+    parseObjectKey?: (key: KeyStroke) => ParsedKeyPart
   },
 ): ParsedKeyPart {
+  if (typeof key !== "string") {
+    const parseObjectKey = options?.parseObjectKey
+    if (!parseObjectKey) {
+      throw new Error("No keymap binding syntax is registered")
+    }
+
+    return parseObjectKey(key)
+  }
+
   // Tokens can be declared as strings or stroke objects. String tokens must use
   // the currently active parser chain (not a baked-in default parser), but token
   // substitution must still resolve to exactly one stroke.
@@ -270,6 +272,7 @@ class KeymapManagerImpl implements KeymapManager {
   private globalLayers: RegisteredLayer[] = []
   private targetLayers = new WeakMap<Renderable, RegisteredLayerBucket>()
   private tokens = new Map<string, ParsedKeyToken>()
+  private bindingSyntax: KeymapBindingSyntax | undefined
   private layerFields = new Map<string, KeymapLayerFieldCompiler>()
   private bindingExpanders: KeymapBindingExpander[] = []
   private bindingParsers: KeymapBindingParser[] = []
@@ -321,6 +324,7 @@ class KeymapManagerImpl implements KeymapManager {
     this.hooks = new Emitter<KeymapHooks>((name, error) => {
       this.reportHookError(name, error)
     })
+    this.bindingSyntax = defaultBindingSyntax
     this.bindingParsers = [defaultBindingParser]
     this.eventMatchResolvers = [defaultEventMatchResolver]
     this.keypressListener = (event) => {
@@ -372,6 +376,7 @@ class KeymapManagerImpl implements KeymapManager {
     this.globalLayers = []
     this.targetLayers = new WeakMap()
     this.tokens.clear()
+    this.bindingSyntax = undefined
     this.layerFields.clear()
     this.bindingExpanders = []
     this.bindingParsers = []
@@ -728,13 +733,20 @@ class KeymapManagerImpl implements KeymapManager {
     this.bindingParsers = []
   }
 
+  public setBindingSyntax(syntax: KeymapBindingSyntax): void {
+    this.assertNotDestroyed()
+    this.bindingSyntax = syntax
+  }
+
+  public clearBindingSyntax(): void {
+    this.assertNotDestroyed()
+    this.bindingSyntax = undefined
+  }
+
   public registerToken(token: KeymapToken): () => void {
     this.assertNotDestroyed()
 
-    const normalizedToken = token.token.trim().toLowerCase()
-    if (!normalizedToken) {
-      throw new Error("Invalid keymap token: token cannot be empty")
-    }
+    const normalizedToken = this.normalizeTokenName(token.token)
 
     if (this.tokens.has(normalizedToken)) {
       throw new Error(`Keymap token "${normalizedToken}" is already registered`)
@@ -743,6 +755,7 @@ class KeymapManagerImpl implements KeymapManager {
     const parsedToken = parseSingleKeyPartWithParsers(token.key, this.bindingParsers, {
       tokens: this.tokens,
       layer: EMPTY_COMPILE_FIELDS,
+      parseObjectKey: (key) => this.parseObjectKeyPart(key),
     })
     const registeredToken: ParsedKeyToken = {
       stroke: parsedToken.stroke,
@@ -1365,6 +1378,29 @@ class KeymapManagerImpl implements KeymapManager {
     return command.attrs ? { name: command.name, attrs: command.attrs } : { name: command.name }
   }
 
+  private getBindingSyntax(): KeymapBindingSyntax {
+    const syntax = this.bindingSyntax
+    if (!syntax) {
+      throw new Error("No keymap binding syntax is registered")
+    }
+
+    return syntax
+  }
+
+  private normalizeTokenName(token: string): string {
+    const normalized = this.getBindingSyntax().normalizeTokenName(token)
+    if (!normalized) {
+      throw new Error("Invalid keymap token: token cannot be empty")
+    }
+
+    return normalized
+  }
+
+  private parseObjectKeyPart(key: KeyStroke): ParsedKeyPart {
+    const parsed = this.getBindingSyntax().parseObjectKey(key)
+    return createParsedKeyPart(parsed.stroke, parsed.display, parsed.matchKey)
+  }
+
   private normalizeBindingEvent(event: unknown): KeymapBindingEvent {
     if (event === undefined || event === "press") {
       return "press"
@@ -1395,10 +1431,18 @@ class KeymapManagerImpl implements KeymapManager {
       })
 
       for (const expandedBindingKey of expandedBindingKeys) {
-        const parsed = parseBindingSequenceWithParsers(expandedBindingKey, this.bindingParsers, {
-          tokens,
-          layer: compileFields,
-        })
+        const parsed =
+          typeof expandedBindingKey === "string"
+            ? parseBindingSequenceWithParsers(expandedBindingKey, this.bindingParsers, {
+                tokens,
+                layer: compileFields,
+              })
+            : {
+                parts: [this.parseObjectKeyPart(expandedBindingKey)],
+                usedTokens: [] as readonly string[],
+                unknownTokens: [] as readonly string[],
+                hasTokenBindings: false,
+              }
         const sequence = parsed.parts
         hasTokenBindings ||= parsed.hasTokenBindings
 
@@ -1777,6 +1821,54 @@ class KeymapManagerImpl implements KeymapManager {
   }
 
   private resolveEventMatchKeys(event: KeyEvent): string[] {
+    if (this.eventMatchResolvers.length === 0) {
+      return []
+    }
+
+    if (this.eventMatchResolvers.length === 1) {
+      const resolver = this.eventMatchResolvers[0]!
+
+      let resolved: readonly string[] | undefined
+      try {
+        resolved = resolver(event)
+      } catch (error) {
+        this.logger.error("[Keymap] Error in event match resolver:", error)
+        return []
+      }
+
+      if (!resolved || resolved.length === 0) {
+        return []
+      }
+
+      if (resolved.length === 1) {
+        const [candidate] = resolved
+        if (typeof candidate !== "string" || !candidate) {
+          this.logger.error("[Keymap] Invalid event match resolver candidate:", candidate)
+          return []
+        }
+
+        return [candidate]
+      }
+
+      const keys: string[] = []
+      const seen = new Set<string>()
+      for (const candidate of resolved) {
+        if (typeof candidate !== "string") {
+          this.logger.error("[Keymap] Invalid event match resolver candidate:", candidate)
+          continue
+        }
+
+        if (!candidate || seen.has(candidate)) {
+          continue
+        }
+
+        seen.add(candidate)
+        keys.push(candidate)
+      }
+
+      return keys
+    }
+
     const keys: string[] = []
     const seen = new Set<string>()
 
@@ -2626,32 +2718,6 @@ class KeymapManagerImpl implements KeymapManager {
 
   private warnUnknownToken(token: string, sequence: string): void {
     this.warnOnce(`token:${token}`, `[Keymap] Unknown token "${token}" in key sequence "${sequence}" was ignored`)
-  }
-
-  private warnUnknownTokensInKeySequence(sequence: string, tokens: ReadonlyMap<string, ParsedKeyToken>): void {
-    if (!sequence.includes("<")) {
-      return
-    }
-
-    let index = 0
-    while (index < sequence.length) {
-      const open = sequence.indexOf("<", index)
-      if (open === -1) {
-        break
-      }
-
-      const close = sequence.indexOf(">", open + 1)
-      if (close === -1) {
-        break
-      }
-
-      const token = sequence.slice(open, close + 1).trim().toLowerCase()
-      if (!tokens.has(token)) {
-        this.warnUnknownToken(token, sequence)
-      }
-
-      index = close + 1
-    }
   }
 
   private ensureValidPendingSequence(): PendingSequenceState | undefined {

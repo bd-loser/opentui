@@ -1,5 +1,5 @@
 export { getKeymapManager } from "./core.js"
-export { defaultBindingParser, defaultEventMatchResolver, parseKeySequenceLike } from "./default-parser.js"
+export { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver, parseKeySequenceLike } from "./default-parser.js"
 export { namedSingleStrokeKeyNames, namedSingleStrokeKeys } from "./named-keys.js"
 export { stringifyKeySequence, stringifyKeyStroke } from "./utils.js"
 export type {
@@ -13,6 +13,7 @@ export type {
   KeymapBindingCompiler,
   KeymapBindingCompilerContext,
   KeymapBindingParser,
+  KeymapBindingSyntax,
   KeymapBindingParserContext,
   KeymapBindingParserResult,
   KeymapBindingExpander,

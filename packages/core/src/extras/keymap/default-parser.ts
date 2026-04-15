@@ -1,4 +1,13 @@
-import type { KeymapBindingParser, KeymapEventMatchResolver, KeyLike, ParsedKeyPart, ParsedKeyToken, ParsedKeyStroke } from "./types.js"
+import type {
+  KeymapBindingParser,
+  KeymapBindingSyntax,
+  KeymapEventMatchResolver,
+  KeyLike,
+  KeyStroke,
+  ParsedKeyPart,
+  ParsedKeyToken,
+  ParsedKeyStroke,
+} from "./types.js"
 import {
   buildBindingKey,
   cloneStroke,
@@ -10,6 +19,20 @@ import {
 import { namedSingleStrokeKeys } from "./named-keys.js"
 
 const emptyTokens = new Map<string, ParsedKeyToken>()
+
+export const defaultBindingSyntax: KeymapBindingSyntax = {
+  normalizeTokenName(token) {
+    const normalized = token.trim().toLowerCase()
+    if (!normalized) {
+      throw new Error("Invalid keymap token: token cannot be empty")
+    }
+
+    return normalized
+  },
+  parseObjectKey(key: KeyStroke) {
+    return createParsedKeyPart(normalizeKeyStroke(key))
+  },
+}
 
 function isNamedSingleStrokeKey(input: string, extraNames?: ReadonlySet<string>): boolean {
   const normalized = input.trim().toLowerCase()
@@ -141,7 +164,7 @@ function parseKeySequenceWithDefaultParser(
   extraNames?: ReadonlySet<string>,
 ): ParsedKeyPart[] {
   if (typeof key !== "string") {
-    return [createParsedKeyPart(normalizeKeyStroke(key))]
+    return [defaultBindingSyntax.parseObjectKey(key)]
   }
 
   if (key.length === 0) {

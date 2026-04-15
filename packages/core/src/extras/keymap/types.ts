@@ -43,6 +43,11 @@ export type KeymapStringifiableKey = ParsedKeyStroke | ParsedKeyPart | { stroke:
 
 export type KeyLike = string | KeyStroke
 
+export interface KeymapBindingSyntax {
+  normalizeTokenName(token: string): string
+  parseObjectKey(key: KeyStroke): ParsedKeyPart
+}
+
 export interface KeymapCommandInfo {
   name: string
   attrs?: Readonly<KeymapAttributes>
@@ -282,6 +287,8 @@ export interface KeymapManager {
   registerBindingFields(fields: Record<string, KeymapBindingFieldCompiler>): () => void
   registerCommandFields(fields: Record<string, KeymapCommandFieldCompiler>): () => void
   registerCommandResolver(resolver: KeymapCommandResolver): () => void
+  setBindingSyntax(syntax: KeymapBindingSyntax): void
+  clearBindingSyntax(): void
   registerEventMatchResolver(resolver: KeymapEventMatchResolver): () => void
   clearEventMatchResolvers(): void
   onKeyInput(fn: (ctx: KeymapKeyInputContext) => void, options?: { priority?: number; release?: boolean }): () => void

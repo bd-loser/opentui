@@ -6,7 +6,6 @@ import type {
   KeymapBindingInput,
   KeymapBindings,
   KeymapEventData,
-  KeymapParsedCommand,
   KeymapStringifiableKey,
   KeymapStringifyOptions,
   ParsedKeyPart,
@@ -218,25 +217,6 @@ export function normalizeEventKeyStroke(event: KeyEvent): ParsedKeyStroke {
     meta: event.meta,
     super: event.super ?? false,
     hyper: event.hyper || undefined,
-  }
-}
-
-export function parseCommandInput(input: string): KeymapParsedCommand {
-  const trimmed = input.trim()
-  if (!trimmed) {
-    throw new Error("Invalid keymap command: command cannot be empty")
-  }
-
-  const parts = trimmed.split(/\s+/)
-  const [name, ...args] = parts
-  if (!name) {
-    throw new Error(`Invalid keymap command "${input}"`)
-  }
-
-  return {
-    input: trimmed,
-    name,
-    args,
   }
 }
 

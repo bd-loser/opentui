@@ -179,7 +179,7 @@ function CounterPanel(props: {
         <span style={{ fg: palette.textDim }}>{` +${props.step}  `}</span>
         <KeyLabel>k</KeyLabel>
         <span style={{ fg: palette.textDim }}>{` -${props.step}`}</span>
-        <span style={{ fg: palette.separator }}>{'  |  '}</span>
+        <span style={{ fg: palette.separator }}>{"  |  "}</span>
         <KeyLabel>enter</KeyLabel>
         <span style={{ fg: palette.textDim }}>{` save ${props.label.toLowerCase()}`}</span>
       </text>
@@ -200,7 +200,7 @@ export default function KeymapDemo() {
   const [betaCount, setBetaCount] = createSignal(0)
   const [helpVisible, setHelpVisible] = createSignal(true)
   const [leaderArmed, setLeaderArmed] = createSignal(false)
-  const [lastAction, setLastAction] = createSignal('Click a panel or press Tab to start.')
+  const [lastAction, setLastAction] = createSignal("Click a panel or press Tab to start.")
   const [logs, setLogs] = createSignal<string[]>([])
   const [statusVersion, setStatusVersion] = createSignal(0)
 
@@ -234,11 +234,11 @@ export default function KeymapDemo() {
 
   const getFocusableLabel = (target: Renderable): string => {
     if (target === alphaPanelRef) {
-      return 'Alpha panel'
+      return "Alpha panel"
     }
 
     if (target === betaPanelRef) {
-      return 'Beta panel'
+      return "Beta panel"
     }
 
     const editorIndex = editorRefs.findIndex((editor) => editor === target)
@@ -246,7 +246,7 @@ export default function KeymapDemo() {
       return `${editorSpecs[editorIndex]!.label} editor`
     }
 
-    return 'target'
+    return "target"
   }
 
   const moveFocus = (direction: 1 | -1) => {
@@ -269,32 +269,32 @@ export default function KeymapDemo() {
 
   const offActions = manager.registerCommands([
     {
-      name: 'focus-next',
-      title: 'Next target',
-      desc: 'Next target',
-      category: 'Navigation',
+      name: "focus-next",
+      title: "Next target",
+      desc: "Next target",
+      category: "Navigation",
       run() {
         moveFocus(1)
       },
     },
     {
-      name: 'focus-prev',
-      title: 'Previous target',
-      desc: 'Previous target',
-      category: 'Navigation',
+      name: "focus-prev",
+      title: "Previous target",
+      desc: "Previous target",
+      category: "Navigation",
       run() {
         moveFocus(-1)
       },
     },
     {
-      name: 'toggle-help',
-      title: 'Toggle help',
-      desc: 'Toggle help',
-      category: 'View',
+      name: "toggle-help",
+      title: "Toggle help",
+      desc: "Toggle help",
+      category: "View",
       run() {
         setHelpVisible((value) => {
           const next = !value
-          announce(next ? 'Help shown' : 'Help hidden')
+          announce(next ? "Help shown" : "Help hidden")
           return next
         })
       },
@@ -303,25 +303,25 @@ export default function KeymapDemo() {
 
   const offEx = registerExCommands(manager, [
     {
-      name: 'reset',
-      aliases: ['r'],
-      nargs: '0',
-      title: 'Reset counters',
-      desc: 'Reset counters',
-      category: 'Session',
+      name: "reset",
+      aliases: ["r"],
+      nargs: "0",
+      title: "Reset counters",
+      desc: "Reset counters",
+      category: "Session",
       run() {
         setAlphaCount(0)
         setBetaCount(0)
-        announce('Counters reset through :reset')
+        announce("Counters reset through :reset")
       },
     },
     {
-      name: 'write',
-      aliases: ['w'],
-      nargs: '1',
-      title: 'Write file',
-      desc: 'Write file',
-      category: 'File',
+      name: "write",
+      aliases: ["w"],
+      nargs: "1",
+      title: "Write file",
+      desc: "Write file",
+      category: "File",
       run({ args }) {
         announce(`Wrote ${args[0]}`)
       },
@@ -329,10 +329,10 @@ export default function KeymapDemo() {
   ])
 
   const offLeader = registerTimedLeader(manager, {
-    trigger: { name: 'x', ctrl: true },
+    trigger: { name: "x", ctrl: true },
     onArm() {
       setLeaderArmed(true)
-      announce('Leader armed: press s or h')
+      announce("Leader armed: press s or h")
     },
     onDisarm() {
       setLeaderArmed(false)
@@ -340,33 +340,33 @@ export default function KeymapDemo() {
   })
 
   const offManagedTextareas = registerManagedTextareaLayer(manager, {
-    scope: 'global',
+    scope: "global",
     enabled: () => manager.renderer.currentFocusedEditor !== null,
     bindings: [
-      { key: 'left', cmd: 'move-left', desc: 'Cursor left' },
-      { key: 'right', cmd: 'move-right', desc: 'Cursor right' },
-      { key: 'up', cmd: 'move-up', desc: 'Cursor up' },
-      { key: 'down', cmd: 'move-down', desc: 'Cursor down' },
-      { key: 'backspace', cmd: 'backspace', desc: 'Delete backward' },
-      { key: 'delete', cmd: 'delete', desc: 'Delete forward' },
-      { key: 'return', cmd: 'newline', desc: 'New line' },
-      { key: 'ctrl+a', cmd: 'line-home', desc: 'Line start' },
-      { key: 'ctrl+e', cmd: 'line-end', desc: 'Line end' },
-      { key: 'd', group: 'Delete' },
-      { key: 'dd', cmd: 'delete-line', desc: 'Delete line' },
+      { key: "left", cmd: "move-left", desc: "Cursor left" },
+      { key: "right", cmd: "move-right", desc: "Cursor right" },
+      { key: "up", cmd: "move-up", desc: "Cursor up" },
+      { key: "down", cmd: "move-down", desc: "Cursor down" },
+      { key: "backspace", cmd: "backspace", desc: "Delete backward" },
+      { key: "delete", cmd: "delete", desc: "Delete forward" },
+      { key: "return", cmd: "newline", desc: "New line" },
+      { key: "ctrl+a", cmd: "line-home", desc: "Line start" },
+      { key: "ctrl+e", cmd: "line-end", desc: "Line end" },
+      { key: "d", group: "Delete" },
+      { key: "dd", cmd: "delete-line", desc: "Delete line" },
     ],
   })
 
   useKeymap({
-    scope: 'global',
+    scope: "global",
     bindings: [
-      { key: 'tab', cmd: 'focus-next', desc: 'Next target' },
-      { key: 'shift+tab', cmd: 'focus-prev', desc: 'Previous target' },
-      { key: '?', cmd: 'toggle-help', desc: 'Toggle help' },
-      { key: 'ctrl+r', cmd: ':reset', desc: 'Reset counters' },
-      { key: '<leader>', group: 'Leader' },
-      { key: '<leader>s', cmd: ':w session.log', desc: 'Write session log', group: 'Leader' },
-      { key: '<leader>h', cmd: 'toggle-help', desc: 'Toggle help', group: 'Leader' },
+      { key: "tab", cmd: "focus-next", desc: "Next target" },
+      { key: "shift+tab", cmd: "focus-prev", desc: "Previous target" },
+      { key: "?", cmd: "toggle-help", desc: "Toggle help" },
+      { key: "ctrl+r", cmd: ":reset", desc: "Reset counters" },
+      { key: "<leader>", group: "Leader" },
+      { key: "<leader>s", cmd: ":w session.log", desc: "Write session log", group: "Leader" },
+      { key: "<leader>h", cmd: "toggle-help", desc: "Toggle help", group: "Leader" },
     ],
   })
 
@@ -379,11 +379,11 @@ export default function KeymapDemo() {
     statusVersion()
 
     if (renderer.currentFocusedRenderable === alphaPanelRef) {
-      return 'Alpha panel'
+      return "Alpha panel"
     }
 
     if (renderer.currentFocusedRenderable === betaPanelRef) {
-      return 'Beta panel'
+      return "Beta panel"
     }
 
     const editorIndex = focusedEditorIndex()
@@ -391,7 +391,7 @@ export default function KeymapDemo() {
       return `${editorSpecs[editorIndex]!.label} editor`
     }
 
-    return 'None'
+    return "None"
   })
 
   const focusedColor = createMemo(() => {
@@ -432,7 +432,7 @@ export default function KeymapDemo() {
   })
 
   const whichKeyPrefix = createMemo(() => {
-    return stringifyKeySequence(pendingSequenceParts(), { preferDisplay: true }) || '<root>'
+    return stringifyKeySequence(pendingSequenceParts(), { preferDisplay: true }) || "<root>"
   })
 
   const onFocusedRenderable = () => {
@@ -447,10 +447,10 @@ export default function KeymapDemo() {
     renderer.setBackgroundColor(palette.bg)
     renderer.on(CliRenderEvents.FOCUSED_RENDERABLE, onFocusedRenderable)
     renderer.on(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
-    addLog('Tab switches focus across panels and editors.')
-    addLog('ctrl+x arms the leader extension.')
+    addLog("Tab switches focus across panels and editors.")
+    addLog("ctrl+x arms the leader extension.")
     alphaPanelRef?.focus()
-    announce('Focused Alpha panel')
+    announce("Focused Alpha panel")
   })
 
   onCleanup(() => {
@@ -465,19 +465,19 @@ export default function KeymapDemo() {
   })
 
   return (
-    <box id='keymap-demo-root' flexDirection='column' flexGrow={1} padding={1} backgroundColor={palette.bg}>
-      <text id='keymap-demo-title' style={{ fg: palette.title, attributes: TextAttributes.BOLD }} height={1}>
+    <box id="keymap-demo-root" flexDirection="column" flexGrow={1} padding={1} backgroundColor={palette.bg}>
+      <text id="keymap-demo-title" style={{ fg: palette.title, attributes: TextAttributes.BOLD }} height={1}>
         Keymap Demo
       </text>
-      <text id='keymap-demo-subtitle' fg={palette.textMuted} height={1}>
+      <text id="keymap-demo-subtitle" fg={palette.textMuted} height={1}>
         Original Alpha/Beta panels plus three switchable textareas.
       </text>
 
-      <box id='keymap-demo-panels' flexDirection='row' gap={1} height={4} marginTop={1}>
+      <box id="keymap-demo-panels" flexDirection="row" gap={1} height={4} marginTop={1}>
         <CounterPanel
-          id='alpha'
-          label='Alpha'
-          saveTarget='alpha-panel.txt'
+          id="alpha"
+          label="Alpha"
+          saveTarget="alpha-panel.txt"
           step={1}
           color={palette.alpha}
           setRef={(value) => {
@@ -488,9 +488,9 @@ export default function KeymapDemo() {
           announce={announce}
         />
         <CounterPanel
-          id='beta'
-          label='Beta'
-          saveTarget='beta-panel.txt'
+          id="beta"
+          label="Beta"
+          saveTarget="beta-panel.txt"
           step={5}
           color={palette.beta}
           setRef={(value) => {
@@ -502,28 +502,28 @@ export default function KeymapDemo() {
         />
       </box>
 
-      <box id='keymap-demo-editors' flexDirection='row' gap={1} height={5} marginTop={1}>
+      <box id="keymap-demo-editors" flexDirection="row" gap={1} height={5} marginTop={1}>
         <For each={editorSpecs}>
           {(spec, index) => (
             <box
               id={`keymap-demo-editor-frame-${spec.id}`}
               border
-              borderStyle='rounded'
+              borderStyle="rounded"
               borderColor={focusedEditorIndex() === index() ? spec.color : palette.border}
-              flexDirection='column'
+              flexDirection="column"
               flexGrow={1}
               flexBasis={0}
               minWidth={0}
-              title={` ${index() + 1}. ${spec.label}${focusedEditorIndex() === index() ? ' *' : ''} `}
-              titleAlignment='left'
+              title={` ${index() + 1}. ${spec.label}${focusedEditorIndex() === index() ? " *" : ""} `}
+              titleAlignment="left"
             >
               <textarea
                 id={`keymap-demo-editor-${index() + 1}`}
                 ref={(value: TextareaRenderable) => {
                   editorRefs[index()] = value
                 }}
-                width='100%'
-                height='100%'
+                width="100%"
+                height="100%"
                 initialValue={spec.initialValue}
                 placeholder={spec.placeholder ?? null}
                 backgroundColor={palette.surface}
@@ -531,9 +531,9 @@ export default function KeymapDemo() {
                 textColor={palette.text}
                 focusedTextColor={palette.title}
                 placeholderColor={palette.textMuted}
-                selectionBg='#264F78'
-                selectionFg='#FFFFFF'
-                wrapMode='word'
+                selectionBg="#264F78"
+                selectionFg="#FFFFFF"
+                wrapMode="word"
                 onContentChange={() => {
                   bumpStatus()
                 }}
@@ -547,31 +547,31 @@ export default function KeymapDemo() {
       </box>
 
       <box
-        id='keymap-demo-footer'
+        id="keymap-demo-footer"
         border
-        borderStyle='rounded'
+        borderStyle="rounded"
         borderColor={palette.border}
         paddingX={1}
         marginTop={1}
         gap={2}
-        flexDirection='row'
+        flexDirection="row"
         flexGrow={1}
         minHeight={4}
       >
-        <box id='keymap-demo-details-column' flexGrow={1} minWidth={0} flexDirection='column'>
-          <text id='keymap-demo-status-focused' fg={palette.text} height={1}>
+        <box id="keymap-demo-details-column" flexGrow={1} minWidth={0} flexDirection="column">
+          <text id="keymap-demo-status-focused" fg={palette.text} height={1}>
             <span style={{ fg: palette.textDim }}>Focused: </span>
             <span style={{ fg: focusedColor(), attributes: TextAttributes.BOLD }}>{focusedLabel()}</span>
           </text>
 
-          <text id='keymap-demo-status-info' fg={palette.text} height={1}>
+          <text id="keymap-demo-status-info" fg={palette.text} height={1}>
             <Show
               when={focusedEditor()}
               fallback={
                 <>
                   <span style={{ fg: palette.textDim }}>Alpha: </span>
                   <span style={{ fg: palette.text }}>{String(alphaCount())}</span>
-                  <span style={{ fg: palette.separator }}>{'  |  '}</span>
+                  <span style={{ fg: palette.separator }}>{"  |  "}</span>
                   <span style={{ fg: palette.textDim }}>Beta: </span>
                   <span style={{ fg: palette.text }}>{String(betaCount())}</span>
                 </>
@@ -580,48 +580,51 @@ export default function KeymapDemo() {
               {(editor) => (
                 <>
                   <span style={{ fg: palette.textDim }}>Cursor: </span>
-                  <span style={{ fg: palette.text }}>{`${editor().logicalCursor.row + 1}:${editor().logicalCursor.col + 1}`}</span>
-                  <span style={{ fg: palette.separator }}>{'  |  '}</span>
+                  <span
+                    style={{ fg: palette.text }}
+                  >{`${editor().logicalCursor.row + 1}:${editor().logicalCursor.col + 1}`}</span>
+                  <span style={{ fg: palette.separator }}>{"  |  "}</span>
                   <span style={{ fg: palette.textDim }}>Lines: </span>
                   <span style={{ fg: palette.text }}>{String(editor().lineCount)}</span>
-                  <span style={{ fg: palette.separator }}>{'  |  '}</span>
+                  <span style={{ fg: palette.separator }}>{"  |  "}</span>
                   <span style={{ fg: palette.textDim }}>Chars: </span>
                   <span style={{ fg: palette.text }}>{String(editor().plainText.length)}</span>
-                  <span style={{ fg: palette.separator }}>{'  |  '}</span>
+                  <span style={{ fg: palette.separator }}>{"  |  "}</span>
                   <span style={{ fg: palette.textDim }}>Keys: </span>
-                  <span style={{ fg: palette.command }}>{editor().traits.suspend === true ? 'keymap' : 'local'}</span>
+                  <span style={{ fg: palette.command }}>{editor().traits.suspend === true ? "keymap" : "local"}</span>
                 </>
               )}
             </Show>
           </text>
 
-          <text id='keymap-demo-status-leader' fg={palette.text} height={1}>
+          <text id="keymap-demo-status-leader" fg={palette.text} height={1}>
             <span style={{ fg: palette.textDim }}>Leader: </span>
             <Show when={leaderArmed()} fallback={<span style={{ fg: palette.textMuted }}>idle</span>}>
               <span style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}>armed (ctrl+x)</span>
             </Show>
           </text>
 
-          <text id='keymap-demo-status-last' fg={palette.text} height={1}>
+          <text id="keymap-demo-status-last" fg={palette.text} height={1}>
             <span style={{ fg: palette.textDim }}>Last: </span>
             <span style={{ fg: palette.text }}>{lastAction()}</span>
           </text>
 
-          <box id='keymap-demo-help' flexDirection='column' marginTop={1} visible={helpVisible()}>
+          <box id="keymap-demo-help" flexDirection="column" marginTop={1} visible={helpVisible()}>
             <text fg={palette.text} height={1}>
               <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>tab</span>
-              <span style={{ fg: palette.textMuted }}>{' / '}</span>
+              <span style={{ fg: palette.textMuted }}>{" / "}</span>
               <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>shift+tab</span>
               <span style={{ fg: palette.textDim }}>: switch panels and editors</span>
             </text>
             <text fg={palette.text} height={1}>
               <span style={{ fg: palette.textDim }}>
-                Panels use local j/k/enter. Focused textareas route default shortcuts through keymap; plain typing still inserts directly.
+                Panels use local j/k/enter. Focused textareas route default shortcuts through keymap; plain typing still
+                inserts directly.
               </span>
             </text>
           </box>
 
-          <box id='keymap-demo-log' flexDirection='column' marginTop={1}>
+          <box id="keymap-demo-log" flexDirection="column" marginTop={1}>
             <text style={{ fg: palette.textDim, attributes: TextAttributes.BOLD }} height={1}>
               Log
             </text>
@@ -632,20 +635,20 @@ export default function KeymapDemo() {
         </box>
 
         <box
-          id='keymap-demo-which-key-column'
-          width='40%'
+          id="keymap-demo-which-key-column"
+          width="40%"
           minWidth={30}
           maxWidth={48}
           flexShrink={0}
-          flexDirection='column'
+          flexDirection="column"
         >
-          <text id='keymap-demo-wk-header-text' fg={palette.text} height={1}>
+          <text id="keymap-demo-wk-header-text" fg={palette.text} height={1}>
             <span style={{ fg: palette.accent, attributes: TextAttributes.BOLD }}>Which Key</span>
             <span style={{ fg: palette.textDim }}>{`  ${whichKeyPrefix()}`}</span>
           </text>
 
           <scrollbox
-            id='keymap-demo-wk-scrollbox'
+            id="keymap-demo-wk-scrollbox"
             flexGrow={1}
             flexShrink={1}
             contentOptions={{ paddingRight: 1 }}
@@ -655,9 +658,9 @@ export default function KeymapDemo() {
             <Show when={whichKeyEntries().length > 0} fallback={<text fg={palette.textMuted}>(no active keys)</text>}>
               <For each={whichKeyEntries()}>
                 {(entry) => (
-                  <text fg={palette.text} width='100%' wrapMode='word'>
+                  <text fg={palette.text} width="100%" wrapMode="word">
                     <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>{entry.key}</span>
-                    <span style={{ fg: palette.textMuted }}>{' -> '}</span>
+                    <span style={{ fg: palette.textMuted }}>{" -> "}</span>
                     <span style={{ fg: palette.command }}>{entry.command}</span>
                   </text>
                 )}

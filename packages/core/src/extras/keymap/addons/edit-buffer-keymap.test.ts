@@ -381,7 +381,9 @@ describe("edit buffer keymap addon", () => {
       bindings: [{ key: "x", cmd: "delete-line" }],
     })
 
-    const activeKey = manager.getActiveKeys({ includeMetadata: true }).find((candidate) => candidate.stroke.name === "x")
+    const activeKey = manager
+      .getActiveKeys({ includeMetadata: true })
+      .find((candidate) => candidate.stroke.name === "x")
 
     expect(activeKey?.commandAttrs).toEqual({ desc: "Supprimer la ligne" })
   })
@@ -402,7 +404,9 @@ describe("edit buffer keymap addon", () => {
       },
     )
 
-    const activeKey = manager.getActiveKeys({ includeMetadata: true }).find((candidate) => candidate.stroke.name === "left")
+    const activeKey = manager
+      .getActiveKeys({ includeMetadata: true })
+      .find((candidate) => candidate.stroke.name === "left")
 
     expect(activeKey?.bindingAttrs).toEqual({ desc: "Curseur gauche" })
     expect(activeKey?.commandAttrs).toEqual({ desc: "Curseur gauche" })

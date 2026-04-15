@@ -215,7 +215,10 @@ describe("keymap", () => {
         throw new Error(`Invalid key sequence "${input}": unterminated token`)
       }
 
-      const tokenName = input.slice(index, end + 1).trim().toLowerCase()
+      const tokenName = input
+        .slice(index, end + 1)
+        .trim()
+        .toLowerCase()
       const token = tokens.get(tokenName)
       if (!token) {
         return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
@@ -229,7 +232,14 @@ describe("keymap", () => {
     })
 
     manager.registerToken({ token: "[leader]", key: { name: "x", ctrl: true } })
-    manager.registerCommands([{ name: "leader-action", run() { calls.push("leader") } }])
+    manager.registerCommands([
+      {
+        name: "leader-action",
+        run() {
+          calls.push("leader")
+        },
+      },
+    ])
     manager.registerLayer({
       scope: "global",
       bindings: [{ key: "[leader]d", cmd: "leader-action" }],
@@ -256,7 +266,10 @@ describe("keymap", () => {
         throw new Error(`Invalid key sequence "${input}": unterminated token`)
       }
 
-      const tokenName = input.slice(index, end + 1).trim().toLowerCase()
+      const tokenName = input
+        .slice(index, end + 1)
+        .trim()
+        .toLowerCase()
       const token = tokens.get(tokenName)
       if (!token) {
         return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
@@ -270,7 +283,14 @@ describe("keymap", () => {
     })
 
     manager.registerToken({ token: "[leader]", key: { name: "x", ctrl: true } })
-    manager.registerCommands([{ name: "leader-only", run() { calls.push("leader") } }])
+    manager.registerCommands([
+      {
+        name: "leader-only",
+        run() {
+          calls.push("leader")
+        },
+      },
+    ])
     manager.registerLayer({
       scope: "global",
       bindings: [{ key: "[leader]", cmd: "leader-only" }],
@@ -606,10 +626,7 @@ describe("keymap", () => {
         return undefined
       }
 
-      const strokes = input
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean)
+      const strokes = input.trim().split(/\s+/).filter(Boolean)
 
       if (strokes.length <= 1) {
         return undefined
@@ -2736,9 +2753,7 @@ describe("keymap", () => {
     })
 
     expect(() => manager.getActiveKeys()).not.toThrow()
-    expect(errors.some((message) => message.includes("Error evaluating runtime matcher from field active:"))).toBe(
-      true,
-    )
+    expect(errors.some((message) => message.includes("Error evaluating runtime matcher from field active:"))).toBe(true)
     expect(warnings).toEqual([])
   })
 

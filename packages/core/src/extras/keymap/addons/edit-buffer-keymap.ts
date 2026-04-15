@@ -117,7 +117,9 @@ function isManagedTextarea(editor: EditBufferRenderable | null): editor is Texta
   return editor instanceof TextareaRenderable && !(editor instanceof InputRenderable)
 }
 
-function resolveEditBufferCommandDescriptions(options?: EditBufferCommandOptions): Record<EditBufferCommandName, string> {
+function resolveEditBufferCommandDescriptions(
+  options?: EditBufferCommandOptions,
+): Record<EditBufferCommandName, string> {
   const descriptions = { ...editBufferCommandDescriptions }
   const overrides = options?.descriptions
   if (!overrides) {
@@ -152,7 +154,9 @@ function setTextareaSuspend(editor: TextareaRenderable, suspended: boolean): voi
   editor.traits = nextTraits
 }
 
-function createDefaultTextareaBindings(descriptions: Readonly<Record<EditBufferCommandName, string>>): KeymapBindingInput[] {
+function createDefaultTextareaBindings(
+  descriptions: Readonly<Record<EditBufferCommandName, string>>,
+): KeymapBindingInput[] {
   return defaultTextareaKeyBindings.map((binding) => ({
     key: keyBindingToString(binding),
     cmd: binding.action,
@@ -304,8 +308,16 @@ function createEditBufferCommands(descriptions: Readonly<Record<EditBufferComman
     createEditBufferCommand("select-line-end", (editor) => editor.gotoLineEnd({ select: true }), descriptions),
     createEditBufferCommand("visual-line-home", (editor) => editor.gotoVisualLineHome(), descriptions),
     createEditBufferCommand("visual-line-end", (editor) => editor.gotoVisualLineEnd(), descriptions),
-    createEditBufferCommand("select-visual-line-home", (editor) => editor.gotoVisualLineHome({ select: true }), descriptions),
-    createEditBufferCommand("select-visual-line-end", (editor) => editor.gotoVisualLineEnd({ select: true }), descriptions),
+    createEditBufferCommand(
+      "select-visual-line-home",
+      (editor) => editor.gotoVisualLineHome({ select: true }),
+      descriptions,
+    ),
+    createEditBufferCommand(
+      "select-visual-line-end",
+      (editor) => editor.gotoVisualLineEnd({ select: true }),
+      descriptions,
+    ),
     createEditBufferCommand("buffer-home", (editor) => editor.gotoBufferHome(), descriptions),
     createEditBufferCommand("buffer-end", (editor) => editor.gotoBufferEnd(), descriptions),
     createEditBufferCommand("select-buffer-home", (editor) => editor.gotoBufferHome({ select: true }), descriptions),
@@ -321,17 +333,25 @@ function createEditBufferCommands(descriptions: Readonly<Record<EditBufferComman
     createEditBufferCommand("word-forward", (editor) => editor.moveWordForward(), descriptions),
     createEditBufferCommand("word-backward", (editor) => editor.moveWordBackward(), descriptions),
     createEditBufferCommand("select-word-forward", (editor) => editor.moveWordForward({ select: true }), descriptions),
-    createEditBufferCommand("select-word-backward", (editor) => editor.moveWordBackward({ select: true }), descriptions),
+    createEditBufferCommand(
+      "select-word-backward",
+      (editor) => editor.moveWordBackward({ select: true }),
+      descriptions,
+    ),
     createEditBufferCommand("delete-word-forward", (editor) => editor.deleteWordForward(), descriptions),
     createEditBufferCommand("delete-word-backward", (editor) => editor.deleteWordBackward(), descriptions),
     createEditBufferCommand("select-all", (editor) => editor.selectAll(), descriptions),
-    createEditBufferCommand("submit", (editor) => {
-      if (!hasSubmit(editor)) {
-        return false
-      }
+    createEditBufferCommand(
+      "submit",
+      (editor) => {
+        if (!hasSubmit(editor)) {
+          return false
+        }
 
-      return editor.submit()
-    }, descriptions),
+        return editor.submit()
+      },
+      descriptions,
+    ),
   ]
 }
 

@@ -117,7 +117,11 @@ describe("solid keymap hooks", () => {
 
       return (
         <box width={24} height={8} flexDirection="column">
-          <text>{`Active: ${activeKeys().map((key) => key.stroke.name).join(",") || "<none>"}`}</text>
+          <text>{`Active: ${
+            activeKeys()
+              .map((key) => key.stroke.name)
+              .join(",") || "<none>"
+          }`}</text>
           <box
             ref={(value: Renderable) => {
               firstKeymapRef(value)
@@ -174,7 +178,9 @@ describe("solid keymap hooks", () => {
         offCommands()
       })
 
-      return <text>{`Pending: ${stringifyKeySequence(pendingSequenceParts(), { preferDisplay: true }) || "<root>"}`}</text>
+      return (
+        <text>{`Pending: ${stringifyKeySequence(pendingSequenceParts(), { preferDisplay: true }) || "<root>"}`}</text>
+      )
     }
 
     testSetup = await testRender(() => <App />, { width: 24, height: 6 })

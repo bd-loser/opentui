@@ -279,7 +279,9 @@ function buildHelpContent(): StyledText {
       fg(P.textDim)(": switch panels and editors"),
     ]),
     styledLine([
-      fg(P.textDim)("Panels use local j/k/enter. Focused textareas route default shortcuts through keymap; plain typing still inserts directly."),
+      fg(P.textDim)(
+        "Panels use local j/k/enter. Focused textareas route default shortcuts through keymap; plain typing still inserts directly.",
+      ),
     ]),
   ])
 }
@@ -347,10 +349,7 @@ function renderStatus(renderer: CliRenderer): void {
 
   if (statusFocusedText) {
     statusFocusedText.content = joinLines([
-      styledLine([
-        fg(P.textDim)("Focused: "),
-        bold(fg(focusedColor)(focusedLabel)),
-      ]),
+      styledLine([fg(P.textDim)("Focused: "), bold(fg(focusedColor)(focusedLabel))]),
     ])
   }
 

@@ -77,10 +77,7 @@ function parseEmacsStroke(input: string, sequence: string): ParsedKeyPart {
 }
 
 function parseEmacsSequence(input: string): ParsedKeyPart[] | undefined {
-  const strokes = input
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
+  const strokes = input.trim().split(/\s+/).filter(Boolean)
 
   if (strokes.length <= 1) {
     return undefined

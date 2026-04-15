@@ -1,5 +1,10 @@
 export { getKeymapManager } from "./core.js"
-export { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver, parseKeySequenceLike } from "./default-parser.js"
+export {
+  defaultBindingParser,
+  defaultBindingSyntax,
+  defaultEventMatchResolver,
+  parseKeySequenceLike,
+} from "./default-parser.js"
 export { namedSingleStrokeKeyNames, namedSingleStrokeKeys } from "./named-keys.js"
 export { stringifyKeySequence, stringifyKeyStroke } from "./utils.js"
 export type {
@@ -82,7 +87,11 @@ export { registerMetadataFields } from "./addons/metadata.js"
 export { registerTimedLeader } from "./addons/timed-leader.js"
 export type { KeymapEnabled, KeymapKeyedEnabled } from "./addons/enabled.js"
 export type { KeymapAliases } from "./addons/aliases.js"
-export type { EditBufferCommandName, EditBufferCommandOptions, ManagedTextareaLayer } from "./addons/edit-buffer-keymap.js"
+export type {
+  EditBufferCommandName,
+  EditBufferCommandOptions,
+  ManagedTextareaLayer,
+} from "./addons/edit-buffer-keymap.js"
 export type { EscapeClearsPendingSequenceOptions } from "./addons/escape-clears-pending-sequence.js"
 export type { ExCommand } from "./addons/ex-commands.js"
 export type { LeaderOptions } from "./addons/leader.js"

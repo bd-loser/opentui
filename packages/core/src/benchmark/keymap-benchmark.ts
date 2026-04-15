@@ -202,7 +202,10 @@ function createBracketTokenParser(): KeymapBindingParser {
       throw new Error(`Invalid key sequence "${input}": unterminated token`)
     }
 
-    const tokenName = input.slice(index, end + 1).trim().toLowerCase()
+    const tokenName = input
+      .slice(index, end + 1)
+      .trim()
+      .toLowerCase()
     const token = tokens.get(tokenName)
     if (!token) {
       return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }

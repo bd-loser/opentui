@@ -226,7 +226,10 @@ export const defaultBindingParser: KeymapBindingParser = ({ input, index, tokens
       throw new Error(`Invalid key sequence "${input}": unterminated token`)
     }
 
-    const tokenName = input.slice(index, end + 1).trim().toLowerCase()
+    const tokenName = input
+      .slice(index, end + 1)
+      .trim()
+      .toLowerCase()
     const token = tokens.get(tokenName)
     if (!token) {
       return {

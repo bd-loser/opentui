@@ -618,8 +618,16 @@ class KeymapManagerImpl implements KeymapManager {
       const scope = this.normalizeScope(layer)
       const bindingInputs = snapshotBindingInputs(layer.bindings)
       const order = this.order++
-      const { requires, matchers, conditionKeys, hasUnkeyedMatchers, compileFields } = this.compileLayerRuntimeState(layer)
-      const compiledBindings = this.compileBindings(bindingInputs, this.tokens, scope, layer.target, order, compileFields)
+      const { requires, matchers, conditionKeys, hasUnkeyedMatchers, compileFields } =
+        this.compileLayerRuntimeState(layer)
+      const compiledBindings = this.compileBindings(
+        bindingInputs,
+        this.tokens,
+        scope,
+        layer.target,
+        order,
+        compileFields,
+      )
       const target = layer.target
       if (target && target.isDestroyed) {
         throw new Error("Cannot register a keymap layer for a destroyed renderable")
@@ -1228,7 +1236,14 @@ class KeymapManagerImpl implements KeymapManager {
 
         nextCompilations.set(
           layer,
-          this.compileBindings(layer.bindingInputs, nextTokens, layer.scope, layer.target, layer.order, layer.compileFields),
+          this.compileBindings(
+            layer.bindingInputs,
+            nextTokens,
+            layer.scope,
+            layer.target,
+            layer.order,
+            layer.compileFields,
+          ),
         )
       }
 
@@ -1525,7 +1540,9 @@ class KeymapManagerImpl implements KeymapManager {
     const bindingCompilers = this.bindingCompilers.snapshot()
 
     if (bindingCompilers.length === 0) {
-      return [{ ...binding, sequence: sequence.map((part) => createParsedKeyPart(part.stroke, part.display, part.matchKey)) }]
+      return [
+        { ...binding, sequence: sequence.map((part) => createParsedKeyPart(part.stroke, part.display, part.matchKey)) },
+      ]
     }
 
     const parsedBinding: KeymapParsedBindingInput = {

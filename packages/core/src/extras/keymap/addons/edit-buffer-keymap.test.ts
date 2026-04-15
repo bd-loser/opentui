@@ -10,6 +10,7 @@ import {
   registerManagedTextareaLayer,
   registerTextareaMappingSuspension,
 } from "./edit-buffer-keymap.js"
+import { registerMetadataFields } from "./metadata.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
@@ -113,6 +114,7 @@ describe("edit buffer keymap addon", () => {
     expect(bindings[1]).toEqual({ key: "dd", cmd: "delete-line" })
     expect(bindings.some((binding) => binding.key === "right" && binding.cmd === "move-right")).toBe(true)
     expect(bindings.some((binding) => binding.key === "left" && binding.cmd === "move-left")).toBe(true)
+    expect(bindings.some((binding) => binding.key === "backspace" && binding.desc === "Delete backward")).toBe(true)
   })
 
   test("registerTextareaMappingSuspension disables local textarea shortcuts but preserves plain typing", () => {
@@ -362,6 +364,68 @@ describe("edit buffer keymap addon", () => {
     expect(textarea.cursorOffset).toBe(3)
 
     off()
+  })
+
+  test("registerEditBufferCommands applies custom command descriptions when metadata fields are registered", () => {
+    const manager = getKeymapManager(renderer)
+
+    registerMetadataFields(manager)
+    registerEditBufferCommands(manager, {
+      descriptions: {
+        "delete-line": "Supprimer la ligne",
+      },
+    })
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "delete-line" }],
+    })
+
+    const activeKey = manager.getActiveKeys({ includeMetadata: true }).find((candidate) => candidate.stroke.name === "x")
+
+    expect(activeKey?.commandAttrs).toEqual({ desc: "Supprimer la ligne" })
+  })
+
+  test("registerManagedTextareaLayer applies custom descriptions to generated default bindings", () => {
+    const manager = getKeymapManager(renderer)
+
+    registerMetadataFields(manager)
+    const off = registerManagedTextareaLayer(
+      manager,
+      {
+        scope: "global",
+      },
+      {
+        descriptions: {
+          "move-left": "Curseur gauche",
+        },
+      },
+    )
+
+    const activeKey = manager.getActiveKeys({ includeMetadata: true }).find((candidate) => candidate.stroke.name === "left")
+
+    expect(activeKey?.bindingAttrs).toEqual({ desc: "Curseur gauche" })
+    expect(activeKey?.commandAttrs).toEqual({ desc: "Curseur gauche" })
+
+    off()
+  })
+
+  test("shared edit buffer command registrations ignore later description overrides", () => {
+    const manager = getKeymapManager(renderer)
+
+    registerEditBufferCommands(manager, {
+      descriptions: {
+        "move-left": "Cursor left",
+      },
+    })
+
+    expect(() => {
+      registerEditBufferCommands(manager, {
+        descriptions: {
+          "move-left": "Curseur gauche",
+        },
+      })
+    }).not.toThrow()
   })
 
   test("disposes single registrations cleanly and supports re-registration", () => {

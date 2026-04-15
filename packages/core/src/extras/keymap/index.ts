@@ -71,7 +71,12 @@ export { registerEscapeClearsPendingSequence } from "./addons/escape-clears-pend
 export { registerEnabledField } from "./addons/enabled.js"
 export { registerEmacsBindings } from "./addons/emacs-bindings.js"
 export { registerExCommands } from "./addons/ex-commands.js"
-export { registerEditBufferCommands } from "./addons/edit-buffer-keymap.js"
+export {
+  createTextareaKeymap,
+  registerEditBufferCommands,
+  registerManagedTextareaLayer,
+  registerTextareaMappingSuspension,
+} from "./addons/edit-buffer-keymap.js"
 export { registerLeader } from "./addons/leader.js"
 export { registerMetadataFields } from "./addons/metadata.js"
 export { registerTimedLeader } from "./addons/timed-leader.js"
@@ -79,5 +84,6 @@ export type { KeymapEnabled, KeymapKeyedEnabled } from "./addons/enabled.js"
 export type { KeymapAliases } from "./addons/aliases.js"
 export type { EscapeClearsPendingSequenceOptions } from "./addons/escape-clears-pending-sequence.js"
 export type { ExCommand } from "./addons/ex-commands.js"
+export type { ManagedTextareaLayer } from "./addons/edit-buffer-keymap.js"
 export type { LeaderOptions } from "./addons/leader.js"
 export type { TimedLeaderOptions } from "./addons/timed-leader.js"

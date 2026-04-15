@@ -4,7 +4,12 @@ import { InputRenderable, InputRenderableEvents } from "../../../renderables/Inp
 import { TextareaRenderable } from "../../../renderables/Textarea.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../../../testing.js"
 import { getKeymapManager } from "../index.js"
-import { registerEditBufferCommands } from "./edit-buffer-keymap.js"
+import {
+  createTextareaKeymap,
+  registerEditBufferCommands,
+  registerManagedTextareaLayer,
+  registerTextareaMappingSuspension,
+} from "./edit-buffer-keymap.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
@@ -96,6 +101,70 @@ describe("edit buffer keymap addon", () => {
     mockInput.pressKey("x")
 
     expect(textarea.plainText).toBe("x")
+  })
+
+  test("createTextareaKeymap prepends keymap-style overrides ahead of textarea defaults", () => {
+    const bindings = createTextareaKeymap([
+      { key: "left", cmd: "custom-left" },
+      { key: "dd", cmd: "delete-line" },
+    ])
+
+    expect(bindings[0]).toEqual({ key: "left", cmd: "custom-left" })
+    expect(bindings[1]).toEqual({ key: "dd", cmd: "delete-line" })
+    expect(bindings.some((binding) => binding.key === "right" && binding.cmd === "move-right")).toBe(true)
+    expect(bindings.some((binding) => binding.key === "left" && binding.cmd === "move-left")).toBe(true)
+  })
+
+  test("registerTextareaMappingSuspension disables local textarea shortcuts but preserves plain typing", () => {
+    const manager = getKeymapManager(renderer)
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 4,
+      initialValue: "abc",
+    })
+    renderer.root.add(textarea)
+
+    const offSuspension = registerTextareaMappingSuspension(manager)
+
+    textarea.focus()
+    textarea.cursorOffset = 3
+    expect(textarea.traits.suspend).toBe(true)
+
+    mockInput.pressBackspace()
+    expect(textarea.plainText).toBe("abc")
+
+    mockInput.pressKey("x")
+    expect(textarea.plainText).toBe("abcx")
+
+    offSuspension()
+    expect(textarea.traits.suspend).toBeUndefined()
+
+    mockInput.pressBackspace()
+    expect(textarea.plainText).toBe("abc")
+  })
+
+  test("registerTextareaMappingSuspension leaves input renderables using their own mappings", () => {
+    const manager = getKeymapManager(renderer)
+    let submitted = 0
+
+    const input = new InputRenderable(renderer, {
+      width: 20,
+      value: "Hello",
+    })
+    input.on(InputRenderableEvents.ENTER, () => {
+      submitted += 1
+    })
+    renderer.root.add(input)
+
+    const offSuspension = registerTextareaMappingSuspension(manager)
+
+    input.focus()
+    expect(input.traits.suspend).toBeUndefined()
+
+    mockInput.pressEnter()
+    expect(submitted).toBe(1)
+
+    offSuspension()
   })
 
   test("does not double-run textarea actions when a global binding uses the same stroke", () => {
@@ -223,6 +292,76 @@ describe("edit buffer keymap addon", () => {
 
     expect(calls).toEqual(["fallback", "fallback"])
     expect(textarea.plainText).toBe("Hello")
+  })
+
+  test("registerManagedTextareaLayer combines commands, suspension, defaults, and overrides", () => {
+    const manager = getKeymapManager(renderer)
+
+    const off = registerManagedTextareaLayer(manager, {
+      scope: "global",
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
+
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 4,
+      initialValue: "Line 1\nLine 2\nLine 3",
+    })
+    renderer.root.add(textarea)
+
+    textarea.focus()
+    textarea.gotoLine(1)
+    expect(textarea.traits.suspend).toBe(true)
+
+    mockInput.pressKey("d")
+    mockInput.pressKey("d")
+
+    expect(textarea.plainText).toBe("Line 1\nLine 3")
+
+    mockInput.pressKey("x")
+    expect(textarea.plainText).toBe("Line 1\nxLine 3")
+
+    off()
+    expect(textarea.traits.suspend).toBeUndefined()
+
+    mockInput.pressBackspace()
+    expect(textarea.plainText).toBe("Line 1\nLine 3")
+  })
+
+  test("registerManagedTextareaLayer lets overrides replace default textarea shortcuts by order", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "custom-left",
+        run() {
+          calls.push("custom-left")
+        },
+      },
+    ])
+
+    const off = registerManagedTextareaLayer(manager, {
+      scope: "global",
+      bindings: [{ key: "left", cmd: "custom-left" }],
+    })
+
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 4,
+      initialValue: "abc",
+    })
+    renderer.root.add(textarea)
+
+    textarea.focus()
+    textarea.cursorOffset = 3
+
+    mockInput.pressArrow("left")
+
+    expect(calls).toEqual(["custom-left"])
+    expect(textarea.cursorOffset).toBe(3)
+
+    off()
   })
 
   test("disposes single registrations cleanly and supports re-registration", () => {

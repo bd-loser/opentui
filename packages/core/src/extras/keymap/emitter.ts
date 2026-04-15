@@ -9,6 +9,53 @@ export type OrderedEmitterListener<TListener, TOptions extends { priority: numbe
   }
 >
 
+export class RegistrationList<TValue> {
+  private values: readonly TValue[] = []
+
+  public append(value: TValue): () => void {
+    this.values = [...this.values, value]
+
+    return () => {
+      this.remove(value)
+    }
+  }
+
+  public prepend(value: TValue): () => void {
+    this.values = [value, ...this.values]
+
+    return () => {
+      this.remove(value)
+    }
+  }
+
+  public remove(value: TValue): boolean {
+    const current = this.values
+    if (current.length === 0) {
+      return false
+    }
+
+    const next = current.filter((candidate) => candidate !== value)
+    if (next.length === current.length) {
+      return false
+    }
+
+    this.values = next
+    return true
+  }
+
+  public has(): boolean {
+    return this.values.length > 0
+  }
+
+  public snapshot(): readonly TValue[] {
+    return this.values
+  }
+
+  public clear(): void {
+    this.values = []
+  }
+}
+
 type EmitterListeners<TEvents extends Record<string, unknown>> = Partial<{
   [TName in keyof TEvents]: readonly EmitterListener<TEvents[TName]>[]
 }>

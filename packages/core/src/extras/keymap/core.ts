@@ -75,7 +75,7 @@ import {
   stringifyKeyStroke,
 } from "./utils.js"
 import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./default-parser.js"
-import { Emitter, OrderedEmitter } from "./emitter.js"
+import { Emitter, OrderedEmitter, RegistrationList } from "./emitter.js"
 
 const keymapManagersByRenderer = new WeakMap<CliRenderer, KeymapManagerImpl>()
 
@@ -271,14 +271,14 @@ class KeymapManagerImpl implements KeymapManager {
   private tokens = new Map<string, ParsedKeyToken>()
   private bindingSyntax: KeymapBindingSyntax | undefined
   private layerFields = new Map<string, KeymapLayerFieldCompiler>()
-  private bindingExpanders: KeymapBindingExpander[] = []
-  private bindingParsers: KeymapBindingParser[] = []
-  private bindingCompilers: KeymapBindingCompiler[] = []
+  private bindingExpanders = new RegistrationList<KeymapBindingExpander>()
+  private bindingParsers = new RegistrationList<KeymapBindingParser>()
+  private bindingCompilers = new RegistrationList<KeymapBindingCompiler>()
   private bindingFields = new Map<string, KeymapBindingFieldCompiler>()
   private commandFields = new Map<string, KeymapCommandFieldCompiler>()
   private runtimeKeyDependents = new Map<string, Set<RuntimeMatchable>>()
-  private commandResolvers: KeymapCommandResolver[] = []
-  private eventMatchResolvers: KeymapEventMatchResolver[] = []
+  private commandResolvers = new RegistrationList<KeymapCommandResolver>()
+  private eventMatchResolvers = new RegistrationList<KeymapEventMatchResolver>()
   private keyHooks = new OrderedEmitter<(ctx: KeymapKeyInputContext) => void, { priority: number; release: boolean }>()
   private rawHooks = new OrderedEmitter<(ctx: KeymapRawInputContext) => void, { priority: number }>()
   private hooks: Emitter<KeymapHooks>
@@ -322,8 +322,8 @@ class KeymapManagerImpl implements KeymapManager {
       this.reportHookError(name, error)
     })
     this.bindingSyntax = defaultBindingSyntax
-    this.bindingParsers = [defaultBindingParser]
-    this.eventMatchResolvers = [defaultEventMatchResolver]
+    this.bindingParsers.append(defaultBindingParser)
+    this.eventMatchResolvers.append(defaultEventMatchResolver)
     this.keypressListener = (event) => {
       this.handleKeyEvent(event, false)
     }
@@ -375,14 +375,14 @@ class KeymapManagerImpl implements KeymapManager {
     this.tokens.clear()
     this.bindingSyntax = undefined
     this.layerFields.clear()
-    this.bindingExpanders = []
-    this.bindingParsers = []
-    this.bindingCompilers = []
+    this.bindingExpanders.clear()
+    this.bindingParsers.clear()
+    this.bindingCompilers.clear()
     this.bindingFields.clear()
     this.commandFields.clear()
     this.runtimeKeyDependents.clear()
-    this.commandResolvers = []
-    this.eventMatchResolvers = []
+    this.commandResolvers.clear()
+    this.eventMatchResolvers.clear()
     this.keyHooks.clear()
     this.rawHooks.clear()
     this.hooks.clear()
@@ -703,36 +703,24 @@ class KeymapManagerImpl implements KeymapManager {
   public registerBindingCompiler(compiler: KeymapBindingCompiler): () => void {
     this.assertNotDestroyed()
 
-    this.bindingCompilers = [...this.bindingCompilers, compiler]
-
-    return () => {
-      this.bindingCompilers = this.bindingCompilers.filter((candidate) => candidate !== compiler)
-    }
+    return this.bindingCompilers.append(compiler)
   }
 
   public prependBindingParser(parser: KeymapBindingParser): () => void {
     this.assertNotDestroyed()
 
-    this.bindingParsers = [parser, ...this.bindingParsers]
-
-    return () => {
-      this.bindingParsers = this.bindingParsers.filter((candidate) => candidate !== parser)
-    }
+    return this.bindingParsers.prepend(parser)
   }
 
   public appendBindingParser(parser: KeymapBindingParser): () => void {
     this.assertNotDestroyed()
 
-    this.bindingParsers = [...this.bindingParsers, parser]
-
-    return () => {
-      this.bindingParsers = this.bindingParsers.filter((candidate) => candidate !== parser)
-    }
+    return this.bindingParsers.append(parser)
   }
 
   public clearBindingParsers(): void {
     this.assertNotDestroyed()
-    this.bindingParsers = []
+    this.bindingParsers.clear()
   }
 
   public setBindingSyntax(syntax: KeymapBindingSyntax): void {
@@ -754,7 +742,7 @@ class KeymapManagerImpl implements KeymapManager {
       throw new Error(`Keymap token "${normalizedToken}" is already registered`)
     }
 
-    const parsedToken = parseSingleKeyPartWithParsers(token.key, this.bindingParsers, {
+    const parsedToken = parseSingleKeyPartWithParsers(token.key, this.bindingParsers.snapshot(), {
       tokens: this.tokens,
       layer: EMPTY_COMPILE_FIELDS,
       parseObjectKey: (key) => this.parseObjectKeyPart(key),
@@ -781,26 +769,18 @@ class KeymapManagerImpl implements KeymapManager {
   public prependBindingExpander(expander: KeymapBindingExpander): () => void {
     this.assertNotDestroyed()
 
-    this.bindingExpanders = [expander, ...this.bindingExpanders]
-
-    return () => {
-      this.bindingExpanders = this.bindingExpanders.filter((candidate) => candidate !== expander)
-    }
+    return this.bindingExpanders.prepend(expander)
   }
 
   public appendBindingExpander(expander: KeymapBindingExpander): () => void {
     this.assertNotDestroyed()
 
-    this.bindingExpanders = [...this.bindingExpanders, expander]
-
-    return () => {
-      this.bindingExpanders = this.bindingExpanders.filter((candidate) => candidate !== expander)
-    }
+    return this.bindingExpanders.append(expander)
   }
 
   public clearBindingExpanders(): void {
     this.assertNotDestroyed()
-    this.bindingExpanders = []
+    this.bindingExpanders.clear()
   }
 
   public registerBindingFields(fields: Record<string, KeymapBindingFieldCompiler>): () => void {
@@ -863,18 +843,16 @@ class KeymapManagerImpl implements KeymapManager {
     this.assertNotDestroyed()
 
     return this.runWithStateChangeBatch(() => {
-      this.commandResolvers = [...this.commandResolvers, resolver]
+      this.commandResolvers.append(resolver)
       this.refreshBindingCommandResolution()
       this.queueStateChange()
 
       return () => {
         this.runWithStateChangeBatch(() => {
-          const nextResolvers = this.commandResolvers.filter((candidate) => candidate !== resolver)
-          if (nextResolvers.length === this.commandResolvers.length) {
+          if (!this.commandResolvers.remove(resolver)) {
             return
           }
 
-          this.commandResolvers = nextResolvers
           this.refreshBindingCommandResolution()
           this.queueStateChange()
         })
@@ -885,16 +863,12 @@ class KeymapManagerImpl implements KeymapManager {
   public registerEventMatchResolver(resolver: KeymapEventMatchResolver): () => void {
     this.assertNotDestroyed()
 
-    this.eventMatchResolvers = [...this.eventMatchResolvers, resolver]
-
-    return () => {
-      this.eventMatchResolvers = this.eventMatchResolvers.filter((candidate) => candidate !== resolver)
-    }
+    return this.eventMatchResolvers.append(resolver)
   }
 
   public clearEventMatchResolvers(): void {
     this.assertNotDestroyed()
-    this.eventMatchResolvers = []
+    this.eventMatchResolvers.clear()
   }
 
   public onKeyInput(
@@ -1341,7 +1315,7 @@ class KeymapManagerImpl implements KeymapManager {
       },
     }
 
-    for (const resolver of this.commandResolvers) {
+    for (const resolver of this.commandResolvers.snapshot()) {
       const resolved = resolver(command, context)
       if (resolved) {
         return resolved
@@ -1410,16 +1384,18 @@ class KeymapManagerImpl implements KeymapManager {
     const root = createSequenceNode(null, null, null)
     const compiledBindings: CompiledBinding[] = []
     let hasTokenBindings = false
+    const bindingExpanders = this.bindingExpanders.snapshot()
+    const bindingParsers = this.bindingParsers.snapshot()
 
     for (const [bindingIndex, binding] of bindings.entries()) {
-      const expandedBindingKeys = expandBindingInputWithExpanders(binding.key, this.bindingExpanders, {
+      const expandedBindingKeys = expandBindingInputWithExpanders(binding.key, bindingExpanders, {
         layer: compileFields,
       })
 
       for (const expandedBindingKey of expandedBindingKeys) {
         const parsed =
           typeof expandedBindingKey === "string"
-            ? parseBindingSequenceWithParsers(expandedBindingKey, this.bindingParsers, {
+            ? parseBindingSequenceWithParsers(expandedBindingKey, bindingParsers, {
                 tokens,
                 layer: compileFields,
               })
@@ -1546,7 +1522,9 @@ class KeymapManagerImpl implements KeymapManager {
     sequence: ParsedKeyPart[],
     compileFields?: Readonly<Record<string, unknown>>,
   ): KeymapParsedBindingInput[] {
-    if (this.bindingCompilers.length === 0) {
+    const bindingCompilers = this.bindingCompilers.snapshot()
+
+    if (bindingCompilers.length === 0) {
       return [{ ...binding, sequence: sequence.map((part) => createParsedKeyPart(part.stroke, part.display, part.matchKey)) }]
     }
 
@@ -1558,7 +1536,7 @@ class KeymapManagerImpl implements KeymapManager {
     let keepOriginal = true
     const layer = compileFields ?? EMPTY_COMPILE_FIELDS
 
-    for (const compiler of this.bindingCompilers) {
+    for (const compiler of bindingCompilers) {
       try {
         compiler(parsedBinding, {
           layer,
@@ -1807,12 +1785,14 @@ class KeymapManagerImpl implements KeymapManager {
   }
 
   private resolveEventMatchKeys(event: KeyEvent): string[] {
-    if (this.eventMatchResolvers.length === 0) {
+    const resolvers = this.eventMatchResolvers.snapshot()
+
+    if (resolvers.length === 0) {
       return []
     }
 
-    if (this.eventMatchResolvers.length === 1) {
-      const resolver = this.eventMatchResolvers[0]!
+    if (resolvers.length === 1) {
+      const resolver = resolvers[0]!
 
       let resolved: readonly string[] | undefined
       try {
@@ -1858,7 +1838,7 @@ class KeymapManagerImpl implements KeymapManager {
     const keys: string[] = []
     const seen = new Set<string>()
 
-    for (const resolver of this.eventMatchResolvers) {
+    for (const resolver of resolvers) {
       let resolved: readonly string[] | undefined
 
       try {

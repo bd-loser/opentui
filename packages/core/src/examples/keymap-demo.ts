@@ -14,8 +14,8 @@ import {
 import {
   getKeymapManager,
   registerEnabledField,
-  registerEditBufferCommands,
   registerExCommands,
+  registerManagedTextareaLayer,
   registerMetadataFields,
   registerTimedLeader,
   type KeymapActiveKey,
@@ -279,7 +279,7 @@ function buildHelpContent(): StyledText {
       fg(P.textDim)(": switch panels and editors"),
     ]),
     styledLine([
-      fg(P.textDim)("Panels use local j/k/enter. Editors use arrows, ctrl+a/e, dd, backspace, and plain typing."),
+      fg(P.textDim)("Panels use local j/k/enter. Focused textareas route default shortcuts through keymap; plain typing still inserts directly."),
     ]),
   ])
 }
@@ -366,6 +366,9 @@ function renderStatus(renderer: CliRenderer): void {
             fg(P.separator)("  |  "),
             fg(P.textDim)("Chars: "),
             fg(P.text)(String(focusedEditor.plainText.length)),
+            fg(P.separator)("  |  "),
+            fg(P.textDim)("Keys: "),
+            fg(P.command)(focusedEditor.traits.suspend === true ? "keymap" : "local"),
           ]),
         ])
       : joinLines([
@@ -427,7 +430,6 @@ function registerKeymaps(renderer: CliRenderer): void {
 
   disposers.push(registerEnabledField(manager))
   disposers.push(registerMetadataFields(manager))
-  disposers.push(registerEditBufferCommands(manager))
 
   disposers.push(
     manager.registerCommands([
@@ -561,7 +563,7 @@ function registerKeymaps(renderer: CliRenderer): void {
   )
 
   disposers.push(
-    manager.registerLayer({
+    registerManagedTextareaLayer(manager, {
       scope: "global",
       enabled: () => manager.renderer.currentFocusedEditor !== null,
       bindings: [

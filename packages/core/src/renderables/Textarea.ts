@@ -55,7 +55,7 @@ export type TextareaAction =
 
 export type KeyBinding = BaseKeyBinding<TextareaAction>
 
-const defaultTextareaKeybindings: KeyBinding[] = [
+export const defaultTextareaKeyBindings: KeyBinding[] = [
   { name: "left", action: "move-left" },
   { name: "right", action: "move-right" },
   { name: "up", action: "move-up" },
@@ -186,7 +186,7 @@ export class TextareaRenderable extends EditBufferRenderable {
 
     this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, options.keyAliasMap || {})
     this._keyBindings = options.keyBindings || []
-    const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, this._keyBindings)
+    const mergedBindings = mergeKeyBindings(defaultTextareaKeyBindings, this._keyBindings)
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
     this._actionHandlers = this.buildActionHandlers()
     this._submitListener = options.onSubmit
@@ -261,12 +261,14 @@ export class TextareaRenderable extends EditBufferRenderable {
   }
 
   public handleKeyPress(key: KeyEvent): boolean {
-    const action = getKeyBindingAction(this._keyBindingsMap, key)
+    if (this.traits.suspend !== true) {
+      const action = getKeyBindingAction(this._keyBindingsMap, key)
 
-    if (action) {
-      const handler = this._actionHandlers.get(action)
-      if (handler) {
-        return handler()
+      if (action) {
+        const handler = this._actionHandlers.get(action)
+        if (handler) {
+          return handler()
+        }
       }
     }
 
@@ -405,13 +407,13 @@ export class TextareaRenderable extends EditBufferRenderable {
 
   public set keyBindings(bindings: KeyBinding[]) {
     this._keyBindings = bindings
-    const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, bindings)
+    const mergedBindings = mergeKeyBindings(defaultTextareaKeyBindings, bindings)
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
   }
 
   public set keyAliasMap(aliases: KeyAliasMap) {
     this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, aliases)
-    const mergedBindings = mergeKeyBindings(defaultTextareaKeybindings, this._keyBindings)
+    const mergedBindings = mergeKeyBindings(defaultTextareaKeyBindings, this._keyBindings)
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
   }
 

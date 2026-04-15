@@ -69,13 +69,14 @@ import {
   mergeRequirement,
   normalizeBindingCommand,
   normalizeCommandName,
+  normalizeKeyStroke,
   snapshotBindingInputs,
   sortByPriorityAndOrder,
   sortLayersWithinScope,
   stringifyKeySequence,
   stringifyKeyStroke,
 } from "./utils.js"
-import { defaultBindingParser, defaultEventMatchResolver, parseKeyLike } from "./default-parser.js"
+import { defaultBindingParser, defaultEventMatchResolver } from "./default-parser.js"
 import { Emitter } from "./emitter.js"
 
 const keymapManagersByRenderer = new WeakMap<CliRenderer, KeymapManagerImpl>()
@@ -169,7 +170,7 @@ function parseBindingSequenceWithParsers(
 } {
   if (typeof key !== "string") {
     return {
-      parts: [createParsedKeyPart(parseKeyLike(key))],
+      parts: [createParsedKeyPart(normalizeKeyStroke(key))],
       usedTokens: [],
       unknownTokens: [],
       hasTokenBindings: false,
@@ -228,6 +229,26 @@ function parseBindingSequenceWithParsers(
     unknownTokens: [...unknownTokens],
     hasTokenBindings: usedTokens.size > 0 || unknownTokens.size > 0,
   }
+}
+
+function parseSingleKeyPartWithParsers(
+  key: KeyLike,
+  parsers: readonly KeymapBindingParser[],
+  options?: {
+    tokens?: ReadonlyMap<string, ParsedKeyToken>
+    layer?: Readonly<Record<string, unknown>>
+  },
+): ParsedKeyPart {
+  // Tokens can be declared as strings or stroke objects. String tokens must use
+  // the currently active parser chain (not a baked-in default parser), but token
+  // substitution must still resolve to exactly one stroke.
+  const { parts } = parseBindingSequenceWithParsers(key, parsers, options)
+  const [part] = parts
+  if (!part || parts.length !== 1) {
+    throw new Error(`Invalid key "${String(key)}": expected a single key stroke`)
+  }
+
+  return part
 }
 
 function resolveKeymapLogger(logger?: KeymapLogger): ResolvedKeymapLogger {
@@ -719,7 +740,10 @@ class KeymapManagerImpl implements KeymapManager {
       throw new Error(`Keymap token "${normalizedToken}" is already registered`)
     }
 
-    const parsedToken = createParsedKeyPart(parseKeyLike(token.key))
+    const parsedToken = parseSingleKeyPartWithParsers(token.key, this.bindingParsers, {
+      tokens: this.tokens,
+      layer: EMPTY_COMPILE_FIELDS,
+    })
     const registeredToken: ParsedKeyToken = {
       stroke: parsedToken.stroke,
       matchKey: parsedToken.matchKey,

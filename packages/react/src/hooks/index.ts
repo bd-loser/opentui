@@ -1,4 +1,5 @@
 export * from "./use-keyboard.js"
+export * from "./use-keymap.js"
 export * from "./use-renderer.js"
 export * from "./use-resize.js"
 export * from "./use-terminal-dimensions.js"

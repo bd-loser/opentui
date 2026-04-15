@@ -15,6 +15,8 @@ export type {
   KeymapBindingParser,
   KeymapBindingParserContext,
   KeymapBindingParserResult,
+  KeymapBindingExpander,
+  KeymapBindingExpanderContext,
   KeymapBindingEvent,
   KeymapBindingFieldCompiler,
   KeymapBindingFieldContext,

@@ -11,6 +11,8 @@ import type {
   KeymapActiveKeyOptions,
   KeymapAttributes,
   KeymapBindingCompiler,
+  KeymapBindingExpander,
+  KeymapBindingExpanderContext,
   KeymapBindingParser,
   KeymapBindingCommand,
   KeymapBindingEvent,
@@ -31,6 +33,7 @@ import type {
   KeymapCommandResult,
   KeymapEventData,
   KeymapKeyInputContext,
+  KeyLike,
   KeymapLayer,
   KeymapLayerFieldCompiler,
   KeymapLogger,
@@ -109,6 +112,49 @@ function cloneParsedBindingInput(binding: KeymapParsedBindingInput): KeymapParse
     ...binding,
     sequence: binding.sequence.map((part) => createParsedKeyPart(part.stroke, part.display)),
   }
+}
+
+function expandBindingInputWithExpanders(
+  key: KeyLike,
+  expanders: readonly KeymapBindingExpander[],
+  options?: {
+    layer?: Readonly<Record<string, unknown>>
+  },
+): readonly KeyLike[] {
+  if (typeof key !== "string" || expanders.length === 0) {
+    return [key]
+  }
+
+  const layer = options?.layer ?? EMPTY_COMPILE_FIELDS
+  let candidates = [key]
+
+  for (const expander of expanders) {
+    const nextCandidates: string[] = []
+
+    for (const input of candidates) {
+      const result = expander({ input, layer } satisfies KeymapBindingExpanderContext)
+      if (!result) {
+        nextCandidates.push(input)
+        continue
+      }
+
+      if (result.length === 0) {
+        throw new Error(`Keymap binding expander must return at least one key sequence for "${input}"`)
+      }
+
+      for (const expandedInput of result) {
+        if (typeof expandedInput !== "string") {
+          throw new Error(`Keymap binding expander must return string key sequences for "${input}"`)
+        }
+
+        nextCandidates.push(expandedInput)
+      }
+    }
+
+    candidates = nextCandidates
+  }
+
+  return candidates
 }
 
 function parseBindingSequenceWithParsers(
@@ -207,6 +253,7 @@ class KeymapManagerImpl implements KeymapManager {
   private targetLayers = new WeakMap<Renderable, RegisteredLayerBucket>()
   private tokens = new Map<string, ParsedKeyStroke>()
   private layerFields = new Map<string, KeymapLayerFieldCompiler>()
+  private bindingExpanders: KeymapBindingExpander[] = []
   private bindingParsers: KeymapBindingParser[] = []
   private bindingCompilers: KeymapBindingCompiler[] = []
   private bindingFields = new Map<string, KeymapBindingFieldCompiler>()
@@ -307,6 +354,7 @@ class KeymapManagerImpl implements KeymapManager {
     this.targetLayers = new WeakMap()
     this.tokens.clear()
     this.layerFields.clear()
+    this.bindingExpanders = []
     this.bindingParsers = []
     this.bindingCompilers = []
     this.bindingFields.clear()
@@ -687,6 +735,31 @@ class KeymapManagerImpl implements KeymapManager {
         this.applyTokenState(nextTokens)
       }
     }
+  }
+
+  public prependBindingExpander(expander: KeymapBindingExpander): () => void {
+    this.assertNotDestroyed()
+
+    this.bindingExpanders = [expander, ...this.bindingExpanders]
+
+    return () => {
+      this.bindingExpanders = this.bindingExpanders.filter((candidate) => candidate !== expander)
+    }
+  }
+
+  public appendBindingExpander(expander: KeymapBindingExpander): () => void {
+    this.assertNotDestroyed()
+
+    this.bindingExpanders = [...this.bindingExpanders, expander]
+
+    return () => {
+      this.bindingExpanders = this.bindingExpanders.filter((candidate) => candidate !== expander)
+    }
+  }
+
+  public clearBindingExpanders(): void {
+    this.assertNotDestroyed()
+    this.bindingExpanders = []
   }
 
   public registerBindingFields(fields: Record<string, KeymapBindingFieldCompiler>): () => void {
@@ -1286,107 +1359,116 @@ class KeymapManagerImpl implements KeymapManager {
     let hasTokenBindings = false
 
     for (const [bindingIndex, binding] of bindings.entries()) {
-      const parsed = parseBindingSequenceWithParsers(binding.key, this.bindingParsers, {
-        tokens,
+      const expandedBindingKeys = expandBindingInputWithExpanders(binding.key, this.bindingExpanders, {
         layer: compileFields,
       })
-      const sequence = parsed.parts
-      hasTokenBindings ||= parsed.hasTokenBindings
 
-      for (const tokenName of parsed.unknownTokens) {
-        this.warnUnknownToken(tokenName, typeof binding.key === "string" ? binding.key : String(binding.key.name))
-      }
+      for (const expandedBindingKey of expandedBindingKeys) {
+        const parsed = parseBindingSequenceWithParsers(expandedBindingKey, this.bindingParsers, {
+          tokens,
+          layer: compileFields,
+        })
+        const sequence = parsed.parts
+        hasTokenBindings ||= parsed.hasTokenBindings
 
-      for (const compiledInput of this.expandParsedBindings(binding, sequence, compileFields)) {
-        const event = this.normalizeBindingEvent(compiledInput.event)
-        const mergedRequires: KeymapEventData = {}
-        const mergedAttrs: KeymapAttributes = {}
-        const matchers: RuntimeMatcher[] = []
-        const conditionKeys = new Set<string>()
-        let hasUnkeyedMatchers = false
+        for (const tokenName of parsed.unknownTokens) {
+          this.warnUnknownToken(
+            tokenName,
+            typeof expandedBindingKey === "string" ? expandedBindingKey : String(expandedBindingKey.name),
+          )
+        }
 
-        const { sequence, ...bindingFields } = compiledInput
+        for (const compiledInput of this.expandParsedBindings(binding, sequence, compileFields)) {
+          const event = this.normalizeBindingEvent(compiledInput.event)
+          const mergedRequires: KeymapEventData = {}
+          const mergedAttrs: KeymapAttributes = {}
+          const matchers: RuntimeMatcher[] = []
+          const conditionKeys = new Set<string>()
+          let hasUnkeyedMatchers = false
 
-        for (const [fieldName, value] of Object.entries(bindingFields)) {
-          if (RESERVED_BINDING_FIELDS.has(fieldName)) {
-            continue
-          }
+          const { sequence, ...bindingFields } = compiledInput
 
-          if (value === undefined) {
-            continue
-          }
+          for (const [fieldName, value] of Object.entries(bindingFields)) {
+            if (RESERVED_BINDING_FIELDS.has(fieldName)) {
+              continue
+            }
 
-          const compiler = this.bindingFields.get(fieldName)
-          if (!compiler) {
-            this.warnUnknownField("binding", fieldName)
-            continue
-          }
+            if (value === undefined) {
+              continue
+            }
 
-          compiler(value, {
-            require(name, requiredValue) {
-              mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
-              conditionKeys.add(name)
-            },
-            attr(name, attributeValue) {
-              mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
-            },
-            match(matcher, options) {
-              const keys = options?.keys ? [...options.keys] : []
-              if (keys.length === 0) {
-                hasUnkeyedMatchers = true
-              } else {
-                for (const key of keys) {
-                  conditionKeys.add(key)
+            const compiler = this.bindingFields.get(fieldName)
+            if (!compiler) {
+              this.warnUnknownField("binding", fieldName)
+              continue
+            }
+
+            compiler(value, {
+              require(name, requiredValue) {
+                mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
+                conditionKeys.add(name)
+              },
+              attr(name, attributeValue) {
+                mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
+              },
+              match(matcher, options) {
+                const keys = options?.keys ? [...options.keys] : []
+                if (keys.length === 0) {
+                  hasUnkeyedMatchers = true
+                } else {
+                  for (const key of keys) {
+                    conditionKeys.add(key)
+                  }
                 }
-              }
 
-              matchers.push({
-                source: `field ${fieldName}`,
-                match: matcher,
-                keys,
-              })
-            },
-          })
-        }
+                matchers.push({
+                  source: `field ${fieldName}`,
+                  match: matcher,
+                  keys,
+                })
+              },
+            })
+          }
 
-        const attrs = freezeAttributes(mergedAttrs)
-        const command = normalizeBindingCommand(bindingFields.cmd)
-        const compiledBinding: CompiledBinding = {
-          sequence,
-          command,
-          event,
-          sourceBinding: cloneParsedBindingInput(compiledInput),
-          sourceScope,
-          sourceTarget,
-          sourceLayerOrder,
-          sourceBindingIndex: bindingIndex,
-          requires: Object.entries(mergedRequires),
-          matchers,
-          conditionKeys: [...conditionKeys],
-          hasUnkeyedMatchers,
-          matchCacheDirty: true,
-          consume: bindingFields.consume !== false,
-          fallthrough: bindingFields.fallthrough ?? false,
-        }
+          const attrs = freezeAttributes(mergedAttrs)
+          const command = normalizeBindingCommand(bindingFields.cmd)
+          const compiledBinding: CompiledBinding = {
+            sequence,
+            command,
+            event,
+            sourceBinding: cloneParsedBindingInput(compiledInput),
+            sourceScope,
+            sourceTarget,
+            sourceLayerOrder,
+            sourceBindingIndex: bindingIndex,
+            requires: Object.entries(mergedRequires),
+            matchers,
+            conditionKeys: [...conditionKeys],
+            hasUnkeyedMatchers,
+            matchCacheDirty: true,
+            consume: bindingFields.consume !== false,
+            fallthrough: bindingFields.fallthrough ?? false,
+          }
 
-        if (attrs) {
-          compiledBinding.attrs = attrs
-        }
+          if (attrs) {
+            compiledBinding.attrs = attrs
+          }
 
-        this.resolveCompiledBindingCommand(compiledBinding)
+          this.resolveCompiledBindingCommand(compiledBinding)
 
-        if (sequence.length === 0) {
-          continue
-        }
+          if (sequence.length === 0) {
+            continue
+          }
 
-        if (event === "release" && sequence.length > 1) {
-          throw new Error("Keymap release bindings only support a single key stroke")
-        }
+          if (event === "release" && sequence.length > 1) {
+            throw new Error("Keymap release bindings only support a single key stroke")
+          }
 
-        compiledBindings.push(compiledBinding)
+          compiledBindings.push(compiledBinding)
 
-        if (event === "press") {
-          this.insertBinding(root, compiledBinding)
+          if (event === "press") {
+            this.insertBinding(root, compiledBinding)
+          }
         }
       }
     }

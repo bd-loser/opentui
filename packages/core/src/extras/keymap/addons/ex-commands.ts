@@ -1,5 +1,5 @@
-import type { KeymapCommand, KeymapCommandContext, KeymapManager } from "../types.js"
-import { normalizeCommandName, parseCommandInput } from "../utils.js"
+import type { KeymapCommand, KeymapCommandContext, KeymapManager, KeymapParsedCommand } from "../types.js"
+import { normalizeCommandName } from "../utils.js"
 
 export interface ExCommand {
   name: string
@@ -16,6 +16,25 @@ function normalizeExCommandName(name: string): string {
   }
 
   return `:${normalized}`
+}
+
+function parseCommandInput(input: string): KeymapParsedCommand {
+  const trimmed = input.trim()
+  if (!trimmed) {
+    throw new Error("Invalid keymap command: command cannot be empty")
+  }
+
+  const parts = trimmed.split(/\s+/)
+  const [name, ...args] = parts
+  if (!name) {
+    throw new Error(`Invalid keymap command "${input}"`)
+  }
+
+  return {
+    input: trimmed,
+    name,
+    args,
+  }
 }
 
 function validateCommandArgs(command: ExCommand, args: string[]): boolean {

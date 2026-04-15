@@ -576,6 +576,7 @@ function registerKeymaps(renderer: CliRenderer): void {
         { key: "return", cmd: "newline", desc: "New line" },
         { key: "ctrl+a", cmd: "line-home", desc: "Line start" },
         { key: "ctrl+e", cmd: "line-end", desc: "Line end" },
+        { key: "d", group: "Delete" },
         { key: "dd", cmd: "delete-line", desc: "Delete line" },
       ],
     }),
@@ -835,9 +836,9 @@ export function run(renderer: CliRenderer): void {
 
   const whichKeyColumn = new BoxRenderable(renderer, {
     id: "keymap-demo-which-key-column",
-    width: "34%",
+    width: "40%",
     minWidth: 30,
-    maxWidth: 40,
+    maxWidth: 48,
     flexShrink: 0,
     flexDirection: "column",
   })

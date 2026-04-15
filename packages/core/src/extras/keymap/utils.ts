@@ -10,7 +10,6 @@ import type {
   KeymapStringifyOptions,
   ParsedKeyPart,
   ParsedKeyStroke,
-  RegisteredLayer,
   SequenceNode,
 } from "./types.js"
 
@@ -52,25 +51,19 @@ export function isPromiseLike(value: unknown): value is Promise<unknown> {
   return typeof (value as { then?: unknown }).then === "function"
 }
 
-export function sortByPriorityAndOrder<T extends { priority: number; order: number }>(items: T[]): T[] {
+export function sortByPriorityAndOrder<T extends { priority: number; order: number }>(
+  items: T[],
+  options?: { order?: "asc" | "desc" },
+): T[] {
+  const orderDirection = options?.order ?? "asc"
+
   return [...items].sort((a, b) => {
     const priorityDiff = b.priority - a.priority
     if (priorityDiff !== 0) {
       return priorityDiff
     }
 
-    return a.order - b.order
-  })
-}
-
-export function sortLayersWithinScope(items: RegisteredLayer[]): RegisteredLayer[] {
-  return [...items].sort((a, b) => {
-    const priorityDiff = b.priority - a.priority
-    if (priorityDiff !== 0) {
-      return priorityDiff
-    }
-
-    return b.order - a.order
+    return orderDirection === "desc" ? b.order - a.order : a.order - b.order
   })
 }
 

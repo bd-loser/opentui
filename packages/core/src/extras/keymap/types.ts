@@ -179,6 +179,11 @@ export interface KeymapBindingParserContext {
   tokens: ReadonlyMap<string, ParsedKeyStroke>
 }
 
+export interface KeymapBindingExpanderContext {
+  input: string
+  layer: Readonly<Record<string, unknown>>
+}
+
 export interface KeymapBindingParserResult {
   parts: ParsedKeyPart[]
   nextIndex: number
@@ -187,6 +192,8 @@ export interface KeymapBindingParserResult {
 }
 
 export type KeymapBindingParser = (ctx: KeymapBindingParserContext) => KeymapBindingParserResult | undefined
+
+export type KeymapBindingExpander = (ctx: KeymapBindingExpanderContext) => readonly string[] | undefined
 
 export interface KeymapParsedBindingInput extends Omit<KeymapBindingInput, "key"> {
   sequence: ParsedKeyPart[]
@@ -259,6 +266,9 @@ export interface KeymapManager {
   registerLayer(layer: KeymapLayer): () => void
   registerLayerFields(fields: Record<string, KeymapLayerFieldCompiler>): () => void
   registerToken(token: KeymapToken): () => void
+  prependBindingExpander(expander: KeymapBindingExpander): () => void
+  appendBindingExpander(expander: KeymapBindingExpander): () => void
+  clearBindingExpanders(): void
   prependBindingParser(parser: KeymapBindingParser): () => void
   appendBindingParser(parser: KeymapBindingParser): () => void
   clearBindingParsers(): void

@@ -92,6 +92,12 @@ const workspaceAliasPlugin: BunPlugin = {
       }
     })
 
+    build.onResolve({ filter: /^@opentui\/core\/extras$/ }, () => {
+      return {
+        path: join(packageRoot, "..", "core", "src", "extras.ts"),
+      }
+    })
+
     build.onResolve({ filter: /^@opentui\/core\/3d$/ }, () => {
       return {
         path: join(packageRoot, "..", "core", "src", "3d.ts"),

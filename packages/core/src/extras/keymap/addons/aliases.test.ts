@@ -119,6 +119,34 @@ describe("aliases field addon", () => {
     expect(manager.getPendingSequenceParts()).toEqual([])
   })
 
+  test("can be disposed to stop alias expansion for subsequent layers", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    const offAliases = registerAliasesField(manager)
+    offAliases()
+
+    manager.registerCommands([
+      {
+        name: "submit",
+        run() {
+          calls.push("submit")
+        },
+      },
+    ])
+    manager.registerLayer({
+      scope: "global",
+      aliases: { enter: "return" },
+      bindings: [{ key: { name: "enter" }, cmd: "submit" }],
+    })
+
+    mockInput.pressEnter()
+
+    expect(calls).toEqual([])
+    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "enter")).toBe(true)
+    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "return")).toBe(false)
+  })
+
   test("keeps the first preserved alias label when canonical and alias labels collide", () => {
     const manager = getKeymapManager(renderer)
 

@@ -286,6 +286,231 @@ describe("keymap", () => {
     expect(calls).toEqual(["leader"])
   })
 
+  test("supports binding expanders that split one key definition into multiple bindings", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.appendBindingExpander(({ input }) => {
+      if (!input.includes(",")) {
+        return undefined
+      }
+
+      return input
+        .split(",")
+        .map((candidate) => candidate.trim())
+        .filter(Boolean)
+    })
+
+    manager.registerCommands([
+      {
+        name: "split-command",
+        run() {
+          calls.push("split")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x, y", cmd: "split-command" }],
+    })
+
+    expect(getActiveKeyNames(manager)).toEqual(["x", "y"])
+
+    mockInput.pressKey("x")
+    mockInput.pressKey("y")
+
+    expect(calls).toEqual(["split", "split"])
+  })
+
+  test("supports prepending binding expanders ahead of appended expanders", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.appendBindingExpander(({ input }) => {
+      if (!input.includes(",")) {
+        return undefined
+      }
+
+      return input
+        .split(",")
+        .map((candidate) => candidate.trim())
+        .filter(Boolean)
+    })
+    manager.prependBindingExpander(({ input }) => {
+      if (!input.includes("~")) {
+        return undefined
+      }
+
+      return [input.replaceAll("~", "")]
+    })
+
+    manager.registerCommands([
+      {
+        name: "prepend-append",
+        run() {
+          calls.push("hit")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "~x,~y", cmd: "prepend-append" }],
+    })
+
+    mockInput.pressKey("x")
+    mockInput.pressKey("y")
+
+    expect(calls).toEqual(["hit", "hit"])
+  })
+
+  test("binding expanders can use layer fields for optional emacs-style key strings", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerLayerFields({
+      emacsStyle(value) {
+        if (typeof value !== "boolean") {
+          throw new Error('Keymap layer field "emacsStyle" must be a boolean')
+        }
+      },
+    })
+
+    manager.appendBindingExpander(({ input, layer }) => {
+      if (layer.emacsStyle !== true) {
+        return undefined
+      }
+
+      const strokes = input
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+
+      if (strokes.length <= 1) {
+        return undefined
+      }
+
+      const tokenized: string[] = []
+      for (const stroke of strokes) {
+        const match = /^ctrl\+([a-z0-9])$/i.exec(stroke)
+        if (!match || !match[1]) {
+          return undefined
+        }
+
+        tokenized.push(`<c-${match[1].toLowerCase()}>`)
+      }
+
+      return [tokenized.join("")]
+    })
+
+    manager.registerToken({ token: "<c-x>", key: { name: "x", ctrl: true } })
+    manager.registerToken({ token: "<c-s>", key: { name: "s", ctrl: true } })
+    manager.registerCommands([
+      {
+        name: "save-buffer",
+        run() {
+          calls.push("save")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      emacsStyle: true,
+      bindings: [{ key: "ctrl+x ctrl+s", cmd: "save-buffer" }],
+    })
+
+    mockInput.pressKey("x", { ctrl: true })
+    mockInput.pressKey("s", { ctrl: true })
+
+    expect(calls).toEqual(["save"])
+
+    expect(() => {
+      manager.registerLayer({
+        scope: "global",
+        bindings: [{ key: "ctrl+x ctrl+s", cmd: "save-buffer" }],
+      })
+    }).toThrow('Invalid key "ctrl+x ctrl+s": multiple key names are not supported')
+  })
+
+  test("clearBindingExpanders allows replacing the expander chain", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.appendBindingExpander(({ input }) => {
+      if (!input.includes(",")) {
+        return undefined
+      }
+
+      return input
+        .split(",")
+        .map((candidate) => candidate.trim())
+        .filter(Boolean)
+    })
+    manager.clearBindingExpanders()
+
+    manager.appendBindingExpander(({ input }) => {
+      if (!input.includes("|")) {
+        return undefined
+      }
+
+      return input
+        .split("|")
+        .map((candidate) => candidate.trim())
+        .filter(Boolean)
+    })
+
+    manager.registerCommands([
+      {
+        name: "comma-command",
+        run() {
+          calls.push("comma")
+        },
+      },
+      {
+        name: "pipe-command",
+        run() {
+          calls.push("pipe")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "a,b", cmd: "comma-command" }],
+    })
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x|y", cmd: "pipe-command" }],
+    })
+
+    mockInput.pressKey("a")
+    expect(calls).toEqual([])
+
+    mockInput.pressKey(",")
+    mockInput.pressKey("b")
+    mockInput.pressKey("x")
+    mockInput.pressKey("y")
+
+    expect(calls).toEqual(["comma", "pipe", "pipe"])
+  })
+
+  test("throws when a binding expander returns an empty expansion", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.appendBindingExpander(() => {
+      return []
+    })
+
+    expect(() => {
+      manager.registerLayer({
+        scope: "global",
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+    }).toThrow('Keymap binding expander must return at least one key sequence for "x"')
+  })
+
   test("throws when a binding parser does not advance the input", () => {
     const manager = getKeymapManager(renderer)
 

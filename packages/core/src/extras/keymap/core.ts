@@ -73,7 +73,6 @@ import {
   normalizeCommandName,
   snapshotBindingInputs,
   sortByPriorityAndOrder,
-  sortLayersWithinScope,
   stringifyKeySequence,
   stringifyKeyStroke,
 } from "./utils.js"
@@ -1186,7 +1185,7 @@ class KeymapManagerImpl implements KeymapManager {
 
   private indexLayer(layer: RegisteredLayer): void {
     if (layer.scope === "global") {
-      this.globalLayers = sortLayersWithinScope([...this.globalLayers, layer])
+      this.globalLayers = sortByPriorityAndOrder([...this.globalLayers, layer], { order: "desc" })
       return
     }
 
@@ -1197,9 +1196,9 @@ class KeymapManagerImpl implements KeymapManager {
 
     const bucket = this.getOrCreateTargetBucket(target)
     if (layer.scope === "focus") {
-      bucket.focusLayers = sortLayersWithinScope([...bucket.focusLayers, layer])
+      bucket.focusLayers = sortByPriorityAndOrder([...bucket.focusLayers, layer], { order: "desc" })
     } else {
-      bucket.focusWithinLayers = sortLayersWithinScope([...bucket.focusWithinLayers, layer])
+      bucket.focusWithinLayers = sortByPriorityAndOrder([...bucket.focusWithinLayers, layer], { order: "desc" })
     }
 
     layer.bucket = bucket

@@ -47,10 +47,12 @@ describe("escape clears pending sequence addon", () => {
     registerEscapeClearsPendingSequence(manager)
 
     mockInput.pressKey("d")
+    expect(manager.hasPendingSequence()).toBe(true)
     expect(manager.getPendingSequence()).toEqual([{ name: "d", ctrl: false, shift: false, meta: false, super: false }])
 
     mockInput.pressEscape()
 
+    expect(manager.hasPendingSequence()).toBe(false)
     expect(manager.getPendingSequence()).toEqual([])
     expect(calls).toEqual([])
 
@@ -89,8 +91,10 @@ describe("escape clears pending sequence addon", () => {
     registerEscapeClearsPendingSequence(manager, { consume: false })
 
     mockInput.pressKey("d")
+    expect(manager.hasPendingSequence()).toBe(true)
     mockInput.pressEscape()
 
+    expect(manager.hasPendingSequence()).toBe(false)
     expect(manager.getPendingSequence()).toEqual([])
     expect(calls).toEqual(["escape"])
   })

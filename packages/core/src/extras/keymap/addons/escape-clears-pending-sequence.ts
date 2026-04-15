@@ -17,7 +17,7 @@ export function registerEscapeClearsPendingSequence(
         return
       }
 
-      if (manager.getPendingSequence().length === 0) {
+      if (!manager.hasPendingSequence()) {
         return
       }
 

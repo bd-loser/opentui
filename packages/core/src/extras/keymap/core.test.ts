@@ -1740,6 +1740,71 @@ describe("keymap", () => {
     expect(manager.getPendingSequence()).toEqual([])
   })
 
+  test("hasPendingSequence reflects pending lifecycle", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerCommands([{ name: "delete-line", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
+
+    expect(manager.hasPendingSequence()).toBe(false)
+
+    mockInput.pressKey("d")
+    expect(manager.hasPendingSequence()).toBe(true)
+
+    manager.popPendingSequence()
+    expect(manager.hasPendingSequence()).toBe(false)
+
+    mockInput.pressKey("d")
+    expect(manager.hasPendingSequence()).toBe(true)
+
+    manager.clearPendingSequence()
+    expect(manager.hasPendingSequence()).toBe(false)
+  })
+
+  test("onKeyInput can be gated by hasPendingSequence", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "delete-line",
+        run() {
+          calls.push("delete")
+        },
+      },
+    ])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
+
+    const off = manager.onKeyInput(({ event }) => {
+      if (!manager.hasPendingSequence()) {
+        return
+      }
+
+      calls.push(`pending:${event.name}`)
+    })
+
+    mockInput.pressKey("d")
+    mockInput.pressKey("x")
+    mockInput.pressKey("d")
+    mockInput.pressKey("d")
+
+    expect(calls).toEqual(["pending:x", "pending:d", "delete"])
+
+    off()
+    calls.length = 0
+
+    mockInput.pressKey("d")
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual([])
+  })
+
   test("notifies pending sequence changes synchronously", () => {
     const manager = getKeymapManager(renderer)
     const changes: string[] = []

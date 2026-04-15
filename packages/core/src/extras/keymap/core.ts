@@ -463,6 +463,11 @@ class KeymapManagerImpl implements KeymapManager {
     })
   }
 
+  public hasPendingSequence(): boolean {
+    this.assertNotDestroyed()
+    return this.ensureValidPendingSequence() !== undefined
+  }
+
   public getPendingSequence(): readonly ParsedKeyStroke[] {
     this.assertNotDestroyed()
 

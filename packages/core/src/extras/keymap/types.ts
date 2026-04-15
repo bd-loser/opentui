@@ -268,6 +268,7 @@ export interface KeymapManager {
   setData(name: string, value: unknown): void
   getData(name: string): unknown
   invalidateRuntimeKey(name: string): void
+  hasPendingSequence(): boolean
   getPendingSequence(): readonly ParsedKeyStroke[]
   getPendingSequenceParts(): readonly ParsedKeyPart[]
   clearPendingSequence(): void

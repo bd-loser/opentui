@@ -9,6 +9,12 @@ function getEditor(id: string): TextareaRenderable {
   return testSetup.renderer.root.findDescendantById(id) as TextareaRenderable
 }
 
+function getFrameWidths(): number[] {
+  return ["notes", "draft", "scratch"].map((id) => {
+    return testSetup.renderer.root.findDescendantById(`keymap-demo-editor-frame-${id}`)!.width
+  })
+}
+
 describe("keymap demo example", () => {
   beforeEach(async () => {
     testSetup = await createTestRenderer({ width: 70, height: 24 })
@@ -83,5 +89,29 @@ describe("keymap demo example", () => {
     testSetup.mockInput.pressKey("x")
     await testSetup.renderOnce()
     expect(scratchEditor.plainText).toBe("x")
+  })
+
+  test("keeps editor columns stable while typing in a wrapped textarea", async () => {
+    run(testSetup.renderer)
+    await testSetup.renderOnce()
+
+    testSetup.mockInput.pressTab()
+    await testSetup.renderOnce()
+    testSetup.mockInput.pressTab()
+    await testSetup.renderOnce()
+
+    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-editor-1")
+
+    const initialWidths = getFrameWidths()
+    const initialLength = getEditor("keymap-demo-editor-1").plainText.length
+    expect(Math.max(...initialWidths) - Math.min(...initialWidths)).toBeLessThanOrEqual(1)
+
+    for (let i = 0; i < 24; i += 1) {
+      testSetup.mockInput.pressKey("x")
+      await testSetup.renderOnce()
+    }
+
+    expect(getEditor("keymap-demo-editor-1").plainText.length).toBe(initialLength + 24)
+    expect(getFrameWidths()).toEqual(initialWidths)
   })
 })

@@ -722,6 +722,7 @@ export function run(renderer: CliRenderer): void {
       borderColor: P.border,
       flexDirection: "column",
       flexGrow: 1,
+      flexBasis: 0,
       minWidth: 0,
       title: ` ${index + 1}. ${spec.label} `,
       titleAlignment: "left",

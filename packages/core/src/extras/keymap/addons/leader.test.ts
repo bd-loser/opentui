@@ -93,4 +93,35 @@ describe("leader addon", () => {
 
     expect(calls).toEqual(["leader", "leader"])
   })
+
+  test("can be disposed to remove the leader token mapping", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "leader-only",
+        run() {
+          calls.push("leader")
+        },
+      },
+    ])
+
+    const offLeader = registerLeader(manager, {
+      trigger: { name: "x", ctrl: true },
+    })
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "<leader>", cmd: "leader-only" }],
+    })
+
+    mockInput.pressKey("x", { ctrl: true })
+    expect(calls).toEqual(["leader"])
+
+    offLeader()
+
+    mockInput.pressKey("x", { ctrl: true })
+    expect(calls).toEqual(["leader"])
+  })
 })

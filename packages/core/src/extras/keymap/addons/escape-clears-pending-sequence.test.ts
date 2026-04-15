@@ -98,4 +98,45 @@ describe("escape clears pending sequence addon", () => {
     expect(manager.getPendingSequence()).toEqual([])
     expect(calls).toEqual(["escape"])
   })
+
+  test("can be disposed to stop pending escape forwarding behavior", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "delete-line",
+        run() {
+          calls.push("delete")
+        },
+      },
+      {
+        name: "escape-command",
+        run() {
+          calls.push("escape")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [
+        { key: "dd", cmd: "delete-line" },
+        { key: "escape", cmd: "escape-command" },
+      ],
+    })
+
+    const offEscapeAddon = registerEscapeClearsPendingSequence(manager, { consume: false })
+
+    mockInput.pressKey("d")
+    mockInput.pressEscape()
+    expect(calls).toEqual(["escape"])
+
+    mockInput.pressKey("d")
+    offEscapeAddon()
+    mockInput.pressEscape()
+
+    expect(manager.hasPendingSequence()).toBe(false)
+    expect(calls).toEqual(["escape"])
+  })
 })

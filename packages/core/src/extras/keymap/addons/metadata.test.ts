@@ -143,4 +143,35 @@ describe("metadata addon", () => {
       })
     }).toThrow('Keymap metadata field "group" cannot be empty')
   })
+
+  test("can be disposed to stop compiling metadata fields", () => {
+    const manager = getKeymapManager(renderer)
+    const offMetadata = registerMetadataFields(manager)
+
+    offMetadata()
+
+    manager.registerCommands([
+      {
+        name: "save-file",
+        desc: "Save file",
+        title: "Save",
+        category: "File",
+        run() {},
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
+    })
+
+    const activeKey = manager
+      .getActiveKeys({ includeBindings: true, includeMetadata: true })
+      .find((candidate) => candidate.stroke.name === "x")
+
+    expect(activeKey?.bindingAttrs).toBeUndefined()
+    expect(activeKey?.commandAttrs).toBeUndefined()
+    expect(activeKey?.bindings?.[0]?.attrs).toBeUndefined()
+    expect(activeKey?.bindings?.[0]?.commandAttrs).toBeUndefined()
+  })
 })

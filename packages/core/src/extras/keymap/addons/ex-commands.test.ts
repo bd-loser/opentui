@@ -195,4 +195,46 @@ describe("ex commands addon", () => {
       category: "File",
     })
   })
+
+  test("can be disposed to remove ex-command resolution", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "fallback",
+        run() {
+          calls.push("fallback")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "fallback" }],
+    })
+
+    const offExCommands = registerExCommands(manager, [
+      {
+        name: "write",
+        aliases: ["w"],
+        run({ args }) {
+          calls.push(`write:${args.join(",")}`)
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: ":w file.txt" }],
+    })
+
+    mockInput.pressKey("x")
+    expect(calls).toEqual(["write:file.txt"])
+
+    offExCommands()
+
+    mockInput.pressKey("x")
+    expect(calls).toEqual(["write:file.txt", "fallback"])
+  })
 })

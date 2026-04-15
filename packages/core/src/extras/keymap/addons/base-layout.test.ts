@@ -70,4 +70,29 @@ describe("base layout fallback addon", () => {
 
     expect(calls).toEqual(["direct"])
   })
+
+  test("can be disposed to stop base-layout fallback matching", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    const offFallback = registerBaseLayoutFallback(manager)
+    offFallback()
+
+    manager.registerCommands([
+      {
+        name: "copy",
+        run() {
+          calls.push("copy")
+        },
+      },
+    ])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "ctrl+c", cmd: "copy" }],
+    })
+
+    renderer.stdin.emit("data", Buffer.from("\x1b[12618::99;5u"))
+
+    expect(calls).toEqual([])
+  })
 })

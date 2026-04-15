@@ -428,6 +428,40 @@ describe("keymap", () => {
     expect(calls).toEqual(["run"])
   })
 
+  test("can dispose registered event match resolvers", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    const offResolver = manager.registerEventMatchResolver((event) => {
+      if (event.name !== "x") {
+        return undefined
+      }
+
+      return [getMatchKeyForEventName(event, "y")]
+    })
+
+    manager.registerCommands([
+      {
+        name: "fallback",
+        run() {
+          calls.push("fallback")
+        },
+      },
+    ])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "y", cmd: "fallback" }],
+    })
+
+    mockInput.pressKey("x")
+    expect(calls).toEqual(["fallback"])
+
+    offResolver()
+
+    mockInput.pressKey("x")
+    expect(calls).toEqual(["fallback"])
+  })
+
   test("matches bindings using parser-provided match keys", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
@@ -684,6 +718,52 @@ describe("keymap", () => {
     mockInput.pressKey("y")
 
     expect(calls).toEqual(["comma", "pipe", "pipe"])
+  })
+
+  test("can dispose binding compilers to stop transforming future layer registrations", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    const offCompiler = manager.registerBindingCompiler((binding, ctx) => {
+      if (binding.blocked !== true) {
+        return
+      }
+
+      ctx.skipOriginal()
+    })
+
+    manager.registerCommands([
+      {
+        name: "blocked",
+        run() {
+          calls.push("blocked")
+        },
+      },
+      {
+        name: "active",
+        run() {
+          calls.push("active")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", blocked: true, cmd: "blocked" }],
+    })
+
+    mockInput.pressKey("x")
+    expect(calls).toEqual([])
+
+    offCompiler()
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "y", blocked: true, cmd: "active" }],
+    })
+
+    mockInput.pressKey("y")
+    expect(calls).toEqual(["active"])
   })
 
   test("throws when a binding expander returns an empty expansion", () => {
@@ -1046,6 +1126,42 @@ describe("keymap", () => {
     expect(() => {
       manager.registerCommands([{ name: "dup", run() {} }])
     }).toThrow('Keymap command "dup" is already registered')
+  })
+
+  test("can dispose command resolvers and refresh existing bindings", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "external-run" }],
+    })
+
+    expect(getActiveKey(manager, "x")?.command).toBeUndefined()
+
+    const offResolver = manager.registerCommandResolver((command) => {
+      if (command !== "external-run") {
+        return undefined
+      }
+
+      return {
+        run() {
+          calls.push("external")
+        },
+      }
+    })
+
+    expect(getActiveKey(manager, "x")?.command).toBe("external-run")
+
+    mockInput.pressKey("x")
+    expect(calls).toEqual(["external"])
+
+    offResolver()
+
+    expect(getActiveKey(manager, "x")?.command).toBeUndefined()
+
+    mockInput.pressKey("x")
+    expect(calls).toEqual(["external"])
   })
 
   test("supports typed binding fields through key input hooks", () => {

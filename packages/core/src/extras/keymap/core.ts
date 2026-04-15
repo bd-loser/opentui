@@ -42,11 +42,11 @@ import type {
   KeymapRawInputContext,
   KeymapResolvedBindingCommand,
   KeymapScope,
-  KeymapStrokeFallbackResolver,
-  KeyStroke,
+  KeymapEventMatchResolver,
   KeymapToken,
   KeymapUnresolvedCommandContext,
   ParsedKeyPart,
+  ParsedKeyToken,
   ParsedKeyStroke,
   PendingSequenceState,
   RegisteredCommand,
@@ -60,7 +60,6 @@ import type {
   SequenceNode,
 } from "./types.js"
 import {
-  buildBindingKey,
   cloneStroke,
   createParsedKeyPart,
   createSequenceNode,
@@ -70,15 +69,13 @@ import {
   mergeRequirement,
   normalizeBindingCommand,
   normalizeCommandName,
-  normalizeEventKeyStroke,
-  normalizeKeyStroke,
   snapshotBindingInputs,
   sortByPriorityAndOrder,
   sortLayersWithinScope,
   stringifyKeySequence,
   stringifyKeyStroke,
 } from "./utils.js"
-import { defaultBindingParser, parseKeyLike } from "./default-parser.js"
+import { defaultBindingParser, defaultEventMatchResolver, parseKeyLike } from "./default-parser.js"
 import { Emitter } from "./emitter.js"
 
 const keymapManagersByRenderer = new WeakMap<CliRenderer, KeymapManagerImpl>()
@@ -110,7 +107,7 @@ function cloneCompileFieldValue(value: unknown): unknown {
 function cloneParsedBindingInput(binding: KeymapParsedBindingInput): KeymapParsedBindingInput {
   return {
     ...binding,
-    sequence: binding.sequence.map((part) => createParsedKeyPart(part.stroke, part.display)),
+    sequence: binding.sequence.map((part) => createParsedKeyPart(part.stroke, part.display, part.matchKey)),
   }
 }
 
@@ -161,7 +158,7 @@ function parseBindingSequenceWithParsers(
   key: KeyLike,
   parsers: readonly KeymapBindingParser[],
   options?: {
-    tokens?: ReadonlyMap<string, ParsedKeyStroke>
+    tokens?: ReadonlyMap<string, ParsedKeyToken>
     layer?: Readonly<Record<string, unknown>>
   },
 ): {
@@ -172,7 +169,7 @@ function parseBindingSequenceWithParsers(
 } {
   if (typeof key !== "string") {
     return {
-      parts: [createParsedKeyPart(normalizeKeyStroke(key))],
+      parts: [createParsedKeyPart(parseKeyLike(key))],
       usedTokens: [],
       unknownTokens: [],
       hasTokenBindings: false,
@@ -187,7 +184,7 @@ function parseBindingSequenceWithParsers(
     throw new Error("No keymap binding parsers are registered")
   }
 
-  const tokens = options?.tokens ?? new Map<string, ParsedKeyStroke>()
+  const tokens = options?.tokens ?? new Map<string, ParsedKeyToken>()
   const layer = options?.layer ?? EMPTY_COMPILE_FIELDS
   const parts: ParsedKeyPart[] = []
   const usedTokens = new Set<string>()
@@ -251,7 +248,7 @@ class KeymapManagerImpl implements KeymapManager {
   private layers = new Set<RegisteredLayer>()
   private globalLayers: RegisteredLayer[] = []
   private targetLayers = new WeakMap<Renderable, RegisteredLayerBucket>()
-  private tokens = new Map<string, ParsedKeyStroke>()
+  private tokens = new Map<string, ParsedKeyToken>()
   private layerFields = new Map<string, KeymapLayerFieldCompiler>()
   private bindingExpanders: KeymapBindingExpander[] = []
   private bindingParsers: KeymapBindingParser[] = []
@@ -260,7 +257,7 @@ class KeymapManagerImpl implements KeymapManager {
   private commandFields = new Map<string, KeymapCommandFieldCompiler>()
   private runtimeKeyDependents = new Map<string, Set<RuntimeMatchable>>()
   private commandResolvers: KeymapCommandResolver[] = []
-  private strokeFallbackResolvers: KeymapStrokeFallbackResolver[] = []
+  private eventMatchResolvers: KeymapEventMatchResolver[] = []
   private keyHooks: RegisteredKeyHook[] = []
   private rawHooks: RegisteredRawHook[] = []
   private hooks: Emitter<KeymapHooks>
@@ -304,6 +301,7 @@ class KeymapManagerImpl implements KeymapManager {
       this.reportHookError(name, error)
     })
     this.bindingParsers = [defaultBindingParser]
+    this.eventMatchResolvers = [defaultEventMatchResolver]
     this.keypressListener = (event) => {
       this.handleKeyEvent(event, false)
     }
@@ -361,7 +359,7 @@ class KeymapManagerImpl implements KeymapManager {
     this.commandFields.clear()
     this.runtimeKeyDependents.clear()
     this.commandResolvers = []
-    this.strokeFallbackResolvers = []
+    this.eventMatchResolvers = []
     this.keyHooks = []
     this.rawHooks = []
     this.hooks.clear()
@@ -721,7 +719,11 @@ class KeymapManagerImpl implements KeymapManager {
       throw new Error(`Keymap token "${normalizedToken}" is already registered`)
     }
 
-    const registeredToken = parseKeyLike(token.key)
+    const parsedToken = createParsedKeyPart(parseKeyLike(token.key))
+    const registeredToken: ParsedKeyToken = {
+      stroke: parsedToken.stroke,
+      matchKey: parsedToken.matchKey,
+    }
 
     const nextTokens = new Map(this.tokens)
     nextTokens.set(normalizedToken, registeredToken)
@@ -841,14 +843,19 @@ class KeymapManagerImpl implements KeymapManager {
     })
   }
 
-  public registerStrokeFallbackResolver(resolver: KeymapStrokeFallbackResolver): () => void {
+  public registerEventMatchResolver(resolver: KeymapEventMatchResolver): () => void {
     this.assertNotDestroyed()
 
-    this.strokeFallbackResolvers = [...this.strokeFallbackResolvers, resolver]
+    this.eventMatchResolvers = [...this.eventMatchResolvers, resolver]
 
     return () => {
-      this.strokeFallbackResolvers = this.strokeFallbackResolvers.filter((candidate) => candidate !== resolver)
+      this.eventMatchResolvers = this.eventMatchResolvers.filter((candidate) => candidate !== resolver)
     }
+  }
+
+  public clearEventMatchResolvers(): void {
+    this.assertNotDestroyed()
+    this.eventMatchResolvers = []
   }
 
   public onKeyInput(
@@ -1213,7 +1220,7 @@ class KeymapManagerImpl implements KeymapManager {
     })
   }
 
-  private applyTokenState(nextTokens: Map<string, ParsedKeyStroke>): void {
+  private applyTokenState(nextTokens: Map<string, ParsedKeyToken>): void {
     this.runWithStateChangeBatch(() => {
       const nextCompilations = new Map<RegisteredLayer, CompiledBindingsResult>()
 
@@ -1348,13 +1355,13 @@ class KeymapManagerImpl implements KeymapManager {
 
   private compileBindings(
     bindings: readonly KeymapBindingInput[],
-    tokens: ReadonlyMap<string, ParsedKeyStroke>,
+    tokens: ReadonlyMap<string, ParsedKeyToken>,
     sourceScope: KeymapScope,
     sourceTarget: Renderable | undefined,
     sourceLayerOrder: number,
     compileFields?: Readonly<Record<string, unknown>>,
   ): CompiledBindingsResult {
-    const root = createSequenceNode(null, null)
+    const root = createSequenceNode(null, null, null)
     const compiledBindings: CompiledBinding[] = []
     let hasTokenBindings = false
 
@@ -1486,12 +1493,12 @@ class KeymapManagerImpl implements KeymapManager {
     compileFields?: Readonly<Record<string, unknown>>,
   ): KeymapParsedBindingInput[] {
     if (this.bindingCompilers.length === 0) {
-      return [{ ...binding, sequence: sequence.map((part) => createParsedKeyPart(part.stroke, part.display)) }]
+      return [{ ...binding, sequence: sequence.map((part) => createParsedKeyPart(part.stroke, part.display, part.matchKey)) }]
     }
 
     const parsedBinding: KeymapParsedBindingInput = {
       ...binding,
-      sequence: sequence.map((part) => createParsedKeyPart(part.stroke, part.display)),
+      sequence: sequence.map((part) => createParsedKeyPart(part.stroke, part.display, part.matchKey)),
     }
     const extraBindings: KeymapParsedBindingInput[] = []
     let keepOriginal = true
@@ -1534,10 +1541,10 @@ class KeymapManagerImpl implements KeymapManager {
         )
       }
 
-      const bindingKey = buildBindingKey(part.stroke)
+      const bindingKey = part.matchKey
       let child = node.children.get(bindingKey)
       if (!child) {
-        child = createSequenceNode(node, part.stroke)
+        child = createSequenceNode(node, part.stroke, part.matchKey)
         node.children.set(bindingKey, child)
       }
 
@@ -1643,14 +1650,14 @@ class KeymapManagerImpl implements KeymapManager {
     const focused = this.getFocusedRenderable()
     const activeLayers = this.getActiveLayers(focused)
     const hasLayerConditions = this.layersWithConditions > 0
-    const strokeKeys = this.resolveEventStrokeKeys(event)
+    const matchKeys = this.resolveEventMatchKeys(event)
 
     layerLoop: for (const layer of activeLayers) {
       if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
         continue
       }
 
-      for (const strokeKey of strokeKeys) {
+      for (const strokeKey of matchKeys) {
         const result = this.runReleaseBindings(layer, strokeKey, event, focused)
         if (!result.handled) {
           continue
@@ -1668,24 +1675,24 @@ class KeymapManagerImpl implements KeymapManager {
   private dispatchLayers(event: KeyEvent): void {
     const focused = this.getFocusedRenderable()
     const pending = this.ensureValidPendingSequence()
-    const strokeKeys = this.resolveEventStrokeKeys(event)
+    const matchKeys = this.resolveEventMatchKeys(event)
 
     if (pending) {
-      this.dispatchPendingSequence(pending, strokeKeys, event, focused)
+      this.dispatchPendingSequence(pending, matchKeys, event, focused)
       return
     }
 
     const activeLayers = this.getActiveLayers(focused)
-    this.dispatchFromRoot(activeLayers, strokeKeys, event, focused)
+    this.dispatchFromRoot(activeLayers, matchKeys, event, focused)
   }
 
   private dispatchPendingSequence(
     pending: PendingSequenceState,
-    strokeKeys: readonly string[],
+    matchKeys: readonly string[],
     event: KeyEvent,
     focused: Renderable | null,
   ): void {
-    const nextNode = this.getReachableChild(pending.node, strokeKeys)
+    const nextNode = this.getReachableChild(pending.node, matchKeys)
     if (!nextNode) {
       this.setPendingSequence(null)
       return
@@ -1707,7 +1714,7 @@ class KeymapManagerImpl implements KeymapManager {
 
   private dispatchFromRoot(
     activeLayers: RegisteredLayer[],
-    strokeKeys: readonly string[],
+    matchKeys: readonly string[],
     event: KeyEvent,
     focused: Renderable | null,
   ): void {
@@ -1718,7 +1725,7 @@ class KeymapManagerImpl implements KeymapManager {
         continue
       }
 
-      const nextNode = this.getReachableChild(layer.root, strokeKeys)
+      const nextNode = this.getReachableChild(layer.root, matchKeys)
       if (!nextNode) {
         continue
       }
@@ -1745,31 +1752,36 @@ class KeymapManagerImpl implements KeymapManager {
     }
   }
 
-  private resolveEventStrokeKeys(event: KeyEvent): string[] {
-    const stroke = normalizeEventKeyStroke(event)
-    const keys = [buildBindingKey(stroke)]
+  private resolveEventMatchKeys(event: KeyEvent): string[] {
+    const keys: string[] = []
+    const seen = new Set<string>()
 
-    for (const resolver of this.strokeFallbackResolvers) {
-      let fallback: KeyStroke | undefined
+    for (const resolver of this.eventMatchResolvers) {
+      let resolved: readonly string[] | undefined
 
       try {
-        fallback = resolver(event, stroke)
+        resolved = resolver(event)
       } catch (error) {
-        this.logger.error("[Keymap] Error in stroke fallback resolver:", error)
+        this.logger.error("[Keymap] Error in event match resolver:", error)
         continue
       }
 
-      if (!fallback) {
+      if (!resolved || resolved.length === 0) {
         continue
       }
 
-      try {
-        const key = buildBindingKey(normalizeKeyStroke(fallback))
-        if (!keys.includes(key)) {
-          keys.push(key)
+      for (const candidate of resolved) {
+        if (typeof candidate !== "string") {
+          this.logger.error("[Keymap] Invalid event match resolver candidate:", candidate)
+          continue
         }
-      } catch (error) {
-        this.logger.error("[Keymap] Invalid stroke fallback candidate:", error)
+
+        if (!candidate || seen.has(candidate)) {
+          continue
+        }
+
+        seen.add(candidate)
+        keys.push(candidate)
       }
     }
 
@@ -1790,7 +1802,7 @@ class KeymapManagerImpl implements KeymapManager {
       }
 
       const firstPart = binding.sequence[0]
-      if (!firstPart || buildBindingKey(firstPart.stroke) !== strokeKey) {
+      if (!firstPart || firstPart.matchKey !== strokeKey) {
         continue
       }
 
@@ -1812,8 +1824,8 @@ class KeymapManagerImpl implements KeymapManager {
     return { handled, stop: false }
   }
 
-  private getReachableChild(node: SequenceNode, strokeKeys: readonly string[]): SequenceNode | undefined {
-    for (const strokeKey of strokeKeys) {
+  private getReachableChild(node: SequenceNode, matchKeys: readonly string[]): SequenceNode | undefined {
+    for (const strokeKey of matchKeys) {
       const child = node.children.get(strokeKey)
       if (!child || !this.nodeHasReachableBindings(child)) {
         continue
@@ -1841,7 +1853,7 @@ class KeymapManagerImpl implements KeymapManager {
     nodes.reverse()
 
     return nodes.map((candidate) => {
-      return createParsedKeyPart(candidate.stroke!, this.getNodeDisplay(candidate))
+      return createParsedKeyPart(candidate.stroke!, this.getNodeDisplay(candidate), candidate.matchKey!)
     })
   }
 
@@ -2592,7 +2604,7 @@ class KeymapManagerImpl implements KeymapManager {
     this.warnOnce(`token:${token}`, `[Keymap] Unknown token "${token}" in key sequence "${sequence}" was ignored`)
   }
 
-  private warnUnknownTokensInKeySequence(sequence: string, tokens: ReadonlyMap<string, ParsedKeyStroke>): void {
+  private warnUnknownTokensInKeySequence(sequence: string, tokens: ReadonlyMap<string, ParsedKeyToken>): void {
     if (!sequence.includes("<")) {
       return
     }

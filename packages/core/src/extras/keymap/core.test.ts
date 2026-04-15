@@ -49,6 +49,23 @@ function getActiveKeyDisplay(
   return manager.getActiveKeys(options).find((candidate) => candidate.display === display)
 }
 
+function getMatchKeyForEventName(event: KeyEvent, name: string): string {
+  const [part] = parseKeySequenceLike({
+    name,
+    ctrl: event.ctrl,
+    shift: event.shift,
+    meta: event.meta,
+    super: event.super ?? false,
+    hyper: event.hyper || undefined,
+  })
+
+  if (!part) {
+    throw new Error(`Expected parsed key part for "${name}"`)
+  }
+
+  return part.matchKey
+}
+
 describe("keymap", () => {
   beforeEach(async () => {
     const testSetup = await createTestRenderer({ width: 40, height: 10 })
@@ -121,19 +138,12 @@ describe("keymap", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
-    manager.registerStrokeFallbackResolver((event, stroke) => {
+    manager.registerEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
 
-      return {
-        name: "y",
-        ctrl: stroke.ctrl,
-        shift: stroke.shift,
-        meta: stroke.meta,
-        super: stroke.super,
-        hyper: stroke.hyper,
-      }
+      return [getMatchKeyForEventName(event, "y")]
     })
 
     manager.registerCommands([
@@ -168,19 +178,12 @@ describe("keymap", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
-    manager.registerStrokeFallbackResolver((event, stroke) => {
+    manager.registerEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
 
-      return {
-        name: "g",
-        ctrl: stroke.ctrl,
-        shift: stroke.shift,
-        meta: stroke.meta,
-        super: stroke.super,
-        hyper: stroke.hyper,
-      }
+      return [getMatchKeyForEventName(event, "g")]
     })
 
     manager.registerCommands([
@@ -227,7 +230,7 @@ describe("keymap", () => {
       }
 
       return {
-        parts: [{ stroke: token, display: tokenName }],
+        parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
         nextIndex: end + 1,
         usedTokens: [tokenName],
       }
@@ -268,7 +271,7 @@ describe("keymap", () => {
       }
 
       return {
-        parts: [{ stroke: token, display: tokenName }],
+        parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
         nextIndex: end + 1,
         usedTokens: [tokenName],
       }
@@ -284,6 +287,87 @@ describe("keymap", () => {
     mockInput.pressKey("x", { ctrl: true })
 
     expect(calls).toEqual(["leader"])
+  })
+
+  test("clearEventMatchResolvers disables default event matching until custom resolvers are added", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "run",
+        run() {
+          calls.push("run")
+        },
+      },
+    ])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "run" }],
+    })
+
+    manager.clearEventMatchResolvers()
+    mockInput.pressKey("x")
+    expect(calls).toEqual([])
+
+    manager.registerEventMatchResolver((event) => {
+      if (event.name !== "x") {
+        return undefined
+      }
+
+      return [getMatchKeyForEventName(event, "x")]
+    })
+
+    mockInput.pressKey("x")
+    expect(calls).toEqual(["run"])
+  })
+
+  test("matches bindings using parser-provided match keys", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.prependBindingParser(({ input, index }) => {
+      if (index !== 0 || input !== "@") {
+        return undefined
+      }
+
+      return {
+        parts: [
+          {
+            stroke: { name: "custom-visible", ctrl: false, shift: false, meta: false, super: false },
+            display: "custom-visible",
+            matchKey: "custom:stroke",
+          },
+        ],
+        nextIndex: input.length,
+      }
+    })
+
+    manager.registerEventMatchResolver((event) => {
+      if (event.name !== "x") {
+        return undefined
+      }
+
+      return ["custom:stroke"]
+    })
+
+    manager.registerCommands([
+      {
+        name: "custom-match",
+        run() {
+          calls.push("custom")
+        },
+      },
+    ])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "@", cmd: "custom-match" }],
+    })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["custom"])
+    expect(getActiveKey(manager, "custom-visible")?.display).toBe("custom-visible")
   })
 
   test("supports binding expanders that split one key definition into multiple bindings", () => {
@@ -531,19 +615,12 @@ describe("keymap", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
-    manager.registerStrokeFallbackResolver((event, stroke) => {
+    manager.registerEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
 
-      return {
-        name: "y",
-        ctrl: stroke.ctrl,
-        shift: stroke.shift,
-        meta: stroke.meta,
-        super: stroke.super,
-        hyper: stroke.hyper,
-      }
+      return [getMatchKeyForEventName(event, "y")]
     })
 
     manager.registerCommands([
@@ -858,21 +935,32 @@ describe("keymap", () => {
   test("captures display for parsed sequences and stringifies tokens on demand", () => {
     const sequence = parseKeySequenceLike(
       "<leader>dd",
-      new Map([["<leader>", { name: "x", ctrl: true, shift: false, meta: false, super: false }]]),
+      new Map([
+        [
+          "<leader>",
+          {
+            stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false },
+            matchKey: "x:1:0:0:0:0",
+          },
+        ],
+      ]),
     )
 
     expect(sequence).toEqual([
       {
         stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false },
         display: "<leader>",
+        matchKey: "x:1:0:0:0:0",
       },
       {
         stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
         display: "d",
+        matchKey: "d:0:0:0:0:0",
       },
       {
         stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
         display: "d",
+        matchKey: "d:0:0:0:0:0",
       },
     ])
     expect(stringifyKeySequence(sequence)).toBe("ctrl+xdd")
@@ -888,6 +976,7 @@ describe("keymap", () => {
       {
         stroke: { name: "return", ctrl: false, shift: false, meta: false, super: false },
         display: "return",
+        matchKey: "return:0:0:0:0:0",
       },
     ])
     expect(stringifyKeySequence(sequence)).toBe("enter")
@@ -1583,6 +1672,7 @@ describe("keymap", () => {
       {
         stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
         display: "d",
+        matchKey: "d:0:0:0:0:0",
       },
     ])
     expect(getActiveKeyNames(manager)).toEqual(["d"])
@@ -1889,6 +1979,7 @@ describe("keymap", () => {
       {
         stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false },
         display: "<leader>",
+        matchKey: "x:1:0:0:0:0",
       },
     ])
     expect(getActiveKey(manager, "g")?.command).toBeUndefined()
@@ -3429,30 +3520,42 @@ describe("keymap", () => {
 
   test("parses special and modifier keys and rejects invalid key sequences", () => {
     const manager = getKeymapManager(renderer)
-    const leaderToken = new Map([["<leader>", { name: "x", ctrl: true, shift: false, meta: false, super: false }]])
+    const leaderToken = new Map([
+      [
+        "<leader>",
+        {
+          stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false },
+          matchKey: "x:1:0:0:0:0",
+        },
+      ],
+    ])
 
     expect(parseKeySequenceLike("+")).toEqual([
       {
         stroke: { name: "+", ctrl: false, shift: false, meta: false, super: false },
         display: "+",
+        matchKey: "+:0:0:0:0:0",
       },
     ])
     expect(parseKeySequenceLike(" ")).toEqual([
       {
         stroke: { name: "space", ctrl: false, shift: false, meta: false, super: false },
         display: "space",
+        matchKey: "space:0:0:0:0:0",
       },
     ])
     expect(parseKeySequenceLike({ name: " " })).toEqual([
       {
         stroke: { name: "space", ctrl: false, shift: false, meta: false, super: false },
         display: "space",
+        matchKey: "space:0:0:0:0:0",
       },
     ])
     expect(parseKeySequenceLike("ctrl+shift+alt+super+x")).toEqual([
       {
         stroke: { name: "x", ctrl: true, shift: true, meta: true, super: true },
         display: "ctrl+shift+meta+super+x",
+        matchKey: "x:1:1:1:1:0",
       },
     ])
     expect(stringifyKeyStroke(parseKeySequenceLike("meta+super+x")[0]!)).toBe("meta+super+x")
@@ -3460,6 +3563,7 @@ describe("keymap", () => {
       {
         stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false, hyper: true },
         display: "ctrl+hyper+x",
+        matchKey: "x:1:0:0:0:1",
       },
     ])
     expect(stringifyKeyStroke(parseKeySequenceLike("hyper+x")[0]!)).toBe("hyper+x")
@@ -3467,24 +3571,29 @@ describe("keymap", () => {
       {
         stroke: { name: "z", ctrl: false, shift: false, meta: false, super: false },
         display: "z",
+        matchKey: "z:0:0:0:0:0",
       },
       {
         stroke: { name: "z", ctrl: false, shift: false, meta: false, super: false },
         display: "z",
+        matchKey: "z:0:0:0:0:0",
       },
     ])
     expect(parseKeySequenceLike("   ")).toEqual([
       {
         stroke: { name: "space", ctrl: false, shift: false, meta: false, super: false },
         display: "space",
+        matchKey: "space:0:0:0:0:0",
       },
       {
         stroke: { name: "space", ctrl: false, shift: false, meta: false, super: false },
         display: "space",
+        matchKey: "space:0:0:0:0:0",
       },
       {
         stroke: { name: "space", ctrl: false, shift: false, meta: false, super: false },
         display: "space",
+        matchKey: "space:0:0:0:0:0",
       },
     ])
     expect(parseKeySequenceLike("<leader>")).toEqual([])
@@ -3492,26 +3601,31 @@ describe("keymap", () => {
       {
         stroke: { name: "g", ctrl: false, shift: false, meta: false, super: false },
         display: "g",
+        matchKey: "g:0:0:0:0:0",
       },
       {
         stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
         display: "d",
+        matchKey: "d:0:0:0:0:0",
       },
     ])
     expect(parseKeySequenceLike("<leader>zz")).toEqual([
       {
         stroke: { name: "z", ctrl: false, shift: false, meta: false, super: false },
         display: "z",
+        matchKey: "z:0:0:0:0:0",
       },
       {
         stroke: { name: "z", ctrl: false, shift: false, meta: false, super: false },
         display: "z",
+        matchKey: "z:0:0:0:0:0",
       },
     ])
     expect(parseKeySequenceLike("<leader>", leaderToken)).toEqual([
       {
         stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false },
         display: "<leader>",
+        matchKey: "x:1:0:0:0:0",
       },
     ])
 

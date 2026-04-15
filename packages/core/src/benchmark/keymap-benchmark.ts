@@ -209,7 +209,7 @@ function createBracketTokenParser(): KeymapBindingParser {
     }
 
     return {
-      parts: [{ stroke: token, display: tokenName }],
+      parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
       nextIndex: end + 1,
       usedTokens: [tokenName],
     }

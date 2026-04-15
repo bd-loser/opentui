@@ -1,4 +1,5 @@
 import type { KeymapManager } from "../types.js"
+import { buildBindingKey, normalizeKeyStroke } from "../utils.js"
 
 function getBaseLayoutKeyName(baseCode: number | undefined): string | undefined {
   if (baseCode === undefined || baseCode < 32 || baseCode === 127) {
@@ -19,19 +20,23 @@ function getBaseLayoutKeyName(baseCode: number | undefined): string | undefined 
 }
 
 export function registerBaseLayoutFallback(manager: KeymapManager): () => void {
-  return manager.registerStrokeFallbackResolver((event, stroke) => {
+  return manager.registerEventMatchResolver((event) => {
     const name = getBaseLayoutKeyName(event.baseCode)
-    if (!name || name === stroke.name) {
+    if (!name) {
       return undefined
     }
 
-    return {
-      name,
-      ctrl: stroke.ctrl,
-      shift: stroke.shift,
-      meta: stroke.meta,
-      super: stroke.super,
-      hyper: stroke.hyper,
-    }
+    return [
+      buildBindingKey(
+        normalizeKeyStroke({
+          name,
+          ctrl: event.ctrl,
+          shift: event.shift,
+          meta: event.meta,
+          super: event.super ?? false,
+          hyper: event.hyper || undefined,
+        }),
+      ),
+    ]
   })
 }

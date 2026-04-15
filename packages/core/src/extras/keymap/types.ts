@@ -22,11 +22,17 @@ export interface ParsedKeyStroke extends KeyStroke {
   super: boolean
 }
 
-export type KeymapStrokeFallbackResolver = (event: KeyEvent, stroke: ParsedKeyStroke) => KeyStroke | undefined
+export type KeymapEventMatchResolver = (event: KeyEvent) => readonly string[] | undefined
+
+export interface ParsedKeyToken {
+  stroke: ParsedKeyStroke
+  matchKey: string
+}
 
 export interface ParsedKeyPart {
   stroke: ParsedKeyStroke
   display: string
+  matchKey: string
 }
 
 export interface KeymapStringifyOptions {
@@ -176,7 +182,7 @@ export interface KeymapBindingParserContext {
   input: string
   index: number
   layer: Readonly<Record<string, unknown>>
-  tokens: ReadonlyMap<string, ParsedKeyStroke>
+  tokens: ReadonlyMap<string, ParsedKeyToken>
 }
 
 export interface KeymapBindingExpanderContext {
@@ -276,7 +282,8 @@ export interface KeymapManager {
   registerBindingFields(fields: Record<string, KeymapBindingFieldCompiler>): () => void
   registerCommandFields(fields: Record<string, KeymapCommandFieldCompiler>): () => void
   registerCommandResolver(resolver: KeymapCommandResolver): () => void
-  registerStrokeFallbackResolver(resolver: KeymapStrokeFallbackResolver): () => void
+  registerEventMatchResolver(resolver: KeymapEventMatchResolver): () => void
+  clearEventMatchResolvers(): void
   onKeyInput(fn: (ctx: KeymapKeyInputContext) => void, options?: { priority?: number; release?: boolean }): () => void
   onRawInput(fn: (ctx: KeymapRawInputContext) => void, options?: { priority?: number }): () => void
   registerCommands(commands: KeymapCommand[]): () => void
@@ -342,6 +349,7 @@ export interface SequenceNode {
   parent: SequenceNode | null
   depth: number
   stroke: ParsedKeyStroke | null
+  matchKey: string | null
   children: Map<string, SequenceNode>
   bindings: CompiledBinding[]
   reachableBindings: CompiledBinding[]

@@ -78,11 +78,16 @@ export function buildBindingKey(stroke: ParsedKeyStroke): string {
   return `${stroke.name}:${stroke.ctrl ? 1 : 0}:${stroke.shift ? 1 : 0}:${stroke.meta ? 1 : 0}:${stroke.super ? 1 : 0}:${stroke.hyper ? 1 : 0}`
 }
 
-export function createSequenceNode(parent: SequenceNode | null, stroke: ParsedKeyStroke | null): SequenceNode {
+export function createSequenceNode(
+  parent: SequenceNode | null,
+  stroke: ParsedKeyStroke | null,
+  matchKey: string | null,
+): SequenceNode {
   return {
     parent,
     depth: parent ? parent.depth + 1 : 0,
     stroke,
+    matchKey,
     children: new Map(),
     bindings: [],
     reachableBindings: [],
@@ -172,10 +177,14 @@ function stringifyCanonicalStroke(stroke: ParsedKeyStroke): string {
 export function createParsedKeyPart(
   stroke: ParsedKeyStroke,
   display = stringifyCanonicalStroke(stroke),
+  matchKey?: string,
 ): ParsedKeyPart {
+  const cloned = cloneStroke(stroke)
+
   return {
-    stroke: cloneStroke(stroke),
+    stroke: cloned,
     display,
+    matchKey: matchKey ?? buildBindingKey(cloned),
   }
 }
 

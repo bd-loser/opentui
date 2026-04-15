@@ -1,8 +1,15 @@
-import type { KeymapBindingParser, KeyLike, ParsedKeyPart, ParsedKeyStroke } from "./types.js"
-import { cloneStroke, createParsedKeyPart, normalizeKeyName, normalizeKeyStroke } from "./utils.js"
+import type { KeymapBindingParser, KeymapEventMatchResolver, KeyLike, ParsedKeyPart, ParsedKeyToken, ParsedKeyStroke } from "./types.js"
+import {
+  buildBindingKey,
+  cloneStroke,
+  createParsedKeyPart,
+  normalizeEventKeyStroke,
+  normalizeKeyName,
+  normalizeKeyStroke,
+} from "./utils.js"
 import { namedSingleStrokeKeys } from "./named-keys.js"
 
-const emptyTokens = new Map<string, ParsedKeyStroke>()
+const emptyTokens = new Map<string, ParsedKeyToken>()
 
 function isNamedSingleStrokeKey(input: string, extraNames?: ReadonlySet<string>): boolean {
   const normalized = input.trim().toLowerCase()
@@ -23,7 +30,7 @@ function isNamedSingleStrokeKey(input: string, extraNames?: ReadonlySet<string>)
 
 function isSingleStrokeString(
   input: string,
-  tokens: ReadonlyMap<string, ParsedKeyStroke>,
+  tokens: ReadonlyMap<string, ParsedKeyToken>,
   extraNames?: ReadonlySet<string>,
 ): boolean {
   if (input === " " || input === "+") {
@@ -130,7 +137,7 @@ function parseStringKeyPart(input: string): ParsedKeyPart {
 
 function parseKeySequenceWithDefaultParser(
   key: KeyLike,
-  tokens: ReadonlyMap<string, ParsedKeyStroke> = emptyTokens,
+  tokens: ReadonlyMap<string, ParsedKeyToken> = emptyTokens,
   extraNames?: ReadonlySet<string>,
 ): ParsedKeyPart[] {
   if (typeof key !== "string") {
@@ -145,7 +152,7 @@ function parseKeySequenceWithDefaultParser(
     const normalizedToken = key.trim().toLowerCase()
     const token = tokens.get(normalizedToken)
     if (token) {
-      return [createParsedKeyPart(token, normalizedToken)]
+      return [createParsedKeyPart(token.stroke, normalizedToken, token.matchKey)]
     }
 
     return [parseStringKeyPart(key)]
@@ -173,7 +180,7 @@ export const defaultBindingParser: KeymapBindingParser = ({ input, index, tokens
     const token = tokens.get(normalizedToken)
     if (token) {
       return {
-        parts: [createParsedKeyPart(token, normalizedToken)],
+        parts: [createParsedKeyPart(token.stroke, normalizedToken, token.matchKey)],
         nextIndex: input.length,
         usedTokens: [normalizedToken],
       }
@@ -207,7 +214,7 @@ export const defaultBindingParser: KeymapBindingParser = ({ input, index, tokens
     }
 
     return {
-      parts: [createParsedKeyPart(token, tokenName)],
+      parts: [createParsedKeyPart(token.stroke, tokenName, token.matchKey)],
       nextIndex: end + 1,
       usedTokens: [tokenName],
     }
@@ -235,8 +242,12 @@ export function parseKeyLike(key: KeyLike, extraNames?: ReadonlySet<string>): Pa
 
 export function parseKeySequenceLike(
   key: KeyLike,
-  tokens: ReadonlyMap<string, ParsedKeyStroke> = emptyTokens,
+  tokens: ReadonlyMap<string, ParsedKeyToken> = emptyTokens,
   extraNames?: ReadonlySet<string>,
 ): ParsedKeyPart[] {
   return parseKeySequenceWithDefaultParser(key, tokens, extraNames)
+}
+
+export const defaultEventMatchResolver: KeymapEventMatchResolver = (event) => {
+  return [buildBindingKey(normalizeEventKeyStroke(event))]
 }

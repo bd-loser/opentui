@@ -43,7 +43,7 @@ import {
 } from "./lib/terminal-capability-detection.js"
 import { type Clock, type TimerHandle, SystemClock } from "./lib/clock.js"
 import { StdinParser, type StdinEvent, type StdinParserProtocolContext } from "./lib/stdin-parser.js"
-import { matchesKeyBinding } from "./lib/keymapping.js"
+import { matchesKeyBinding } from "./lib/keybinding.internal.js"
 
 const OSC_THEME_RESPONSE =
   /\x1b](10|11);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g

@@ -106,14 +106,25 @@ export function useKeymap<TRenderable extends Renderable = Renderable>(layer: Us
   const manager = useKeymappings()
   const layerRef = useRef(layer)
   const refTargetRef = useRef<TRenderable | undefined>(undefined)
+  const disposeRef = useRef<(() => void) | undefined>(undefined)
+  const mountedRef = useRef(false)
+  const registeredScopeRef = useRef<KeymapLayer["scope"] | undefined>(undefined)
+  const registeredTargetRef = useRef<Renderable | undefined>(undefined)
 
   layerRef.current = layer
 
-  const ref = useCallback<KeymapRef<TRenderable>>((value) => {
-    refTargetRef.current = value ?? undefined
+  const unregister = useCallback(() => {
+    disposeRef.current?.()
+    disposeRef.current = undefined
+    registeredScopeRef.current = undefined
+    registeredTargetRef.current = undefined
   }, [])
 
-  useEffect(() => {
+  const register = useCallback(() => {
+    if (disposeRef.current) {
+      return
+    }
+
     const currentLayer = layerRef.current
     const explicitTarget = resolveKeymapTarget(currentLayer.target)
     const resolvedTarget = explicitTarget ?? refTargetRef.current
@@ -141,8 +152,52 @@ export function useKeymap<TRenderable extends Renderable = Renderable>(layer: Us
             target: resolvedTarget!,
           }
 
-    return manager.registerLayer(resolvedLayer)
-  }, [layer, manager])
+    disposeRef.current = manager.registerLayer(resolvedLayer)
+    registeredScopeRef.current = resolvedScope
+    registeredTargetRef.current = resolvedScope === "global" ? undefined : resolvedTarget
+  }, [manager])
+
+  const ref = useCallback<KeymapRef<TRenderable>>((value) => {
+    refTargetRef.current = value ?? undefined
+  }, [])
+
+  useEffect(() => {
+    mountedRef.current = true
+    unregister()
+    register()
+
+    return () => {
+      mountedRef.current = false
+      unregister()
+    }
+  }, [layer, register, unregister])
+
+  useEffect(() => {
+    if (!mountedRef.current) {
+      return
+    }
+
+    const currentLayer = layerRef.current
+    if (currentLayer.target !== undefined || currentLayer.scope === "global") {
+      return
+    }
+
+    const resolvedTarget = refTargetRef.current
+    const resolvedScope = currentLayer.scope ?? (resolvedTarget ? "focus-within" : "global")
+    const nextTarget = resolvedScope === "global" ? undefined : resolvedTarget
+
+    if (registeredScopeRef.current === resolvedScope && registeredTargetRef.current === nextTarget) {
+      return
+    }
+
+    unregister()
+
+    if (!nextTarget && currentLayer.scope !== undefined) {
+      return
+    }
+
+    register()
+  })
 
   return ref
 }

@@ -337,9 +337,13 @@ export class ActionMap {
   private eventMatchResolvers = new RegistrationList<ActionMapEventMatchResolver>()
   private keyHooks = new OrderedEmitter<(ctx: ActionMapKeyInputContext) => void, { priority: number; release: boolean }>()
   private rawHooks = new OrderedEmitter<(ctx: ActionMapRawInputContext) => void, { priority: number }>()
-  // `Emitter` is the same primitive used for `hook(...)`; wiring its `onError`
-  // to a no-op gives us the silent behaviour required for terminal channels
-  // like `error` (a throwing error listener must not re-enter emission).
+  // Reuses the same `Emitter` primitive that backs `hook(...)`. The `onError`
+  // callback is invoked when a registered listener throws during dispatch; we
+  // set it to a no-op because the `error` channel is terminal and must not
+  // re-enter emission (a throwing error listener would otherwise infinite-loop
+  // back through `onError` → `emitError` → dispatch). When no listener is
+  // registered at all, `emitWarning` / `emitError` fall back to `console.warn`
+  // / `console.error` so diagnostics are never silently dropped.
   private events = new Emitter<ActionMapEvents>(() => {})
   private hooks: Emitter<ActionMapHooks>
   private commands = new Map<string, RegisteredCommand>()
@@ -1400,6 +1404,7 @@ export class ActionMap {
 
   private emitWarning(message: string): void {
     if (!this.events.has("warning")) {
+      console.warn(message)
       return
     }
 
@@ -1408,6 +1413,11 @@ export class ActionMap {
 
   private emitError(message: string, cause?: unknown): void {
     if (!this.events.has("error")) {
+      if (cause === undefined) {
+        console.error(message)
+      } else {
+        console.error(message, cause)
+      }
       return
     }
 

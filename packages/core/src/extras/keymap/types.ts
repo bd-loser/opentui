@@ -76,6 +76,12 @@ export interface KeymapCommandQuery {
   filter?: KeymapCommandFilter
 }
 
+export interface KeymapRunCommandOptions {
+  event?: KeyEvent
+  focused?: Renderable | null
+  target?: Renderable | null
+}
+
 export interface KeymapCommandContext {
   manager: KeymapManager
   renderer: CliRenderer

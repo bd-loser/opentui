@@ -130,6 +130,24 @@ describe("keymap", () => {
     expect(calls).toEqual(["handled"])
   })
 
+  test("runCommand executes a registered command and returns false for unknown commands", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "save-file",
+        run() {
+          calls.push("save-file")
+        },
+      },
+    ])
+
+    expect(manager.runCommand("save-file")).toBe(true)
+    expect(manager.runCommand("missing-command")).toBe(false)
+    expect(calls).toEqual(["save-file"])
+  })
+
   test("prefers direct stroke matches over registered fallback strokes", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []

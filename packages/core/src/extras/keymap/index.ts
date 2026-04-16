@@ -1,4 +1,4 @@
-export { getKeymapManager } from "./core.js"
+export { getKeymapManager } from "./manager.js"
 export {
   defaultBindingParser,
   defaultBindingSyntax,

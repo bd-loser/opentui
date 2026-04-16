@@ -527,7 +527,7 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated layer registration using the default binding parser",
     async setup() {
       const resources = await createScenarioResources()
-      resources.manager.registerToken({ token: "<leader>", key: { name: "x", ctrl: true } })
+      resources.manager.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
 
       return {
         resources,
@@ -549,7 +549,7 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated layer registration with many no-op parsers ahead of default",
     async setup() {
       const resources = await createScenarioResources()
-      resources.manager.registerToken({ token: "<leader>", key: { name: "x", ctrl: true } })
+      resources.manager.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
 
       for (let index = 0; index < 32; index += 1) {
         resources.manager.prependBindingParser(noopBindingParser)
@@ -579,7 +579,7 @@ const scenarios: BenchmarkScenario[] = [
       resources.manager.clearBindingParsers()
       resources.manager.appendBindingParser(createBracketTokenParser())
       resources.manager.appendBindingParser(defaultBindingParser)
-      resources.manager.registerToken({ token: "[leader]", key: { name: "x", ctrl: true } })
+      resources.manager.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
 
       return {
         resources,
@@ -1087,7 +1087,7 @@ const scenarios: BenchmarkScenario[] = [
       }
 
       resources.manager.registerToken({
-        token: "<leader>",
+        name: "<leader>",
         key: { name: "x", ctrl: true },
       })
       resources.mockInput.pressKey("x", { ctrl: true })

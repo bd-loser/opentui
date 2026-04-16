@@ -176,7 +176,7 @@ export interface ActionMapCommand {
 }
 
 export interface ActionMapToken {
-  token: string
+  name: string
   key: KeyLike
 }
 

@@ -93,6 +93,44 @@ const RESERVED_LAYER_FIELDS = new Set(["target", "scope", "priority", "bindings"
 const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
 const EMPTY_COMPILE_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
+const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const
+
+function isPlainObject(value: object): boolean {
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+function cloneCommandMetadataValue(value: unknown, options?: { freeze?: boolean }): unknown {
+  const freeze = options?.freeze === true
+
+  if (Array.isArray(value)) {
+    const cloned = value.map((entry) => cloneCommandMetadataValue(entry, options))
+    if (freeze) {
+      return Object.freeze(cloned)
+    }
+
+    return cloned
+  }
+
+  if (value && typeof value === "object") {
+    if (!isPlainObject(value)) {
+      return value
+    }
+
+    const cloned: Record<string, unknown> = {}
+    for (const [key, entry] of Object.entries(value)) {
+      cloned[key] = cloneCommandMetadataValue(entry, options)
+    }
+
+    if (freeze) {
+      return Object.freeze(cloned)
+    }
+
+    return cloned
+  }
+
+  return value
+}
 
 function cloneCompileFieldValue(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -612,20 +650,21 @@ export class KeymapManager {
     this.assertNotDestroyed()
 
     const normalizedSearch = query?.search?.trim().toLowerCase() ?? ""
-    const searchKeys = query?.searchIn && query.searchIn.length > 0 ? query.searchIn : ["name"]
-    const filters = query?.filter
+    const searchKeys = query?.searchIn && query.searchIn.length > 0 ? query.searchIn : DEFAULT_COMMAND_SEARCH_FIELDS
+    const filterEntries = query?.filter ? Object.entries(query.filter) : undefined
     const where = query?.where
     const results: KeymapCommandRecord[] = []
 
     for (const command of this.commands.values()) {
-      const record = this.createCommandRecord(command)
-      if (!this.commandMatchesSearch(record, normalizedSearch, searchKeys)) {
+      if (!this.commandMatchesSearch(command, normalizedSearch, searchKeys)) {
         continue
       }
 
-      if (!this.commandMatchesFilters(record, filters)) {
+      if (!this.commandMatchesFilters(command, filterEntries)) {
         continue
       }
+
+      const record = this.getCommandRecord(command)
 
       if (where && !where(record)) {
         continue
@@ -938,6 +977,7 @@ export class KeymapManager {
       const normalizedCommands = commands.map((command) => {
         const mergedAttrs: KeymapAttributes = {}
         const mergedFields: Record<string, unknown> = {}
+        const normalizedName = normalizeCommandName(command.name)
 
         for (const [fieldName, value] of Object.entries(command)) {
           if (RESERVED_COMMAND_FIELDS.has(fieldName)) {
@@ -948,7 +988,7 @@ export class KeymapManager {
             continue
           }
 
-          mergedFields[fieldName] = cloneCompileFieldValue(value)
+          mergedFields[fieldName] = cloneCommandMetadataValue(value)
 
           const compiler = this.commandFields.get(fieldName)
           if (!compiler) {
@@ -957,15 +997,15 @@ export class KeymapManager {
 
           compiler(value, {
             attr(name, attributeValue) {
-              mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
+              mergeAttribute(mergedAttrs, name, cloneCommandMetadataValue(attributeValue), `field ${fieldName}`)
             },
           })
         }
 
-        const attrs = freezeAttributes(mergedAttrs)
+        const attrs = Object.keys(mergedAttrs).length === 0 ? undefined : Object.freeze(mergedAttrs)
         const fields = Object.keys(mergedFields).length === 0 ? EMPTY_COMMAND_FIELDS : Object.freeze(mergedFields)
         const normalizedCommand: RegisteredCommand = {
-          name: normalizeCommandName(command.name),
+          name: normalizedName,
           fields,
           run: command.run,
         }
@@ -1389,33 +1429,32 @@ export class KeymapManager {
     return command.attrs ? { name: command.name, attrs: command.attrs } : { name: command.name }
   }
 
-  private createCommandRecord(command: RegisteredCommand): KeymapCommandRecord {
-    const fields = this.cloneCommandRecordData(command.fields)
-    if (!command.attrs) {
-      return {
+  private getCommandRecord(command: RegisteredCommand): KeymapCommandRecord {
+    if (command.record) {
+      return command.record
+    }
+
+    let fields = EMPTY_COMMAND_FIELDS
+    if (command.fields !== EMPTY_COMMAND_FIELDS) {
+      fields = cloneCommandMetadataValue(command.fields, { freeze: true }) as Readonly<Record<string, unknown>>
+    }
+
+    let record: KeymapCommandRecord
+    if (command.attrs) {
+      record = Object.freeze({
         name: command.name,
         fields,
-      }
+        attrs: cloneCommandMetadataValue(command.attrs, { freeze: true }) as Readonly<KeymapAttributes>,
+      })
+    } else {
+      record = Object.freeze({
+        name: command.name,
+        fields,
+      })
     }
 
-    return {
-      name: command.name,
-      fields,
-      attrs: this.cloneCommandRecordData(command.attrs),
-    }
-  }
-
-  private cloneCommandRecordData(source: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
-    if (Object.keys(source).length === 0) {
-      return EMPTY_COMMAND_FIELDS
-    }
-
-    const cloned: Record<string, unknown> = {}
-    for (const [key, value] of Object.entries(source)) {
-      cloned[key] = cloneCompileFieldValue(value)
-    }
-
-    return Object.freeze(cloned)
+    command.record = record
+    return record
   }
 
   private commandMatchesSearch(
@@ -1441,13 +1480,13 @@ export class KeymapManager {
 
   private commandMatchesFilters(
     command: KeymapCommandRecord,
-    filters: Readonly<Record<string, KeymapCommandQueryValue>> | undefined,
+    filters: readonly [string, KeymapCommandQueryValue][] | undefined,
   ): boolean {
     if (!filters) {
       return true
     }
 
-    for (const [key, matcher] of Object.entries(filters)) {
+    for (const [key, matcher] of filters) {
       const values = this.getCommandQueryValues(command, key)
       if (!this.commandValuesMatchQuery(values, matcher, command)) {
         return false

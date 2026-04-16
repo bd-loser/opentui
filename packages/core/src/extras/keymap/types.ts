@@ -329,6 +329,7 @@ export interface ActiveKeyState {
 
 export interface RegisteredCommand extends KeymapCommandRecord {
   run: (ctx: KeymapCommandContext) => KeymapCommandResult
+  record?: KeymapCommandRecord
 }
 
 export interface CompiledBindingsResult {

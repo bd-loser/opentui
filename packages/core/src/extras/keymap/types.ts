@@ -54,6 +54,24 @@ export interface KeymapCommandInfo {
   attrs?: Readonly<KeymapAttributes>
 }
 
+export interface KeymapCommandRecord {
+  name: string
+  fields: Readonly<Record<string, unknown>>
+  attrs?: Readonly<KeymapAttributes>
+}
+
+export type KeymapCommandQueryValue =
+  | unknown
+  | readonly unknown[]
+  | ((value: unknown, command: KeymapCommandRecord) => boolean)
+
+export interface KeymapCommandQuery {
+  search?: string
+  searchIn?: readonly string[]
+  filter?: Readonly<Record<string, KeymapCommandQueryValue>>
+  where?: (command: KeymapCommandRecord) => boolean
+}
+
 export interface KeymapCommandContext {
   manager: KeymapManager
   renderer: CliRenderer
@@ -309,10 +327,8 @@ export interface ActiveKeyState {
   bindings?: CompiledBinding[]
 }
 
-export interface RegisteredCommand {
-  name: string
+export interface RegisteredCommand extends KeymapCommandRecord {
   run: (ctx: KeymapCommandContext) => KeymapCommandResult
-  attrs?: Readonly<KeymapAttributes>
 }
 
 export interface CompiledBindingsResult {

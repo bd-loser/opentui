@@ -96,6 +96,10 @@ interface ExPromptSuggestion {
   expectsArgs: boolean
 }
 
+const EX_PROMPT_WIDTH = 54
+const EX_PROMPT_MAX_VISIBLE_SUGGESTIONS = 4
+const EX_PROMPT_CHROME_ROWS = 5
+
 let root: BoxRenderable | null = null
 let alphaPanel: BoxRenderable | null = null
 let betaPanel: BoxRenderable | null = null
@@ -266,10 +270,18 @@ function getExPromptSuggestions(): ExPromptSuggestion[] {
 
   const suggestions = buildExPromptSuggestions(commandPromptCommands)
   if (query === ":") {
-    return suggestions.slice(0, 4)
+    return suggestions.slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
   }
 
-  return suggestions.filter((suggestion) => suggestion.label.startsWith(query)).slice(0, 4)
+  return suggestions.filter((suggestion) => suggestion.label.startsWith(query)).slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
+}
+
+function getCommandPromptSuggestionRows(): number {
+  return Math.max(getExPromptSuggestions().length, 1)
+}
+
+function getCommandPromptHeight(): number {
+  return EX_PROMPT_CHROME_ROWS + getCommandPromptSuggestionRows()
 }
 
 function getSelectedExPromptSuggestion(): ExPromptSuggestion | null {
@@ -585,18 +597,20 @@ function buildCommandPromptSuggestions(): StyledText {
 function renderCommandPrompt(): void {
   if (commandPromptBox) {
     commandPromptBox.visible = commandPromptVisible
+    commandPromptBox.height = getCommandPromptHeight()
+    commandPromptBox.marginTop = -Math.ceil(getCommandPromptHeight() / 2)
   }
 
   if (commandPromptHintText) {
     commandPromptHintText.content = joinLines([
       styledLine([
-        fg(P.textMuted)("Tab complete"),
-        fg(P.separator)("  |  "),
-        fg(P.textMuted)("up/down select"),
-        fg(P.separator)("  |  "),
-        fg(P.textMuted)("enter run"),
-        fg(P.separator)("  |  "),
-        fg(P.textMuted)("esc close"),
+        fg(P.textMuted)("tab complete"),
+        fg(P.separator)(" | "),
+        fg(P.textMuted)("up/down"),
+        fg(P.separator)(" | "),
+        fg(P.textMuted)("enter"),
+        fg(P.separator)(" | "),
+        fg(P.textMuted)("esc"),
       ]),
     ])
   }
@@ -607,6 +621,7 @@ function renderCommandPrompt(): void {
 
   if (commandPromptSuggestionsText) {
     commandPromptSuggestionsText.content = buildCommandPromptSuggestions()
+    commandPromptSuggestionsText.height = getCommandPromptSuggestionRows()
   }
 }
 
@@ -1232,15 +1247,17 @@ export function run(renderer: CliRenderer): void {
     position: "absolute",
     left: "50%",
     top: "50%",
-    width: 54,
-    height: 9,
-    marginLeft: -27,
-    marginTop: -5,
+    width: EX_PROMPT_WIDTH,
+    maxHeight: EX_PROMPT_CHROME_ROWS + EX_PROMPT_MAX_VISIBLE_SUGGESTIONS,
+    height: getCommandPromptHeight(),
+    marginLeft: -(EX_PROMPT_WIDTH / 2),
+    marginTop: -Math.ceil(getCommandPromptHeight() / 2),
     border: true,
     borderStyle: "rounded",
     borderColor: P.accent,
     backgroundColor: P.bg,
-    padding: 1,
+    paddingX: 1,
+    paddingY: 0,
     flexDirection: "column",
     zIndex: 40,
     visible: false,
@@ -1282,6 +1299,7 @@ export function run(renderer: CliRenderer): void {
     id: "keymap-demo-ex-prompt-suggestions",
     content: "",
     fg: P.text,
+    height: getCommandPromptSuggestionRows(),
   })
   commandPromptBox.add(commandPromptSuggestionsText)
 

@@ -90,6 +90,10 @@ interface ExPromptSuggestion {
   expectsArgs: boolean
 }
 
+const EX_PROMPT_WIDTH = 54
+const EX_PROMPT_MAX_VISIBLE_SUGGESTIONS = 4
+const EX_PROMPT_CHROME_ROWS = 5
+
 function normalizeExPromptName(name: string): string {
   const trimmed = name.trim()
   if (!trimmed) {
@@ -174,10 +178,10 @@ function getExPromptSuggestions(commands: readonly DemoExCommand[], value: strin
   const suggestions = buildExPromptSuggestions(commands)
 
   if (query === ":") {
-    return suggestions.slice(0, 4)
+    return suggestions.slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
   }
 
-  return suggestions.filter((suggestion) => suggestion.label.startsWith(query)).slice(0, 4)
+  return suggestions.filter((suggestion) => suggestion.label.startsWith(query)).slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
 }
 
 function getSelectedExPromptSuggestion(
@@ -571,6 +575,14 @@ export default function KeymapDemo() {
 
   const commandPromptSuggestions = createMemo(() => {
     return getExPromptSuggestions(exCommands, commandPromptValue())
+  })
+
+  const commandPromptSuggestionRows = createMemo(() => {
+    return Math.max(commandPromptSuggestions().length, 1)
+  })
+
+  const commandPromptHeight = createMemo(() => {
+    return EX_PROMPT_CHROME_ROWS + commandPromptSuggestionRows()
   })
 
   const selectedCommandPromptSuggestion = createMemo(() => {
@@ -1040,15 +1052,17 @@ export default function KeymapDemo() {
         position="absolute"
         left="50%"
         top="50%"
-        width={54}
-        height={9}
-        marginLeft={-27}
-        marginTop={-5}
+        width={EX_PROMPT_WIDTH}
+        maxHeight={EX_PROMPT_CHROME_ROWS + EX_PROMPT_MAX_VISIBLE_SUGGESTIONS}
+        height={commandPromptHeight()}
+        marginLeft={-(EX_PROMPT_WIDTH / 2)}
+        marginTop={-Math.ceil(commandPromptHeight() / 2)}
         border
         borderStyle="rounded"
         borderColor={palette.accent}
         backgroundColor={palette.bg}
-        padding={1}
+        paddingX={1}
+        paddingY={0}
         flexDirection="column"
         zIndex={40}
         visible={commandPromptVisible()}
@@ -1056,7 +1070,7 @@ export default function KeymapDemo() {
         titleAlignment="center"
       >
         <text id="keymap-demo-ex-prompt-hint" fg={palette.textMuted} height={1}>
-          Tab complete  |  up/down select  |  enter run  |  esc close
+          tab complete | up/down | enter | esc
         </text>
         <input
           id="keymap-demo-ex-input"

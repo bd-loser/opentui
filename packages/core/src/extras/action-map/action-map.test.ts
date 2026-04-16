@@ -3169,6 +3169,111 @@ describe("action map", () => {
     expect(errors).toEqual(["Invalid action map command: command cannot be empty"])
   })
 
+  test("falls back to console.warn when no warning listener is registered", () => {
+    const manager = getActionMap(renderer)
+    const originalWarn = console.warn
+    const warnings: unknown[][] = []
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args)
+    }
+
+    try {
+      manager.registerLayer({
+        scope: "global",
+        mode: "normal",
+        bindings: [],
+      })
+    } finally {
+      console.warn = originalWarn
+    }
+
+    expect(warnings).toEqual([['[ActionMap] Unknown layer field "mode" was ignored']])
+  })
+
+  test("falls back to console.error when no error listener is registered", () => {
+    const manager = getActionMap(renderer)
+    const originalError = console.error
+    const errors: unknown[][] = []
+    console.error = (...args: unknown[]) => {
+      errors.push(args)
+    }
+
+    try {
+      // `name` is a reserved command field and triggers a no-cause emitError
+      manager.registerCommandFields({
+        name() {},
+      })
+    } finally {
+      console.error = originalError
+    }
+
+    expect(errors).toEqual([['ActionMap command field "name" is reserved']])
+  })
+
+  test("falls back to console.error with cause when no error listener is registered", () => {
+    const manager = getActionMap(renderer)
+    const cause = new Error("filter boom")
+    const originalError = console.error
+    const errors: unknown[][] = []
+    console.error = (...args: unknown[]) => {
+      errors.push(args)
+    }
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+
+    try {
+      manager.getCommands({
+        filter: () => {
+          throw cause
+        },
+      })
+    } finally {
+      console.error = originalError
+    }
+
+    expect(errors).toEqual([["[ActionMap] Error in command query filter:", cause]])
+  })
+
+  test("does not call console.warn or console.error when a listener is registered", () => {
+    const manager = getActionMap(renderer)
+    const warnings: string[] = []
+    const errors: string[] = []
+
+    manager.on("warning", (event) => {
+      warnings.push(event.message)
+    })
+    manager.on("error", (event) => {
+      errors.push(event.message)
+    })
+
+    const originalWarn = console.warn
+    const originalError = console.error
+    const warnCalls: unknown[][] = []
+    const errorCalls: unknown[][] = []
+    console.warn = (...args: unknown[]) => {
+      warnCalls.push(args)
+    }
+    console.error = (...args: unknown[]) => {
+      errorCalls.push(args)
+    }
+
+    try {
+      manager.registerLayer({
+        scope: "global",
+        mode: "normal",
+        bindings: [{ key: "y", cmd: "   " }],
+      })
+    } finally {
+      console.warn = originalWarn
+      console.error = originalError
+    }
+
+    expect(warnings).toEqual(['[ActionMap] Unknown layer field "mode" was ignored'])
+    expect(errors).toEqual(["Invalid action map command: command cannot be empty"])
+    expect(warnCalls).toEqual([])
+    expect(errorCalls).toEqual([])
+  })
+
   test("ignores reserved command field registrations", () => {
     const manager = getActionMap(renderer)
     const { errors } = captureDiagnostics(manager)

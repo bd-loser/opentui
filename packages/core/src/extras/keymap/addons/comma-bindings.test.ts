@@ -42,9 +42,13 @@ describe("comma bindings addon", () => {
     expect(calls).toEqual(["command", "command"])
   })
 
-  test("throws when a comma-delimited key string contains empty entries", () => {
+  test("skips bindings when a comma-delimited key string contains empty entries", () => {
     const manager = getKeymapManager(renderer)
+    const errors: string[] = []
 
+    manager.on("error", (event) => {
+      errors.push(event.message)
+    })
     registerCommaBindings(manager)
 
     expect(() => {
@@ -52,7 +56,10 @@ describe("comma bindings addon", () => {
         scope: "global",
         bindings: [{ key: "x,,y", cmd() {} }],
       })
-    }).toThrow('Invalid key sequence "x,,y": comma-separated bindings cannot contain empty entries')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Invalid key sequence "x,,y": comma-separated bindings cannot contain empty entries'])
+    expect(manager.getActiveKeys()).toEqual([])
   })
 
   test("can be disposed to restore default comma behavior", () => {

@@ -45,26 +45,42 @@ describe("emacs bindings addon", () => {
 
   test("keeps emacs syntax unavailable until the addon is registered", () => {
     const manager = getKeymapManager(renderer)
+    const errors: string[] = []
+
+    manager.on("error", (event) => {
+      errors.push(event.message)
+    })
 
     expect(() => {
       manager.registerLayer({
         scope: "global",
         bindings: [{ key: "ctrl+x ctrl+s", cmd() {} }],
       })
-    }).toThrow('Invalid key "ctrl+x ctrl+s": multiple key names are not supported')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Invalid key "ctrl+x ctrl+s": multiple key names are not supported'])
+    expect(manager.getActiveKeys()).toEqual([])
   })
 
   test("can be disposed to restore default parsing behavior", () => {
     const manager = getKeymapManager(renderer)
+    const errors: string[] = []
 
     const offEmacsBindings = registerEmacsBindings(manager)
     offEmacsBindings()
+
+    manager.on("error", (event) => {
+      errors.push(event.message)
+    })
 
     expect(() => {
       manager.registerLayer({
         scope: "global",
         bindings: [{ key: "ctrl+x ctrl+s", cmd() {} }],
       })
-    }).toThrow('Invalid key "ctrl+x ctrl+s": multiple key names are not supported')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Invalid key "ctrl+x ctrl+s": multiple key names are not supported'])
+    expect(manager.getActiveKeys()).toEqual([])
   })
 })

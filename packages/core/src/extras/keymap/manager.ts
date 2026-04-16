@@ -1,3 +1,4 @@
+import { EventEmitter } from "events"
 import { RenderableEvents, type Renderable } from "../../Renderable.js"
 import { CliRenderEvents, type CliRenderer } from "../../renderer.js"
 import { KeyEvent } from "../../lib/KeyHandler.js"
@@ -20,9 +21,11 @@ import type {
   KeymapBindingFieldCompiler,
   KeymapBindingInput,
   KeymapBindingParserContext,
+  KeymapErrorEvent,
   KeymapHookListener,
   KeymapHookName,
   KeymapHooks,
+  KeymapManagerEvents,
   KeymapParsedBindingInput,
   KeymapCommand,
   KeymapCommandContext,
@@ -42,7 +45,6 @@ import type {
   KeyLike,
   KeymapLayer,
   KeymapLayerFieldCompiler,
-  KeymapLogger,
   KeymapManagerOptions,
   KeymapRawInputContext,
   KeymapResolvedBindingCommand,
@@ -58,10 +60,10 @@ import type {
   RegisteredCommand,
   RegisteredLayer,
   RegisteredLayerBucket,
-  ResolvedKeymapLogger,
   RuntimeMatchable,
   RuntimeMatcher,
   SequenceNode,
+  KeymapWarningEvent,
 } from "./types.js"
 import {
   cloneStroke,
@@ -82,11 +84,7 @@ import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver }
 import { Emitter, OrderedEmitter, RegistrationList } from "./emitter.js"
 
 const keymapManagersByRenderer = new WeakMap<CliRenderer, KeymapManager>()
-
-const NOOP_KEYMAP_LOGGER: ResolvedKeymapLogger = {
-  warn() {},
-  error() {},
-}
+const NOOP = (): void => {}
 
 export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "event", "consume", "fallthrough"])
 
@@ -96,6 +94,19 @@ const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
 const EMPTY_COMPILE_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  return fallback
+}
+
+interface ResolvedCommandLookup {
+  resolved?: KeymapResolvedBindingCommand
+  hadError: boolean
+}
 
 function createSyntheticCommandEvent(): KeyEvent {
   return new KeyEvent({
@@ -308,20 +319,8 @@ function parseSingleKeyPartWithParsers(
   return part
 }
 
-function resolveKeymapLogger(logger?: KeymapLogger): ResolvedKeymapLogger {
-  if (!logger) {
-    return NOOP_KEYMAP_LOGGER
-  }
-
-  return {
-    warn: logger.warn ?? NOOP_KEYMAP_LOGGER.warn,
-    error: logger.error ?? logger.warn ?? NOOP_KEYMAP_LOGGER.error,
-  }
-}
-
-export class KeymapManager {
+export class KeymapManager extends EventEmitter<KeymapManagerEvents> {
   public readonly renderer: CliRenderer
-  private logger: ResolvedKeymapLogger
 
   private layers = new Set<RegisteredLayer>()
   private globalLayers: RegisteredLayer[] = []
@@ -373,9 +372,9 @@ export class KeymapManager {
   private readonly rawListener: (sequence: string) => boolean
   private readonly focusedRenderableListener: (focused: Renderable | null) => void
 
-  constructor(renderer: CliRenderer, options?: KeymapManagerOptions) {
+  constructor(renderer: CliRenderer, _options?: KeymapManagerOptions) {
+    super()
     this.renderer = renderer
-    this.logger = resolveKeymapLogger(options?.logger)
     this.hooks = new Emitter<KeymapHooks>((name, error) => {
       this.reportHookError(name, error)
     })
@@ -405,13 +404,7 @@ export class KeymapManager {
     return this.destroyed
   }
 
-  public applyOptions(options?: KeymapManagerOptions): void {
-    if (!options || options.logger === undefined) {
-      return
-    }
-
-    this.logger = resolveKeymapLogger(options.logger)
-  }
+  public applyOptions(_options?: KeymapManagerOptions): void {}
 
   public destroy(): void {
     if (this.destroyed) {
@@ -468,7 +461,7 @@ export class KeymapManager {
     this.stateChangePending = false
     this.flushingStateChange = false
     this.usedWarningKeys.clear()
-    this.logger = NOOP_KEYMAP_LOGGER
+    this.removeAllListeners()
 
     this.renderer.keyInput.off("keypress", this.keypressListener)
     this.renderer.keyInput.off("keyrelease", this.keyreleaseListener)
@@ -477,7 +470,9 @@ export class KeymapManager {
   }
 
   public setData(name: string, value: unknown): void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return
+    }
 
     this.runWithStateChangeBatch(() => {
       if (value === undefined) {
@@ -506,12 +501,18 @@ export class KeymapManager {
   }
 
   public getData(name: string): unknown {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return undefined
+    }
+
     return this.data[name]
   }
 
   public invalidateRuntimeKey(name: string): void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return
+    }
+
     this.runWithStateChangeBatch(() => {
       this.invalidateRuntimeConditionKey(name)
       this.ensureValidPendingSequence()
@@ -520,12 +521,17 @@ export class KeymapManager {
   }
 
   public hasPendingSequence(): boolean {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return false
+    }
+
     return this.ensureValidPendingSequence() !== undefined
   }
 
   public getPendingSequence(): readonly ParsedKeyStroke[] {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return []
+    }
 
     if (this.pendingSequenceCacheVersion === this.derivedStateVersion) {
       return this.pendingSequenceCache
@@ -545,7 +551,9 @@ export class KeymapManager {
   }
 
   public getPendingSequenceParts(): readonly ParsedKeyPart[] {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return []
+    }
 
     if (this.pendingSequencePartsCacheVersion === this.derivedStateVersion) {
       return this.pendingSequencePartsCache
@@ -565,12 +573,17 @@ export class KeymapManager {
   }
 
   public clearPendingSequence(): void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return
+    }
+
     this.setPendingSequence(null)
   }
 
   public popPendingSequence(): boolean {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return false
+    }
 
     const pending = this.ensureValidPendingSequence()
     if (!pending) {
@@ -596,7 +609,9 @@ export class KeymapManager {
   }
 
   public getActiveKeys(options?: KeymapActiveKeyOptions): readonly KeymapActiveKey[] {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return []
+    }
 
     const includeBindings = options?.includeBindings === true
     const includeMetadata = options?.includeMetadata === true
@@ -664,7 +679,9 @@ export class KeymapManager {
   }
 
   public getCommands(query?: KeymapCommandQuery): readonly KeymapCommandRecord[] {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return []
+    }
 
     const namespace = query?.namespace
     const normalizedSearch = query?.search?.trim().toLowerCase() ?? ""
@@ -696,8 +713,19 @@ export class KeymapManager {
 
       const record = this.getCommandRecord(command)
 
-      if (filterPredicate && !filterPredicate(record)) {
-        continue
+      if (filterPredicate) {
+        let matches = false
+
+        try {
+          matches = filterPredicate(record)
+        } catch (error) {
+          this.emitError("[Keymap] Error in command query filter:", error)
+          continue
+        }
+
+        if (!matches) {
+          continue
+        }
       }
 
       results.push(record)
@@ -707,16 +735,42 @@ export class KeymapManager {
   }
 
   public runCommand(command: string, options?: KeymapRunCommandOptions): KeymapRunCommandResult {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return { ok: false, reason: "error" }
+    }
 
-    const normalized = normalizeBindingCommand(command)
+    let normalized: KeymapBindingCommand | undefined
+
+    try {
+      normalized = normalizeBindingCommand(command)
+    } catch {
+      return { ok: false, reason: "invalid-args" }
+    }
+
     if (typeof normalized !== "string") {
       return { ok: false, reason: "not-found" }
     }
 
-    const resolved = this.resolveCommandString(normalized, { includeRecord: options?.includeCommand === true })
-    if (!resolved) {
-      return { ok: false, reason: "not-found" }
+    const includeRecord = options?.includeCommand === true
+    let resolved: KeymapResolvedBindingCommand | undefined
+
+    if (!this.commandResolvers.has()) {
+      const registered = this.commands.get(normalized)
+      if (!registered) {
+        return { ok: false, reason: "not-found" }
+      }
+
+      resolved = this.getResolvedRegisteredCommand(registered, { includeRecord })
+    } else {
+      const lookup = this.resolveCommandString(normalized, { includeRecord })
+      resolved = lookup.resolved
+      if (!resolved) {
+        if (lookup.hadError) {
+          return { ok: false, reason: "error" }
+        }
+
+        return { ok: false, reason: "not-found" }
+      }
     }
 
     const event = options?.event ?? createSyntheticCommandEvent()
@@ -733,7 +787,7 @@ export class KeymapManager {
     try {
       result = resolved.run(context)
     } catch (error) {
-      this.logger.error(`[Keymap] Error running command "${normalized}":`, error)
+      this.emitError(`[Keymap] Error running command "${normalized}":`, error)
       if (resolved.record) {
         return { ok: false, reason: "error", command: resolved.record }
       }
@@ -743,7 +797,7 @@ export class KeymapManager {
 
     if (isPromiseLike(result)) {
       result.catch((error) => {
-        this.logger.error(`[Keymap] Async error in command "${normalized}":`, error)
+        this.emitError(`[Keymap] Async error in command "${normalized}":`, error)
       })
       return resolved.record ? { ok: true, command: resolved.record } : { ok: true }
     }
@@ -764,31 +818,48 @@ export class KeymapManager {
   }
 
   public hook<TName extends KeymapHookName>(name: TName, fn: KeymapHookListener<KeymapHooks[TName]>): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     return this.hooks.hook(name, fn)
   }
 
   public registerLayer(layer: KeymapLayer): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     return this.runWithStateChangeBatch(() => {
-      const scope = this.normalizeScope(layer)
-      const bindingInputs = snapshotBindingInputs(layer.bindings)
-      const order = this.order++
-      const { requires, matchers, conditionKeys, hasUnkeyedMatchers, compileFields } =
-        this.compileLayerRuntimeState(layer)
-      const compiledBindings = this.compileBindings(
-        bindingInputs,
-        this.tokens,
-        scope,
-        layer.target,
-        order,
-        compileFields,
-      )
       const target = layer.target
       if (target && target.isDestroyed) {
-        throw new Error("Cannot register a keymap layer for a destroyed renderable")
+        this.emitError("Cannot register a keymap layer for a destroyed renderable")
+        return NOOP
+      }
+
+      let scope: KeymapScope
+      let bindingInputs: KeymapBindingInput[]
+      let requires: readonly [name: string, value: unknown][]
+      let matchers: readonly RuntimeMatcher[]
+      let conditionKeys: readonly string[]
+      let hasUnkeyedMatchers: boolean
+      let compileFields: Readonly<Record<string, unknown>> | undefined
+
+      try {
+        scope = this.normalizeScope(layer)
+        bindingInputs = snapshotBindingInputs(layer.bindings)
+        ;({ requires, matchers, conditionKeys, hasUnkeyedMatchers, compileFields } =
+          this.compileLayerRuntimeState(layer))
+      } catch (error) {
+        this.emitError(getErrorMessage(error, "Failed to register keymap layer"), error)
+        return NOOP
+      }
+
+      const order = this.order++
+      const compiledBindings = this.compileBindings(bindingInputs, this.tokens, scope, target, order, compileFields)
+
+      if (compiledBindings.bindings.length === 0 && !compiledBindings.hasTokenBindings) {
+        return NOOP
       }
 
       const registeredLayer: RegisteredLayer = {
@@ -839,25 +910,35 @@ export class KeymapManager {
   }
 
   public registerLayerFields(fields: Record<string, KeymapLayerFieldCompiler>): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     const entries = Object.entries(fields)
+    const registered: Array<[string, KeymapLayerFieldCompiler]> = []
+
     for (const [name] of entries) {
       if (RESERVED_LAYER_FIELDS.has(name)) {
-        throw new Error(`Keymap layer field "${name}" is reserved`)
+        this.emitError(`Keymap layer field "${name}" is reserved`)
+        continue
       }
 
       if (this.layerFields.has(name)) {
-        throw new Error(`Keymap layer field "${name}" is already registered`)
+        this.emitError(`Keymap layer field "${name}" is already registered`)
       }
     }
 
     for (const [name, compiler] of entries) {
+      if (RESERVED_LAYER_FIELDS.has(name) || this.layerFields.has(name)) {
+        continue
+      }
+
       this.layerFields.set(name, compiler)
+      registered.push([name, compiler])
     }
 
     return () => {
-      for (const [name, compiler] of entries) {
+      for (const [name, compiler] of registered) {
         const current = this.layerFields.get(name)
         if (current === compiler) {
           this.layerFields.delete(name)
@@ -867,52 +948,85 @@ export class KeymapManager {
   }
 
   public registerBindingCompiler(compiler: KeymapBindingCompiler): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     return this.bindingCompilers.append(compiler)
   }
 
   public prependBindingParser(parser: KeymapBindingParser): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     return this.bindingParsers.prepend(parser)
   }
 
   public appendBindingParser(parser: KeymapBindingParser): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     return this.bindingParsers.append(parser)
   }
 
   public clearBindingParsers(): void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return
+    }
+
     this.bindingParsers.clear()
   }
 
   public setBindingSyntax(syntax: KeymapBindingSyntax): void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return
+    }
+
     this.bindingSyntax = syntax
   }
 
   public clearBindingSyntax(): void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return
+    }
+
     this.bindingSyntax = undefined
   }
 
   public registerToken(token: KeymapToken): () => void {
-    this.assertNotDestroyed()
-
-    const normalizedToken = this.normalizeTokenName(token.token)
-
-    if (this.tokens.has(normalizedToken)) {
-      throw new Error(`Keymap token "${normalizedToken}" is already registered`)
+    if (this.destroyed) {
+      return NOOP
     }
 
-    const parsedToken = parseSingleKeyPartWithParsers(token.key, this.bindingParsers.snapshot(), {
-      tokens: this.tokens,
-      layer: EMPTY_COMPILE_FIELDS,
-      parseObjectKey: (key) => this.parseObjectKeyPart(key),
-    })
+    let normalizedToken: string
+
+    try {
+      normalizedToken = this.normalizeTokenName(token.token)
+    } catch (error) {
+      this.emitError(getErrorMessage(error, "Failed to register keymap token"), error)
+      return NOOP
+    }
+
+    if (this.tokens.has(normalizedToken)) {
+      this.emitError(`Keymap token "${normalizedToken}" is already registered`)
+      return NOOP
+    }
+
+    let parsedToken: ParsedKeyPart
+
+    try {
+      parsedToken = parseSingleKeyPartWithParsers(token.key, this.bindingParsers.snapshot(), {
+        tokens: this.tokens,
+        layer: EMPTY_COMPILE_FIELDS,
+        parseObjectKey: (key) => this.parseObjectKeyPart(key),
+      })
+    } catch (error) {
+      this.emitError(getErrorMessage(error, `Failed to register keymap token "${normalizedToken}"`), error)
+      return NOOP
+    }
+
     const registeredToken: ParsedKeyToken = {
       stroke: parsedToken.stroke,
       matchKey: parsedToken.matchKey,
@@ -920,55 +1034,83 @@ export class KeymapManager {
 
     const nextTokens = new Map(this.tokens)
     nextTokens.set(normalizedToken, registeredToken)
-    this.applyTokenState(nextTokens)
+
+    try {
+      this.applyTokenState(nextTokens)
+    } catch (error) {
+      this.emitError(getErrorMessage(error, `Failed to register keymap token "${normalizedToken}"`), error)
+      return NOOP
+    }
 
     return () => {
       const current = this.tokens.get(normalizedToken)
       if (current === registeredToken) {
         const nextTokens = new Map(this.tokens)
         nextTokens.delete(normalizedToken)
-        this.applyTokenState(nextTokens)
+
+        try {
+          this.applyTokenState(nextTokens)
+        } catch (error) {
+          this.emitError(getErrorMessage(error, `Failed to unregister keymap token "${normalizedToken}"`), error)
+        }
       }
     }
   }
 
   public prependBindingExpander(expander: KeymapBindingExpander): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     return this.bindingExpanders.prepend(expander)
   }
 
   public appendBindingExpander(expander: KeymapBindingExpander): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     return this.bindingExpanders.append(expander)
   }
 
   public clearBindingExpanders(): void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return
+    }
+
     this.bindingExpanders.clear()
   }
 
   public registerBindingFields(fields: Record<string, KeymapBindingFieldCompiler>): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     const entries = Object.entries(fields)
+    const registered: Array<[string, KeymapBindingFieldCompiler]> = []
+
     for (const [name] of entries) {
       if (RESERVED_BINDING_FIELDS.has(name)) {
-        throw new Error(`Keymap binding field "${name}" is reserved`)
+        this.emitError(`Keymap binding field "${name}" is reserved`)
+        continue
       }
 
       if (this.bindingFields.has(name)) {
-        throw new Error(`Keymap binding field "${name}" is already registered`)
+        this.emitError(`Keymap binding field "${name}" is already registered`)
       }
     }
 
     for (const [name, compiler] of entries) {
+      if (RESERVED_BINDING_FIELDS.has(name) || this.bindingFields.has(name)) {
+        continue
+      }
+
       this.bindingFields.set(name, compiler)
+      registered.push([name, compiler])
     }
 
     return () => {
-      for (const [name, compiler] of entries) {
+      for (const [name, compiler] of registered) {
         const current = this.bindingFields.get(name)
         if (current === compiler) {
           this.bindingFields.delete(name)
@@ -978,25 +1120,35 @@ export class KeymapManager {
   }
 
   public registerCommandFields(fields: Record<string, KeymapCommandFieldCompiler>): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     const entries = Object.entries(fields)
+    const registered: Array<[string, KeymapCommandFieldCompiler]> = []
+
     for (const [name] of entries) {
       if (RESERVED_COMMAND_FIELDS.has(name)) {
-        throw new Error(`Keymap command field "${name}" is reserved`)
+        this.emitError(`Keymap command field "${name}" is reserved`)
+        continue
       }
 
       if (this.commandFields.has(name)) {
-        throw new Error(`Keymap command field "${name}" is already registered`)
+        this.emitError(`Keymap command field "${name}" is already registered`)
       }
     }
 
     for (const [name, compiler] of entries) {
+      if (RESERVED_COMMAND_FIELDS.has(name) || this.commandFields.has(name)) {
+        continue
+      }
+
       this.commandFields.set(name, compiler)
+      registered.push([name, compiler])
     }
 
     return () => {
-      for (const [name, compiler] of entries) {
+      for (const [name, compiler] of registered) {
         const current = this.commandFields.get(name)
         if (current === compiler) {
           this.commandFields.delete(name)
@@ -1006,7 +1158,9 @@ export class KeymapManager {
   }
 
   public registerCommandResolver(resolver: KeymapCommandResolver): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     return this.runWithStateChangeBatch(() => {
       this.commandResolvers.append(resolver)
@@ -1027,13 +1181,18 @@ export class KeymapManager {
   }
 
   public registerEventMatchResolver(resolver: KeymapEventMatchResolver): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     return this.eventMatchResolvers.append(resolver)
   }
 
   public clearEventMatchResolvers(): void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return
+    }
+
     this.eventMatchResolvers.clear()
   }
 
@@ -1041,7 +1200,9 @@ export class KeymapManager {
     fn: (ctx: KeymapKeyInputContext) => void,
     options?: { priority?: number; release?: boolean },
   ): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     return this.keyHooks.hook(fn, {
       priority: options?.priority ?? 0,
@@ -1050,7 +1211,9 @@ export class KeymapManager {
   }
 
   public onRawInput(fn: (ctx: KeymapRawInputContext) => void, options?: { priority?: number }): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     return this.rawHooks.hook(fn, {
       priority: options?.priority ?? 0,
@@ -1058,63 +1221,74 @@ export class KeymapManager {
   }
 
   public registerCommands(commands: KeymapCommand[]): () => void {
-    this.assertNotDestroyed()
+    if (this.destroyed) {
+      return NOOP
+    }
 
     return this.runWithStateChangeBatch(() => {
-      const normalizedCommands = commands.map((command) => {
-        const mergedAttrs: KeymapAttributes = {}
-        const mergedFields: Record<string, unknown> = {}
-        const normalizedName = normalizeCommandName(command.name)
-
-        for (const [fieldName, value] of Object.entries(command)) {
-          if (RESERVED_COMMAND_FIELDS.has(fieldName)) {
-            continue
-          }
-
-          if (value === undefined) {
-            continue
-          }
-
-          mergedFields[fieldName] = cloneCommandMetadataValue(value)
-
-          const compiler = this.commandFields.get(fieldName)
-          if (!compiler) {
-            continue
-          }
-
-          compiler(value, {
-            attr(name, attributeValue) {
-              mergeAttribute(mergedAttrs, name, cloneCommandMetadataValue(attributeValue), `field ${fieldName}`)
-            },
-          })
-        }
-
-        const attrs = Object.keys(mergedAttrs).length === 0 ? undefined : Object.freeze(mergedAttrs)
-        const fields = Object.keys(mergedFields).length === 0 ? EMPTY_COMMAND_FIELDS : Object.freeze(mergedFields)
-        const normalizedCommand: RegisteredCommand = {
-          name: normalizedName,
-          fields,
-          run: command.run,
-        }
-
-        if (attrs) {
-          normalizedCommand.attrs = attrs
-        }
-
-        return normalizedCommand
-      })
-
+      const normalizedCommands: RegisteredCommand[] = []
       const seen = new Set<string>()
-      for (const command of normalizedCommands) {
-        if (seen.has(command.name)) {
-          throw new Error(`Duplicate keymap command "${command.name}" in the same registration batch`)
+
+      for (const command of commands) {
+        let normalizedCommand: RegisteredCommand | undefined
+
+        try {
+          const mergedAttrs: KeymapAttributes = {}
+          const mergedFields: Record<string, unknown> = {}
+          const normalizedName = normalizeCommandName(command.name)
+
+          if (seen.has(normalizedName)) {
+            this.emitError(`Duplicate keymap command "${normalizedName}" in the same registration batch`)
+            continue
+          }
+
+          if (this.commands.has(normalizedName)) {
+            this.emitError(`Keymap command "${normalizedName}" is already registered`)
+            continue
+          }
+
+          for (const [fieldName, value] of Object.entries(command)) {
+            if (RESERVED_COMMAND_FIELDS.has(fieldName)) {
+              continue
+            }
+
+            if (value === undefined) {
+              continue
+            }
+
+            mergedFields[fieldName] = cloneCommandMetadataValue(value)
+
+            const compiler = this.commandFields.get(fieldName)
+            if (!compiler) {
+              continue
+            }
+
+            compiler(value, {
+              attr(name, attributeValue) {
+                mergeAttribute(mergedAttrs, name, cloneCommandMetadataValue(attributeValue), `field ${fieldName}`)
+              },
+            })
+          }
+
+          const attrs = Object.keys(mergedAttrs).length === 0 ? undefined : Object.freeze(mergedAttrs)
+          const fields = Object.keys(mergedFields).length === 0 ? EMPTY_COMMAND_FIELDS : Object.freeze(mergedFields)
+
+          normalizedCommand = {
+            name: normalizedName,
+            fields,
+            run: command.run,
+          }
+
+          if (attrs) {
+            normalizedCommand.attrs = attrs
+          }
+        } catch (error) {
+          this.emitError(getErrorMessage(error, `Failed to register keymap command "${String(command.name)}"`), error)
+          continue
         }
 
-        if (this.commands.has(command.name)) {
-          throw new Error(`Keymap command "${command.name}" is already registered`)
-        }
-
-        seen.add(command.name)
+        seen.add(normalizedCommand.name)
+        normalizedCommands.push(normalizedCommand)
       }
 
       for (const command of normalizedCommands) {
@@ -1202,24 +1376,48 @@ export class KeymapManager {
     }
   }
 
+  private emitWarning(message: string): void {
+    const listeners = this.rawListeners("warning") as Array<(event: KeymapWarningEvent) => void>
+    if (listeners.length === 0) {
+      return
+    }
+
+    const event: KeymapWarningEvent = { message }
+
+    for (const listener of listeners) {
+      try {
+        listener(event)
+      } catch {}
+    }
+  }
+
+  private emitError(message: string, cause?: unknown): void {
+    const listeners = this.rawListeners("error") as Array<(event: KeymapErrorEvent) => void>
+    if (listeners.length === 0) {
+      return
+    }
+
+    const event: KeymapErrorEvent = cause === undefined ? { message } : { message, cause }
+
+    for (const listener of listeners) {
+      try {
+        listener(event)
+      } catch {}
+    }
+  }
+
   private reportHookError(name: KeymapHookName, error: unknown): void {
     if (name === "state") {
-      this.logger.error("[Keymap] Error in state change hook:", error)
+      this.emitError("[Keymap] Error in state change hook:", error)
       return
     }
 
     if (name === "pendingSequence") {
-      this.logger.error("[Keymap] Error in pending sequence hook:", error)
+      this.emitError("[Keymap] Error in pending sequence hook:", error)
       return
     }
 
-    this.logger.error("[Keymap] Error in unresolved command hook:", error)
-  }
-
-  private assertNotDestroyed(): void {
-    if (this.destroyed) {
-      throw new Error("Keymap manager was already destroyed")
-    }
+    this.emitError("[Keymap] Error in unresolved command hook:", error)
   }
 
   private normalizeScope(layer: KeymapLayer): KeymapScope {
@@ -1457,10 +1655,34 @@ export class KeymapManager {
     binding.activeBindingCacheVersion = undefined
     binding.activeBindingCache = undefined
 
-    const resolved = this.resolveBindingCommand(binding.command)
+    const command = binding.command
+    if (command === undefined) {
+      return
+    }
+
+    if (typeof command === "function") {
+      binding.run = command
+      return
+    }
+
+    if (!this.commandResolvers.has()) {
+      const registered = this.commands.get(command)
+      if (!registered) {
+        this.handleUnresolvedCommand(command, binding)
+        return
+      }
+
+      const resolved = this.getResolvedRegisteredCommand(registered)
+      binding.run = resolved.run
+      binding.commandAttrs = resolved.attrs
+      return
+    }
+
+    const lookup = this.resolveCommandString(command)
+    const resolved = lookup.resolved
     if (!resolved) {
-      if (typeof binding.command === "string") {
-        this.handleUnresolvedCommand(binding.command, binding)
+      if (!lookup.hadError) {
+        this.handleUnresolvedCommand(command, binding)
       }
 
       return
@@ -1470,38 +1692,36 @@ export class KeymapManager {
     binding.commandAttrs = resolved.attrs
   }
 
-  private resolveBindingCommand(command: KeymapBindingCommand | undefined): KeymapResolvedBindingCommand | undefined {
-    if (command === undefined) {
-      return undefined
-    }
-
-    if (typeof command === "function") {
-      return { run: command }
-    }
-
-    return this.resolveCommandString(command)
-  }
-
-  private resolveCommandString(
-    command: string,
-    options?: { includeRecord?: boolean },
-  ): KeymapResolvedBindingCommand | undefined {
+  private resolveCommandString(command: string, options?: { includeRecord?: boolean }): ResolvedCommandLookup {
     const includeRecord = options?.includeRecord === true
     const context = this.createCommandResolverContext(includeRecord)
+    let hadError = false
 
     for (const resolver of this.commandResolvers.snapshot()) {
-      const resolved = resolver(command, context)
+      let resolved: KeymapResolvedBindingCommand | undefined
+
+      try {
+        resolved = resolver(command, context)
+      } catch (error) {
+        hadError = true
+        this.emitError(`[Keymap] Error in command resolver for "${command}":`, error)
+        continue
+      }
+
       if (resolved) {
-        return resolved
+        return { hadError, resolved }
       }
     }
 
     const registered = this.commands.get(command)
     if (registered) {
-      return this.getResolvedRegisteredCommand(registered, { includeRecord })
+      return {
+        hadError,
+        resolved: this.getResolvedRegisteredCommand(registered, { includeRecord }),
+      }
     }
 
-    return undefined
+    return { hadError }
   }
 
   private createCommandResolverContext(includeRecord: boolean): KeymapCommandResolverContext {
@@ -1701,27 +1921,49 @@ export class KeymapManager {
 
       if (key === "name") {
         foundValue = true
-        if (matcher(command.name, getRecord())) {
-          return true
+        try {
+          if (matcher(command.name, getRecord())) {
+            return true
+          }
+        } catch (error) {
+          this.emitError("[Keymap] Error in command query filter:", error)
+          return false
         }
       }
 
       if (Object.prototype.hasOwnProperty.call(command.fields, key)) {
         foundValue = true
-        if (matcher(command.fields[key], getRecord())) {
-          return true
+
+        try {
+          if (matcher(command.fields[key], getRecord())) {
+            return true
+          }
+        } catch (error) {
+          this.emitError("[Keymap] Error in command query filter:", error)
+          return false
         }
       }
 
       if (command.attrs && Object.prototype.hasOwnProperty.call(command.attrs, key)) {
         foundValue = true
-        if (matcher(command.attrs[key], getRecord())) {
-          return true
+
+        try {
+          if (matcher(command.attrs[key], getRecord())) {
+            return true
+          }
+        } catch (error) {
+          this.emitError("[Keymap] Error in command query filter:", error)
+          return false
         }
       }
 
       if (!foundValue) {
-        return matcher(undefined, getRecord())
+        try {
+          return matcher(undefined, getRecord())
+        } catch (error) {
+          this.emitError("[Keymap] Error in command query filter:", error)
+          return false
+        }
       }
 
       return false
@@ -1856,23 +2098,45 @@ export class KeymapManager {
     const bindingParsers = this.bindingParsers.snapshot()
 
     for (const [bindingIndex, binding] of bindings.entries()) {
-      const expandedBindingKeys = expandBindingInputWithExpanders(binding.key, bindingExpanders, {
-        layer: compileFields,
-      })
+      let expandedBindingKeys: readonly KeyLike[]
+
+      try {
+        expandedBindingKeys = expandBindingInputWithExpanders(binding.key, bindingExpanders, {
+          layer: compileFields,
+        })
+      } catch (error) {
+        this.emitError(getErrorMessage(error, "Failed to expand keymap binding"), error)
+        continue
+      }
 
       for (const expandedBindingKey of expandedBindingKeys) {
-        const parsed =
-          typeof expandedBindingKey === "string"
-            ? parseBindingSequenceWithParsers(expandedBindingKey, bindingParsers, {
-                tokens,
-                layer: compileFields,
-              })
-            : {
-                parts: [this.parseObjectKeyPart(expandedBindingKey)],
-                usedTokens: [] as readonly string[],
-                unknownTokens: [] as readonly string[],
-                hasTokenBindings: false,
-              }
+        let parsed:
+          | {
+              parts: ParsedKeyPart[]
+              usedTokens: readonly string[]
+              unknownTokens: readonly string[]
+              hasTokenBindings: boolean
+            }
+          | undefined
+
+        try {
+          parsed =
+            typeof expandedBindingKey === "string"
+              ? parseBindingSequenceWithParsers(expandedBindingKey, bindingParsers, {
+                  tokens,
+                  layer: compileFields,
+                })
+              : {
+                  parts: [this.parseObjectKeyPart(expandedBindingKey)],
+                  usedTokens: [] as readonly string[],
+                  unknownTokens: [] as readonly string[],
+                  hasTokenBindings: false,
+                }
+        } catch (error) {
+          this.emitError(getErrorMessage(error, "Failed to parse keymap binding"), error)
+          continue
+        }
+
         const sequence = parsed.parts
         hasTokenBindings ||= parsed.hasTokenBindings
 
@@ -1884,95 +2148,99 @@ export class KeymapManager {
         }
 
         for (const compiledInput of this.expandParsedBindings(binding, sequence, compileFields)) {
-          const event = this.normalizeBindingEvent(compiledInput.event)
-          const mergedRequires: KeymapEventData = {}
-          const mergedAttrs: KeymapAttributes = {}
-          const matchers: RuntimeMatcher[] = []
-          const conditionKeys = new Set<string>()
-          let hasUnkeyedMatchers = false
+          try {
+            const event = this.normalizeBindingEvent(compiledInput.event)
+            const mergedRequires: KeymapEventData = {}
+            const mergedAttrs: KeymapAttributes = {}
+            const matchers: RuntimeMatcher[] = []
+            const conditionKeys = new Set<string>()
+            let hasUnkeyedMatchers = false
 
-          const { sequence, ...bindingFields } = compiledInput
+            const { sequence, ...bindingFields } = compiledInput
 
-          for (const [fieldName, value] of Object.entries(bindingFields)) {
-            if (RESERVED_BINDING_FIELDS.has(fieldName)) {
-              continue
-            }
+            for (const [fieldName, value] of Object.entries(bindingFields)) {
+              if (RESERVED_BINDING_FIELDS.has(fieldName)) {
+                continue
+              }
 
-            if (value === undefined) {
-              continue
-            }
+              if (value === undefined) {
+                continue
+              }
 
-            const compiler = this.bindingFields.get(fieldName)
-            if (!compiler) {
-              this.warnUnknownField("binding", fieldName)
-              continue
-            }
+              const compiler = this.bindingFields.get(fieldName)
+              if (!compiler) {
+                this.warnUnknownField("binding", fieldName)
+                continue
+              }
 
-            compiler(value, {
-              require(name, requiredValue) {
-                mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
-                conditionKeys.add(name)
-              },
-              attr(name, attributeValue) {
-                mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
-              },
-              match(matcher, options) {
-                const keys = options?.keys ? [...options.keys] : []
-                if (keys.length === 0) {
-                  hasUnkeyedMatchers = true
-                } else {
-                  for (const key of keys) {
-                    conditionKeys.add(key)
+              compiler(value, {
+                require(name, requiredValue) {
+                  mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
+                  conditionKeys.add(name)
+                },
+                attr(name, attributeValue) {
+                  mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
+                },
+                match(matcher, options) {
+                  const keys = options?.keys ? [...options.keys] : []
+                  if (keys.length === 0) {
+                    hasUnkeyedMatchers = true
+                  } else {
+                    for (const key of keys) {
+                      conditionKeys.add(key)
+                    }
                   }
-                }
 
-                matchers.push({
-                  source: `field ${fieldName}`,
-                  match: matcher,
-                  keys,
-                })
-              },
-            })
-          }
+                  matchers.push({
+                    source: `field ${fieldName}`,
+                    match: matcher,
+                    keys,
+                  })
+                },
+              })
+            }
 
-          const attrs = freezeAttributes(mergedAttrs)
-          const command = normalizeBindingCommand(bindingFields.cmd)
-          const compiledBinding: CompiledBinding = {
-            sequence,
-            command,
-            event,
-            sourceBinding: cloneParsedBindingInput(compiledInput),
-            sourceScope,
-            sourceTarget,
-            sourceLayerOrder,
-            sourceBindingIndex: bindingIndex,
-            requires: Object.entries(mergedRequires),
-            matchers,
-            conditionKeys: [...conditionKeys],
-            hasUnkeyedMatchers,
-            matchCacheDirty: true,
-            consume: bindingFields.consume !== false,
-            fallthrough: bindingFields.fallthrough ?? false,
-          }
+            const attrs = freezeAttributes(mergedAttrs)
+            const command = normalizeBindingCommand(bindingFields.cmd)
+            const compiledBinding: CompiledBinding = {
+              sequence,
+              command,
+              event,
+              sourceBinding: cloneParsedBindingInput(compiledInput),
+              sourceScope,
+              sourceTarget,
+              sourceLayerOrder,
+              sourceBindingIndex: bindingIndex,
+              requires: Object.entries(mergedRequires),
+              matchers,
+              conditionKeys: [...conditionKeys],
+              hasUnkeyedMatchers,
+              matchCacheDirty: true,
+              consume: bindingFields.consume !== false,
+              fallthrough: bindingFields.fallthrough ?? false,
+            }
 
-          if (attrs) {
-            compiledBinding.attrs = attrs
-          }
+            if (attrs) {
+              compiledBinding.attrs = attrs
+            }
 
-          this.resolveCompiledBindingCommand(compiledBinding)
+            this.resolveCompiledBindingCommand(compiledBinding)
 
-          if (sequence.length === 0) {
-            continue
-          }
+            if (sequence.length === 0) {
+              continue
+            }
 
-          if (event === "release" && sequence.length > 1) {
-            throw new Error("Keymap release bindings only support a single key stroke")
-          }
+            if (event === "release" && sequence.length > 1) {
+              throw new Error("Keymap release bindings only support a single key stroke")
+            }
 
-          compiledBindings.push(compiledBinding)
+            if (event === "press") {
+              this.insertBinding(root, compiledBinding)
+            }
 
-          if (event === "press") {
-            this.insertBinding(root, compiledBinding)
+            compiledBindings.push(compiledBinding)
+          } catch (error) {
+            this.emitError(getErrorMessage(error, "Failed to compile keymap binding"), error)
           }
         }
       }
@@ -2018,7 +2286,7 @@ export class KeymapManager {
           },
         })
       } catch (error) {
-        this.logger.error("[Keymap] Error in binding compiler:", error)
+        this.emitError("[Keymap] Error in binding compiler:", error)
       }
     }
 
@@ -2035,32 +2303,72 @@ export class KeymapManager {
 
   private insertBinding(root: SequenceNode, binding: CompiledBinding): void {
     let node = root
+    const touchedNodes: SequenceNode[] = []
+    const createdNodes: Array<{ parent: SequenceNode; key: string }> = []
 
-    for (const part of binding.sequence) {
-      if (node.bindings.some((candidate) => candidate.command !== undefined)) {
+    try {
+      for (const part of binding.sequence) {
+        if (node.bindings.some((candidate) => candidate.command !== undefined)) {
+          throw new Error(
+            "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
+          )
+        }
+
+        const bindingKey = part.matchKey
+        let child = node.children.get(bindingKey)
+        if (!child) {
+          child = createSequenceNode(node, part.stroke, part.matchKey)
+          node.children.set(bindingKey, child)
+          createdNodes.push({ parent: node, key: bindingKey })
+        }
+
+        child.reachableBindings.push(binding)
+        touchedNodes.push(child)
+        node = child
+      }
+
+      if (binding.command !== undefined && node.children.size > 0) {
         throw new Error(
           "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
         )
       }
 
-      const bindingKey = part.matchKey
-      let child = node.children.get(bindingKey)
-      if (!child) {
-        child = createSequenceNode(node, part.stroke, part.matchKey)
-        node.children.set(bindingKey, child)
+      node.bindings = [...node.bindings, binding]
+    } catch (error) {
+      for (let index = touchedNodes.length - 1; index >= 0; index -= 1) {
+        const touchedNode = touchedNodes[index]
+        if (!touchedNode) {
+          continue
+        }
+
+        if (touchedNode.reachableBindings.at(-1) === binding) {
+          touchedNode.reachableBindings.pop()
+          continue
+        }
+
+        touchedNode.reachableBindings = touchedNode.reachableBindings.filter((candidate) => candidate !== binding)
       }
 
-      child.reachableBindings.push(binding)
-      node = child
-    }
+      for (let index = createdNodes.length - 1; index >= 0; index -= 1) {
+        const createdNode = createdNodes[index]
+        if (!createdNode) {
+          continue
+        }
 
-    if (binding.command !== undefined && node.children.size > 0) {
-      throw new Error(
-        "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
-      )
-    }
+        const child = createdNode.parent.children.get(createdNode.key)
+        if (!child) {
+          continue
+        }
 
-    node.bindings = [...node.bindings, binding]
+        if (child.children.size > 0 || child.reachableBindings.length > 0 || child.bindings.length > 0) {
+          continue
+        }
+
+        createdNode.parent.children.delete(createdNode.key)
+      }
+
+      throw error
+    }
   }
 
   private handleRawSequence(sequence: string): boolean {
@@ -2085,7 +2393,7 @@ export class KeymapManager {
       try {
         hook.listener(context)
       } catch (error) {
-        this.logger.error("[Keymap] Error in raw input hook:", error)
+        this.emitError("[Keymap] Error in raw input hook:", error)
       }
 
       if (stopped) {
@@ -2132,7 +2440,7 @@ export class KeymapManager {
       try {
         hook.listener(context)
       } catch (error) {
-        this.logger.error("[Keymap] Error in key input hook:", error)
+        this.emitError("[Keymap] Error in key input hook:", error)
       }
 
       if (event.propagationStopped) {
@@ -2268,7 +2576,7 @@ export class KeymapManager {
       try {
         resolved = resolver(event)
       } catch (error) {
-        this.logger.error("[Keymap] Error in event match resolver:", error)
+        this.emitError("[Keymap] Error in event match resolver:", error)
         return []
       }
 
@@ -2279,7 +2587,7 @@ export class KeymapManager {
       if (resolved.length === 1) {
         const [candidate] = resolved
         if (typeof candidate !== "string" || !candidate) {
-          this.logger.error("[Keymap] Invalid event match resolver candidate:", candidate)
+          this.emitError("[Keymap] Invalid event match resolver candidate:", candidate)
           return []
         }
 
@@ -2290,7 +2598,7 @@ export class KeymapManager {
       const seen = new Set<string>()
       for (const candidate of resolved) {
         if (typeof candidate !== "string") {
-          this.logger.error("[Keymap] Invalid event match resolver candidate:", candidate)
+          this.emitError("[Keymap] Invalid event match resolver candidate:", candidate)
           continue
         }
 
@@ -2314,7 +2622,7 @@ export class KeymapManager {
       try {
         resolved = resolver(event)
       } catch (error) {
-        this.logger.error("[Keymap] Error in event match resolver:", error)
+        this.emitError("[Keymap] Error in event match resolver:", error)
         continue
       }
 
@@ -2324,7 +2632,7 @@ export class KeymapManager {
 
       for (const candidate of resolved) {
         if (typeof candidate !== "string") {
-          this.logger.error("[Keymap] Invalid event match resolver candidate:", candidate)
+          this.emitError("[Keymap] Invalid event match resolver candidate:", candidate)
           continue
         }
 
@@ -2793,14 +3101,14 @@ export class KeymapManager {
     try {
       result = run(context)
     } catch (error) {
-      this.logger.error(`[Keymap] Error running command ${this.describeBindingCommand(binding)}:`, error)
+      this.emitError(`[Keymap] Error running command ${this.describeBindingCommand(binding)}:`, error)
       this.applyBindingEventEffects(binding, event)
       return true
     }
 
     if (isPromiseLike(result)) {
       result.catch((error) => {
-        this.logger.error(`[Keymap] Async error in command ${this.describeBindingCommand(binding)}:`, error)
+        this.emitError(`[Keymap] Async error in command ${this.describeBindingCommand(binding)}:`, error)
       })
       this.applyBindingEventEffects(binding, event)
       return true
@@ -2923,7 +3231,7 @@ export class KeymapManager {
     try {
       return matcher.match()
     } catch (error) {
-      this.logger.error(`[Keymap] Error evaluating runtime matcher from ${matcher.source}:`, error)
+      this.emitError(`[Keymap] Error evaluating runtime matcher from ${matcher.source}:`, error)
       return false
     }
   }
@@ -3145,7 +3453,7 @@ export class KeymapManager {
     }
 
     this.usedWarningKeys.add(key)
-    this.logger.warn(message)
+    this.emitWarning(message)
   }
 
   private warnUnknownField(kind: "binding" | "layer", fieldName: string): void {

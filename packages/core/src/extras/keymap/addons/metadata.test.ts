@@ -102,6 +102,11 @@ describe("metadata addon", () => {
 
   test("normalizes metadata strings and rejects invalid values", () => {
     const manager = getKeymapManager(renderer)
+    const errors: string[] = []
+
+    manager.on("error", (event) => {
+      errors.push(event.message)
+    })
     registerMetadataFields(manager)
 
     manager.registerCommands([
@@ -134,14 +139,21 @@ describe("metadata addon", () => {
           run() {},
         },
       ])
-    }).toThrow('Keymap metadata field "desc" must be a string')
+    }).not.toThrow()
 
     expect(() => {
       manager.registerLayer({
         scope: "global",
         bindings: [{ key: "y", cmd: "save-file", group: "   " }],
       })
-    }).toThrow('Keymap metadata field "group" cannot be empty')
+    }).not.toThrow()
+
+    expect(errors).toEqual([
+      'Keymap metadata field "desc" must be a string',
+      'Keymap metadata field "group" cannot be empty',
+    ])
+    expect(manager.getCommands().some((command) => command.name === "bad-command")).toBe(false)
+    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "y")).toBe(false)
   })
 
   test("can be disposed to stop compiling metadata fields", () => {

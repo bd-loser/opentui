@@ -53,6 +53,20 @@ function getActiveKeyDisplay(
   return manager.getActiveKeys(options).find((candidate) => candidate.display === display)
 }
 
+function captureDiagnostics(manager: KeymapManager): { warnings: string[]; errors: string[] } {
+  const warnings: string[] = []
+  const errors: string[] = []
+
+  manager.on("warning", (event) => {
+    warnings.push(event.message)
+  })
+  manager.on("error", (event) => {
+    errors.push(event.message)
+  })
+
+  return { warnings, errors }
+}
+
 function getMatchKeyForEventName(event: KeyEvent, name: string): string {
   const normalizedName = name === " " ? "space" : name.trim().toLowerCase()
   if (!normalizedName) {
@@ -86,6 +100,54 @@ describe("keymap", () => {
 
     const second = getKeymapManager(renderer)
     expect(second).not.toBe(first)
+  })
+
+  test("returns safe defaults after destroy", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "noop" }],
+    })
+
+    manager.destroy()
+
+    expect(manager.getData("mode")).toBeUndefined()
+    expect(manager.hasPendingSequence()).toBe(false)
+    expect(manager.getPendingSequence()).toEqual([])
+    expect(manager.getPendingSequenceParts()).toEqual([])
+    expect(manager.getActiveKeys()).toEqual([])
+    expect(manager.getCommands()).toEqual([])
+    expect(manager.popPendingSequence()).toBe(false)
+    expect(manager.runCommand("noop")).toEqual({ ok: false, reason: "error" })
+
+    expect(() => {
+      manager.setData("mode", "normal")
+      manager.invalidateRuntimeKey("mode")
+      manager.clearPendingSequence()
+      manager.setBindingSyntax(defaultBindingSyntax)
+      manager.clearBindingSyntax()
+      manager.clearBindingParsers()
+      manager.clearBindingExpanders()
+      manager.clearEventMatchResolvers()
+      manager.hook("state", () => {})()
+      manager.registerLayer({ scope: "global", bindings: [{ key: "y", cmd: "noop" }] })()
+      manager.registerToken({ token: "<leader>", key: { name: "x" } })()
+      manager.registerCommands([{ name: "other", run() {} }])()
+      manager.registerLayerFields({ mode() {} })()
+      manager.registerBindingFields({ active() {} })()
+      manager.registerCommandFields({ title() {} })()
+      manager.registerBindingCompiler(() => {})()
+      manager.prependBindingParser(() => undefined)()
+      manager.appendBindingParser(() => undefined)()
+      manager.prependBindingExpander(() => undefined)()
+      manager.appendBindingExpander(() => undefined)()
+      manager.registerCommandResolver(() => undefined)()
+      manager.registerEventMatchResolver(() => undefined)()
+      manager.onKeyInput(() => {})()
+      manager.onRawInput(() => {})()
+    }).not.toThrow()
   })
 
   test("defaults targetless layers to global scope", () => {
@@ -188,6 +250,28 @@ describe("keymap", () => {
     mockInput.pressKey("x")
     expect(manager.runCommand("shared-command")).toEqual({ ok: true })
     expect(calls).toEqual(["resolver", "resolver"])
+  })
+
+  test("treats thrown command resolvers as errors without emitting unresolved warnings", () => {
+    const manager = getKeymapManager(renderer)
+    const { warnings, errors } = captureDiagnostics(manager)
+
+    manager.registerCommandResolver(() => {
+      throw new Error("resolver boom")
+    })
+
+    expect(() => {
+      manager.registerLayer({
+        scope: "global",
+        bindings: [{ key: "x", cmd: "external-run" }],
+      })
+    }).not.toThrow()
+
+    expect(getActiveKey(manager, "x")?.command).toBeUndefined()
+    expect(warnings).toEqual([])
+    expect(manager.runCommand("external-run")).toEqual({ ok: false, reason: "error" })
+    expect(errors).toHaveLength(2)
+    expect(errors.every((message) => message.includes('Error in command resolver for "external-run":'))).toBe(true)
   })
 
   test("prefers direct stroke matches over registered fallback strokes", () => {
@@ -368,6 +452,7 @@ describe("keymap", () => {
   test("clearBindingSyntax disables object keys and token registration until syntax is restored", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
+    const { errors } = captureDiagnostics(manager)
 
     manager.clearBindingSyntax()
 
@@ -376,11 +461,15 @@ describe("keymap", () => {
         scope: "global",
         bindings: [{ key: { name: "x" }, cmd: "object" }],
       })
-    }).toThrow("No keymap binding syntax is registered")
+    }).not.toThrow()
 
     expect(() => {
       manager.registerToken({ token: "<leader>", key: { name: "x", ctrl: true } })
-    }).toThrow("No keymap binding syntax is registered")
+    }).not.toThrow()
+
+    expect(errors).toEqual(["No keymap binding syntax is registered", "No keymap binding syntax is registered"])
+
+    expect(getActiveKey(manager, "x")).toBeUndefined()
 
     manager.setBindingSyntax(defaultBindingSyntax)
 
@@ -676,6 +765,7 @@ describe("keymap", () => {
   test("binding expanders can use layer fields for optional emacs-style key strings", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
+    const { errors } = captureDiagnostics(manager)
 
     manager.registerLayerFields({
       emacsStyle(value) {
@@ -736,7 +826,9 @@ describe("keymap", () => {
         scope: "global",
         bindings: [{ key: "ctrl+x ctrl+s", cmd: "save-buffer" }],
       })
-    }).toThrow('Invalid key "ctrl+x ctrl+s": multiple key names are not supported')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Invalid key "ctrl+x ctrl+s": multiple key names are not supported'])
   })
 
   test("clearBindingExpanders allows replacing the expander chain", () => {
@@ -847,8 +939,9 @@ describe("keymap", () => {
     expect(calls).toEqual(["active"])
   })
 
-  test("throws when a binding expander returns an empty expansion", () => {
+  test("skips bindings when a binding expander returns an empty expansion", () => {
     const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
 
     manager.appendBindingExpander(() => {
       return []
@@ -859,11 +952,15 @@ describe("keymap", () => {
         scope: "global",
         bindings: [{ key: "x", cmd: "noop" }],
       })
-    }).toThrow('Keymap binding expander must return at least one key sequence for "x"')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Keymap binding expander must return at least one key sequence for "x"'])
+    expect(getActiveKey(manager, "x")).toBeUndefined()
   })
 
-  test("throws when a binding parser does not advance the input", () => {
+  test("skips bindings when a binding parser does not advance the input", () => {
     const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
 
     manager.clearBindingParsers()
     manager.appendBindingParser(() => {
@@ -875,7 +972,10 @@ describe("keymap", () => {
         scope: "global",
         bindings: [{ key: "x", cmd: "noop" }],
       })
-    }).toThrow('Keymap binding parser must advance the input for "x" at index 0')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Keymap binding parser must advance the input for "x" at index 0'])
+    expect(getActiveKey(manager, "x")).toBeUndefined()
   })
 
   test("supports release dispatch through registered fallback strokes", () => {
@@ -1199,14 +1299,18 @@ describe("keymap", () => {
     expect(calls).toEqual(["shorthand"])
   })
 
-  test("throws when duplicate command names are registered", () => {
+  test("ignores duplicate command names when registering commands", () => {
     const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
 
     manager.registerCommands([{ name: "dup", run() {} }])
 
     expect(() => {
       manager.registerCommands([{ name: "dup", run() {} }])
-    }).toThrow('Keymap command "dup" is already registered')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Keymap command "dup" is already registered'])
+    expect(manager.getCommands().map((command) => command.name)).toEqual(["dup"])
   })
 
   test("can dispose command resolvers and refresh existing bindings", () => {
@@ -1959,6 +2063,44 @@ describe("keymap", () => {
     expect(manager.getCommands()).toEqual([])
   })
 
+  test("getCommands treats thrown filter predicates as errors and returns no matches", () => {
+    const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
+
+    manager.registerCommands([
+      { name: "save-current", usage: ":write <file>", run() {} },
+      { name: "palette-help", usage: ":help", run() {} },
+    ])
+
+    let queryResult: ReturnType<KeymapManager["getCommands"]> = []
+
+    expect(() => {
+      queryResult = manager.getCommands({
+        filter(command) {
+          throw new Error(`query ${command.name}`)
+        },
+      })
+    }).not.toThrow()
+
+    expect(queryResult).toEqual([])
+    expect(errors).toEqual(["[Keymap] Error in command query filter:", "[Keymap] Error in command query filter:"])
+
+    errors.length = 0
+
+    expect(() => {
+      queryResult = manager.getCommands({
+        filter: {
+          usage() {
+            throw new Error("usage boom")
+          },
+        },
+      })
+    }).not.toThrow()
+
+    expect(queryResult).toEqual([])
+    expect(errors).toEqual(["[Keymap] Error in command query filter:", "[Keymap] Error in command query filter:"])
+  })
+
   test("getCommands returns immutable metadata records across repeated reads", () => {
     const manager = getKeymapManager(renderer)
 
@@ -2705,8 +2847,9 @@ describe("keymap", () => {
     expect(getActiveKeyNames(manager)).toEqual(["v"])
   })
 
-  test("throws on conflicting requirements from typed fields", () => {
+  test("skips bindings with conflicting requirements from typed fields", () => {
     const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
 
     manager.registerBindingFields({
       mode(value, ctx) {
@@ -2722,11 +2865,15 @@ describe("keymap", () => {
         scope: "global",
         bindings: [{ key: "x", mode: "normal", state: "visual", cmd: "noop" }],
       })
-    }).toThrow('Conflicting keymap requirement for "vim.mode"')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Conflicting keymap requirement for "vim.mode" from field state'])
+    expect(getActiveKey(manager, "x")).toBeUndefined()
   })
 
-  test("throws on conflicting requirements from typed layer fields", () => {
+  test("skips layers with conflicting requirements from typed layer fields", () => {
     const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
 
     manager.registerLayerFields({
       mode(value, ctx) {
@@ -2744,11 +2891,15 @@ describe("keymap", () => {
         state: "visual",
         bindings: [{ key: "x", cmd: "noop" }],
       })
-    }).toThrow('Conflicting keymap requirement for "vim.mode"')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Conflicting keymap requirement for "vim.mode" from field state'])
+    expect(getActiveKey(manager, "x")).toBeUndefined()
   })
 
-  test("throws on conflicting attributes from typed binding fields", () => {
+  test("skips bindings with conflicting attributes from typed binding fields", () => {
     const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
 
     manager.registerBindingFields({
       desc(value, ctx) {
@@ -2764,7 +2915,10 @@ describe("keymap", () => {
         scope: "global",
         bindings: [{ key: "x", desc: "Delete line", title: "Delete", cmd: "noop" }],
       })
-    }).toThrow('Conflicting keymap attribute for "label"')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Conflicting keymap attribute for "label" from field title'])
+    expect(getActiveKey(manager, "x")).toBeUndefined()
   })
 
   test("ignores unknown binding fields", () => {
@@ -2861,15 +3015,9 @@ describe("keymap", () => {
     expect(calls).toEqual(["save-file"])
   })
 
-  test("logs warnings only for unknown binding and layer fields when logger is configured", () => {
-    const warnings: string[] = []
-    const manager = getKeymapManager(renderer, {
-      logger: {
-        warn(...args) {
-          warnings.push(args.map((value) => String(value)).join(" "))
-        },
-      },
-    })
+  test("emits warnings only for unknown binding and layer fields", () => {
+    const manager = getKeymapManager(renderer)
+    const { warnings } = captureDiagnostics(manager)
 
     manager.registerCommands([
       {
@@ -2899,15 +3047,9 @@ describe("keymap", () => {
     ])
   })
 
-  test("logs unknown token warnings when logger is configured", () => {
-    const warnings: string[] = []
-    const manager = getKeymapManager(renderer, {
-      logger: {
-        warn(...args) {
-          warnings.push(args.map((value) => String(value)).join(" "))
-        },
-      },
-    })
+  test("emits unknown token warnings", () => {
+    const manager = getKeymapManager(renderer)
+    const { warnings } = captureDiagnostics(manager)
 
     manager.registerCommands([{ name: "noop", run() {} }])
     manager.registerLayer({
@@ -2921,15 +3063,9 @@ describe("keymap", () => {
     expect(warnings).toEqual(['[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored'])
   })
 
-  test("logs unresolved string commands through logger.warn", () => {
-    const warnings: string[] = []
-    const manager = getKeymapManager(renderer, {
-      logger: {
-        warn(...args) {
-          warnings.push(args.map((value) => String(value)).join(" "))
-        },
-      },
-    })
+  test("emits unresolved string command warnings", () => {
+    const manager = getKeymapManager(renderer)
+    const { warnings } = captureDiagnostics(manager)
 
     manager.registerLayer({
       scope: "global",
@@ -2970,19 +3106,9 @@ describe("keymap", () => {
     ])
   })
 
-  test("logs runtime matcher failures through logger.error", () => {
-    const warnings: string[] = []
-    const errors: string[] = []
-    const manager = getKeymapManager(renderer, {
-      logger: {
-        warn(...args) {
-          warnings.push(args.map((value) => String(value)).join(" "))
-        },
-        error(...args) {
-          errors.push(args.map((value) => String(value)).join(" "))
-        },
-      },
-    })
+  test("emits runtime matcher failures as errors", () => {
+    const manager = getKeymapManager(renderer)
+    const { warnings, errors } = captureDiagnostics(manager)
 
     manager.registerBindingFields({
       active(value, ctx) {
@@ -3007,28 +3133,92 @@ describe("keymap", () => {
     expect(warnings).toEqual([])
   })
 
-  test("throws on reserved command field registrations", () => {
+  test("ignores thrown warning and error listeners while notifying remaining listeners", () => {
     const manager = getKeymapManager(renderer)
+    const warnings: string[] = []
+    const errors: string[] = []
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+
+    manager.on("warning", () => {
+      throw new Error("warning listener boom")
+    })
+    manager.on("warning", (event) => {
+      warnings.push(event.message)
+    })
+    manager.on("error", () => {
+      throw new Error("error listener boom")
+    })
+    manager.on("error", (event) => {
+      errors.push(event.message)
+    })
+
+    expect(() => {
+      manager.registerLayer({
+        scope: "global",
+        mode: "normal",
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+      manager.registerLayer({
+        scope: "global",
+        bindings: [{ key: "y", cmd: "   " }],
+      })
+    }).not.toThrow()
+
+    expect(warnings).toEqual(['[Keymap] Unknown layer field "mode" was ignored'])
+    expect(errors).toEqual(["Invalid keymap command: command cannot be empty"])
+  })
+
+  test("ignores reserved command field registrations", () => {
+    const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
 
     expect(() => {
       manager.registerCommandFields({
         name() {},
       })
-    }).toThrow('Keymap command field "name" is reserved')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Keymap command field "name" is reserved'])
   })
 
-  test("throws on reserved layer field registrations", () => {
+  test("ignores reserved layer field registrations", () => {
     const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
 
     expect(() => {
       manager.registerLayerFields({
         scope() {},
       })
-    }).toThrow('Keymap layer field "scope" is reserved')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Keymap layer field "scope" is reserved'])
   })
 
-  test("throws on conflicting attributes from typed command fields", () => {
+  test("ignores reserved and duplicate binding field registrations", () => {
     const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
+
+    manager.registerBindingFields({
+      active() {},
+    })
+
+    expect(() => {
+      manager.registerBindingFields({
+        key() {},
+        active() {},
+      })
+    }).not.toThrow()
+
+    expect(errors).toEqual([
+      'Keymap binding field "key" is reserved',
+      'Keymap binding field "active" is already registered',
+    ])
+  })
+
+  test("skips commands with conflicting attributes from typed command fields", () => {
+    const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
 
     manager.registerCommandFields({
       desc(value, ctx) {
@@ -3048,11 +3238,20 @@ describe("keymap", () => {
           run() {},
         },
       ])
-    }).toThrow('Conflicting keymap attribute for "label"')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Conflicting keymap attribute for "label" from field title'])
+    expect(getCommand(manager, "save-file")).toBeUndefined()
   })
 
-  test("throws when a binding is both an exact key and a prefix", () => {
+  test("keeps earlier bindings when a later binding is both an exact key and a prefix", () => {
     const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
+
+    manager.registerCommands([
+      { name: "one", run() {} },
+      { name: "two", run() {} },
+    ])
 
     expect(() => {
       manager.registerLayer({
@@ -3062,7 +3261,12 @@ describe("keymap", () => {
           { key: "dd", cmd: "two" },
         ],
       })
-    }).toThrow("Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer")
+    }).not.toThrow()
+
+    expect(errors).toEqual([
+      "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
+    ])
+    expect(getActiveKey(manager, "d")?.command).toBe("one")
   })
 
   test("allows a non-dispatch binding to label a prefix", () => {
@@ -3175,8 +3379,9 @@ describe("keymap", () => {
     expect(calls).toEqual(["release", "press"])
   })
 
-  test("rejects release bindings with multiple strokes", () => {
+  test("skips release bindings with multiple strokes", () => {
     const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
 
     manager.registerCommands([{ name: "noop", run() {} }])
 
@@ -3185,7 +3390,10 @@ describe("keymap", () => {
         scope: "global",
         bindings: [{ key: "dd", cmd: "noop", event: "release" }],
       })
-    }).toThrow("Keymap release bindings only support a single key stroke")
+    }).not.toThrow()
+
+    expect(errors).toEqual(["Keymap release bindings only support a single key stroke"])
+    expect(getActiveKey(manager, "d")).toBeUndefined()
   })
 
   test("ignores destroyed target layers and lets lower layers continue", () => {
@@ -3665,16 +3873,10 @@ describe("keymap", () => {
     expect(calls).toEqual(["first:d", "second:d", "first:"])
   })
 
-  test("logs pending sequence listener failures and continues notifying remaining listeners", () => {
-    const errors: string[] = []
+  test("emits pending sequence listener failures and continues notifying remaining listeners", () => {
     const changes: string[] = []
-    const manager = getKeymapManager(renderer, {
-      logger: {
-        error(...args) {
-          errors.push(args.map((value) => String(value)).join(" "))
-        },
-      },
-    })
+    const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
 
     manager.registerCommands([{ name: "delete-ca", run() {} }])
     manager.registerLayer({
@@ -3798,8 +4000,9 @@ describe("keymap", () => {
     expect(getActiveKeyNames(manager)).toEqual(["x"])
   })
 
-  test("keeps token registration transactional when recompilation would create a prefix conflict", () => {
+  test("skips conflicting tokenized bindings when token registration creates a prefix conflict", () => {
     const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
 
     manager.registerCommands([
       { name: "plain", run() {} },
@@ -3821,9 +4024,12 @@ describe("keymap", () => {
         token: "<leader>",
         key: "a",
       })
-    }).toThrow("Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer")
+    }).not.toThrow()
 
-    expect(getActiveKeyNames(manager)).toEqual(["a", "b"])
+    expect(errors).toEqual([
+      "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
+    ])
+    expect(getActiveKeyNames(manager)).toEqual(["a"])
   })
 
   test("can dispose layer, binding, and command field registrations", () => {
@@ -3978,28 +4184,41 @@ describe("keymap", () => {
 
   test("validates command names and command inputs", () => {
     const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
 
     expect(() => {
       manager.registerCommands([{ name: "", run() {} }])
-    }).toThrow("Invalid keymap command name: name cannot be empty")
+    }).not.toThrow()
 
     expect(() => {
       manager.registerCommands([{ name: "bad name", run() {} }])
-    }).toThrow('Invalid keymap command name "bad name": command names cannot contain whitespace')
+    }).not.toThrow()
 
     expect(() => {
       manager.registerLayer({
         scope: "global",
         bindings: [{ key: "x", cmd: "   " }],
       })
-    }).toThrow("Invalid keymap command: command cannot be empty")
+    }).not.toThrow()
+
+    expect(errors).toEqual([
+      "Invalid keymap command name: name cannot be empty",
+      'Invalid keymap command name "bad name": command names cannot contain whitespace',
+      "Invalid keymap command: command cannot be empty",
+    ])
+    expect(manager.getCommands()).toEqual([])
+    expect(getActiveKey(manager, "x")).toBeUndefined()
+    expect(manager.runCommand("   ")).toEqual({ ok: false, reason: "invalid-args" })
   })
 
   test("requires registered token keys to resolve to a single key stroke", () => {
     const manager = getKeymapManager(renderer)
+    const { errors } = captureDiagnostics(manager)
 
     expect(() => {
       manager.registerToken({ token: "<leader>", key: "dd" })
-    }).toThrow('Invalid key "dd": expected a single key stroke')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Invalid key "dd": expected a single key stroke'])
   })
 })

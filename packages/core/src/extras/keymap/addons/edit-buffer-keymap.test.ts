@@ -503,8 +503,13 @@ describe("edit buffer keymap addon", () => {
     offSecond()
   })
 
-  test("throws on command name collisions without partially registering the batch", () => {
+  test("skips colliding commands and continues registering the rest of the batch", () => {
     const manager = getKeymapManager(renderer)
+    const errors: string[] = []
+
+    manager.on("error", (event) => {
+      errors.push(event.message)
+    })
 
     manager.registerCommands([
       {
@@ -519,8 +524,10 @@ describe("edit buffer keymap addon", () => {
 
     expect(() => {
       registerEditBufferCommands(manager)
-    }).toThrow('Keymap command "delete-line" is already registered')
+    }).not.toThrow()
 
-    expect(manager.getActiveKeys().find((candidate) => candidate.stroke.name === "x")).toBeUndefined()
+    expect(errors).toEqual(['Keymap command "delete-line" is already registered'])
+    expect(manager.getCommands().some((command) => command.name === "submit")).toBe(true)
+    expect(manager.getActiveKeys().find((candidate) => candidate.stroke.name === "x")?.command).toBe("submit")
   })
 })

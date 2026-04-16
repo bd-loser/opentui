@@ -285,9 +285,54 @@ export interface ActionMapUnresolvedCommandContext {
   target?: Renderable
 }
 
+/**
+ * Events exposed through `ActionMap.hook(name, fn)`.
+ *
+ * These three hooks target different audiences and have different delivery
+ * semantics. In general:
+ *
+ * - Framework adapters (React/Solid) that re-read through getters like
+ *   `getActiveKeys()` or `getPendingSequenceParts()` should subscribe to
+ *   `state` and ignore the other two. `state` is a superset signal that fires
+ *   whenever any of the derived caches could have changed, and it is batched,
+ *   so one user action yields at most one listener call.
+ *
+ * - Addons or integrations that need the pending sequence value synchronously
+ *   (for example, `registerTimedLeader`) should subscribe to `pendingSequence`.
+ *   It delivers the value directly without a getter read, and fires inline
+ *   (not batched) so observers see each transition.
+ *
+ * - `unresolvedCommand` is a compile-time diagnostic, not a runtime event; it
+ *   fires at most once per binding site, when a bound command name has no
+ *   matching registration.
+ *
+ * Note that `state` and `pendingSequence` are not synchronized: subscribers to
+ * `pendingSequence` fire before the pending `state` flush, and subscribers to
+ * `state` do not receive the new sequence as a payload. Pick whichever matches
+ * your need; subscribing to both would cause duplicate work.
+ */
 export type ActionMapHooks = {
+  /**
+   * Fires when any derived state may have changed (layers, commands, tokens,
+   * data, runtime keys, focus, or pending sequence). Batched: at most one
+   * emission per synchronous action. No payload; listeners should re-read
+   * whatever they care about through the relevant getter. This is the hook
+   * framework adapters should use.
+   */
   state: void
+  /**
+   * Fires when the pending multi-key sequence pointer changes, including when
+   * it is cleared. Payload is the current sequence (empty array when cleared).
+   * Fires inline, not batched. Use this when you need the sequence value
+   * synchronously without going back through the manager.
+   */
   pendingSequence: readonly ParsedKeyStroke[]
+  /**
+   * Fires at most once per binding site when a binding references a command
+   * name that no registered command or command resolver provides. Intended
+   * for diagnostics (logging, dev-mode warnings). The binding is kept but
+   * will never run until the referenced command becomes resolvable.
+   */
   unresolvedCommand: ActionMapUnresolvedCommandContext
 }
 

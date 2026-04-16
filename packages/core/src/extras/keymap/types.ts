@@ -347,6 +347,10 @@ export interface ActiveKeyState {
 
 export interface RegisteredCommand extends KeymapCommandRecord {
   run: (ctx: KeymapCommandContext) => KeymapCommandResult
+  commandInfo?: KeymapCommandInfo
+  runner?: KeymapCommandHandler
+  resolved?: KeymapResolvedBindingCommand
+  resolvedWithRecord?: KeymapResolvedBindingCommand
   record?: KeymapCommandRecord
 }
 

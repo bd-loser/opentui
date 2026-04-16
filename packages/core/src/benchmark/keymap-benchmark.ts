@@ -763,6 +763,32 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "run_command_registered",
+    description: "Repeated programmatic execution of a directly registered command",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.manager.registerCommands([
+        {
+          name: "bench-run-command",
+          title: "Bench Run Command",
+          desc: "Bench Run Command",
+          run() {},
+        },
+      ])
+
+      return {
+        resources,
+        runIteration() {
+          resources.manager.runCommand("bench-run-command")
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "active_keys_global_layers",
     description: "Repeated getActiveKeys with many global layers",
     async setup() {

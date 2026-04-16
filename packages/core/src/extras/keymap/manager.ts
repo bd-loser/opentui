@@ -1481,10 +1481,7 @@ export class KeymapManager {
 
     const registered = this.commands.get(command)
     if (registered) {
-      return {
-        run: this.createRegisteredCommandRunner(registered),
-        attrs: registered.attrs,
-      }
+      return this.getResolvedRegisteredCommand(registered)
     }
 
     const context = this.createCommandResolverContext(false)
@@ -1510,11 +1507,7 @@ export class KeymapManager {
 
     const registered = this.commands.get(command)
     if (registered) {
-      return {
-        run: this.createRegisteredCommandRunner(registered),
-        attrs: registered.attrs,
-        record: this.getCommandRecord(registered),
-      }
+      return this.getResolvedRegisteredCommand(registered, { includeRecord: true })
     }
 
     return undefined
@@ -1540,17 +1533,71 @@ export class KeymapManager {
     }
   }
 
+  private getResolvedRegisteredCommand(
+    command: RegisteredCommand,
+    options?: { includeRecord?: boolean },
+  ): KeymapResolvedBindingCommand {
+    const includeRecord = options?.includeRecord === true
+    if (includeRecord) {
+      const existing = command.resolvedWithRecord
+      if (existing) {
+        return existing
+      }
+
+      const resolved: KeymapResolvedBindingCommand = {
+        run: this.createRegisteredCommandRunner(command),
+      }
+
+      if (command.attrs) {
+        resolved.attrs = command.attrs
+      }
+
+      resolved.record = this.getCommandRecord(command)
+      command.resolvedWithRecord = resolved
+      return resolved
+    }
+
+    const existing = command.resolved
+    if (existing) {
+      return existing
+    }
+
+    const resolved: KeymapResolvedBindingCommand = {
+      run: this.createRegisteredCommandRunner(command),
+    }
+
+    if (command.attrs) {
+      resolved.attrs = command.attrs
+    }
+
+    command.resolved = resolved
+    return resolved
+  }
+
   private createRegisteredCommandRunner(command: RegisteredCommand): KeymapCommandHandler {
-    return (ctx) => {
+    if (command.runner) {
+      return command.runner
+    }
+
+    const runner: KeymapCommandHandler = (ctx) => {
       return command.run({
         ...ctx,
         command: this.createCommandInfo(command),
       })
     }
+
+    command.runner = runner
+    return runner
   }
 
   private createCommandInfo(command: RegisteredCommand): KeymapCommandInfo {
-    return command.attrs ? { name: command.name, attrs: command.attrs } : { name: command.name }
+    if (command.commandInfo) {
+      return command.commandInfo
+    }
+
+    const info = command.attrs ? { name: command.name, attrs: command.attrs } : { name: command.name }
+    command.commandInfo = info
+    return info
   }
 
   private getCommandRecord(command: RegisteredCommand): KeymapCommandRecord {

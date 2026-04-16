@@ -133,7 +133,7 @@ describe("action map", () => {
       manager.clearEventMatchResolvers()
       manager.hook("state", () => {})()
       manager.registerLayer({ scope: "global", bindings: [{ key: "y", cmd: "noop" }] })()
-      manager.registerToken({ token: "<leader>", key: { name: "x" } })()
+      manager.registerToken({ name: "<leader>", key: { name: "x" } })()
       manager.registerCommands([{ name: "other", run() {} }])()
       manager.registerLayerFields({ mode() {} })()
       manager.registerBindingFields({ active() {} })()
@@ -379,7 +379,7 @@ describe("action map", () => {
       }
     })
 
-    manager.registerToken({ token: "[leader]", key: { name: "x", ctrl: true } })
+    manager.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
     manager.registerCommands([
       {
         name: "leader-action",
@@ -430,7 +430,7 @@ describe("action map", () => {
       }
     })
 
-    manager.registerToken({ token: "[leader]", key: { name: "x", ctrl: true } })
+    manager.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
     manager.registerCommands([
       {
         name: "leader-only",
@@ -464,7 +464,7 @@ describe("action map", () => {
     }).not.toThrow()
 
     expect(() => {
-      manager.registerToken({ token: "<leader>", key: { name: "x", ctrl: true } })
+      manager.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
     }).not.toThrow()
 
     expect(errors).toEqual(["No action map binding syntax is registered", "No action map binding syntax is registered"])
@@ -491,7 +491,7 @@ describe("action map", () => {
       scope: "global",
       bindings: [{ key: { name: "x" }, cmd: "object" }],
     })
-    manager.registerToken({ token: "<leader>", key: { name: "x", ctrl: true } })
+    manager.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
     manager.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>", cmd: "token" }],
@@ -560,7 +560,7 @@ describe("action map", () => {
       bindings: [{ key: "[Leader]d", cmd: "case-token" }],
     })
 
-    manager.registerToken({ token: "[Leader]", key: { name: "x", ctrl: true } })
+    manager.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
 
     mockInput.pressKey("x", { ctrl: true })
     mockInput.pressKey("d")
@@ -799,8 +799,8 @@ describe("action map", () => {
       return [tokenized.join("")]
     })
 
-    manager.registerToken({ token: "<c-x>", key: { name: "x", ctrl: true } })
-    manager.registerToken({ token: "<c-s>", key: { name: "s", ctrl: true } })
+    manager.registerToken({ name: "<c-x>", key: { name: "x", ctrl: true } })
+    manager.registerToken({ name: "<c-s>", key: { name: "s", ctrl: true } })
     manager.registerCommands([
       {
         name: "save-buffer",
@@ -2588,7 +2588,7 @@ describe("action map", () => {
     const calls: string[] = []
 
     manager.registerToken({
-      token: "<leader>",
+      name: "<leader>",
       key: { name: "x", ctrl: true },
     })
 
@@ -2634,7 +2634,7 @@ describe("action map", () => {
     const manager = getActionMap(renderer)
 
     manager.registerToken({
-      token: "<leader>",
+      name: "<leader>",
       key: { name: "x", ctrl: true },
     })
 
@@ -3921,7 +3921,7 @@ describe("action map", () => {
     expect(calls).toEqual(["leader"])
 
     const offToken = manager.registerToken({
-      token: "<leader>",
+      name: "<leader>",
       key: { name: "x", ctrl: true },
     })
 
@@ -3967,7 +3967,7 @@ describe("action map", () => {
     expect(manager.getActiveKeys()).toEqual([])
 
     manager.registerToken({
-      token: "<leader>",
+      name: "<leader>",
       key: { name: "x", ctrl: true },
     })
 
@@ -3992,7 +3992,7 @@ describe("action map", () => {
     expect(manager.getPendingSequence()).toEqual([{ name: "a", ctrl: false, shift: false, meta: false, super: false }])
 
     manager.registerToken({
-      token: "<leader>",
+      name: "<leader>",
       key: { name: "x", ctrl: true },
     })
 
@@ -4021,7 +4021,7 @@ describe("action map", () => {
 
     expect(() => {
       manager.registerToken({
-        token: "<leader>",
+        name: "<leader>",
         key: "a",
       })
     }).not.toThrow()
@@ -4154,7 +4154,7 @@ describe("action map", () => {
     renderer.root.add(target)
 
     manager.registerToken({
-      token: "<leader>",
+      name: "<leader>",
       key: { name: "x", ctrl: true },
     })
 
@@ -4216,7 +4216,7 @@ describe("action map", () => {
     const { errors } = captureDiagnostics(manager)
 
     expect(() => {
-      manager.registerToken({ token: "<leader>", key: "dd" })
+      manager.registerToken({ name: "<leader>", key: "dd" })
     }).not.toThrow()
 
     expect(errors).toEqual(['Invalid key "dd": expected a single key stroke'])

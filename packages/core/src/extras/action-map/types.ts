@@ -349,9 +349,9 @@ export interface ActionMapErrorEvent {
   cause?: unknown
 }
 
-export interface ActionMapEvents {
-  warning: [event: ActionMapWarningEvent]
-  error: [event: ActionMapErrorEvent]
+export type ActionMapEvents = {
+  warning: ActionMapWarningEvent
+  error: ActionMapErrorEvent
 }
 
 export interface ActionMapOptions {}

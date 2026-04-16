@@ -1,4 +1,4 @@
-type EmitterListener<TValue> = [TValue] extends [void] ? () => void : (value: TValue) => void
+export type EmitterListener<TValue> = [TValue] extends [void] ? () => void : (value: TValue) => void
 
 type EmitterArgs<TValue> = [TValue] extends [void] ? [] : [TValue]
 
@@ -87,6 +87,25 @@ export class Emitter<TEvents extends Record<string, unknown>> {
 
   public has<TName extends keyof TEvents>(name: TName): boolean {
     return (this.listeners[name]?.length ?? 0) > 0
+  }
+
+  public off<TName extends keyof TEvents>(name: TName, listener: EmitterListener<TEvents[TName]>): void {
+    const current = this.listeners[name]
+    if (!current || current.length === 0) {
+      return
+    }
+
+    const next = current.filter((candidate) => candidate !== listener) as readonly EmitterListener<TEvents[TName]>[]
+    if (next.length === current.length) {
+      return
+    }
+
+    if (next.length === 0) {
+      delete this.listeners[name]
+      return
+    }
+
+    this.listeners[name] = next
   }
 
   public clear(): void {

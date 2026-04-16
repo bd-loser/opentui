@@ -1,4 +1,3 @@
-import { EventEmitter } from "events"
 import { RenderableEvents, type Renderable } from "../../Renderable.js"
 import { CliRenderEvents, type CliRenderer } from "../../renderer.js"
 import { KeyEvent } from "../../lib/KeyHandler.js"
@@ -81,7 +80,7 @@ import {
   stringifyKeyStroke,
 } from "./utils.js"
 import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./default-parser.js"
-import { Emitter, OrderedEmitter, RegistrationList } from "./emitter.js"
+import { Emitter, OrderedEmitter, RegistrationList, type EmitterListener } from "./emitter.js"
 
 const actionMapsByRenderer = new WeakMap<CliRenderer, ActionMap>()
 const NOOP = (): void => {}
@@ -319,7 +318,7 @@ function parseSingleKeyPartWithParsers(
   return part
 }
 
-export class ActionMap extends EventEmitter<ActionMapEvents> {
+export class ActionMap {
   public readonly renderer: CliRenderer
 
   private layers = new Set<RegisteredLayer>()
@@ -338,6 +337,10 @@ export class ActionMap extends EventEmitter<ActionMapEvents> {
   private eventMatchResolvers = new RegistrationList<ActionMapEventMatchResolver>()
   private keyHooks = new OrderedEmitter<(ctx: ActionMapKeyInputContext) => void, { priority: number; release: boolean }>()
   private rawHooks = new OrderedEmitter<(ctx: ActionMapRawInputContext) => void, { priority: number }>()
+  // `Emitter` is the same primitive used for `hook(...)`; wiring its `onError`
+  // to a no-op gives us the silent behaviour required for terminal channels
+  // like `error` (a throwing error listener must not re-enter emission).
+  private events = new Emitter<ActionMapEvents>(() => {})
   private hooks: Emitter<ActionMapHooks>
   private commands = new Map<string, RegisteredCommand>()
   private commandMetadataVersion = 0
@@ -373,7 +376,6 @@ export class ActionMap extends EventEmitter<ActionMapEvents> {
   private readonly focusedRenderableListener: (focused: Renderable | null) => void
 
   constructor(renderer: CliRenderer, _options?: ActionMapOptions) {
-    super()
     this.renderer = renderer
     this.hooks = new Emitter<ActionMapHooks>((name, error) => {
       this.reportHookError(name, error)
@@ -461,7 +463,7 @@ export class ActionMap extends EventEmitter<ActionMapEvents> {
     this.stateChangePending = false
     this.flushingStateChange = false
     this.usedWarningKeys.clear()
-    this.removeAllListeners()
+    this.events.clear()
 
     this.renderer.keyInput.off("keypress", this.keypressListener)
     this.renderer.keyInput.off("keyrelease", this.keyreleaseListener)
@@ -823,6 +825,26 @@ export class ActionMap extends EventEmitter<ActionMapEvents> {
     }
 
     return this.hooks.hook(name, fn)
+  }
+
+  public on<TName extends keyof ActionMapEvents>(
+    name: TName,
+    fn: EmitterListener<ActionMapEvents[TName]>,
+  ): this {
+    if (this.destroyed) {
+      return this
+    }
+
+    this.events.hook(name, fn)
+    return this
+  }
+
+  public off<TName extends keyof ActionMapEvents>(
+    name: TName,
+    fn: EmitterListener<ActionMapEvents[TName]>,
+  ): this {
+    this.events.off(name, fn)
+    return this
   }
 
   public registerLayer(layer: ActionMapLayer): () => void {
@@ -1377,33 +1399,20 @@ export class ActionMap extends EventEmitter<ActionMapEvents> {
   }
 
   private emitWarning(message: string): void {
-    const listeners = this.rawListeners("warning") as Array<(event: ActionMapWarningEvent) => void>
-    if (listeners.length === 0) {
+    if (!this.events.has("warning")) {
       return
     }
 
-    const event: ActionMapWarningEvent = { message }
-
-    for (const listener of listeners) {
-      try {
-        listener(event)
-      } catch {}
-    }
+    this.events.emit("warning", { message })
   }
 
   private emitError(message: string, cause?: unknown): void {
-    const listeners = this.rawListeners("error") as Array<(event: ActionMapErrorEvent) => void>
-    if (listeners.length === 0) {
+    if (!this.events.has("error")) {
       return
     }
 
     const event: ActionMapErrorEvent = cause === undefined ? { message } : { message, cause }
-
-    for (const listener of listeners) {
-      try {
-        listener(event)
-      } catch {}
-    }
+    this.events.emit("error", event)
   }
 
   private reportHookError(name: ActionMapHookName, error: unknown): void {

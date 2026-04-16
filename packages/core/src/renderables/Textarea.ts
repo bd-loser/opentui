@@ -8,10 +8,9 @@ import {
   mergeKeyBindings,
   buildKeyBindingsMap,
   getKeyBindingAction,
-  type KeyAliasMap,
   defaultKeyAliases,
   mergeKeyAliases,
-} from "../lib/keymapping.js"
+} from "../lib/keybinding.internal.js"
 import { type StyledText, fg } from "../lib/styled-text.js"
 import type { ExtmarksController } from "../lib/extmarks.js"
 
@@ -54,6 +53,7 @@ export type TextareaAction =
   | "submit"
 
 export type KeyBinding = BaseKeyBinding<TextareaAction>
+export type TextareaKeyAliasMap = Record<string, string>
 
 export const defaultTextareaKeyBindings: KeyBinding[] = [
   { name: "left", action: "move-left" },
@@ -136,7 +136,7 @@ export interface TextareaOptions extends EditBufferOptions {
   placeholder?: StyledText | string | null
   placeholderColor?: ColorInput
   keyBindings?: KeyBinding[]
-  keyAliasMap?: KeyAliasMap
+  keyAliasMap?: TextareaKeyAliasMap
   onSubmit?: (event: SubmitEvent) => void
 }
 
@@ -148,7 +148,7 @@ export class TextareaRenderable extends EditBufferRenderable {
   private _focusedBackgroundColor: RGBA
   private _focusedTextColor: RGBA
   private _keyBindingsMap: Map<string, TextareaAction>
-  private _keyAliasMap: KeyAliasMap
+  private _keyAliasMap: TextareaKeyAliasMap
   private _keyBindings: KeyBinding[]
   private _actionHandlers: Map<TextareaAction, () => boolean>
   private _initialValueSet: boolean = false
@@ -411,7 +411,7 @@ export class TextareaRenderable extends EditBufferRenderable {
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
   }
 
-  public set keyAliasMap(aliases: KeyAliasMap) {
+  public set keyAliasMap(aliases: TextareaKeyAliasMap) {
     this._keyAliasMap = mergeKeyAliases(defaultKeyAliases, aliases)
     const mergedBindings = mergeKeyBindings(defaultTextareaKeyBindings, this._keyBindings)
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)

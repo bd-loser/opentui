@@ -1,4 +1,4 @@
-import { keyBindingToString } from "../../../lib/keymapping.js"
+import { keyBindingToString } from "../../../lib/keybinding.internal.js"
 import { CliRenderEvents } from "../../../renderer.js"
 import { InputRenderable } from "../../../renderables/Input.js"
 import { TextareaRenderable, defaultTextareaKeyBindings, type TextareaAction } from "../../../renderables/Textarea.js"
@@ -120,7 +120,7 @@ function isManagedTextarea(editor: EditBufferRenderable | null): editor is Texta
 function resolveEditBufferCommandDescriptions(
   options?: EditBufferCommandOptions,
 ): Record<EditBufferCommandName, string> {
-  const descriptions = { ...editBufferCommandDescriptions }
+  const descriptions: Record<EditBufferCommandName, string> = { ...editBufferCommandDescriptions }
   const overrides = options?.descriptions
   if (!overrides) {
     return descriptions

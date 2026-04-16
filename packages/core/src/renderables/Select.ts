@@ -9,10 +9,11 @@ import {
   mergeKeyBindings,
   buildKeyBindingsMap,
   getKeyBindingAction,
-  type KeyAliasMap,
   defaultKeyAliases,
   mergeKeyAliases,
-} from "../lib/keymapping.js"
+} from "../lib/keybinding.internal.js"
+
+type KeyAliasMap = Record<string, string>
 
 export interface SelectOption {
   name: string

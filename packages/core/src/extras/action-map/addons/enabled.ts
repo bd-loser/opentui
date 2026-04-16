@@ -21,7 +21,15 @@ function isKeyedEnabledValue(value: unknown): value is ActionMapKeyedEnabled {
 }
 
 function normalizeEnabledValue(fieldName: string, value: unknown): ActionMapEnabled {
-  if (typeof value === "boolean" || typeof value === "function" || isKeyedEnabledValue(value)) {
+  if (typeof value === "boolean") {
+    return value
+  }
+
+  if (typeof value === "function") {
+    return value as () => boolean
+  }
+
+  if (isKeyedEnabledValue(value)) {
     return value
   }
 

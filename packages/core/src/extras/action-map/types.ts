@@ -106,13 +106,14 @@ export type ActionMapBindingCommand = string | ActionMapCommandHandler
 
 export type ActionMapBindingEvent = "press" | "release"
 
-export type ActionMapBindingInput = {
+export interface ActionMapBindingInput {
   key: KeyLike
   cmd?: ActionMapBindingCommand
   event?: ActionMapBindingEvent
   consume?: boolean
   fallthrough?: boolean
-} & Record<string, unknown>
+  [key: string]: unknown
+}
 
 export type ActionMapBindingShorthand = Record<string, ActionMapBindingCommand>
 
@@ -242,8 +243,13 @@ export type ActionMapBindingParser = (ctx: ActionMapBindingParserContext) => Act
 
 export type ActionMapBindingExpander = (ctx: ActionMapBindingExpanderContext) => readonly string[] | undefined
 
-export interface ActionMapParsedBindingInput extends Omit<ActionMapBindingInput, "key"> {
+export interface ActionMapParsedBindingInput {
   sequence: ParsedKeyPart[]
+  cmd?: ActionMapBindingCommand
+  event?: ActionMapBindingEvent
+  consume?: boolean
+  fallthrough?: boolean
+  [key: string]: unknown
 }
 
 export interface ActionMapBindingCompilerContext {
@@ -279,7 +285,7 @@ export interface ActionMapUnresolvedCommandContext {
   target?: Renderable
 }
 
-export interface ActionMapHooks {
+export type ActionMapHooks = {
   state: void
   pendingSequence: readonly ParsedKeyStroke[]
   unresolvedCommand: ActionMapUnresolvedCommandContext

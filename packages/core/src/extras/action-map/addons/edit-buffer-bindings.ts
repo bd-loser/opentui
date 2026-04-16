@@ -8,9 +8,7 @@ import type {
   ActionMapBindings,
   ActionMapCommand,
   ActionMapCommandContext,
-  ActionMapFocusLayer,
-  ActionMapFocusWithinLayer,
-  ActionMapGlobalLayer,
+  ActionMapLayer,
   ActionMap,
 } from "../types.js"
 import { snapshotBindingInputs } from "../utils.js"
@@ -108,10 +106,7 @@ const editBufferCommandRegistrations = new WeakMap<
 >()
 const textareaMappingSuspensionRegistrations = new WeakMap<ActionMap, { count: number; dispose: () => void }>()
 
-export type ManagedTextareaLayer =
-  | (Omit<ActionMapGlobalLayer, "bindings"> & { bindings?: ActionMapBindings })
-  | (Omit<ActionMapFocusLayer, "bindings"> & { bindings?: ActionMapBindings })
-  | (Omit<ActionMapFocusWithinLayer, "bindings"> & { bindings?: ActionMapBindings })
+export type ManagedTextareaLayer = Omit<ActionMapLayer, "bindings"> & { bindings?: ActionMapBindings }
 
 function isManagedTextarea(editor: EditBufferRenderable | null): editor is TextareaRenderable {
   return editor instanceof TextareaRenderable && !(editor instanceof InputRenderable)

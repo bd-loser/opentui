@@ -87,8 +87,8 @@ export function registerExCommands(manager: ActionMap, commands: ExCommand[]): (
         ...registrationFields,
         name: normalizedName,
         run(ctx) {
-          const raw =
-            typeof (ctx as { raw?: unknown }).raw === "string" ? (ctx as { raw?: string }).raw : normalizedName
+          const rawInput = (ctx as { raw?: unknown }).raw
+          const raw: string = typeof rawInput === "string" ? rawInput : normalizedName
           const args = Array.isArray((ctx as { args?: unknown }).args) ? ((ctx as { args?: string[] }).args ?? []) : []
 
           if (!validateCommandArgs(command, args)) {

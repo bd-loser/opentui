@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import type { TextareaRenderable } from "@opentui/core"
+import type { InputRenderable, TextareaRenderable } from "@opentui/core"
 import { getKeymapManager } from "@opentui/core/extras"
 import { testRender } from "../index.js"
 import KeymapDemo from "../examples/components/keymap-demo.js"
@@ -8,6 +8,10 @@ let testSetup: Awaited<ReturnType<typeof testRender>>
 
 function getEditor(id: string): TextareaRenderable {
   return testSetup.renderer.root.findDescendantById(id) as TextareaRenderable
+}
+
+function getInput(id: string): InputRenderable {
+  return testSetup.renderer.root.findDescendantById(id) as InputRenderable
 }
 
 function getRenderable(id: string) {
@@ -138,5 +142,35 @@ describe("solid keymap example", () => {
     expect(panels.y).toBe(subtitle.y + subtitle.height)
     expect(editors.y).toBe(panels.y + panels.height)
     expect(footer.y).toBe(editors.y + editors.height)
+  })
+
+  test("opens the ex prompt, autocompletes :reset, and runs it", async () => {
+    testSetup = await testRender(() => <KeymapDemo />, { width: 70, height: 24 })
+    await testSetup.renderOnce()
+
+    testSetup.mockInput.pressKey("j")
+    await testSetup.renderOnce()
+    expect(testSetup.captureCharFrame()).toContain("Count: 1")
+
+    testSetup.mockInput.pressKey(":")
+    await testSetup.renderOnce()
+
+    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-ex-input")
+    expect(testSetup.captureCharFrame()).toContain("Ex Command")
+
+    testSetup.mockInput.pressKey("r")
+    await testSetup.renderOnce()
+    expect(testSetup.captureCharFrame()).toContain(":reset")
+
+    testSetup.mockInput.pressTab()
+    await testSetup.renderOnce()
+    expect(getInput("keymap-demo-ex-input").value).toBe(":reset")
+
+    testSetup.mockInput.pressEnter()
+    await testSetup.renderOnce()
+
+    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-alpha")
+    expect(testSetup.captureCharFrame()).toContain("Counters reset through :")
+    expect(testSetup.captureCharFrame()).toContain("Count: 0")
   })
 })

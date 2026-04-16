@@ -473,7 +473,7 @@ export default function KeymapDemo() {
         Original Alpha/Beta panels plus three switchable textareas.
       </text>
 
-      <box id="keymap-demo-panels" flexDirection="row" gap={1} height={4} marginTop={1}>
+      <box id="keymap-demo-panels" flexDirection="row" gap={1} height={4}>
         <CounterPanel
           id="alpha"
           label="Alpha"
@@ -502,7 +502,7 @@ export default function KeymapDemo() {
         />
       </box>
 
-      <box id="keymap-demo-editors" flexDirection="row" gap={1} height={5} marginTop={1}>
+      <box id="keymap-demo-editors" flexDirection="row" gap={1} height={5}>
         <For each={editorSpecs}>
           {(spec, index) => (
             <box
@@ -552,7 +552,6 @@ export default function KeymapDemo() {
         borderStyle="rounded"
         borderColor={palette.border}
         paddingX={1}
-        marginTop={1}
         gap={2}
         flexDirection="row"
         flexGrow={1}

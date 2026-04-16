@@ -657,7 +657,6 @@ export function run(renderer: CliRenderer): void {
     flexDirection: "row",
     gap: 1,
     height: 4,
-    marginTop: 1,
   })
   root.add(panelsRow)
 
@@ -710,7 +709,6 @@ export function run(renderer: CliRenderer): void {
     flexDirection: "row",
     gap: 1,
     height: 5,
-    marginTop: 1,
   })
   root.add(editorsRow)
 
@@ -756,7 +754,6 @@ export function run(renderer: CliRenderer): void {
     borderStyle: "rounded",
     borderColor: P.border,
     paddingX: 1,
-    marginTop: 1,
     gap: 2,
     flexDirection: "row",
     flexGrow: 1,

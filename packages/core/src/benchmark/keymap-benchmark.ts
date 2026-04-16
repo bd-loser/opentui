@@ -680,6 +680,45 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "get_commands_namespace_query",
+    description: "Repeated command discovery with top-level namespace filtering",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.manager.registerCommandFields({
+        title(value, ctx) {
+          ctx.attr("label", value)
+        },
+      })
+
+      resources.manager.registerCommands(
+        Array.from({ length: 512 }, (_, index) => ({
+          name: `command-${index}`,
+          namespace: index % 2 === 0 ? "bench" : "other",
+          title: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
+          usage: index % 4 === 0 ? `:write file-${index}.txt` : `:open file-${index}.txt`,
+          tags: index % 4 === 0 ? ["file", "write"] : ["file", "open"],
+          run() {},
+        })),
+      )
+
+      return {
+        resources,
+        runIteration() {
+          resources.manager.getCommands({
+            namespace: "bench",
+            filter: {
+              tags: "file",
+            },
+          })
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "get_commands_query_function_filter",
     description: "Repeated command discovery with search and a full-record filter predicate",
     async setup() {

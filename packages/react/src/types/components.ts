@@ -30,9 +30,9 @@ import type {
   TextNodeRenderable,
   TextOptions,
   TextRenderable,
-  type CursorChangeEvent,
-  type ContentChangeEvent,
-  type KeyEvent,
+  CursorChangeEvent,
+  ContentChangeEvent,
+  KeyEvent,
 } from "@opentui/core"
 import type React from "react"
 

@@ -24,19 +24,19 @@ import type {
   KeymapHookName,
   KeymapHooks,
   KeymapParsedBindingInput,
-    KeymapCommand,
-    KeymapCommandContext,
-    KeymapCommandFieldCompiler,
-    KeymapCommandHandler,
-    KeymapCommandInfo,
-    KeymapCommandQuery,
-    KeymapCommandQueryValue,
-    KeymapCommandRecord,
-    KeymapRunCommandOptions,
-    KeymapRunCommandResult,
-    KeymapCommandResolver,
-    KeymapCommandResolverContext,
-    KeymapCommandResult,
+  KeymapCommand,
+  KeymapCommandContext,
+  KeymapCommandFieldCompiler,
+  KeymapCommandHandler,
+  KeymapCommandInfo,
+  KeymapCommandQuery,
+  KeymapCommandQueryValue,
+  KeymapCommandRecord,
+  KeymapRunCommandOptions,
+  KeymapRunCommandResult,
+  KeymapCommandResolver,
+  KeymapCommandResolverContext,
+  KeymapCommandResult,
   KeymapEventData,
   KeymapKeyInputContext,
   KeyLike,
@@ -1628,11 +1628,7 @@ export class KeymapManager {
     return record
   }
 
-  private commandMatchesSearch(
-    command: RegisteredCommand,
-    search: string,
-    searchKeys: readonly string[],
-  ): boolean {
+  private commandMatchesSearch(command: RegisteredCommand, search: string, searchKeys: readonly string[]): boolean {
     if (!search) {
       return true
     }
@@ -1646,7 +1642,10 @@ export class KeymapManager {
     return false
   }
 
-  private commandMatchesNamespace(command: RegisteredCommand, namespace: string | readonly string[] | undefined): boolean {
+  private commandMatchesNamespace(
+    command: RegisteredCommand,
+    namespace: string | readonly string[] | undefined,
+  ): boolean {
     if (namespace === undefined) {
       return true
     }
@@ -1740,7 +1739,11 @@ export class KeymapManager {
     return this.commandKeyMatchesExact(command, key, matcher)
   }
 
-  private commandKeyMatchesExact(command: RegisteredCommand, key: string, matcher: unknown | readonly unknown[]): boolean {
+  private commandKeyMatchesExact(
+    command: RegisteredCommand,
+    key: string,
+    matcher: unknown | readonly unknown[],
+  ): boolean {
     if (key === "name") {
       if (this.commandValueMatchesFilter(command.name, matcher)) {
         return true

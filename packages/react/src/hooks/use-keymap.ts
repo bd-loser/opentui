@@ -36,8 +36,9 @@ export interface UseFocusWithinKeymapLayer<TRenderable extends Renderable = Rend
   target?: UseKeymapTarget<TRenderable>
 }
 
-export interface UseInferredFocusWithinKeymapLayer<TRenderable extends Renderable = Renderable>
-  extends UseKeymapLayerBase {
+export interface UseInferredFocusWithinKeymapLayer<
+  TRenderable extends Renderable = Renderable,
+> extends UseKeymapLayerBase {
   scope?: undefined
   target: UseKeymapTarget<TRenderable>
 }
@@ -100,9 +101,15 @@ export const usePendingSequenceParts = (): readonly ParsedKeyPart[] => {
   }, [manager, version])
 }
 
-export function useKeymap<TRenderable extends Renderable = Renderable>(layer: UseGlobalKeymapLayer): KeymapRef<TRenderable>
-export function useKeymap<TRenderable extends Renderable = Renderable>(layer: UseTargetKeymapLayer<TRenderable>): KeymapRef<TRenderable>
-export function useKeymap<TRenderable extends Renderable = Renderable>(layer: UseKeymapLayer<TRenderable>): KeymapRef<TRenderable> {
+export function useKeymap<TRenderable extends Renderable = Renderable>(
+  layer: UseGlobalKeymapLayer,
+): KeymapRef<TRenderable>
+export function useKeymap<TRenderable extends Renderable = Renderable>(
+  layer: UseTargetKeymapLayer<TRenderable>,
+): KeymapRef<TRenderable>
+export function useKeymap<TRenderable extends Renderable = Renderable>(
+  layer: UseKeymapLayer<TRenderable>,
+): KeymapRef<TRenderable> {
   const manager = useKeymappings()
   const layerRef = useRef(layer)
   const refTargetRef = useRef<TRenderable | undefined>(undefined)

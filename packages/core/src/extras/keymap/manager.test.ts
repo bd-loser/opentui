@@ -1878,16 +1878,16 @@ describe("keymap", () => {
     expect(manager.getCommands({ namespace: ["palette", "missing"] }).map((command) => command.name)).toEqual([
       "palette-help",
     ])
-    expect(manager.getCommands({ namespace: "excommands", search: "reset", searchIn: ["title"] }).map((command) => command.name)).toEqual([
-      "session-reset",
-    ])
+    expect(
+      manager
+        .getCommands({ namespace: "excommands", search: "reset", searchIn: ["title"] })
+        .map((command) => command.name),
+    ).toEqual(["session-reset"])
     expect(manager.getCommands({ filter: { namespace: "excommands" } }).map((command) => command.name)).toEqual([
       "save-current",
       "session-reset",
     ])
-    expect(manager.getCommands({ filter: { tags: "file" } }).map((command) => command.name)).toEqual([
-      "save-current",
-    ])
+    expect(manager.getCommands({ filter: { tags: "file" } }).map((command) => command.name)).toEqual(["save-current"])
     expect(manager.getCommands({ filter: { label: "Reset Counters" } }).map((command) => command.name)).toEqual([
       "session-reset",
     ])
@@ -1896,11 +1896,7 @@ describe("keymap", () => {
         .getCommands({
           filter: {
             usage(value, command) {
-              return (
-                typeof value === "string" &&
-                value.includes("<file>") &&
-                command.fields.namespace === "excommands"
-              )
+              return typeof value === "string" && value.includes("<file>") && command.fields.namespace === "excommands"
             },
           },
         })
@@ -1918,9 +1914,9 @@ describe("keymap", () => {
         })
         .map((command) => command.name),
     ).toEqual(["save-current"])
-    expect(manager.getCommands({ filter: (command) => command.name === "palette-help" }).map((command) => command.name)).toEqual([
-      "palette-help",
-    ])
+    expect(
+      manager.getCommands({ filter: (command) => command.name === "palette-help" }).map((command) => command.name),
+    ).toEqual(["palette-help"])
 
     offCommands()
 

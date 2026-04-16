@@ -164,7 +164,9 @@ function getExPromptSuggestions(commands: readonly KeymapCommandRecord[], value:
     return suggestions.slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
   }
 
-  return suggestions.filter((suggestion) => suggestion.label.startsWith(query)).slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
+  return suggestions
+    .filter((suggestion) => suggestion.label.startsWith(query))
+    .slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
 }
 
 function getSelectedExPromptSuggestion(
@@ -206,7 +208,9 @@ function applyExPromptSuggestion(
     return null
   }
 
-  const nextSelection = direction ? moveExPromptSelection(commands, value, selection, direction) : Math.min(selection, suggestions.length - 1)
+  const nextSelection = direction
+    ? moveExPromptSelection(commands, value, selection, direction)
+    : Math.min(selection, suggestions.length - 1)
   const suggestion = suggestions[nextSelection]
   if (!suggestion) {
     return null
@@ -589,7 +593,12 @@ export default function KeymapDemo() {
   }
 
   const applyCommandPromptSuggestion = (direction?: 1 | -1) => {
-    const result = applyExPromptSuggestion(discoveredExCommands(), commandPromptValue(), commandPromptSelection(), direction)
+    const result = applyExPromptSuggestion(
+      discoveredExCommands(),
+      commandPromptValue(),
+      commandPromptSelection(),
+      direction,
+    )
     if (!result) {
       return
     }
@@ -617,7 +626,9 @@ export default function KeymapDemo() {
       }
 
       if (result.reason === "invalid-args") {
-        announce(`Usage: ${result.command ? getExPromptCommandFieldText(result.command, "usage") ?? parsed.name : parsed.name}`)
+        announce(
+          `Usage: ${result.command ? (getExPromptCommandFieldText(result.command, "usage") ?? parsed.name) : parsed.name}`,
+        )
         return
       }
 
@@ -985,9 +996,7 @@ export default function KeymapDemo() {
               <span style={{ fg: palette.textDim }}>: switch panels and editors</span>
             </text>
             <text fg={palette.text} height={1}>
-              <span style={{ fg: palette.textDim }}>
-                Panels use local j/k/enter.{" "}
-              </span>
+              <span style={{ fg: palette.textDim }}>Panels use local j/k/enter. </span>
               <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>:</span>
               <span style={{ fg: palette.textDim }}> opens the ex prompt.</span>
             </text>
@@ -1087,7 +1096,11 @@ export default function KeymapDemo() {
             }}
             onKeyDown={onCommandPromptKeyDown}
           />
-          <text id="keymap-demo-ex-prompt-usage" fg={selectedCommandPromptSuggestion() ? palette.text : palette.textMuted} height={1}>
+          <text
+            id="keymap-demo-ex-prompt-usage"
+            fg={selectedCommandPromptSuggestion() ? palette.text : palette.textMuted}
+            height={1}
+          >
             {commandPromptUsage()}
           </text>
         </box>
@@ -1100,15 +1113,31 @@ export default function KeymapDemo() {
           paddingY={0}
           flexDirection="column"
         >
-          <Show when={commandPromptSuggestions().length > 0} fallback={<text id="keymap-demo-ex-prompt-suggestions" fg={palette.textMuted}>(no suggestions)</text>}>
+          <Show
+            when={commandPromptSuggestions().length > 0}
+            fallback={
+              <text id="keymap-demo-ex-prompt-suggestions" fg={palette.textMuted}>
+                (no suggestions)
+              </text>
+            }
+          >
             <For each={commandPromptSuggestions()}>
               {(suggestion, index) => {
-                const isSelected = () => index() === Math.min(commandPromptSelection(), commandPromptSuggestions().length - 1)
+                const isSelected = () =>
+                  index() === Math.min(commandPromptSelection(), commandPromptSuggestions().length - 1)
 
                 return (
-                  <text id={index() === 0 ? "keymap-demo-ex-prompt-suggestions" : undefined} fg={palette.text} height={1}>
-                    <span style={{ fg: isSelected() ? palette.leader : palette.textDim }}>{isSelected() ? "> " : "  "}</span>
-                    <span style={{ fg: isSelected() ? palette.title : palette.command, attributes: TextAttributes.BOLD }}>
+                  <text
+                    id={index() === 0 ? "keymap-demo-ex-prompt-suggestions" : undefined}
+                    fg={palette.text}
+                    height={1}
+                  >
+                    <span style={{ fg: isSelected() ? palette.leader : palette.textDim }}>
+                      {isSelected() ? "> " : "  "}
+                    </span>
+                    <span
+                      style={{ fg: isSelected() ? palette.title : palette.command, attributes: TextAttributes.BOLD }}
+                    >
                       {suggestion.label}
                     </span>
                     <span style={{ fg: palette.separator }}>{"  "}</span>

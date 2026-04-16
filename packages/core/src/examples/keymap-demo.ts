@@ -250,7 +250,9 @@ function getExPromptSuggestions(): ExPromptSuggestion[] {
     return suggestions.slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
   }
 
-  return suggestions.filter((suggestion) => suggestion.label.startsWith(query)).slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
+  return suggestions
+    .filter((suggestion) => suggestion.label.startsWith(query))
+    .slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
 }
 
 function getCommandPromptSuggestionRows(): number {
@@ -421,7 +423,10 @@ function executeCommandPrompt(renderer: CliRenderer): void {
     }
 
     if (result.reason === "invalid-args") {
-      setStatus(renderer, `Usage: ${result.command ? getExPromptCommandFieldText(result.command, "usage") ?? parsed.name : parsed.name}`)
+      setStatus(
+        renderer,
+        `Usage: ${result.command ? (getExPromptCommandFieldText(result.command, "usage") ?? parsed.name) : parsed.name}`,
+      )
       return
     }
 

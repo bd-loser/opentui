@@ -19,8 +19,24 @@ import {
   type KeymapCommand,
   type KeymapCommandRecord,
 } from "@opentui/core/extras"
-import { createRoot, useActiveKeys, useKeymap, useKeymappings, usePendingSequenceParts, useRenderer } from "@opentui/react"
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react"
+import {
+  createRoot,
+  useActiveKeys,
+  useKeymap,
+  useKeymappings,
+  usePendingSequenceParts,
+  useRenderer,
+} from "@opentui/react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react"
 
 const palette = {
   bg: "#0f172a",
@@ -166,7 +182,9 @@ function getExPromptSuggestions(commands: readonly KeymapCommandRecord[], value:
     return suggestions.slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
   }
 
-  return suggestions.filter((suggestion) => suggestion.label.startsWith(query)).slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
+  return suggestions
+    .filter((suggestion) => suggestion.label.startsWith(query))
+    .slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
 }
 
 function getSelectedExPromptSuggestion(
@@ -208,7 +226,9 @@ function applyExPromptSuggestion(
     return null
   }
 
-  const nextSelection = direction ? moveExPromptSelection(commands, value, selection, direction) : Math.min(selection, suggestions.length - 1)
+  const nextSelection = direction
+    ? moveExPromptSelection(commands, value, selection, direction)
+    : Math.min(selection, suggestions.length - 1)
   const suggestion = suggestions[nextSelection]
   if (!suggestion) {
     return null
@@ -683,7 +703,9 @@ export const App = () => {
       }
 
       if (result.reason === "invalid-args") {
-        announce(`Usage: ${result.command ? getExPromptCommandFieldText(result.command, "usage") ?? parsed.name : parsed.name}`)
+        announce(
+          `Usage: ${result.command ? (getExPromptCommandFieldText(result.command, "usage") ?? parsed.name) : parsed.name}`,
+        )
         return
       }
 
@@ -1030,7 +1052,9 @@ export const App = () => {
             {focusedEditor ? (
               <>
                 <span style={{ fg: palette.textDim }}>Cursor: </span>
-                <span style={{ fg: palette.text }}>{`${focusedEditor.logicalCursor.row + 1}:${focusedEditor.logicalCursor.col + 1}`}</span>
+                <span
+                  style={{ fg: palette.text }}
+                >{`${focusedEditor.logicalCursor.row + 1}:${focusedEditor.logicalCursor.col + 1}`}</span>
                 <span style={{ fg: palette.separator }}>{"  |  "}</span>
                 <span style={{ fg: palette.textDim }}>Lines: </span>
                 <span style={{ fg: palette.text }}>{String(focusedEditor.lineCount)}</span>
@@ -1039,7 +1063,9 @@ export const App = () => {
                 <span style={{ fg: palette.text }}>{String(focusedEditor.plainText.length)}</span>
                 <span style={{ fg: palette.separator }}>{"  |  "}</span>
                 <span style={{ fg: palette.textDim }}>Keys: </span>
-                <span style={{ fg: palette.command }}>{focusedEditor.traits.suspend === true ? "keymap" : "local"}</span>
+                <span style={{ fg: palette.command }}>
+                  {focusedEditor.traits.suspend === true ? "keymap" : "local"}
+                </span>
               </>
             ) : (
               <>
@@ -1074,9 +1100,7 @@ export const App = () => {
               <span style={{ fg: palette.textDim }}>: switch panels and editors</span>
             </text>
             <text fg={palette.text} height={1}>
-              <span style={{ fg: palette.textDim }}>
-                Panels use local j/k/enter.{" "}
-              </span>
+              <span style={{ fg: palette.textDim }}>Panels use local j/k/enter. </span>
               <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>:</span>
               <span style={{ fg: palette.textDim }}> opens the ex prompt.</span>
             </text>
@@ -1086,7 +1110,15 @@ export const App = () => {
             <text style={{ fg: palette.textDim, attributes: TextAttributes.BOLD }} height={1}>
               Log
             </text>
-            {logs.length > 0 ? logs.map((entry, index) => <text key={`${index}-${entry}`} fg={palette.textMuted}>{entry}</text>) : <text fg={palette.textMuted}>(no events yet)</text>}
+            {logs.length > 0 ? (
+              logs.map((entry, index) => (
+                <text key={`${index}-${entry}`} fg={palette.textMuted}>
+                  {entry}
+                </text>
+              ))
+            ) : (
+              <text fg={palette.textMuted}>(no events yet)</text>
+            )}
           </box>
         </box>
 
@@ -1178,7 +1210,11 @@ export const App = () => {
             }}
             onKeyDown={onCommandPromptKeyDown}
           />
-          <text id="keymap-demo-ex-prompt-usage" fg={selectedCommandPromptSuggestion ? palette.text : palette.textMuted} height={1}>
+          <text
+            id="keymap-demo-ex-prompt-usage"
+            fg={selectedCommandPromptSuggestion ? palette.text : palette.textMuted}
+            height={1}
+          >
             {commandPromptUsage}
           </text>
         </box>
@@ -1198,7 +1234,12 @@ export const App = () => {
               const isSelected = index === Math.min(commandPromptSelection, commandPromptSuggestions.length - 1)
 
               return (
-                <text key={`${suggestion.label}-${index}`} id={index === 0 ? "keymap-demo-ex-prompt-suggestions" : undefined} fg={palette.text} height={1}>
+                <text
+                  key={`${suggestion.label}-${index}`}
+                  id={index === 0 ? "keymap-demo-ex-prompt-suggestions" : undefined}
+                  fg={palette.text}
+                  height={1}
+                >
                   <span style={{ fg: isSelected ? palette.leader : palette.textDim }}>{isSelected ? "> " : "  "}</span>
                   <span style={{ fg: isSelected ? palette.title : palette.command, attributes: TextAttributes.BOLD }}>
                     {suggestion.label}

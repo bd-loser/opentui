@@ -73,7 +73,11 @@ describe("React keymap hooks", () => {
       const [visible, setVisibleSignal] = useState(true)
       setVisible = setVisibleSignal
 
-      return <box width={20} height={6}>{visible ? <GlobalBindings /> : null}</box>
+      return (
+        <box width={20} height={6}>
+          {visible ? <GlobalBindings /> : null}
+        </box>
+      )
     }
 
     testSetup = await testRender(<App />, { width: 20, height: 6 })
@@ -196,7 +200,9 @@ describe("React keymap hooks", () => {
 
       useKeymap(layer)
 
-      return <text>{`Pending: ${stringifyKeySequence(pendingSequenceParts, { preferDisplay: true }) || "<root>"}`}</text>
+      return (
+        <text>{`Pending: ${stringifyKeySequence(pendingSequenceParts, { preferDisplay: true }) || "<root>"}`}</text>
+      )
     }
 
     testSetup = await testRender(<App />, { width: 24, height: 6 })
@@ -433,7 +439,9 @@ describe("React keymap hooks", () => {
       await testSetup.renderOnce()
 
       const frame = testSetup.captureCharFrame()
-      expect(frame).toContain("useKeymap local bindings need a target or the returned ref callback attached to a renderable")
+      expect(frame).toContain(
+        "useKeymap local bindings need a target or the returned ref callback attached to a renderable",
+      )
     } finally {
       console.error = originalConsoleError
     }

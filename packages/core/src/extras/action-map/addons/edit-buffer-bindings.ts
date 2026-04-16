@@ -164,6 +164,15 @@ function createDefaultTextareaBindings(
   }))
 }
 
+/**
+ * Builds the default textarea binding list with optional user overrides prepended
+ * (earlier entries win, so overrides take precedence over defaults).
+ *
+ * Exported for advanced use cases where an application composes its own textarea
+ * integration. For standard use, prefer `registerManagedTextareaLayer`, which
+ * wires these bindings together with the edit-buffer commands and the required
+ * textarea-mapping suspension in a single call.
+ */
 export function createTextareaBindings(overrides?: ActionMapBindings): ActionMapBindingInput[] {
   return createTextareaBindingsWithDescriptions(overrides, editBufferCommandDescriptions)
 }
@@ -176,6 +185,18 @@ function createTextareaBindingsWithDescriptions(
   return [...overrideBindings, ...createDefaultTextareaBindings(descriptions)]
 }
 
+/**
+ * Suspends the built-in local key handling of the currently focused `TextareaRenderable`
+ * so that action-map bindings can drive the editor instead. Restores the previous
+ * suspend state on disposal and when focus moves away.
+ *
+ * Reference-counted per `ActionMap`: repeated calls share one registration and the
+ * underlying teardown only runs when the last caller disposes.
+ *
+ * Exported for advanced use cases where an application drives textarea bindings
+ * without the full managed layer. For standard use, prefer
+ * `registerManagedTextareaLayer`, which calls this internally.
+ */
 export function registerTextareaMappingSuspension(manager: ActionMap): () => void {
   const existing = textareaMappingSuspensionRegistrations.get(manager)
   if (existing) {
@@ -355,6 +376,19 @@ function createEditBufferCommands(descriptions: Readonly<Record<EditBufferComman
   ]
 }
 
+/**
+ * Registers the standard edit-buffer commands (cursor movement, selection, deletion,
+ * undo/redo, submit, etc.) on the given `ActionMap`. Each command operates on
+ * `renderer.currentFocusedEditor` and returns `false` when no editor is focused.
+ *
+ * Reference-counted per `ActionMap`: repeated calls share one registration and the
+ * commands are only removed when the last caller disposes.
+ *
+ * Exported for advanced use cases where an application needs the commands without
+ * the default bindings or the textarea suspension (for example, to bind them under
+ * a different key scheme). For standard use, prefer `registerManagedTextareaLayer`,
+ * which calls this internally.
+ */
 export function registerEditBufferCommands(manager: ActionMap, options?: EditBufferCommandOptions): () => void {
   const descriptions = resolveEditBufferCommandDescriptions(options)
   const existing = editBufferCommandRegistrations.get(manager)
@@ -396,6 +430,17 @@ export function registerEditBufferCommands(manager: ActionMap, options?: EditBuf
   }
 }
 
+/**
+ * Preferred entry point for driving `TextareaRenderable` editors through the
+ * action-map. Registers the edit-buffer commands, suspends the textarea's built-in
+ * key handling while it's focused, and installs the provided layer with the default
+ * textarea bindings (plus any user-supplied `bindings` as overrides).
+ *
+ * Returns a single disposer that tears all three registrations down in the correct
+ * order. Reference-counting in the underlying `registerEditBufferCommands` and
+ * `registerTextareaMappingSuspension` calls makes it safe to use this alongside
+ * those functions or alongside multiple managed layers on the same `ActionMap`.
+ */
 export function registerManagedTextareaLayer(
   manager: ActionMap,
   layer: ManagedTextareaLayer,

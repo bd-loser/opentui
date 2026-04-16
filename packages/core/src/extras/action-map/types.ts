@@ -354,8 +354,6 @@ export type ActionMapEvents = {
   error: ActionMapErrorEvent
 }
 
-export interface ActionMapOptions {}
-
 export type { ActionMap }
 
 export interface RuntimeMatcher {

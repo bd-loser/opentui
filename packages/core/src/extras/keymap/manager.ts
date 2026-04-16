@@ -1458,7 +1458,7 @@ export class KeymapManager {
   }
 
   private commandMatchesSearch(
-    command: KeymapCommandRecord,
+    command: RegisteredCommand,
     search: string,
     searchKeys: readonly string[],
   ): boolean {
@@ -1467,11 +1467,8 @@ export class KeymapManager {
     }
 
     for (const key of searchKeys) {
-      const values = this.getCommandQueryValues(command, key)
-      for (const value of values) {
-        if (this.commandValueMatchesSearch(value, search)) {
-          return true
-        }
+      if (this.commandKeyMatchesSearch(command, key, search)) {
+        return true
       }
     }
 
@@ -1479,7 +1476,7 @@ export class KeymapManager {
   }
 
   private commandMatchesFilters(
-    command: KeymapCommandRecord,
+    command: RegisteredCommand,
     filters: readonly [string, KeymapCommandQueryValue][] | undefined,
   ): boolean {
     if (!filters) {
@@ -1487,8 +1484,7 @@ export class KeymapManager {
     }
 
     for (const [key, matcher] of filters) {
-      const values = this.getCommandQueryValues(command, key)
-      if (!this.commandValuesMatchQuery(values, matcher, command)) {
+      if (!this.commandKeyMatchesQuery(command, key, matcher)) {
         return false
       }
     }
@@ -1496,36 +1492,97 @@ export class KeymapManager {
     return true
   }
 
-  private getCommandQueryValues(command: KeymapCommandRecord, key: string): unknown[] {
-    const values: unknown[] = []
-
+  private commandKeyMatchesSearch(command: RegisteredCommand, key: string, search: string): boolean {
     if (key === "name") {
-      values.push(command.name)
+      if (this.commandValueMatchesSearch(command.name, search)) {
+        return true
+      }
     }
 
     if (Object.prototype.hasOwnProperty.call(command.fields, key)) {
-      values.push(command.fields[key])
+      if (this.commandValueMatchesSearch(command.fields[key], search)) {
+        return true
+      }
     }
 
     if (command.attrs && Object.prototype.hasOwnProperty.call(command.attrs, key)) {
-      values.push(command.attrs[key])
+      if (this.commandValueMatchesSearch(command.attrs[key], search)) {
+        return true
+      }
     }
 
-    return values
+    return false
   }
 
-  private commandValuesMatchQuery(
-    values: unknown[],
-    matcher: KeymapCommandQueryValue,
-    command: KeymapCommandRecord,
-  ): boolean {
+  private commandKeyMatchesQuery(command: RegisteredCommand, key: string, matcher: KeymapCommandQueryValue): boolean {
     if (typeof matcher === "function") {
-      if (values.length === 0) {
-        return matcher(undefined, command)
+      let record: KeymapCommandRecord | undefined
+      const getRecord = () => {
+        if (!record) {
+          record = this.getCommandRecord(command)
+        }
+
+        return record
+      }
+      let foundValue = false
+
+      if (key === "name") {
+        foundValue = true
+        if (matcher(command.name, getRecord())) {
+          return true
+        }
       }
 
-      for (const value of values) {
-        if (matcher(value, command)) {
+      if (Object.prototype.hasOwnProperty.call(command.fields, key)) {
+        foundValue = true
+        if (matcher(command.fields[key], getRecord())) {
+          return true
+        }
+      }
+
+      if (command.attrs && Object.prototype.hasOwnProperty.call(command.attrs, key)) {
+        foundValue = true
+        if (matcher(command.attrs[key], getRecord())) {
+          return true
+        }
+      }
+
+      if (!foundValue) {
+        return matcher(undefined, getRecord())
+      }
+
+      return false
+    }
+
+    return this.commandKeyMatchesExact(command, key, matcher)
+  }
+
+  private commandKeyMatchesExact(command: RegisteredCommand, key: string, matcher: unknown | readonly unknown[]): boolean {
+    if (key === "name") {
+      if (this.commandValueMatchesFilter(command.name, matcher)) {
+        return true
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(command.fields, key)) {
+      if (this.commandValueMatchesFilter(command.fields[key], matcher)) {
+        return true
+      }
+    }
+
+    if (command.attrs && Object.prototype.hasOwnProperty.call(command.attrs, key)) {
+      if (this.commandValueMatchesFilter(command.attrs[key], matcher)) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  private commandValueMatchesFilter(value: unknown, matcher: unknown | readonly unknown[]): boolean {
+    if (Array.isArray(matcher)) {
+      for (const expected of matcher) {
+        if (this.commandValueMatchesExact(value, expected)) {
           return true
         }
       }
@@ -1533,25 +1590,7 @@ export class KeymapManager {
       return false
     }
 
-    if (Array.isArray(matcher)) {
-      for (const expected of matcher) {
-        for (const value of values) {
-          if (this.commandValueMatchesExact(value, expected)) {
-            return true
-          }
-        }
-      }
-
-      return false
-    }
-
-    for (const value of values) {
-      if (this.commandValueMatchesExact(value, matcher)) {
-        return true
-      }
-    }
-
-    return false
+    return this.commandValueMatchesExact(value, matcher)
   }
 
   private commandValueMatchesExact(value: unknown, expected: unknown): boolean {

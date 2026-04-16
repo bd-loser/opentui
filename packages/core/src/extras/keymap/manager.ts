@@ -33,6 +33,7 @@ import type {
     KeymapCommandQueryValue,
     KeymapCommandRecord,
     KeymapRunCommandOptions,
+    KeymapRunCommandResult,
     KeymapCommandResolver,
     KeymapCommandResolverContext,
     KeymapCommandResult,
@@ -705,17 +706,17 @@ export class KeymapManager {
     return results
   }
 
-  public runCommand(command: string, options?: KeymapRunCommandOptions): boolean {
+  public runCommand(command: string, options?: KeymapRunCommandOptions): KeymapRunCommandResult {
     this.assertNotDestroyed()
 
     const normalized = normalizeBindingCommand(command)
     if (typeof normalized !== "string") {
-      return false
+      return { ok: false, reason: "not-found" }
     }
 
-    const resolved = this.resolveBindingCommand(normalized)
+    const resolved = this.resolveCommandForRun(normalized)
     if (!resolved) {
-      return false
+      return { ok: false, reason: "not-found" }
     }
 
     const event = options?.event ?? createSyntheticCommandEvent()
@@ -733,17 +734,33 @@ export class KeymapManager {
       result = resolved.run(context)
     } catch (error) {
       this.logger.error(`[Keymap] Error running command "${normalized}":`, error)
-      return true
+      if (resolved.record) {
+        return { ok: false, reason: "error", command: resolved.record }
+      }
+
+      return { ok: false, reason: "error" }
     }
 
     if (isPromiseLike(result)) {
       result.catch((error) => {
         this.logger.error(`[Keymap] Async error in command "${normalized}":`, error)
       })
-      return true
+      return resolved.record ? { ok: true, command: resolved.record } : { ok: true }
     }
 
-    return result !== false
+    if (result === false) {
+      if (resolved.rejectedResult) {
+        return resolved.rejectedResult
+      }
+
+      if (resolved.record) {
+        return { ok: false, reason: "rejected", command: resolved.record }
+      }
+
+      return { ok: false, reason: "rejected" }
+    }
+
+    return resolved.record ? { ok: true, command: resolved.record } : { ok: true }
   }
 
   public hook<TName extends KeymapHookName>(name: TName, fn: KeymapHookListener<KeymapHooks[TName]>): () => void {
@@ -1470,11 +1487,7 @@ export class KeymapManager {
       }
     }
 
-    const context: KeymapCommandResolverContext = {
-      getCommandAttrs: (name) => {
-        return this.commands.get(name)?.attrs
-      },
-    }
+    const context = this.createCommandResolverContext(false)
 
     for (const resolver of this.commandResolvers.snapshot()) {
       const resolved = resolver(command, context)
@@ -1484,6 +1497,47 @@ export class KeymapManager {
     }
 
     return undefined
+  }
+
+  private resolveCommandForRun(command: string): KeymapResolvedBindingCommand | undefined {
+    const context = this.createCommandResolverContext(true)
+    for (const resolver of this.commandResolvers.snapshot()) {
+      const resolved = resolver(command, context)
+      if (resolved) {
+        return resolved
+      }
+    }
+
+    const registered = this.commands.get(command)
+    if (registered) {
+      return {
+        run: this.createRegisteredCommandRunner(registered),
+        attrs: registered.attrs,
+        record: this.getCommandRecord(registered),
+      }
+    }
+
+    return undefined
+  }
+
+  private createCommandResolverContext(includeRecord: boolean): KeymapCommandResolverContext {
+    return {
+      getCommandAttrs: (name) => {
+        return this.commands.get(name)?.attrs
+      },
+      getCommandRecord: (name) => {
+        if (!includeRecord) {
+          return undefined
+        }
+
+        const registered = this.commands.get(name)
+        if (!registered) {
+          return undefined
+        }
+
+        return this.getCommandRecord(registered)
+      },
+    }
   }
 
   private createRegisteredCommandRunner(command: RegisteredCommand): KeymapCommandHandler {

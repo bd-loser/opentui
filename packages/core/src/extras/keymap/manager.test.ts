@@ -143,8 +143,14 @@ describe("keymap", () => {
       },
     ])
 
-    expect(manager.runCommand("save-file")).toBe(true)
-    expect(manager.runCommand("missing-command")).toBe(false)
+    expect(manager.runCommand("save-file")).toEqual({
+      ok: true,
+      command: {
+        name: "save-file",
+        fields: {},
+      },
+    })
+    expect(manager.runCommand("missing-command")).toEqual({ ok: false, reason: "not-found" })
     expect(calls).toEqual(["save-file"])
   })
 

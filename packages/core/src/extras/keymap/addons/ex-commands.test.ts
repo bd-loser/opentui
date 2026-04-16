@@ -282,15 +282,39 @@ describe("ex commands addon", () => {
         name: "write",
         aliases: ["w"],
         nargs: "1",
+        usage: ":write <file>",
         run({ raw, args }) {
           calls.push(`${raw}:${args.join(",")}`)
         },
       },
     ])
 
-    expect(manager.runCommand(":w file.txt")).toBe(true)
-    expect(manager.runCommand(":w")).toBe(false)
-    expect(manager.runCommand(":missing")).toBe(false)
+    expect(manager.runCommand(":w file.txt")).toEqual({
+      ok: true,
+      command: {
+        name: ":w",
+        fields: {
+          aliases: ["w"],
+          nargs: "1",
+          usage: ":write <file>",
+          namespace: "excommands",
+        },
+      },
+    })
+    expect(manager.runCommand(":w")).toEqual({
+      ok: false,
+      reason: "invalid-args",
+      command: {
+        name: ":w",
+        fields: {
+          aliases: ["w"],
+          nargs: "1",
+          usage: ":write <file>",
+          namespace: "excommands",
+        },
+      },
+    })
+    expect(manager.runCommand(":missing")).toEqual({ ok: false, reason: "not-found" })
     expect(calls).toEqual([":w file.txt:file.txt"])
   })
 })

@@ -139,36 +139,6 @@ function getExPromptCommandNargs(command: KeymapCommandRecord): ExArgCount | und
   return undefined
 }
 
-function validateExPromptArgs(command: KeymapCommandRecord, args: string[]): boolean {
-  const nargs = getExPromptCommandNargs(command)
-  if (!nargs) {
-    return true
-  }
-
-  const count = args.length
-  if (nargs === "0") {
-    return count === 0
-  }
-
-  if (nargs === "1") {
-    return count === 1
-  }
-
-  if (nargs === "?") {
-    return count <= 1
-  }
-
-  if (nargs === "*") {
-    return true
-  }
-
-  if (nargs === "+") {
-    return count >= 1
-  }
-
-  return true
-}
-
 function buildExPromptSuggestions(commands: readonly KeymapCommandRecord[]): ExPromptSuggestion[] {
   const suggestions: ExPromptSuggestion[] = []
 
@@ -702,15 +672,27 @@ export const App = () => {
       return
     }
 
-    const command = discoveredExCommands.find((candidate) => candidate.name === parsed.name)
+    const restoreTarget = commandPromptRestoreTargetRef.current
+    const focused = restoreTarget && !restoreTarget.isDestroyed ? restoreTarget : renderer.currentFocusedRenderable
+    const result = manager.runCommand(parsed.raw, { focused: focused ?? null })
 
-    if (!command) {
-      announce(`Unknown ex command ${parsed.name}`)
-      return
-    }
+    if (!result.ok) {
+      if (result.reason === "not-found") {
+        announce(`Unknown ex command ${parsed.name}`)
+        return
+      }
 
-    if (!validateExPromptArgs(command, parsed.args)) {
-      announce(`Usage: ${getExPromptCommandFieldText(command, "usage") ?? parsed.name}`)
+      if (result.reason === "invalid-args") {
+        announce(`Usage: ${result.command ? getExPromptCommandFieldText(result.command, "usage") ?? parsed.name : parsed.name}`)
+        return
+      }
+
+      if (result.reason === "error") {
+        announce(`Error running ${parsed.name}`)
+        return
+      }
+
+      announce(`Command ${parsed.name} was rejected`)
       return
     }
 
@@ -718,8 +700,7 @@ export const App = () => {
     setCommandPromptValue(":")
     setCommandPromptSelection(0)
     restoreCommandPromptFocus()
-    manager.runCommand(parsed.raw)
-  }, [announce, closeCommandPrompt, discoveredExCommands, manager, restoreCommandPromptFocus])
+  }, [announce, closeCommandPrompt, manager, renderer, restoreCommandPromptFocus])
 
   useEffect(() => {
     return registerTimedLeader(manager, {

@@ -65,11 +65,14 @@ export type KeymapCommandQueryValue =
   | readonly unknown[]
   | ((value: unknown, command: KeymapCommandRecord) => boolean)
 
+export type KeymapCommandFilter =
+  | Readonly<Record<string, KeymapCommandQueryValue>>
+  | ((command: KeymapCommandRecord) => boolean)
+
 export interface KeymapCommandQuery {
   search?: string
   searchIn?: readonly string[]
-  filter?: Readonly<Record<string, KeymapCommandQueryValue>>
-  where?: (command: KeymapCommandRecord) => boolean
+  filter?: KeymapCommandFilter
 }
 
 export interface KeymapCommandContext {

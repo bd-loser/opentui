@@ -680,6 +680,50 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "get_commands_query_function_filter",
+    description: "Repeated command discovery with search and a full-record filter predicate",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.manager.registerCommandFields({
+        title(value, ctx) {
+          ctx.attr("label", value)
+        },
+      })
+
+      resources.manager.registerCommands(
+        Array.from({ length: 512 }, (_, index) => ({
+          name: `command-${index}`,
+          namespace: index % 2 === 0 ? "bench" : "other",
+          title: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
+          usage: index % 4 === 0 ? `:write file-${index}.txt` : `:open file-${index}.txt`,
+          tags: index % 4 === 0 ? ["file", "write"] : ["file", "open"],
+          run() {},
+        })),
+      )
+
+      return {
+        resources,
+        runIteration() {
+          resources.manager.getCommands({
+            search: "write",
+            searchIn: ["name", "title", "usage", "label"],
+            filter(command) {
+              return (
+                command.fields.namespace === "bench" &&
+                Array.isArray(command.fields.tags) &&
+                command.fields.tags.includes("file")
+              )
+            },
+          })
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "active_keys_global_layers",
     description: "Repeated getActiveKeys with many global layers",
     async setup() {

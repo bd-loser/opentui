@@ -11,13 +11,17 @@ let testSetup: Awaited<ReturnType<typeof testRender>>
 describe("React action map hooks", () => {
   beforeEach(async () => {
     if (testSetup) {
-      testSetup.renderer.destroy()
+      act(() => {
+        testSetup.renderer.destroy()
+      })
     }
   })
 
   afterEach(() => {
     if (testSetup) {
-      testSetup.renderer.destroy()
+      act(() => {
+        testSetup.renderer.destroy()
+      })
     }
   })
 
@@ -32,7 +36,9 @@ describe("React action map hooks", () => {
       return <box width={10} height={4} />
     }
 
-    testSetup = await testRender(<Probe />, { width: 20, height: 6 })
+    await act(async () => {
+      testSetup = await testRender(<Probe />, { width: 20, height: 6 })
+    })
 
     expect(first).toBeDefined()
     expect(second).toBe(first)
@@ -80,7 +86,9 @@ describe("React action map hooks", () => {
       )
     }
 
-    testSetup = await testRender(<App />, { width: 20, height: 6 })
+    await act(async () => {
+      testSetup = await testRender(<App />, { width: 20, height: 6 })
+    })
 
     act(() => {
       testSetup.mockInput.pressKey("x")
@@ -161,7 +169,9 @@ describe("React action map hooks", () => {
       )
     }
 
-    testSetup = await testRender(<App />, { width: 24, height: 8 })
+    await act(async () => {
+      testSetup = await testRender(<App />, { width: 24, height: 8 })
+    })
     await testSetup.renderOnce()
 
     expect(testSetup.captureCharFrame()).toContain("Active: x")
@@ -205,7 +215,9 @@ describe("React action map hooks", () => {
       )
     }
 
-    testSetup = await testRender(<App />, { width: 24, height: 6 })
+    await act(async () => {
+      testSetup = await testRender(<App />, { width: 24, height: 6 })
+    })
     await testSetup.renderOnce()
 
     expect(testSetup.captureCharFrame()).toContain("Pending: <root>")
@@ -263,7 +275,9 @@ describe("React action map hooks", () => {
       )
     }
 
-    testSetup = await testRender(<App />, { width: 20, height: 6 })
+    await act(async () => {
+      testSetup = await testRender(<App />, { width: 20, height: 6 })
+    })
 
     act(() => {
       testSetup.mockInput.pressKey("x")
@@ -322,7 +336,9 @@ describe("React action map hooks", () => {
       )
     }
 
-    testSetup = await testRender(<App />, { width: 20, height: 6 })
+    await act(async () => {
+      testSetup = await testRender(<App />, { width: 20, height: 6 })
+    })
     await testSetup.renderOnce()
 
     act(() => {
@@ -390,7 +406,9 @@ describe("React action map hooks", () => {
       return <box width={20} height={6} />
     }
 
-    testSetup = await testRender(<App />, { width: 20, height: 6 })
+    await act(async () => {
+      testSetup = await testRender(<App />, { width: 20, height: 6 })
+    })
 
     act(() => {
       testSetup.mockInput.pressKey("x")
@@ -432,9 +450,11 @@ describe("React action map hooks", () => {
         return <text>bindings</text>
       }
 
-      testSetup = await testRender(<App />, {
-        width: 140,
-        height: 12,
+      await act(async () => {
+        testSetup = await testRender(<App />, {
+          width: 140,
+          height: 12,
+        })
       })
       await testSetup.renderOnce()
 
@@ -462,9 +482,11 @@ describe("React action map hooks", () => {
         return <text>bindings</text>
       }
 
-      testSetup = await testRender(<App />, {
-        width: 140,
-        height: 12,
+      await act(async () => {
+        testSetup = await testRender(<App />, {
+          width: 140,
+          height: 12,
+        })
       })
       await testSetup.renderOnce()
 

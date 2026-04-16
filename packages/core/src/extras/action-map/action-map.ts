@@ -778,7 +778,7 @@ export class ActionMap {
 
     const event = options?.event ?? createSyntheticCommandEvent()
     const context: ActionMapCommandContext = {
-      manager: this,
+      actionMap: this,
       renderer: this.renderer,
       event,
       focused: options?.focused ?? this.getFocusedRenderable(),
@@ -3105,7 +3105,7 @@ export class ActionMap {
     }
 
     const context: ActionMapCommandContext = {
-      manager: this,
+      actionMap: this,
       renderer: this.renderer,
       event,
       focused,

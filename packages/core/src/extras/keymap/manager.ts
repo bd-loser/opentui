@@ -714,7 +714,7 @@ export class KeymapManager {
       return { ok: false, reason: "not-found" }
     }
 
-    const resolved = this.resolveCommandForRun(normalized)
+    const resolved = this.resolveCommandString(normalized, { includeRecord: options?.includeCommand === true })
     if (!resolved) {
       return { ok: false, reason: "not-found" }
     }
@@ -1479,25 +1479,16 @@ export class KeymapManager {
       return { run: command }
     }
 
-    const registered = this.commands.get(command)
-    if (registered) {
-      return this.getResolvedRegisteredCommand(registered)
-    }
-
-    const context = this.createCommandResolverContext(false)
-
-    for (const resolver of this.commandResolvers.snapshot()) {
-      const resolved = resolver(command, context)
-      if (resolved) {
-        return resolved
-      }
-    }
-
-    return undefined
+    return this.resolveCommandString(command)
   }
 
-  private resolveCommandForRun(command: string): KeymapResolvedBindingCommand | undefined {
-    const context = this.createCommandResolverContext(true)
+  private resolveCommandString(
+    command: string,
+    options?: { includeRecord?: boolean },
+  ): KeymapResolvedBindingCommand | undefined {
+    const includeRecord = options?.includeRecord === true
+    const context = this.createCommandResolverContext(includeRecord)
+
     for (const resolver of this.commandResolvers.snapshot()) {
       const resolved = resolver(command, context)
       if (resolved) {
@@ -1507,7 +1498,7 @@ export class KeymapManager {
 
     const registered = this.commands.get(command)
     if (registered) {
-      return this.getResolvedRegisteredCommand(registered, { includeRecord: true })
+      return this.getResolvedRegisteredCommand(registered, { includeRecord })
     }
 
     return undefined

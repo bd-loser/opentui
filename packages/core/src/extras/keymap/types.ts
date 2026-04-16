@@ -80,6 +80,7 @@ export interface KeymapRunCommandOptions {
   event?: KeyEvent
   focused?: Renderable | null
   target?: Renderable | null
+  includeCommand?: boolean
 }
 
 export type KeymapRunCommandResult =

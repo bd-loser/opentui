@@ -291,6 +291,9 @@ describe("ex commands addon", () => {
 
     expect(manager.runCommand(":w file.txt")).toEqual({
       ok: true,
+    })
+    expect(manager.runCommand(":w file.txt", { includeCommand: true })).toEqual({
+      ok: true,
       command: {
         name: ":w",
         fields: {
@@ -304,6 +307,10 @@ describe("ex commands addon", () => {
     expect(manager.runCommand(":w")).toEqual({
       ok: false,
       reason: "invalid-args",
+    })
+    expect(manager.runCommand(":w", { includeCommand: true })).toEqual({
+      ok: false,
+      reason: "invalid-args",
       command: {
         name: ":w",
         fields: {
@@ -315,6 +322,6 @@ describe("ex commands addon", () => {
       },
     })
     expect(manager.runCommand(":missing")).toEqual({ ok: false, reason: "not-found" })
-    expect(calls).toEqual([":w file.txt:file.txt"])
+    expect(calls).toEqual([":w file.txt:file.txt", ":w file.txt:file.txt"])
   })
 })

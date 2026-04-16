@@ -130,7 +130,7 @@ describe("keymap", () => {
     expect(calls).toEqual(["handled"])
   })
 
-  test("runCommand executes a registered command and returns false for unknown commands", () => {
+  test("runCommand executes a registered command and only includes command metadata when requested", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
@@ -143,7 +143,8 @@ describe("keymap", () => {
       },
     ])
 
-    expect(manager.runCommand("save-file")).toEqual({
+    expect(manager.runCommand("save-file")).toEqual({ ok: true })
+    expect(manager.runCommand("save-file", { includeCommand: true })).toEqual({
       ok: true,
       command: {
         name: "save-file",
@@ -151,7 +152,42 @@ describe("keymap", () => {
       },
     })
     expect(manager.runCommand("missing-command")).toEqual({ ok: false, reason: "not-found" })
-    expect(calls).toEqual(["save-file"])
+    expect(calls).toEqual(["save-file", "save-file"])
+  })
+
+  test("runCommand and key-triggered commands share resolver precedence", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    manager.registerCommands([
+      {
+        name: "shared-command",
+        run() {
+          calls.push("registered")
+        },
+      },
+    ])
+
+    manager.registerCommandResolver((command) => {
+      if (command !== "shared-command") {
+        return undefined
+      }
+
+      return {
+        run() {
+          calls.push("resolver")
+        },
+      }
+    })
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "shared-command" }],
+    })
+
+    mockInput.pressKey("x")
+    expect(manager.runCommand("shared-command")).toEqual({ ok: true })
+    expect(calls).toEqual(["resolver", "resolver"])
   })
 
   test("prefers direct stroke matches over registered fallback strokes", () => {

@@ -41,6 +41,10 @@ function getActiveKeyNames(manager: KeymapManager): string[] {
     .sort()
 }
 
+function getCommand(manager: KeymapManager, name: string) {
+  return manager.getCommands().find((candidate) => candidate.name === name)
+}
+
 function getActiveKeyDisplay(
   manager: KeymapManager,
   display: string,
@@ -1749,6 +1753,149 @@ describe("keymap", () => {
     expect(seen).toEqual([attrs])
   })
 
+  test("getCommands searches names by default and returns raw fields plus compiled attrs", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerCommandFields({
+      title(value, ctx) {
+        ctx.attr("label", value)
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "save-current",
+        namespace: "excommands",
+        title: "Write File",
+        usage: ":write <file>",
+        tags: ["file", "write"],
+        run() {},
+      },
+      {
+        name: "session-reset",
+        namespace: "excommands",
+        title: "Reset Counters",
+        run() {},
+      },
+      {
+        name: "palette-help",
+        namespace: "palette",
+        title: "Open Help",
+        run() {},
+      },
+    ])
+
+    expect(manager.getCommands({ search: "save" }).map((command) => command.name)).toEqual(["save-current"])
+    expect(manager.getCommands({ search: "write" })).toEqual([])
+    expect(manager.getCommands({ search: "write", searchIn: ["title"] }).map((command) => command.name)).toEqual([
+      "save-current",
+    ])
+    expect(manager.getCommands({ search: "write", searchIn: ["label"] }).map((command) => command.name)).toEqual([
+      "save-current",
+    ])
+    expect(getCommand(manager, "save-current")).toEqual({
+      name: "save-current",
+      fields: {
+        namespace: "excommands",
+        title: "Write File",
+        usage: ":write <file>",
+        tags: ["file", "write"],
+      },
+      attrs: {
+        label: "Write File",
+      },
+    })
+  })
+
+  test("getCommands supports filter and where queries across raw fields and attrs", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerCommandFields({
+      title(value, ctx) {
+        ctx.attr("label", value)
+      },
+    })
+
+    const offCommands = manager.registerCommands([
+      {
+        name: "save-current",
+        namespace: "excommands",
+        title: "Write File",
+        usage: ":write <file>",
+        tags: ["file", "write"],
+        run() {},
+      },
+      {
+        name: "session-reset",
+        namespace: "excommands",
+        title: "Reset Counters",
+        tags: ["session"],
+        run() {},
+      },
+      {
+        name: "palette-help",
+        namespace: "palette",
+        title: "Open Help",
+        tags: ["help"],
+        run() {},
+      },
+    ])
+
+    expect(manager.getCommands({ filter: { namespace: "excommands" } }).map((command) => command.name)).toEqual([
+      "save-current",
+      "session-reset",
+    ])
+    expect(manager.getCommands({ filter: { tags: "file" } }).map((command) => command.name)).toEqual([
+      "save-current",
+    ])
+    expect(manager.getCommands({ filter: { label: "Reset Counters" } }).map((command) => command.name)).toEqual([
+      "session-reset",
+    ])
+    expect(
+      manager
+        .getCommands({
+          filter: {
+            usage(value) {
+              return typeof value === "string" && value.includes("<file>")
+            },
+          },
+        })
+        .map((command) => command.name),
+    ).toEqual(["save-current"])
+    expect(manager.getCommands({ where: (command) => command.name === "palette-help" }).map((command) => command.name)).toEqual([
+      "palette-help",
+    ])
+
+    offCommands()
+
+    expect(manager.getCommands()).toEqual([])
+  })
+
+  test("getCommands returns isolated metadata records across repeated reads", () => {
+    const manager = getKeymapManager(renderer)
+
+    manager.registerCommands([
+      {
+        name: "save-current",
+        tags: ["file", "write"],
+        run() {},
+      },
+    ])
+
+    const first = getCommand(manager, "save-current")
+    expect(first).toBeDefined()
+
+    ;(first!.fields.tags as string[]).push("mutated")
+
+    const second = getCommand(manager, "save-current")
+    expect(second).toEqual({
+      name: "save-current",
+      fields: {
+        tags: ["file", "write"],
+      },
+    })
+  })
+
   test("keeps active key projections isolated across repeated reads", () => {
     const manager = getKeymapManager(renderer)
 
@@ -2582,7 +2729,7 @@ describe("keymap", () => {
     expect(calls).toEqual(["noop"])
   })
 
-  test("ignores unknown command fields", () => {
+  test("stores raw command fields without requiring command field compilers", () => {
     const manager = getKeymapManager(renderer)
     const calls: string[] = []
 
@@ -2591,6 +2738,8 @@ describe("keymap", () => {
         {
           name: "save-file",
           desc: "Save the current file",
+          usage: ":write <file>",
+          tags: ["file", "write"],
           run() {
             calls.push("save-file")
           },
@@ -2603,6 +2752,15 @@ describe("keymap", () => {
       bindings: [{ key: "x", cmd: "save-file" }],
     })
 
+    expect(getCommand(manager, "save-file")).toEqual({
+      name: "save-file",
+      fields: {
+        desc: "Save the current file",
+        usage: ":write <file>",
+        tags: ["file", "write"],
+      },
+    })
+
     expect(getActiveKey(manager, "x")).toBeDefined()
 
     mockInput.pressKey("x")
@@ -2610,7 +2768,7 @@ describe("keymap", () => {
     expect(calls).toEqual(["save-file"])
   })
 
-  test("logs warnings for ignored unknown fields when logger is configured", () => {
+  test("logs warnings only for unknown binding and layer fields when logger is configured", () => {
     const warnings: string[] = []
     const manager = getKeymapManager(renderer, {
       logger: {
@@ -2643,7 +2801,6 @@ describe("keymap", () => {
     })
 
     expect(warnings).toEqual([
-      '[Keymap] Unknown command field "desc" was ignored',
       '[Keymap] Unknown layer field "mode" was ignored',
       '[Keymap] Unknown binding field "when" was ignored',
     ])

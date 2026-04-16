@@ -194,6 +194,41 @@ describe("ex commands addon", () => {
       title: "Write Buffer",
       category: "File",
     })
+
+    expect(manager.getCommands({ filter: { namespace: "excommands" } })).toEqual([
+      {
+        name: ":write",
+        fields: {
+          aliases: ["w"],
+          nargs: "1",
+          desc: "Write the current buffer",
+          title: "Write Buffer",
+          category: "File",
+          namespace: "excommands",
+        },
+        attrs: {
+          desc: "Write the current buffer",
+          title: "Write Buffer",
+          category: "File",
+        },
+      },
+      {
+        name: ":w",
+        fields: {
+          aliases: ["w"],
+          nargs: "1",
+          desc: "Write the current buffer",
+          title: "Write Buffer",
+          category: "File",
+          namespace: "excommands",
+        },
+        attrs: {
+          desc: "Write the current buffer",
+          title: "Write Buffer",
+          category: "File",
+        },
+      },
+    ])
   })
 
   test("can be disposed to remove ex-command resolution", () => {

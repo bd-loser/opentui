@@ -24,14 +24,17 @@ import type {
   KeymapHookName,
   KeymapHooks,
   KeymapParsedBindingInput,
-  KeymapCommand,
-  KeymapCommandContext,
-  KeymapCommandFieldCompiler,
-  KeymapCommandHandler,
-  KeymapCommandInfo,
-  KeymapCommandResolver,
-  KeymapCommandResolverContext,
-  KeymapCommandResult,
+    KeymapCommand,
+    KeymapCommandContext,
+    KeymapCommandFieldCompiler,
+    KeymapCommandHandler,
+    KeymapCommandInfo,
+    KeymapCommandQuery,
+    KeymapCommandQueryValue,
+    KeymapCommandRecord,
+    KeymapCommandResolver,
+    KeymapCommandResolverContext,
+    KeymapCommandResult,
   KeymapEventData,
   KeymapKeyInputContext,
   KeyLike,
@@ -89,6 +92,7 @@ const RESERVED_LAYER_FIELDS = new Set(["target", "scope", "priority", "bindings"
 
 const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
 const EMPTY_COMPILE_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
+const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 
 function cloneCompileFieldValue(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -604,6 +608,35 @@ export class KeymapManager {
     return activeKeys
   }
 
+  public getCommands(query?: KeymapCommandQuery): readonly KeymapCommandRecord[] {
+    this.assertNotDestroyed()
+
+    const normalizedSearch = query?.search?.trim().toLowerCase() ?? ""
+    const searchKeys = query?.searchIn && query.searchIn.length > 0 ? query.searchIn : ["name"]
+    const filters = query?.filter
+    const where = query?.where
+    const results: KeymapCommandRecord[] = []
+
+    for (const command of this.commands.values()) {
+      const record = this.createCommandRecord(command)
+      if (!this.commandMatchesSearch(record, normalizedSearch, searchKeys)) {
+        continue
+      }
+
+      if (!this.commandMatchesFilters(record, filters)) {
+        continue
+      }
+
+      if (where && !where(record)) {
+        continue
+      }
+
+      results.push(record)
+    }
+
+    return results
+  }
+
   public hook<TName extends KeymapHookName>(name: TName, fn: KeymapHookListener<KeymapHooks[TName]>): () => void {
     this.assertNotDestroyed()
 
@@ -904,6 +937,7 @@ export class KeymapManager {
     return this.runWithStateChangeBatch(() => {
       const normalizedCommands = commands.map((command) => {
         const mergedAttrs: KeymapAttributes = {}
+        const mergedFields: Record<string, unknown> = {}
 
         for (const [fieldName, value] of Object.entries(command)) {
           if (RESERVED_COMMAND_FIELDS.has(fieldName)) {
@@ -914,9 +948,10 @@ export class KeymapManager {
             continue
           }
 
+          mergedFields[fieldName] = cloneCompileFieldValue(value)
+
           const compiler = this.commandFields.get(fieldName)
           if (!compiler) {
-            this.warnUnknownField("command", fieldName)
             continue
           }
 
@@ -928,8 +963,10 @@ export class KeymapManager {
         }
 
         const attrs = freezeAttributes(mergedAttrs)
+        const fields = Object.keys(mergedFields).length === 0 ? EMPTY_COMMAND_FIELDS : Object.freeze(mergedFields)
         const normalizedCommand: RegisteredCommand = {
           name: normalizeCommandName(command.name),
+          fields,
           run: command.run,
         }
 
@@ -1350,6 +1387,168 @@ export class KeymapManager {
 
   private createCommandInfo(command: RegisteredCommand): KeymapCommandInfo {
     return command.attrs ? { name: command.name, attrs: command.attrs } : { name: command.name }
+  }
+
+  private createCommandRecord(command: RegisteredCommand): KeymapCommandRecord {
+    const fields = this.cloneCommandRecordData(command.fields)
+    if (!command.attrs) {
+      return {
+        name: command.name,
+        fields,
+      }
+    }
+
+    return {
+      name: command.name,
+      fields,
+      attrs: this.cloneCommandRecordData(command.attrs),
+    }
+  }
+
+  private cloneCommandRecordData(source: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> {
+    if (Object.keys(source).length === 0) {
+      return EMPTY_COMMAND_FIELDS
+    }
+
+    const cloned: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(source)) {
+      cloned[key] = cloneCompileFieldValue(value)
+    }
+
+    return Object.freeze(cloned)
+  }
+
+  private commandMatchesSearch(
+    command: KeymapCommandRecord,
+    search: string,
+    searchKeys: readonly string[],
+  ): boolean {
+    if (!search) {
+      return true
+    }
+
+    for (const key of searchKeys) {
+      const values = this.getCommandQueryValues(command, key)
+      for (const value of values) {
+        if (this.commandValueMatchesSearch(value, search)) {
+          return true
+        }
+      }
+    }
+
+    return false
+  }
+
+  private commandMatchesFilters(
+    command: KeymapCommandRecord,
+    filters: Readonly<Record<string, KeymapCommandQueryValue>> | undefined,
+  ): boolean {
+    if (!filters) {
+      return true
+    }
+
+    for (const [key, matcher] of Object.entries(filters)) {
+      const values = this.getCommandQueryValues(command, key)
+      if (!this.commandValuesMatchQuery(values, matcher, command)) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  private getCommandQueryValues(command: KeymapCommandRecord, key: string): unknown[] {
+    const values: unknown[] = []
+
+    if (key === "name") {
+      values.push(command.name)
+    }
+
+    if (Object.prototype.hasOwnProperty.call(command.fields, key)) {
+      values.push(command.fields[key])
+    }
+
+    if (command.attrs && Object.prototype.hasOwnProperty.call(command.attrs, key)) {
+      values.push(command.attrs[key])
+    }
+
+    return values
+  }
+
+  private commandValuesMatchQuery(
+    values: unknown[],
+    matcher: KeymapCommandQueryValue,
+    command: KeymapCommandRecord,
+  ): boolean {
+    if (typeof matcher === "function") {
+      if (values.length === 0) {
+        return matcher(undefined, command)
+      }
+
+      for (const value of values) {
+        if (matcher(value, command)) {
+          return true
+        }
+      }
+
+      return false
+    }
+
+    if (Array.isArray(matcher)) {
+      for (const expected of matcher) {
+        for (const value of values) {
+          if (this.commandValueMatchesExact(value, expected)) {
+            return true
+          }
+        }
+      }
+
+      return false
+    }
+
+    for (const value of values) {
+      if (this.commandValueMatchesExact(value, matcher)) {
+        return true
+      }
+    }
+
+    return false
+  }
+
+  private commandValueMatchesExact(value: unknown, expected: unknown): boolean {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        if (this.commandValueMatchesExact(entry, expected)) {
+          return true
+        }
+      }
+
+      return false
+    }
+
+    return Object.is(value, expected)
+  }
+
+  private commandValueMatchesSearch(value: unknown, search: string): boolean {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        if (this.commandValueMatchesSearch(entry, search)) {
+          return true
+        }
+      }
+
+      return false
+    }
+
+    if (typeof value === "string") {
+      return value.toLowerCase().includes(search)
+    }
+
+    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+      return String(value).toLowerCase().includes(search)
+    }
+
+    return false
   }
 
   private getBindingSyntax(): KeymapBindingSyntax {
@@ -2694,7 +2893,7 @@ export class KeymapManager {
     this.logger.warn(message)
   }
 
-  private warnUnknownField(kind: "binding" | "layer" | "command", fieldName: string): void {
+  private warnUnknownField(kind: "binding" | "layer", fieldName: string): void {
     this.warnOnce(`${kind}:${fieldName}`, `[Keymap] Unknown ${kind} field "${fieldName}" was ignored`)
   }
 

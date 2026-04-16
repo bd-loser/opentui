@@ -49,11 +49,13 @@ export interface ActionMapBindingSyntax {
   parseObjectKey(key: KeyStroke): ParsedKeyPart
 }
 
-export interface ActionMapCommandInfo {
-  name: string
-  attrs?: Readonly<ActionMapAttributes>
-}
-
+/**
+ * Queryable view of a registered command. Returned by `getCommands` /
+ * `getCommandRecord`, embedded in `ActionMapRunCommandResult.command`,
+ * attached to `ActionMapCommandContext.command` while a handler runs,
+ * and passed to filter predicates. `fields` is the raw registration bag;
+ * `attrs` is what command-field addons compiled from it.
+ */
 export interface ActionMapCommandRecord {
   name: string
   fields: Readonly<Record<string, unknown>>
@@ -95,7 +97,7 @@ export interface ActionMapCommandContext {
   focused: Renderable | null
   target: Renderable | null
   data: Readonly<ActionMapEventData>
-  command?: ActionMapCommandInfo
+  command?: ActionMapCommandRecord
 }
 
 export type ActionMapCommandResult = boolean | void | Promise<boolean | void>
@@ -157,6 +159,11 @@ export interface ActionMapCommandResolverContext {
   getCommandRecord(name: string): ActionMapCommandRecord | undefined
 }
 
+/**
+ * Output of a custom `ActionMapCommandResolver`. `run` executes the binding;
+ * `attrs` / `record` surface metadata to observers; `rejectedResult` lets
+ * the resolver pre-decide a non-found failure shape.
+ */
 export interface ActionMapResolvedBindingCommand {
   run: ActionMapCommandHandler
   attrs?: Readonly<ActionMapAttributes>
@@ -169,7 +176,12 @@ export type ActionMapCommandResolver = (
   ctx: ActionMapCommandResolverContext,
 ) => ActionMapResolvedBindingCommand | undefined
 
-export interface ActionMapCommand {
+/**
+ * Registration input for `actionMap.registerCommands([...])`. Open extra
+ * fields are read by command-field addons to produce `attrs` on the
+ * resulting `ActionMapCommandRecord`.
+ */
+export interface ActionMapCommandDefinition {
   name: string
   run: ActionMapCommandHandler
   [key: string]: unknown
@@ -402,7 +414,6 @@ export interface ActiveKeyState {
 
 export interface RegisteredCommand extends ActionMapCommandRecord {
   run: (ctx: ActionMapCommandContext) => ActionMapCommandResult
-  commandInfo?: ActionMapCommandInfo
   runner?: ActionMapCommandHandler
   resolved?: ActionMapResolvedBindingCommand
   resolvedWithRecord?: ActionMapResolvedBindingCommand

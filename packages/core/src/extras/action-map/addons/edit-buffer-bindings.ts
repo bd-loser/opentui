@@ -6,7 +6,7 @@ import type { EditBufferRenderable } from "../../../renderables/EditBufferRender
 import type {
   ActionMapBindingInput,
   ActionMapBindings,
-  ActionMapCommand,
+  ActionMapCommandDefinition,
   ActionMapCommandContext,
   ActionMapLayer,
   ActionMap,
@@ -298,7 +298,7 @@ function createEditBufferCommand(
   name: EditBufferCommandName,
   run: (editor: EditBufferRenderable) => boolean,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): ActionMapCommand {
+): ActionMapCommandDefinition {
   return {
     name,
     desc: descriptions[name],
@@ -308,7 +308,9 @@ function createEditBufferCommand(
   }
 }
 
-function createEditBufferCommands(descriptions: Readonly<Record<EditBufferCommandName, string>>): ActionMapCommand[] {
+function createEditBufferCommands(
+  descriptions: Readonly<Record<EditBufferCommandName, string>>,
+): ActionMapCommandDefinition[] {
   return [
     createEditBufferCommand("move-left", (editor) => editor.moveCursorLeft(), descriptions),
     createEditBufferCommand("move-right", (editor) => editor.moveCursorRight(), descriptions),

@@ -1,5 +1,13 @@
-import type { ActionMapCommand, ActionMapCommandContext, ActionMap, ActionMapParsedCommand } from "../types.js"
+import type {
+  ActionMapCommandDefinition,
+  ActionMapCommandContext,
+  ActionMapCommandRecord,
+  ActionMap,
+  ActionMapParsedCommand,
+} from "../types.js"
 import { normalizeCommandName } from "../utils.js"
+
+const EMPTY_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 
 export interface ExCommand {
   name: string
@@ -67,7 +75,7 @@ function validateCommandArgs(command: ExCommand, args: string[]): boolean {
 }
 
 export function registerExCommands(manager: ActionMap, commands: ExCommand[]): () => void {
-  const registrations: ActionMapCommand[] = []
+  const registrations: ActionMapCommandDefinition[] = []
   const commandMap = new Map<string, ExCommand>()
 
   for (const command of commands) {
@@ -97,7 +105,7 @@ export function registerExCommands(manager: ActionMap, commands: ExCommand[]): (
 
           return run({
             ...ctx,
-            command: ctx.command ?? { name: normalizedName },
+            command: ctx.command ?? { name: normalizedName, fields: EMPTY_FIELDS },
             raw,
             args,
           })
@@ -138,9 +146,12 @@ export function registerExCommands(manager: ActionMap, commands: ExCommand[]): (
       attrs,
       record,
       run(baseCtx) {
+        const commandView: ActionMapCommandRecord =
+          record ??
+          (attrs ? { name: normalizedName, fields: EMPTY_FIELDS, attrs } : { name: normalizedName, fields: EMPTY_FIELDS })
         return command.run({
           ...baseCtx,
-          command: attrs ? { name: normalizedName, attrs } : { name: normalizedName },
+          command: commandView,
           raw: parsed.input,
           args: parsed.args,
         })

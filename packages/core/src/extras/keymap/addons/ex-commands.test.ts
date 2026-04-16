@@ -272,4 +272,25 @@ describe("ex commands addon", () => {
     mockInput.pressKey("x")
     expect(calls).toEqual(["write:file.txt", "fallback"])
   })
+
+  test("runCommand resolves ex commands programmatically", () => {
+    const manager = getKeymapManager(renderer)
+    const calls: string[] = []
+
+    registerExCommands(manager, [
+      {
+        name: "write",
+        aliases: ["w"],
+        nargs: "1",
+        run({ raw, args }) {
+          calls.push(`${raw}:${args.join(",")}`)
+        },
+      },
+    ])
+
+    expect(manager.runCommand(":w file.txt")).toBe(true)
+    expect(manager.runCommand(":w")).toBe(false)
+    expect(manager.runCommand(":missing")).toBe(false)
+    expect(calls).toEqual([":w file.txt:file.txt"])
+  })
 })

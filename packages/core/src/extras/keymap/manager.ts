@@ -1,6 +1,6 @@
 import { RenderableEvents, type Renderable } from "../../Renderable.js"
 import { CliRenderEvents, type CliRenderer } from "../../renderer.js"
-import type { KeyEvent } from "../../lib/KeyHandler.js"
+import { KeyEvent } from "../../lib/KeyHandler.js"
 import type {
   ActiveKeySelection,
   ActiveKeyState,
@@ -32,6 +32,7 @@ import type {
     KeymapCommandQuery,
     KeymapCommandQueryValue,
     KeymapCommandRecord,
+    KeymapRunCommandOptions,
     KeymapCommandResolver,
     KeymapCommandResolverContext,
     KeymapCommandResult,
@@ -94,6 +95,21 @@ const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
 const EMPTY_COMPILE_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const
+
+function createSyntheticCommandEvent(): KeyEvent {
+  return new KeyEvent({
+    name: "command",
+    ctrl: false,
+    meta: false,
+    shift: false,
+    option: false,
+    sequence: "",
+    number: false,
+    raw: "",
+    eventType: "press",
+    source: "raw",
+  })
+}
 
 function isPlainObject(value: object): boolean {
   const prototype = Object.getPrototypeOf(value)
@@ -687,6 +703,47 @@ export class KeymapManager {
     }
 
     return results
+  }
+
+  public runCommand(command: string, options?: KeymapRunCommandOptions): boolean {
+    this.assertNotDestroyed()
+
+    const normalized = normalizeBindingCommand(command)
+    if (typeof normalized !== "string") {
+      return false
+    }
+
+    const resolved = this.resolveBindingCommand(normalized)
+    if (!resolved) {
+      return false
+    }
+
+    const event = options?.event ?? createSyntheticCommandEvent()
+    const context: KeymapCommandContext = {
+      manager: this,
+      renderer: this.renderer,
+      event,
+      focused: options?.focused ?? this.getFocusedRenderable(),
+      target: options?.target ?? null,
+      data: this.getReadonlyData(),
+    }
+
+    let result: KeymapCommandResult
+    try {
+      result = resolved.run(context)
+    } catch (error) {
+      this.logger.error(`[Keymap] Error running command "${normalized}":`, error)
+      return true
+    }
+
+    if (isPromiseLike(result)) {
+      result.catch((error) => {
+        this.logger.error(`[Keymap] Async error in command "${normalized}":`, error)
+      })
+      return true
+    }
+
+    return result !== false
   }
 
   public hook<TName extends KeymapHookName>(name: TName, fn: KeymapHookListener<KeymapHooks[TName]>): () => void {

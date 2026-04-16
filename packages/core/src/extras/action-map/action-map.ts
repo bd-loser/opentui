@@ -734,7 +734,7 @@ export class ActionMap extends EventEmitter<ActionMapEvents> {
     return results
   }
 
-  public runCommand(command: string, options?: ActionMapRunCommandOptions): ActionMapRunCommandResult {
+  public runCommand(cmd: string, options?: ActionMapRunCommandOptions): ActionMapRunCommandResult {
     if (this.destroyed) {
       return { ok: false, reason: "error" }
     }
@@ -742,7 +742,7 @@ export class ActionMap extends EventEmitter<ActionMapEvents> {
     let normalized: ActionMapBindingCommand | undefined
 
     try {
-      normalized = normalizeBindingCommand(command)
+      normalized = normalizeBindingCommand(cmd)
     } catch {
       return { ok: false, reason: "invalid-args" }
     }

@@ -164,6 +164,12 @@ export const useActionMap = (): ActionMap => {
   return getActionMap(renderer)
 }
 
+// Subscribes to the `state` hook, which is the batched superset signal covering
+// all derived-state changes (active keys, pending sequence, commands, etc.).
+// Both `useActiveKeys` and `usePendingSequenceParts` share this one subscription
+// and re-read through the relevant getter. Do not switch these hooks to the
+// `pendingSequence` event: `state` already fires for pending-sequence changes,
+// and subscribing to both would double up work.
 function useActionMapStateVersion(manager: ActionMap): Accessor<number> {
   const [version, setVersion] = createSignal(0)
   let dispose: (() => void) | undefined

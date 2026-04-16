@@ -34,8 +34,8 @@ describe("react action map example", () => {
   test("stacks the demo sections without spacer rows", async () => {
     await act(async () => {
       testSetup = await testRender(<ActionMapDemo />, { width: 70, height: 24 })
-      await testSetup.renderOnce()
     })
+    await testSetup.renderOnce()
 
     const title = getRenderable("action-map-demo-title")
     const subtitle = getRenderable("action-map-demo-subtitle")

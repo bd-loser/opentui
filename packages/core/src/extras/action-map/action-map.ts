@@ -1003,7 +1003,7 @@ export class ActionMap extends EventEmitter<ActionMapEvents> {
     let normalizedToken: string
 
     try {
-      normalizedToken = this.normalizeTokenName(token.token)
+      normalizedToken = this.normalizeTokenName(token.name)
     } catch (error) {
       this.emitError(getErrorMessage(error, "Failed to register action map token"), error)
       return NOOP

@@ -2,12 +2,12 @@ import type { KeyLike, ActionMap } from "../types.js"
 
 export interface LeaderOptions {
   trigger: KeyLike
-  token?: string
+  name?: string
 }
 
 export function registerLeader(manager: ActionMap, options: LeaderOptions): () => void {
   return manager.registerToken({
-    token: options.token ?? "<leader>",
+    name: options.name ?? "<leader>",
     key: options.trigger,
   })
 }

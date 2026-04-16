@@ -17,11 +17,12 @@ import {
   mergeKeyBindings,
   buildKeyBindingsMap,
   getKeyBindingAction,
-  type KeyAliasMap,
   defaultKeyAliases,
   mergeKeyAliases,
   keyBindingToString,
-} from "./lib/keymapping.js"
+} from "./lib/keybinding.internal.js"
+
+type KeyAliasMap = Record<string, string>
 
 interface CallerInfo {
   functionName: string

@@ -9,9 +9,9 @@ import {
   keyBindingToString,
   matchesKeyBinding,
   type KeyAliasMap,
-} from "./keymapping.js"
+} from "./keybinding.internal.js"
 
-describe("keymapping", () => {
+describe("keybinding.internal", () => {
   describe("getKeyBindingKey", () => {
     it("should generate key with meta modifier", () => {
       const metaBinding = { name: "a", meta: true, action: "test" }
@@ -20,10 +20,10 @@ describe("keymapping", () => {
     })
 
     it("should generate different keys for different modifiers", () => {
-      const noMod = getKeyBindingKey({ name: "a", action: "test" })
-      const withMeta = getKeyBindingKey({ name: "a", meta: true, action: "test" })
-      const withCtrl = getKeyBindingKey({ name: "a", ctrl: true, action: "test" })
-      const withShift = getKeyBindingKey({ name: "a", shift: true, action: "test" })
+      const noMod = getKeyBindingKey({ name: "a" })
+      const withMeta = getKeyBindingKey({ name: "a", meta: true })
+      const withCtrl = getKeyBindingKey({ name: "a", ctrl: true })
+      const withShift = getKeyBindingKey({ name: "a", shift: true })
 
       expect(noMod).not.toBe(withMeta)
       expect(noMod).not.toBe(withCtrl)
@@ -32,7 +32,7 @@ describe("keymapping", () => {
     })
 
     it("should handle combined modifiers", () => {
-      const key = getKeyBindingKey({ name: "a", ctrl: true, shift: true, meta: true, action: "test" })
+      const key = getKeyBindingKey({ name: "a", ctrl: true, shift: true, meta: true })
       expect(key).toBe("a:1:1:1:0")
     })
 
@@ -127,9 +127,7 @@ describe("keymapping", () => {
 
       const map = buildKeyBindingsMap(bindings, aliases)
 
-      // Original binding should work
       expect(map.get("return:0:0:0:0")).toBe("submit")
-      // Alias should not be added since "enter" wasn't in the binding
       expect(map.get("enter:0:0:0:0")).toBeUndefined()
     })
 
@@ -139,9 +137,7 @@ describe("keymapping", () => {
 
       const map = buildKeyBindingsMap(bindings, aliases)
 
-      // Original binding with "enter" name
       expect(map.get("enter:0:0:0:0")).toBe("submit")
-      // Aliased version with normalized "return" name
       expect(map.get("return:0:0:0:0")).toBe("submit")
     })
 

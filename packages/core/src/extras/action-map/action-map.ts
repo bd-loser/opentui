@@ -2201,7 +2201,7 @@ export class ActionMap extends EventEmitter<ActionMapEvents> {
             }
 
             const attrs = freezeAttributes(mergedAttrs)
-            const command = normalizeBindingCommand(bindingFields.cmd)
+            const command = normalizeBindingCommand(compiledInput.cmd)
             const compiledBinding: CompiledBinding = {
               sequence,
               command,
@@ -2216,8 +2216,8 @@ export class ActionMap extends EventEmitter<ActionMapEvents> {
               conditionKeys: [...conditionKeys],
               hasUnkeyedMatchers,
               matchCacheDirty: true,
-              consume: bindingFields.consume !== false,
-              fallthrough: bindingFields.fallthrough ?? false,
+              consume: compiledInput.consume !== false,
+              fallthrough: compiledInput.fallthrough ?? false,
             }
 
             if (attrs) {

@@ -120,14 +120,24 @@ export function registerExCommands(manager: KeymapManager, commands: ExCommand[]
     }
 
     const attrs = ctx.getCommandAttrs(normalizedName)
+    const record = ctx.getCommandRecord(normalizedName)
+    if (!validateCommandArgs(command, parsed.args)) {
+      return {
+        attrs,
+        record,
+        rejectedResult: record
+          ? { ok: false, reason: "invalid-args", command: record }
+          : { ok: false, reason: "invalid-args" },
+        run() {
+          return false
+        },
+      }
+    }
 
     return {
       attrs,
+      record,
       run(baseCtx) {
-        if (!validateCommandArgs(command, parsed.args)) {
-          return false
-        }
-
         return command.run({
           ...baseCtx,
           command: attrs ? { name: normalizedName, attrs } : { name: normalizedName },

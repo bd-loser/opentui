@@ -82,6 +82,11 @@ export interface KeymapRunCommandOptions {
   target?: Renderable | null
 }
 
+export type KeymapRunCommandResult =
+  | { ok: true; command?: KeymapCommandRecord }
+  | { ok: false; reason: "not-found" }
+  | { ok: false; reason: "invalid-args" | "rejected" | "error"; command?: KeymapCommandRecord }
+
 export interface KeymapCommandContext {
   manager: KeymapManager
   renderer: CliRenderer
@@ -147,11 +152,14 @@ export interface KeymapParsedCommand {
 
 export interface KeymapCommandResolverContext {
   getCommandAttrs(name: string): Readonly<KeymapAttributes> | undefined
+  getCommandRecord(name: string): KeymapCommandRecord | undefined
 }
 
 export interface KeymapResolvedBindingCommand {
   run: KeymapCommandHandler
   attrs?: Readonly<KeymapAttributes>
+  record?: KeymapCommandRecord
+  rejectedResult?: Extract<KeymapRunCommandResult, { ok: false }>
 }
 
 export type KeymapCommandResolver = (

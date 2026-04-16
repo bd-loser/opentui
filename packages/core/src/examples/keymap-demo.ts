@@ -221,36 +221,6 @@ function getExPromptCommands(): readonly KeymapCommandRecord[] {
   return keymapManager?.getCommands({ namespace: "excommands" }) ?? []
 }
 
-function validateExPromptArgs(command: KeymapCommandRecord, args: string[]): boolean {
-  const nargs = getExPromptCommandNargs(command)
-  if (!nargs) {
-    return true
-  }
-
-  const count = args.length
-  if (nargs === "0") {
-    return count === 0
-  }
-
-  if (nargs === "1") {
-    return count === 1
-  }
-
-  if (nargs === "?") {
-    return count <= 1
-  }
-
-  if (nargs === "*") {
-    return true
-  }
-
-  if (nargs === "+") {
-    return count >= 1
-  }
-
-  return true
-}
-
 function buildExPromptSuggestions(commands: readonly KeymapCommandRecord[]): ExPromptSuggestion[] {
   const suggestions: ExPromptSuggestion[] = []
 
@@ -440,23 +410,34 @@ function executeCommandPrompt(renderer: CliRenderer): void {
     return
   }
 
-  const command = getExPromptCommands().find((candidate) => candidate.name === parsed.name)
-
-  if (!command) {
-    setStatus(renderer, `Unknown ex command ${parsed.name}`)
-    return
-  }
-
-  if (!validateExPromptArgs(command, parsed.args)) {
-    setStatus(renderer, `Usage: ${getExPromptCommandFieldText(command, "usage") ?? parsed.name}`)
-    return
-  }
-
   const restoreTarget = commandPromptRestoreTarget
+  const focused = restoreTarget && !restoreTarget.isDestroyed ? restoreTarget : renderer.currentFocusedRenderable
+  const result = keymapManager?.runCommand(parsed.raw, { focused: focused ?? null })
+
+  if (!result || !result.ok) {
+    if (!result || result.reason === "not-found") {
+      setStatus(renderer, `Unknown ex command ${parsed.name}`)
+      return
+    }
+
+    if (result.reason === "invalid-args") {
+      setStatus(renderer, `Usage: ${result.command ? getExPromptCommandFieldText(result.command, "usage") ?? parsed.name : parsed.name}`)
+      return
+    }
+
+    if (result.reason === "error") {
+      setStatus(renderer, `Error running ${parsed.name}`)
+      return
+    }
+
+    setStatus(renderer, `Command ${parsed.name} was rejected`)
+    return
+  }
+
   hideCommandPrompt()
   commandPromptRestoreTarget = null
   restoreCommandPromptFocus(restoreTarget)
-  keymapManager?.runCommand(parsed.raw)
+  renderAll(renderer)
 }
 
 function openCommandPrompt(renderer: CliRenderer): void {

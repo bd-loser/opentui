@@ -86,7 +86,7 @@ const EXAMPLES: ExampleDefinition[] = [
   },
   {
     name: "Keymap Demo",
-    description: "Panels plus textareas with global, local, and managed keymaps",
+    description: "Panels plus textareas with global, local, managed keymaps, and a centered : prompt",
     component: KeymapDemo,
   },
   {

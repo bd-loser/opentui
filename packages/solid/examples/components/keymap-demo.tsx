@@ -1,6 +1,7 @@
 import {
   CliRenderEvents,
   ConsolePosition,
+  type InputRenderable,
   TextAttributes,
   type Renderable,
   type TextareaRenderable,
@@ -67,6 +68,177 @@ const editorSpecs: readonly EditorSpec[] = [
     placeholder: "Scratch editor. Unmapped text still inserts directly.",
   },
 ] as const
+
+type ExArgCount = "0" | "1" | "?" | "*" | "+"
+
+interface DemoExCommand {
+  name: string
+  aliases?: string[]
+  nargs?: ExArgCount
+  title: string
+  desc: string
+  category: string
+  usage: string
+  run: (ctx: { raw: string; args: string[] }) => void
+}
+
+interface ExPromptSuggestion {
+  label: string
+  insert: string
+  usage: string
+  desc: string
+  expectsArgs: boolean
+}
+
+function normalizeExPromptName(name: string): string {
+  const trimmed = name.trim()
+  if (!trimmed) {
+    return ":"
+  }
+
+  return trimmed.startsWith(":") ? trimmed : `:${trimmed}`
+}
+
+function parseExPromptInput(input: string): { raw: string; name: string; args: string[] } | null {
+  const normalized = normalizeExPromptName(input)
+  if (normalized === ":") {
+    return null
+  }
+
+  const parts = normalized.split(/\s+/)
+  const [name, ...args] = parts
+  if (!name) {
+    return null
+  }
+
+  return {
+    raw: normalized,
+    name,
+    args,
+  }
+}
+
+function validateExPromptArgs(command: DemoExCommand, args: string[]): boolean {
+  if (!command.nargs) {
+    return true
+  }
+
+  const count = args.length
+  if (command.nargs === "0") {
+    return count === 0
+  }
+
+  if (command.nargs === "1") {
+    return count === 1
+  }
+
+  if (command.nargs === "?") {
+    return count <= 1
+  }
+
+  if (command.nargs === "*") {
+    return true
+  }
+
+  if (command.nargs === "+") {
+    return count >= 1
+  }
+
+  return true
+}
+
+function buildExPromptSuggestions(commands: readonly DemoExCommand[]): ExPromptSuggestion[] {
+  const suggestions: ExPromptSuggestion[] = []
+
+  for (const command of commands) {
+    const names = [command.name, ...(command.aliases ?? [])]
+    for (const name of names) {
+      const label = normalizeExPromptName(name)
+      suggestions.push({
+        label,
+        insert: label,
+        usage: command.usage,
+        desc: command.desc,
+        expectsArgs: command.nargs !== "0",
+      })
+    }
+  }
+
+  return suggestions
+}
+
+function getExPromptSuggestions(commands: readonly DemoExCommand[], value: string): ExPromptSuggestion[] {
+  const normalized = normalizeExPromptName(value)
+  const spaceIndex = normalized.indexOf(" ")
+  const query = spaceIndex === -1 ? normalized : normalized.slice(0, spaceIndex)
+  const suggestions = buildExPromptSuggestions(commands)
+
+  if (query === ":") {
+    return suggestions.slice(0, 4)
+  }
+
+  return suggestions.filter((suggestion) => suggestion.label.startsWith(query)).slice(0, 4)
+}
+
+function getSelectedExPromptSuggestion(
+  commands: readonly DemoExCommand[],
+  value: string,
+  selection: number,
+): ExPromptSuggestion | null {
+  const suggestions = getExPromptSuggestions(commands, value)
+  if (suggestions.length === 0) {
+    return null
+  }
+
+  return suggestions[Math.min(selection, suggestions.length - 1)] ?? null
+}
+
+function moveExPromptSelection(
+  commands: readonly DemoExCommand[],
+  value: string,
+  selection: number,
+  direction: 1 | -1,
+): number {
+  const suggestions = getExPromptSuggestions(commands, value)
+  if (suggestions.length === 0) {
+    return 0
+  }
+
+  const current = Math.min(selection, suggestions.length - 1)
+  return (current + direction + suggestions.length) % suggestions.length
+}
+
+function applyExPromptSuggestion(
+  commands: readonly DemoExCommand[],
+  value: string,
+  selection: number,
+  direction?: 1 | -1,
+): { value: string; selection: number } | null {
+  const suggestions = getExPromptSuggestions(commands, value)
+  if (suggestions.length === 0) {
+    return null
+  }
+
+  const nextSelection = direction ? moveExPromptSelection(commands, value, selection, direction) : Math.min(selection, suggestions.length - 1)
+  const suggestion = suggestions[nextSelection]
+  if (!suggestion) {
+    return null
+  }
+
+  const normalized = normalizeExPromptName(value)
+  const spaceIndex = normalized.indexOf(" ")
+  const rest = spaceIndex === -1 ? "" : normalized.slice(spaceIndex + 1).trimStart()
+  const nextValue = rest
+    ? `${suggestion.insert} ${rest}`
+    : suggestion.expectsArgs
+      ? `${suggestion.insert} `
+      : suggestion.insert
+
+  return {
+    value: nextValue,
+    selection: nextSelection,
+  }
+}
 
 function KeyLabel(props: { children: JSX.Element }) {
   return <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>{props.children}</span>
@@ -194,12 +366,17 @@ export default function KeymapDemo() {
   const manager = useKeymappings()
   let alphaPanelRef: Renderable | undefined
   let betaPanelRef: Renderable | undefined
+  let commandInputRef: InputRenderable | undefined
+  let commandPromptRestoreTarget: Renderable | undefined
   const editorRefs: Array<TextareaRenderable | undefined> = []
 
   const [alphaCount, setAlphaCount] = createSignal(0)
   const [betaCount, setBetaCount] = createSignal(0)
   const [helpVisible, setHelpVisible] = createSignal(true)
   const [leaderArmed, setLeaderArmed] = createSignal(false)
+  const [commandPromptVisible, setCommandPromptVisible] = createSignal(false)
+  const [commandPromptValue, setCommandPromptValue] = createSignal(":")
+  const [commandPromptSelection, setCommandPromptSelection] = createSignal(0)
   const [lastAction, setLastAction] = createSignal("Click a panel or press Tab to start.")
   const [logs, setLogs] = createSignal<string[]>([])
   const [statusVersion, setStatusVersion] = createSignal(0)
@@ -226,6 +403,18 @@ export default function KeymapDemo() {
   const announce = (message: string) => {
     setLastAction(message)
     addLog(message)
+  }
+
+  const syncCommandPromptInput = (value: string) => {
+    if (!commandInputRef) {
+      return
+    }
+
+    if (commandInputRef.value !== value) {
+      commandInputRef.value = value
+    }
+
+    commandInputRef.cursorOffset = value.length
   }
 
   const getFocusableTargets = (): Renderable[] => {
@@ -267,6 +456,40 @@ export default function KeymapDemo() {
     announce(`Focused ${getFocusableLabel(target)}`)
   }
 
+  const restoreCommandPromptFocus = () => {
+    const restoreTarget = commandPromptRestoreTarget
+    commandPromptRestoreTarget = undefined
+
+    if (restoreTarget && !restoreTarget.isDestroyed) {
+      restoreTarget.focus()
+      return
+    }
+
+    alphaPanelRef?.focus()
+  }
+
+  const closeCommandPrompt = (message: string) => {
+    setCommandPromptVisible(false)
+    setCommandPromptValue(":")
+    setCommandPromptSelection(0)
+    restoreCommandPromptFocus()
+    announce(message)
+  }
+
+  const openCommandPrompt = () => {
+    if (commandPromptVisible()) {
+      return
+    }
+
+    commandPromptRestoreTarget = renderer.currentFocusedRenderable ?? undefined
+    setCommandPromptVisible(true)
+    setCommandPromptValue(":")
+    setCommandPromptSelection(0)
+    syncCommandPromptInput(":")
+    commandInputRef?.focus()
+    announce("Opened ex prompt")
+  }
+
   const offActions = manager.registerCommands([
     {
       name: "focus-next",
@@ -299,9 +522,18 @@ export default function KeymapDemo() {
         })
       },
     },
+    {
+      name: "open-ex-prompt",
+      title: "Open ex prompt",
+      desc: "Open ex prompt",
+      category: "Ex",
+      run() {
+        openCommandPrompt()
+      },
+    },
   ])
 
-  const offEx = registerExCommands(manager, [
+  const exCommands: DemoExCommand[] = [
     {
       name: "reset",
       aliases: ["r"],
@@ -309,6 +541,7 @@ export default function KeymapDemo() {
       title: "Reset counters",
       desc: "Reset counters",
       category: "Session",
+      usage: ":reset",
       run() {
         setAlphaCount(0)
         setBetaCount(0)
@@ -322,11 +555,82 @@ export default function KeymapDemo() {
       title: "Write file",
       desc: "Write file",
       category: "File",
+      usage: ":write <file>",
       run({ args }) {
         announce(`Wrote ${args[0]}`)
       },
     },
-  ])
+  ]
+
+  const offEx = registerExCommands(
+    manager,
+    exCommands.map(({ usage: _usage, ...command }) => {
+      return command
+    }),
+  )
+
+  const commandPromptSuggestions = createMemo(() => {
+    return getExPromptSuggestions(exCommands, commandPromptValue())
+  })
+
+  const selectedCommandPromptSuggestion = createMemo(() => {
+    return getSelectedExPromptSuggestion(exCommands, commandPromptValue(), commandPromptSelection())
+  })
+
+  const commandPromptUsage = createMemo(() => {
+    const selected = selectedCommandPromptSuggestion()
+    if (!selected) {
+      return "No matching ex commands"
+    }
+
+    return `Usage: ${selected.usage}  |  ${selected.desc}`
+  })
+
+  const moveCommandPromptSelection = (direction: 1 | -1) => {
+    setCommandPromptSelection((current) => {
+      return moveExPromptSelection(exCommands, commandPromptValue(), current, direction)
+    })
+  }
+
+  const applyCommandPromptSuggestion = (direction?: 1 | -1) => {
+    const result = applyExPromptSuggestion(exCommands, commandPromptValue(), commandPromptSelection(), direction)
+    if (!result) {
+      return
+    }
+
+    setCommandPromptSelection(result.selection)
+    setCommandPromptValue(result.value)
+    syncCommandPromptInput(result.value)
+  }
+
+  const executeCommandPrompt = () => {
+    const parsed = parseExPromptInput(commandPromptValue())
+    if (!parsed) {
+      closeCommandPrompt("Closed ex prompt")
+      return
+    }
+
+    const command = exCommands.find((candidate) => {
+      const names = [candidate.name, ...(candidate.aliases ?? [])]
+      return names.some((name) => normalizeExPromptName(name) === parsed.name)
+    })
+
+    if (!command) {
+      announce(`Unknown ex command ${parsed.name}`)
+      return
+    }
+
+    if (!validateExPromptArgs(command, parsed.args)) {
+      announce(`Usage: ${command.usage}`)
+      return
+    }
+
+    setCommandPromptVisible(false)
+    setCommandPromptValue(":")
+    setCommandPromptSelection(0)
+    restoreCommandPromptFocus()
+    command.run({ raw: parsed.raw, args: parsed.args })
+  }
 
   const offLeader = registerTimedLeader(manager, {
     trigger: { name: "x", ctrl: true },
@@ -341,7 +645,7 @@ export default function KeymapDemo() {
 
   const offManagedTextareas = registerManagedTextareaLayer(manager, {
     scope: "global",
-    enabled: () => manager.renderer.currentFocusedEditor !== null,
+    enabled: () => !commandPromptVisible() && manager.renderer.currentFocusedEditor !== null,
     bindings: [
       { key: "left", cmd: "move-left", desc: "Cursor left" },
       { key: "right", cmd: "move-right", desc: "Cursor right" },
@@ -359,6 +663,7 @@ export default function KeymapDemo() {
 
   useKeymap({
     scope: "global",
+    enabled: () => !commandPromptVisible(),
     bindings: [
       { key: "tab", cmd: "focus-next", desc: "Next target" },
       { key: "shift+tab", cmd: "focus-prev", desc: "Previous target" },
@@ -370,6 +675,12 @@ export default function KeymapDemo() {
     ],
   })
 
+  useKeymap({
+    scope: "global",
+    enabled: () => !commandPromptVisible(),
+    bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }],
+  })
+
   const focusedEditorIndex = createMemo(() => {
     statusVersion()
     return editorRefs.findIndex((editor) => editor === renderer.currentFocusedEditor)
@@ -377,6 +688,10 @@ export default function KeymapDemo() {
 
   const focusedLabel = createMemo(() => {
     statusVersion()
+
+    if (renderer.currentFocusedRenderable === commandInputRef) {
+      return "Ex command prompt"
+    }
 
     if (renderer.currentFocusedRenderable === alphaPanelRef) {
       return "Alpha panel"
@@ -396,6 +711,10 @@ export default function KeymapDemo() {
 
   const focusedColor = createMemo(() => {
     statusVersion()
+
+    if (renderer.currentFocusedRenderable === commandInputRef) {
+      return palette.leader
+    }
 
     if (renderer.currentFocusedRenderable === alphaPanelRef) {
       return palette.alpha
@@ -435,6 +754,51 @@ export default function KeymapDemo() {
     return stringifyKeySequence(pendingSequenceParts(), { preferDisplay: true }) || "<root>"
   })
 
+  const onCommandPromptKeyDown = (event: {
+    name: string
+    shift?: boolean
+    preventDefault: () => void
+    stopPropagation: () => void
+  }) => {
+    if (!commandPromptVisible()) {
+      return
+    }
+
+    if (event.name === "escape") {
+      event.preventDefault()
+      event.stopPropagation()
+      closeCommandPrompt("Closed ex prompt")
+      return
+    }
+
+    if (event.name === "up") {
+      event.preventDefault()
+      event.stopPropagation()
+      moveCommandPromptSelection(-1)
+      return
+    }
+
+    if (event.name === "down") {
+      event.preventDefault()
+      event.stopPropagation()
+      moveCommandPromptSelection(1)
+      return
+    }
+
+    if (event.name === "tab") {
+      event.preventDefault()
+      event.stopPropagation()
+      applyCommandPromptSuggestion(event.shift ? -1 : undefined)
+      return
+    }
+
+    if (event.name === "return") {
+      event.preventDefault()
+      event.stopPropagation()
+      executeCommandPrompt()
+    }
+  }
+
   const onFocusedRenderable = () => {
     bumpStatus()
   }
@@ -449,6 +813,7 @@ export default function KeymapDemo() {
     renderer.on(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
     addLog("Tab switches focus across panels and editors.")
     addLog("ctrl+x arms the leader extension.")
+    addLog(": opens the centered ex prompt.")
     alphaPanelRef?.focus()
     announce("Focused Alpha panel")
   })
@@ -470,7 +835,7 @@ export default function KeymapDemo() {
         Keymap Demo
       </text>
       <text id="keymap-demo-subtitle" fg={palette.textMuted} height={1}>
-        Original Alpha/Beta panels plus three switchable textareas.
+        Original Alpha/Beta panels, three switchable textareas, and a centered : prompt.
       </text>
 
       <box id="keymap-demo-panels" flexDirection="row" gap={1} height={4}>
@@ -617,9 +982,10 @@ export default function KeymapDemo() {
             </text>
             <text fg={palette.text} height={1}>
               <span style={{ fg: palette.textDim }}>
-                Panels use local j/k/enter. Focused textareas route default shortcuts through keymap; plain typing still
-                inserts directly.
+                Panels use local j/k/enter.{" "}
               </span>
+              <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>:</span>
+              <span style={{ fg: palette.textDim }}> opens the ex prompt.</span>
             </text>
           </box>
 
@@ -667,6 +1033,71 @@ export default function KeymapDemo() {
             </Show>
           </scrollbox>
         </box>
+      </box>
+
+      <box
+        id="keymap-demo-ex-prompt"
+        position="absolute"
+        left="50%"
+        top="50%"
+        width={54}
+        height={9}
+        marginLeft={-27}
+        marginTop={-5}
+        border
+        borderStyle="rounded"
+        borderColor={palette.accent}
+        backgroundColor={palette.bg}
+        padding={1}
+        flexDirection="column"
+        zIndex={40}
+        visible={commandPromptVisible()}
+        title=" Ex Command "
+        titleAlignment="center"
+      >
+        <text id="keymap-demo-ex-prompt-hint" fg={palette.textMuted} height={1}>
+          Tab complete  |  up/down select  |  enter run  |  esc close
+        </text>
+        <input
+          id="keymap-demo-ex-input"
+          ref={(value: InputRenderable) => {
+            commandInputRef = value
+          }}
+          width="100%"
+          value={commandPromptValue()}
+          placeholder=":write session.log"
+          backgroundColor={palette.surface}
+          focusedBackgroundColor={palette.surfaceFocus}
+          textColor={palette.title}
+          focusedTextColor={palette.title}
+          placeholderColor={palette.textMuted}
+          onInput={(value) => {
+            setCommandPromptValue(value)
+            setCommandPromptSelection(0)
+          }}
+          onKeyDown={onCommandPromptKeyDown}
+        />
+        <text id="keymap-demo-ex-prompt-usage" fg={selectedCommandPromptSuggestion() ? palette.text : palette.textMuted} height={1}>
+          {commandPromptUsage()}
+        </text>
+        <Show when={commandPromptSuggestions().length > 0} fallback={<text id="keymap-demo-ex-prompt-suggestions" fg={palette.textMuted}>(no suggestions)</text>}>
+          <For each={commandPromptSuggestions()}>
+            {(suggestion, index) => {
+              const isSelected = () => index() === Math.min(commandPromptSelection(), commandPromptSuggestions().length - 1)
+
+              return (
+                <text id={index() === 0 ? "keymap-demo-ex-prompt-suggestions" : undefined} fg={palette.text} height={1}>
+                  <span style={{ fg: isSelected() ? palette.leader : palette.textDim }}>{isSelected() ? "> " : "  "}</span>
+                  <span style={{ fg: isSelected() ? palette.title : palette.command, attributes: TextAttributes.BOLD }}>
+                    {suggestion.label}
+                  </span>
+                  <span style={{ fg: palette.separator }}>{"  "}</span>
+                  <span style={{ fg: palette.textMuted }}>{suggestion.desc}</span>
+                </text>
+              )
+            }}
+          </For>
+        </Show>
       </box>
     </box>
   )

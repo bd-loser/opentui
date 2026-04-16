@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { TextareaRenderable } from "../index.js"
+import { InputRenderable, TextareaRenderable } from "../index.js"
 import { getKeymapManager } from "../extras.js"
 import { createTestRenderer } from "../testing.js"
 import { destroy, run } from "./keymap-demo.js"
@@ -8,6 +8,10 @@ let testSetup: Awaited<ReturnType<typeof createTestRenderer>>
 
 function getEditor(id: string): TextareaRenderable {
   return testSetup.renderer.root.findDescendantById(id) as TextareaRenderable
+}
+
+function getInput(id: string): InputRenderable {
+  return testSetup.renderer.root.findDescendantById(id) as InputRenderable
 }
 
 function getRenderable(id: string) {
@@ -139,5 +143,35 @@ describe("keymap demo example", () => {
     expect(panels.y).toBe(subtitle.y + subtitle.height)
     expect(editors.y).toBe(panels.y + panels.height)
     expect(footer.y).toBe(editors.y + editors.height)
+  })
+
+  test("opens the ex prompt, autocompletes :reset, and runs it", async () => {
+    run(testSetup.renderer)
+    await testSetup.renderOnce()
+
+    testSetup.mockInput.pressKey("j")
+    await testSetup.renderOnce()
+    expect(testSetup.captureCharFrame()).toContain("Count: 1")
+
+    testSetup.mockInput.pressKey(":")
+    await testSetup.renderOnce()
+
+    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-ex-input")
+    expect(testSetup.captureCharFrame()).toContain("Ex Command")
+
+    testSetup.mockInput.pressKey("r")
+    await testSetup.renderOnce()
+    expect(testSetup.captureCharFrame()).toContain(":reset")
+
+    testSetup.mockInput.pressTab()
+    await testSetup.renderOnce()
+    expect(getInput("keymap-demo-ex-input").value).toBe(":reset")
+
+    testSetup.mockInput.pressEnter()
+    await testSetup.renderOnce()
+
+    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-alpha")
+    expect(testSetup.captureCharFrame()).toContain("Counters reset through :reset")
+    expect(testSetup.captureCharFrame()).toContain("Count: 0")
   })
 })

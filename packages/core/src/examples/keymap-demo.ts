@@ -1,5 +1,7 @@
 import {
   BoxRenderable,
+  InputRenderable,
+  InputRenderableEvents,
   ScrollBoxRenderable,
   TextRenderable,
   TextAttributes,
@@ -9,6 +11,7 @@ import {
   bold,
   fg,
   type CliRenderer,
+  type Renderable,
   type TextChunk,
 } from "../index.js"
 import {
@@ -72,6 +75,27 @@ const editorSpecs: readonly EditorSpec[] = [
   },
 ] as const
 
+type ExArgCount = "0" | "1" | "?" | "*" | "+"
+
+interface DemoExCommand {
+  name: string
+  aliases?: string[]
+  nargs?: ExArgCount
+  title: string
+  desc: string
+  category: string
+  usage: string
+  run: (ctx: { raw: string; args: string[] }) => void
+}
+
+interface ExPromptSuggestion {
+  label: string
+  insert: string
+  usage: string
+  desc: string
+  expectsArgs: boolean
+}
+
 let root: BoxRenderable | null = null
 let alphaPanel: BoxRenderable | null = null
 let betaPanel: BoxRenderable | null = null
@@ -79,6 +103,11 @@ let alphaText: TextRenderable | null = null
 let betaText: TextRenderable | null = null
 let editorFrames: BoxRenderable[] = []
 let editors: TextareaRenderable[] = []
+let commandPromptBox: BoxRenderable | null = null
+let commandPromptInput: InputRenderable | null = null
+let commandPromptHintText: TextRenderable | null = null
+let commandPromptUsageText: TextRenderable | null = null
+let commandPromptSuggestionsText: TextRenderable | null = null
 let statusFocusedText: TextRenderable | null = null
 let statusInfoText: TextRenderable | null = null
 let statusLeaderText: TextRenderable | null = null
@@ -96,6 +125,11 @@ let alphaCount = 0
 let betaCount = 0
 let helpVisible = true
 let leaderArmed = false
+let commandPromptVisible = false
+let commandPromptValue = ":"
+let commandPromptSelection = 0
+let commandPromptRestoreTarget: Renderable | null = null
+let commandPromptCommands: DemoExCommand[] = []
 let lastAction = "Click a panel or press Tab to start."
 let logLines: string[] = []
 let disposers: Array<() => void> = []
@@ -146,6 +180,121 @@ function getActiveKeyLabel(activeKey: KeymapActiveKey): string {
   )
 }
 
+function normalizeExPromptName(name: string): string {
+  const trimmed = name.trim()
+  if (!trimmed) {
+    return ":"
+  }
+
+  return trimmed.startsWith(":") ? trimmed : `:${trimmed}`
+}
+
+function parseExPromptInput(input: string): { raw: string; name: string; args: string[] } | null {
+  const normalized = normalizeExPromptName(input)
+  if (normalized === ":") {
+    return null
+  }
+
+  const parts = normalized.split(/\s+/)
+  const [name, ...args] = parts
+  if (!name) {
+    return null
+  }
+
+  return {
+    raw: normalized,
+    name,
+    args,
+  }
+}
+
+function validateExPromptArgs(command: DemoExCommand, args: string[]): boolean {
+  if (!command.nargs) {
+    return true
+  }
+
+  const count = args.length
+  if (command.nargs === "0") {
+    return count === 0
+  }
+
+  if (command.nargs === "1") {
+    return count === 1
+  }
+
+  if (command.nargs === "?") {
+    return count <= 1
+  }
+
+  if (command.nargs === "*") {
+    return true
+  }
+
+  if (command.nargs === "+") {
+    return count >= 1
+  }
+
+  return true
+}
+
+function buildExPromptSuggestions(commands: readonly DemoExCommand[]): ExPromptSuggestion[] {
+  const suggestions: ExPromptSuggestion[] = []
+
+  for (const command of commands) {
+    const names = [command.name, ...(command.aliases ?? [])]
+    for (const name of names) {
+      const label = normalizeExPromptName(name)
+      suggestions.push({
+        label,
+        insert: label,
+        usage: command.usage,
+        desc: command.desc,
+        expectsArgs: command.nargs !== "0",
+      })
+    }
+  }
+
+  return suggestions
+}
+
+function getExPromptSuggestions(): ExPromptSuggestion[] {
+  const query = (() => {
+    const normalized = normalizeExPromptName(commandPromptValue)
+    const spaceIndex = normalized.indexOf(" ")
+    return spaceIndex === -1 ? normalized : normalized.slice(0, spaceIndex)
+  })()
+
+  const suggestions = buildExPromptSuggestions(commandPromptCommands)
+  if (query === ":") {
+    return suggestions.slice(0, 4)
+  }
+
+  return suggestions.filter((suggestion) => suggestion.label.startsWith(query)).slice(0, 4)
+}
+
+function getSelectedExPromptSuggestion(): ExPromptSuggestion | null {
+  const suggestions = getExPromptSuggestions()
+  if (suggestions.length === 0) {
+    return null
+  }
+
+  const selectedIndex = Math.min(commandPromptSelection, suggestions.length - 1)
+  return suggestions[selectedIndex] ?? null
+}
+
+function setCommandPromptValue(value: string): void {
+  commandPromptValue = value
+  commandPromptSelection = 0
+
+  if (commandPromptInput && commandPromptInput.value !== value) {
+    commandPromptInput.value = value
+  }
+
+  if (commandPromptInput) {
+    commandPromptInput.cursorOffset = value.length
+  }
+}
+
 function addLog(message: string): void {
   if (logLines[0] === message) {
     return
@@ -159,6 +308,10 @@ function getFocusedEditorIndex(renderer: CliRenderer): number {
 }
 
 function getFocusedLabel(renderer: CliRenderer): string {
+  if (renderer.currentFocusedRenderable === commandPromptInput) {
+    return "Ex command prompt"
+  }
+
   if (renderer.currentFocusedRenderable === alphaPanel) {
     return "Alpha panel"
   }
@@ -176,6 +329,10 @@ function getFocusedLabel(renderer: CliRenderer): string {
 }
 
 function getFocusedColor(renderer: CliRenderer): string {
+  if (renderer.currentFocusedRenderable === commandPromptInput) {
+    return P.leader
+  }
+
   if (renderer.currentFocusedRenderable === alphaPanel) {
     return P.alpha
   }
@@ -196,6 +353,110 @@ function setStatus(renderer: CliRenderer, message: string): void {
   lastAction = message
   addLog(message)
   renderAll(renderer)
+}
+
+function restoreCommandPromptFocus(target: Renderable | null): void {
+  if (target && !target.isDestroyed) {
+    target.focus()
+    return
+  }
+
+  if (alphaPanel && !alphaPanel.isDestroyed) {
+    alphaPanel.focus()
+  }
+}
+
+function hideCommandPrompt(): void {
+  commandPromptVisible = false
+  commandPromptValue = ":"
+  commandPromptSelection = 0
+}
+
+function closeCommandPrompt(renderer: CliRenderer, message: string): void {
+  const restoreTarget = commandPromptRestoreTarget
+  hideCommandPrompt()
+  commandPromptRestoreTarget = null
+  restoreCommandPromptFocus(restoreTarget)
+  setStatus(renderer, message)
+}
+
+function applyCommandPromptSuggestion(renderer: CliRenderer, direction?: 1 | -1): void {
+  const suggestions = getExPromptSuggestions()
+  if (suggestions.length === 0) {
+    return
+  }
+
+  if (direction) {
+    commandPromptSelection = (commandPromptSelection + direction + suggestions.length) % suggestions.length
+  }
+
+  const suggestion = getSelectedExPromptSuggestion()
+  if (!suggestion) {
+    return
+  }
+
+  const normalized = normalizeExPromptName(commandPromptValue)
+  const spaceIndex = normalized.indexOf(" ")
+  const rest = spaceIndex === -1 ? "" : normalized.slice(spaceIndex + 1).trimStart()
+  const nextValue = rest
+    ? `${suggestion.insert} ${rest}`
+    : suggestion.expectsArgs
+      ? `${suggestion.insert} `
+      : suggestion.insert
+
+  setCommandPromptValue(nextValue)
+  renderAll(renderer)
+}
+
+function moveCommandPromptSelection(renderer: CliRenderer, direction: 1 | -1): void {
+  const suggestions = getExPromptSuggestions()
+  if (suggestions.length === 0) {
+    return
+  }
+
+  commandPromptSelection = (commandPromptSelection + direction + suggestions.length) % suggestions.length
+  renderAll(renderer)
+}
+
+function executeCommandPrompt(renderer: CliRenderer): void {
+  const parsed = parseExPromptInput(commandPromptValue)
+  if (!parsed) {
+    closeCommandPrompt(renderer, "Closed ex prompt")
+    return
+  }
+
+  const command = commandPromptCommands.find((candidate) => {
+    const names = [candidate.name, ...(candidate.aliases ?? [])]
+    return names.some((name) => normalizeExPromptName(name) === parsed.name)
+  })
+
+  if (!command) {
+    setStatus(renderer, `Unknown ex command ${parsed.name}`)
+    return
+  }
+
+  if (!validateExPromptArgs(command, parsed.args)) {
+    setStatus(renderer, `Usage: ${command.usage}`)
+    return
+  }
+
+  const restoreTarget = commandPromptRestoreTarget
+  hideCommandPrompt()
+  commandPromptRestoreTarget = null
+  restoreCommandPromptFocus(restoreTarget)
+  command.run({ raw: parsed.raw, args: parsed.args })
+}
+
+function openCommandPrompt(renderer: CliRenderer): void {
+  if (commandPromptVisible) {
+    return
+  }
+
+  commandPromptVisible = true
+  commandPromptRestoreTarget = renderer.currentFocusedRenderable
+  setCommandPromptValue(":")
+  commandPromptInput?.focus()
+  setStatus(renderer, "Opened ex prompt")
 }
 
 function getFocusableTargets(): Array<BoxRenderable | TextareaRenderable> {
@@ -279,11 +540,74 @@ function buildHelpContent(): StyledText {
       fg(P.textDim)(": switch panels and editors"),
     ]),
     styledLine([
-      fg(P.textDim)(
-        "Panels use local j/k/enter. Focused textareas route default shortcuts through keymap; plain typing still inserts directly.",
-      ),
+      fg(P.textDim)("Panels use local j/k/enter. "),
+      bold(fg(P.key)(":")),
+      fg(P.textDim)(" opens the ex prompt."),
     ]),
   ])
+}
+
+function buildCommandPromptUsage(): StyledText {
+  const selected = getSelectedExPromptSuggestion()
+  if (!selected) {
+    return joinLines([styledLine([fg(P.textMuted)("No matching ex commands")])])
+  }
+
+  return joinLines([
+    styledLine([
+      fg(P.textDim)("Usage: "),
+      bold(fg(P.accent)(selected.usage)),
+      fg(P.separator)("  |  "),
+      fg(P.textMuted)(selected.desc),
+    ]),
+  ])
+}
+
+function buildCommandPromptSuggestions(): StyledText {
+  const suggestions = getExPromptSuggestions()
+  if (suggestions.length === 0) {
+    return joinLines([styledLine([fg(P.textMuted)("(no suggestions)")])])
+  }
+
+  return joinLines(
+    suggestions.map((suggestion, index) => {
+      const isSelected = index === Math.min(commandPromptSelection, suggestions.length - 1)
+      return styledLine([
+        fg(isSelected ? P.leader : P.textDim)(isSelected ? "> " : "  "),
+        bold(fg(isSelected ? P.title : P.command)(suggestion.label)),
+        fg(P.separator)("  "),
+        fg(P.textMuted)(suggestion.desc),
+      ])
+    }),
+  )
+}
+
+function renderCommandPrompt(): void {
+  if (commandPromptBox) {
+    commandPromptBox.visible = commandPromptVisible
+  }
+
+  if (commandPromptHintText) {
+    commandPromptHintText.content = joinLines([
+      styledLine([
+        fg(P.textMuted)("Tab complete"),
+        fg(P.separator)("  |  "),
+        fg(P.textMuted)("up/down select"),
+        fg(P.separator)("  |  "),
+        fg(P.textMuted)("enter run"),
+        fg(P.separator)("  |  "),
+        fg(P.textMuted)("esc close"),
+      ]),
+    ])
+  }
+
+  if (commandPromptUsageText) {
+    commandPromptUsageText.content = buildCommandPromptUsage()
+  }
+
+  if (commandPromptSuggestionsText) {
+    commandPromptSuggestionsText.content = buildCommandPromptSuggestions()
+  }
 }
 
 function buildWhichKeyEntries(): StyledText {
@@ -416,6 +740,8 @@ function renderStatus(renderer: CliRenderer): void {
   if (logText) {
     logText.content = buildLogContent()
   }
+
+  renderCommandPrompt()
 }
 
 function renderAll(renderer: CliRenderer): void {
@@ -461,6 +787,15 @@ function registerKeymaps(renderer: CliRenderer): void {
         },
       },
       {
+        name: "open-ex-prompt",
+        title: "Open ex prompt",
+        desc: "Open ex prompt",
+        category: "Ex",
+        run() {
+          openCommandPrompt(renderer)
+        },
+      },
+      {
         name: "alpha-up",
         title: "Alpha +1",
         desc: "Alpha +1",
@@ -503,33 +838,42 @@ function registerKeymaps(renderer: CliRenderer): void {
     ]),
   )
 
+  commandPromptCommands = [
+    {
+      name: "reset",
+      aliases: ["r"],
+      nargs: "0",
+      title: "Reset counters",
+      desc: "Reset counters",
+      category: "Session",
+      usage: ":reset",
+      run() {
+        alphaCount = 0
+        betaCount = 0
+        setStatus(renderer, "Counters reset through :reset")
+      },
+    },
+    {
+      name: "write",
+      aliases: ["w"],
+      nargs: "1",
+      title: "Write file",
+      desc: "Write file",
+      category: "File",
+      usage: ":write <file>",
+      run({ args }) {
+        setStatus(renderer, `Wrote ${args[0]}`)
+      },
+    },
+  ]
+
   disposers.push(
-    registerExCommands(manager, [
-      {
-        name: "reset",
-        aliases: ["r"],
-        nargs: "0",
-        title: "Reset counters",
-        desc: "Reset counters",
-        category: "Session",
-        run() {
-          alphaCount = 0
-          betaCount = 0
-          setStatus(renderer, "Counters reset through :reset")
-        },
-      },
-      {
-        name: "write",
-        aliases: ["w"],
-        nargs: "1",
-        title: "Write file",
-        desc: "Write file",
-        category: "File",
-        run({ args }) {
-          setStatus(renderer, `Wrote ${args[0]}`)
-        },
-      },
-    ]),
+    registerExCommands(
+      manager,
+      commandPromptCommands.map(({ usage: _usage, ...command }) => {
+        return command
+      }),
+    ),
   )
 
   disposers.push(
@@ -549,6 +893,7 @@ function registerKeymaps(renderer: CliRenderer): void {
   disposers.push(
     manager.registerLayer({
       scope: "global",
+      enabled: () => !commandPromptVisible,
       bindings: [
         { key: "tab", cmd: "focus-next", desc: "Next target" },
         { key: "shift+tab", cmd: "focus-prev", desc: "Previous target" },
@@ -562,9 +907,17 @@ function registerKeymaps(renderer: CliRenderer): void {
   )
 
   disposers.push(
+    manager.registerLayer({
+      scope: "global",
+      enabled: () => !commandPromptVisible,
+      bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }],
+    }),
+  )
+
+  disposers.push(
     registerManagedTextareaLayer(manager, {
       scope: "global",
-      enabled: () => manager.renderer.currentFocusedEditor !== null,
+      enabled: () => !commandPromptVisible && manager.renderer.currentFocusedEditor !== null,
       bindings: [
         { key: "left", cmd: "move-left", desc: "Cursor left" },
         { key: "right", cmd: "move-right", desc: "Cursor right" },
@@ -621,6 +974,11 @@ export function run(renderer: CliRenderer): void {
   betaCount = 0
   helpVisible = true
   leaderArmed = false
+  commandPromptVisible = false
+  commandPromptValue = ":"
+  commandPromptSelection = 0
+  commandPromptRestoreTarget = null
+  commandPromptCommands = []
   lastAction = "Click a panel or press Tab to start."
   logLines = []
   editorFrames = []
@@ -646,7 +1004,7 @@ export function run(renderer: CliRenderer): void {
 
   const subtitle = new TextRenderable(renderer, {
     id: "keymap-demo-subtitle",
-    content: "Original Alpha/Beta panels plus three switchable textareas.",
+    content: "Original Alpha/Beta panels, three switchable textareas, and a centered : prompt.",
     fg: P.textMuted,
     height: 1,
   })
@@ -869,9 +1227,114 @@ export function run(renderer: CliRenderer): void {
   })
   whichKeyScrollBox.add(whichKeyEntriesText)
 
+  commandPromptBox = new BoxRenderable(renderer, {
+    id: "keymap-demo-ex-prompt",
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: 54,
+    height: 9,
+    marginLeft: -27,
+    marginTop: -5,
+    border: true,
+    borderStyle: "rounded",
+    borderColor: P.accent,
+    backgroundColor: P.bg,
+    padding: 1,
+    flexDirection: "column",
+    zIndex: 40,
+    visible: false,
+    title: " Ex Command ",
+    titleAlignment: "center",
+  })
+  root.add(commandPromptBox)
+
+  commandPromptHintText = new TextRenderable(renderer, {
+    id: "keymap-demo-ex-prompt-hint",
+    content: "",
+    fg: P.textMuted,
+    height: 1,
+  })
+  commandPromptBox.add(commandPromptHintText)
+
+  commandPromptInput = new InputRenderable(renderer, {
+    id: "keymap-demo-ex-input",
+    width: "100%",
+    value: ":",
+    placeholder: ":write session.log",
+    backgroundColor: P.surface,
+    focusedBackgroundColor: P.surfaceFocus,
+    textColor: P.title,
+    focusedTextColor: P.title,
+    placeholderColor: P.textMuted,
+  })
+  commandPromptBox.add(commandPromptInput)
+
+  commandPromptUsageText = new TextRenderable(renderer, {
+    id: "keymap-demo-ex-prompt-usage",
+    content: "",
+    fg: P.text,
+    height: 1,
+  })
+  commandPromptBox.add(commandPromptUsageText)
+
+  commandPromptSuggestionsText = new TextRenderable(renderer, {
+    id: "keymap-demo-ex-prompt-suggestions",
+    content: "",
+    fg: P.text,
+  })
+  commandPromptBox.add(commandPromptSuggestionsText)
+
+  commandPromptInput.on(InputRenderableEvents.INPUT, (value: string) => {
+    commandPromptValue = value
+    commandPromptSelection = 0
+    renderAll(renderer)
+  })
+
+  commandPromptInput.onKeyDown = (event) => {
+    if (!commandPromptVisible) {
+      return
+    }
+
+    if (event.name === "escape") {
+      event.preventDefault()
+      event.stopPropagation()
+      closeCommandPrompt(renderer, "Closed ex prompt")
+      return
+    }
+
+    if (event.name === "up") {
+      event.preventDefault()
+      event.stopPropagation()
+      moveCommandPromptSelection(renderer, -1)
+      return
+    }
+
+    if (event.name === "down") {
+      event.preventDefault()
+      event.stopPropagation()
+      moveCommandPromptSelection(renderer, 1)
+      return
+    }
+
+    if (event.name === "tab") {
+      event.preventDefault()
+      event.stopPropagation()
+      applyCommandPromptSuggestion(renderer, event.shift ? -1 : undefined)
+      return
+    }
+
+    if (event.name === "return") {
+      event.preventDefault()
+      event.stopPropagation()
+      executeCommandPrompt(renderer)
+    }
+  }
+
   registerKeymaps(renderer)
   addLog("Tab switches focus across panels and editors.")
   addLog("ctrl+x arms the leader extension.")
+  addLog(": opens the centered ex prompt.")
   renderAll(renderer)
   alphaPanel.focus()
   setStatus(renderer, "Focused Alpha panel")
@@ -895,6 +1358,11 @@ export function destroy(_renderer: CliRenderer): void {
   betaText = null
   editorFrames = []
   editors = []
+  commandPromptBox = null
+  commandPromptInput = null
+  commandPromptHintText = null
+  commandPromptUsageText = null
+  commandPromptSuggestionsText = null
   statusFocusedText = null
   statusInfoText = null
   statusLeaderText = null
@@ -906,6 +1374,11 @@ export function destroy(_renderer: CliRenderer): void {
   whichKeyEntriesText = null
   logBox = null
   logText = null
+  commandPromptVisible = false
+  commandPromptValue = ":"
+  commandPromptSelection = 0
+  commandPromptRestoreTarget = null
+  commandPromptCommands = []
   lastAction = "Click a panel or press Tab to start."
   logLines = []
 }

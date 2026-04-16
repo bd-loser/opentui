@@ -254,10 +254,7 @@ export abstract class Renderable extends BaseRenderable {
   private childrenSortedByPrimaryAxis: Renderable[] = []
   private _shouldUpdateBefore: Set<Renderable> = new Set()
 
-  // Frame id of the last updateFromLayout() call. Used to dedupe redundant
-  // refreshes within a single render loop iteration. -1 is a sentinel that
-  // never matches a real frameId so the first call in a renderable's life
-  // always runs.
+  // Frame id of the last updateFromLayout(); -1 ensures the first call runs.
   private _lastLayoutFrame: number = -1
 
   public onLifecyclePass: (() => void) | null = null
@@ -1069,13 +1066,7 @@ export abstract class Renderable extends BaseRenderable {
   }
 
   public updateFromLayout(): void {
-    // Within a single render loop iteration yoga's computed layout does not
-    // change, so running the full refresh (which crosses the wasm FFI
-    // boundary via getComputedLayout) more than once per frame is wasted
-    // work. A parent that does viewport culling pre-refreshes each child's
-    // layout before reading its screen coordinates; when that child's own
-    // updateLayout() subsequently calls updateFromLayout() we want to
-    // short-circuit.
+    // Yoga layout is stable within a frame; skip the FFI round-trip on repeat calls.
     const frameId = this._ctx.frameId
     if (this._lastLayoutFrame === frameId) return
     this._lastLayoutFrame = frameId
@@ -1422,17 +1413,10 @@ export abstract class Renderable extends BaseRenderable {
         child.updateLayout(deltaTime, renderList)
       }
     } else {
-      // Viewport culling reads each child's cached screenY/screenX (and the
-      // primary-axis sort used for binary search). Before yoga's freshly
-      // computed positions can be observed, every child has to run
-      // updateFromLayout() for this frame -- otherwise we cull against last
-      // frame's coordinates and briefly drop content that just shifted due
-      // to a sibling resizing (e.g. a streaming code block, a diff landing,
-      // a new message being appended to a sticky-bottom scrollbox).
-      //
-      // updateFromLayout() is guarded by _lastLayoutFrame so the later
-      // call inside each visible child's updateLayout() is a no-op; we
-      // still only cross the wasm boundary once per child per frame.
+      // Refresh every child's layout before culling reads their screen
+      // coordinates; otherwise culling runs against last frame's positions
+      // and drops content that shifted this frame. The per-frame guard in
+      // updateFromLayout keeps this at one FFI call per child per frame.
       for (const child of this._childrenInZIndexOrder) {
         if (child.isDestroyed) continue
         child.updateFromLayout()

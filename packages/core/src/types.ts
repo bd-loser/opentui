@@ -74,13 +74,7 @@ export interface RenderContext extends EventEmitter {
   clearHitGridScissorRects: () => void
   width: number
   height: number
-  /**
-   * Monotonically increasing frame id, bumped once per render loop iteration
-   * before the tree walk. Used by `Renderable.updateFromLayout()` to dedupe
-   * redundant calls within the same frame (e.g. when a parent pre-refreshes
-   * children's layout for viewport culling and the child's own updateLayout
-   * would otherwise refresh again).
-   */
+  /** Monotonic, bumped once per `loop()` iteration. Lets renderables dedupe per-frame work. */
   frameId: number
   requestRender: () => void
   setCursorPosition: (x: number, y: number, visible: boolean) => void

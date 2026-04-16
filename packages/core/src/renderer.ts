@@ -531,8 +531,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private renderTimeout: TimerHandle | null = null
   private lastTime: number = 0
   private frameCount: number = 0
-  // Monotonic frame id, bumped once at the start of each loop() iteration so
-  // renderables can dedupe per-frame work (see Renderable.updateFromLayout).
+  // Bumped once per loop() iteration; see RenderContext.frameId.
   private _frameId: number = 0
   private lastFpsTime: number = 0
   private currentFps: number = 0
@@ -2346,9 +2345,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.renderTimeout = null
     }
     try {
-      // Bump the per-loop frame id before any work runs so anything that
-      // reads ctx.frameId during this iteration (frame callbacks, layout
-      // refresh during root.render, etc.) observes the same new value.
+      // Bump before any work so all callers this iteration see the new id.
       this._frameId++
 
       const now = this.normalizeClockTime(this.clock.now(), this.lastTime)

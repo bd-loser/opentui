@@ -44,7 +44,6 @@ import type {
   KeyLike,
   ActionMapLayer,
   ActionMapLayerFieldCompiler,
-  ActionMapOptions,
   ActionMapRawInputContext,
   ActionMapResolvedBindingCommand,
   ActionMapScope,
@@ -379,7 +378,7 @@ export class ActionMap {
   private readonly rawListener: (sequence: string) => boolean
   private readonly focusedRenderableListener: (focused: Renderable | null) => void
 
-  constructor(renderer: CliRenderer, _options?: ActionMapOptions) {
+  constructor(renderer: CliRenderer) {
     this.renderer = renderer
     this.hooks = new Emitter<ActionMapHooks>((name, error) => {
       this.reportHookError(name, error)
@@ -409,8 +408,6 @@ export class ActionMap {
   public get isDestroyed(): boolean {
     return this.destroyed
   }
-
-  public applyOptions(_options?: ActionMapOptions): void {}
 
   public destroy(): void {
     if (this.destroyed) {
@@ -3512,18 +3509,17 @@ export class ActionMap {
   }
 }
 
-export function getActionMap(renderer: CliRenderer, options?: ActionMapOptions): ActionMap {
+export function getActionMap(renderer: CliRenderer): ActionMap {
   const existing = actionMapsByRenderer.get(renderer)
   if (existing) {
     if (existing.isDestroyed) {
       actionMapsByRenderer.delete(renderer)
     } else {
-      existing.applyOptions(options)
       return existing
     }
   }
 
-  const manager = new ActionMap(renderer, options)
+  const manager = new ActionMap(renderer)
   actionMapsByRenderer.set(renderer, manager)
 
   renderer.once("destroy", () => {

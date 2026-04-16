@@ -60,7 +60,6 @@ export type {
   ActionMapLayerFields,
   ActionMapLayer,
   ActionMapEvents,
-  ActionMapOptions,
   ActionMapParsedCommand,
   ActionMapRawInputContext,
   ActionMapUnresolvedCommandContext,

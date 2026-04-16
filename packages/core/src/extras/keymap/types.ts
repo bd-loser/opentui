@@ -70,6 +70,7 @@ export type KeymapCommandFilter =
   | ((command: KeymapCommandRecord) => boolean)
 
 export interface KeymapCommandQuery {
+  namespace?: string | readonly string[]
   search?: string
   searchIn?: readonly string[]
   filter?: KeymapCommandFilter

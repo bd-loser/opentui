@@ -649,6 +649,7 @@ export class KeymapManager {
   public getCommands(query?: KeymapCommandQuery): readonly KeymapCommandRecord[] {
     this.assertNotDestroyed()
 
+    const namespace = query?.namespace
     const normalizedSearch = query?.search?.trim().toLowerCase() ?? ""
     const searchKeys = query?.searchIn && query.searchIn.length > 0 ? query.searchIn : DEFAULT_COMMAND_SEARCH_FIELDS
     const filter = query?.filter
@@ -664,6 +665,10 @@ export class KeymapManager {
     const results: KeymapCommandRecord[] = []
 
     for (const command of this.commands.values()) {
+      if (!this.commandMatchesNamespace(command, namespace)) {
+        continue
+      }
+
       if (!this.commandMatchesSearch(command, normalizedSearch, searchKeys)) {
         continue
       }
@@ -1481,6 +1486,18 @@ export class KeymapManager {
     }
 
     return false
+  }
+
+  private commandMatchesNamespace(command: RegisteredCommand, namespace: string | readonly string[] | undefined): boolean {
+    if (namespace === undefined) {
+      return true
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(command.fields, "namespace")) {
+      return false
+    }
+
+    return this.commandValueMatchesFilter(command.fields.namespace, namespace)
   }
 
   private commandMatchesFilters(

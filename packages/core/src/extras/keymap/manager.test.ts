@@ -1871,7 +1871,7 @@ describe("keymap", () => {
     expect(manager.getCommands()).toEqual([])
   })
 
-  test("getCommands returns isolated metadata records across repeated reads", () => {
+  test("getCommands returns immutable metadata records across repeated reads", () => {
     const manager = getKeymapManager(renderer)
 
     manager.registerCommands([
@@ -1884,10 +1884,15 @@ describe("keymap", () => {
 
     const first = getCommand(manager, "save-current")
     expect(first).toBeDefined()
+    expect(Object.isFrozen(first!.fields)).toBe(true)
+    expect(Object.isFrozen(first!.fields.tags as object)).toBe(true)
 
-    ;(first!.fields.tags as string[]).push("mutated")
+    expect(() => {
+      ;(first!.fields.tags as string[]).push("mutated")
+    }).toThrow()
 
     const second = getCommand(manager, "save-current")
+    expect(second).toBe(first)
     expect(second).toEqual({
       name: "save-current",
       fields: {

@@ -40,6 +40,7 @@ export type {
   KeymapCommandQuery,
   KeymapCommandQueryValue,
   KeymapCommandRecord,
+  KeymapRunCommandOptions,
   KeymapCommandHandler,
   KeymapCommandInfo,
   KeymapCommandFieldCompiler,

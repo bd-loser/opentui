@@ -22,6 +22,7 @@ import {
   registerMetadataFields,
   registerTimedLeader,
   type KeymapActiveKey,
+  type KeymapCommandRecord,
   type KeymapManager,
   stringifyKeySequence,
   stringifyKeyStroke,
@@ -77,17 +78,6 @@ const editorSpecs: readonly EditorSpec[] = [
 
 type ExArgCount = "0" | "1" | "?" | "*" | "+"
 
-interface DemoExCommand {
-  name: string
-  aliases?: string[]
-  nargs?: ExArgCount
-  title: string
-  desc: string
-  category: string
-  usage: string
-  run: (ctx: { raw: string; args: string[] }) => void
-}
-
 interface ExPromptSuggestion {
   label: string
   insert: string
@@ -136,7 +126,6 @@ let commandPromptVisible = false
 let commandPromptValue = ":"
 let commandPromptSelection = 0
 let commandPromptRestoreTarget: Renderable | null = null
-let commandPromptCommands: DemoExCommand[] = []
 let lastAction = "Click a panel or press Tab to start."
 let logLines: string[] = []
 let disposers: Array<() => void> = []
@@ -215,50 +204,65 @@ function parseExPromptInput(input: string): { raw: string; name: string; args: s
   }
 }
 
-function validateExPromptArgs(command: DemoExCommand, args: string[]): boolean {
-  if (!command.nargs) {
+function getExPromptCommandFieldText(command: KeymapCommandRecord, fieldName: string): string | undefined {
+  return getMetadataText(command.fields[fieldName])
+}
+
+function getExPromptCommandNargs(command: KeymapCommandRecord): ExArgCount | undefined {
+  const value = command.fields.nargs
+  if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
+    return value
+  }
+
+  return undefined
+}
+
+function getExPromptCommands(): readonly KeymapCommandRecord[] {
+  return keymapManager?.getCommands({ namespace: "excommands" }) ?? []
+}
+
+function validateExPromptArgs(command: KeymapCommandRecord, args: string[]): boolean {
+  const nargs = getExPromptCommandNargs(command)
+  if (!nargs) {
     return true
   }
 
   const count = args.length
-  if (command.nargs === "0") {
+  if (nargs === "0") {
     return count === 0
   }
 
-  if (command.nargs === "1") {
+  if (nargs === "1") {
     return count === 1
   }
 
-  if (command.nargs === "?") {
+  if (nargs === "?") {
     return count <= 1
   }
 
-  if (command.nargs === "*") {
+  if (nargs === "*") {
     return true
   }
 
-  if (command.nargs === "+") {
+  if (nargs === "+") {
     return count >= 1
   }
 
   return true
 }
 
-function buildExPromptSuggestions(commands: readonly DemoExCommand[]): ExPromptSuggestion[] {
+function buildExPromptSuggestions(commands: readonly KeymapCommandRecord[]): ExPromptSuggestion[] {
   const suggestions: ExPromptSuggestion[] = []
 
   for (const command of commands) {
-    const names = [command.name, ...(command.aliases ?? [])]
-    for (const name of names) {
-      const label = normalizeExPromptName(name)
-      suggestions.push({
-        label,
-        insert: label,
-        usage: command.usage,
-        desc: command.desc,
-        expectsArgs: command.nargs !== "0",
-      })
-    }
+    const label = normalizeExPromptName(command.name)
+    suggestions.push({
+      label,
+      insert: label,
+      usage: getExPromptCommandFieldText(command, "usage") ?? label,
+      desc: getExPromptCommandFieldText(command, "desc") ?? "",
+      expectsArgs: getExPromptCommandNargs(command) !== "0",
+    })
   }
 
   return suggestions
@@ -271,7 +275,7 @@ function getExPromptSuggestions(): ExPromptSuggestion[] {
     return spaceIndex === -1 ? normalized : normalized.slice(0, spaceIndex)
   })()
 
-  const suggestions = buildExPromptSuggestions(commandPromptCommands)
+  const suggestions = buildExPromptSuggestions(getExPromptCommands())
   if (query === ":") {
     return suggestions.slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
   }
@@ -436,10 +440,7 @@ function executeCommandPrompt(renderer: CliRenderer): void {
     return
   }
 
-  const command = commandPromptCommands.find((candidate) => {
-    const names = [candidate.name, ...(candidate.aliases ?? [])]
-    return names.some((name) => normalizeExPromptName(name) === parsed.name)
-  })
+  const command = getExPromptCommands().find((candidate) => candidate.name === parsed.name)
 
   if (!command) {
     setStatus(renderer, `Unknown ex command ${parsed.name}`)
@@ -447,7 +448,7 @@ function executeCommandPrompt(renderer: CliRenderer): void {
   }
 
   if (!validateExPromptArgs(command, parsed.args)) {
-    setStatus(renderer, `Usage: ${command.usage}`)
+    setStatus(renderer, `Usage: ${getExPromptCommandFieldText(command, "usage") ?? parsed.name}`)
     return
   }
 
@@ -455,7 +456,7 @@ function executeCommandPrompt(renderer: CliRenderer): void {
   hideCommandPrompt()
   commandPromptRestoreTarget = null
   restoreCommandPromptFocus(restoreTarget)
-  command.run({ raw: parsed.raw, args: parsed.args })
+  keymapManager?.runCommand(parsed.raw)
 }
 
 function openCommandPrompt(renderer: CliRenderer): void {
@@ -860,42 +861,35 @@ function registerKeymaps(renderer: CliRenderer): void {
     ]),
   )
 
-  commandPromptCommands = [
-    {
-      name: "reset",
-      aliases: ["r"],
-      nargs: "0",
-      title: "Reset counters",
-      desc: "Reset counters",
-      category: "Session",
-      usage: ":reset",
-      run() {
-        alphaCount = 0
-        betaCount = 0
-        setStatus(renderer, "Counters reset through :reset")
-      },
-    },
-    {
-      name: "write",
-      aliases: ["w"],
-      nargs: "1",
-      title: "Write file",
-      desc: "Write file",
-      category: "File",
-      usage: ":write <file>",
-      run({ args }) {
-        setStatus(renderer, `Wrote ${args[0]}`)
-      },
-    },
-  ]
-
   disposers.push(
-    registerExCommands(
-      manager,
-      commandPromptCommands.map(({ usage: _usage, ...command }) => {
-        return command
-      }),
-    ),
+    registerExCommands(manager, [
+      {
+        name: "reset",
+        aliases: ["r"],
+        nargs: "0",
+        title: "Reset counters",
+        desc: "Reset counters",
+        category: "Session",
+        usage: ":reset",
+        run() {
+          alphaCount = 0
+          betaCount = 0
+          setStatus(renderer, "Counters reset through :reset")
+        },
+      },
+      {
+        name: "write",
+        aliases: ["w"],
+        nargs: "1",
+        title: "Write file",
+        desc: "Write file",
+        category: "File",
+        usage: ":write <file>",
+        run({ args }) {
+          setStatus(renderer, `Wrote ${args[0]}`)
+        },
+      },
+    ]),
   )
 
   disposers.push(
@@ -1000,7 +994,6 @@ export function run(renderer: CliRenderer): void {
   commandPromptValue = ":"
   commandPromptSelection = 0
   commandPromptRestoreTarget = null
-  commandPromptCommands = []
   lastAction = "Click a panel or press Tab to start."
   logLines = []
   editorFrames = []
@@ -1422,7 +1415,6 @@ export function destroy(_renderer: CliRenderer): void {
   commandPromptValue = ":"
   commandPromptSelection = 0
   commandPromptRestoreTarget = null
-  commandPromptCommands = []
   lastAction = "Click a panel or press Tab to start."
   logLines = []
 }

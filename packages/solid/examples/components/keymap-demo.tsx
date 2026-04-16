@@ -15,6 +15,7 @@ import {
   stringifyKeySequence,
   stringifyKeyStroke,
   type KeymapActiveKey,
+  type KeymapCommandRecord,
 } from "@opentui/core/extras"
 import { render, useActiveKeys, useKeymap, useKeymappings, usePendingSequenceParts, useRenderer } from "@opentui/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
@@ -123,56 +124,67 @@ function parseExPromptInput(input: string): { raw: string; name: string; args: s
   }
 }
 
-function validateExPromptArgs(command: DemoExCommand, args: string[]): boolean {
-  if (!command.nargs) {
+function getExPromptCommandFieldText(command: KeymapCommandRecord, fieldName: string): string | undefined {
+  return getMetadataText(command.fields[fieldName])
+}
+
+function getExPromptCommandNargs(command: KeymapCommandRecord): ExArgCount | undefined {
+  const value = command.fields.nargs
+  if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
+    return value
+  }
+
+  return undefined
+}
+
+function validateExPromptArgs(command: KeymapCommandRecord, args: string[]): boolean {
+  const nargs = getExPromptCommandNargs(command)
+  if (!nargs) {
     return true
   }
 
   const count = args.length
-  if (command.nargs === "0") {
+  if (nargs === "0") {
     return count === 0
   }
 
-  if (command.nargs === "1") {
+  if (nargs === "1") {
     return count === 1
   }
 
-  if (command.nargs === "?") {
+  if (nargs === "?") {
     return count <= 1
   }
 
-  if (command.nargs === "*") {
+  if (nargs === "*") {
     return true
   }
 
-  if (command.nargs === "+") {
+  if (nargs === "+") {
     return count >= 1
   }
 
   return true
 }
 
-function buildExPromptSuggestions(commands: readonly DemoExCommand[]): ExPromptSuggestion[] {
+function buildExPromptSuggestions(commands: readonly KeymapCommandRecord[]): ExPromptSuggestion[] {
   const suggestions: ExPromptSuggestion[] = []
 
   for (const command of commands) {
-    const names = [command.name, ...(command.aliases ?? [])]
-    for (const name of names) {
-      const label = normalizeExPromptName(name)
-      suggestions.push({
-        label,
-        insert: label,
-        usage: command.usage,
-        desc: command.desc,
-        expectsArgs: command.nargs !== "0",
-      })
-    }
+    const label = normalizeExPromptName(command.name)
+    suggestions.push({
+      label,
+      insert: label,
+      usage: getExPromptCommandFieldText(command, "usage") ?? label,
+      desc: getExPromptCommandFieldText(command, "desc") ?? "",
+      expectsArgs: getExPromptCommandNargs(command) !== "0",
+    })
   }
 
   return suggestions
 }
 
-function getExPromptSuggestions(commands: readonly DemoExCommand[], value: string): ExPromptSuggestion[] {
+function getExPromptSuggestions(commands: readonly KeymapCommandRecord[], value: string): ExPromptSuggestion[] {
   const normalized = normalizeExPromptName(value)
   const spaceIndex = normalized.indexOf(" ")
   const query = spaceIndex === -1 ? normalized : normalized.slice(0, spaceIndex)
@@ -186,7 +198,7 @@ function getExPromptSuggestions(commands: readonly DemoExCommand[], value: strin
 }
 
 function getSelectedExPromptSuggestion(
-  commands: readonly DemoExCommand[],
+  commands: readonly KeymapCommandRecord[],
   value: string,
   selection: number,
 ): ExPromptSuggestion | null {
@@ -199,7 +211,7 @@ function getSelectedExPromptSuggestion(
 }
 
 function moveExPromptSelection(
-  commands: readonly DemoExCommand[],
+  commands: readonly KeymapCommandRecord[],
   value: string,
   selection: number,
   direction: 1 | -1,
@@ -214,7 +226,7 @@ function moveExPromptSelection(
 }
 
 function applyExPromptSuggestion(
-  commands: readonly DemoExCommand[],
+  commands: readonly KeymapCommandRecord[],
   value: string,
   selection: number,
   direction?: 1 | -1,
@@ -574,8 +586,13 @@ export default function KeymapDemo() {
     }),
   )
 
+  const discoveredExCommands = createMemo(() => {
+    commandPromptVisible()
+    return manager.getCommands({ namespace: "excommands" })
+  })
+
   const commandPromptSuggestions = createMemo(() => {
-    return getExPromptSuggestions(exCommands, commandPromptValue())
+    return getExPromptSuggestions(discoveredExCommands(), commandPromptValue())
   })
 
   const commandPromptSuggestionRows = createMemo(() => {
@@ -583,7 +600,7 @@ export default function KeymapDemo() {
   })
 
   const selectedCommandPromptSuggestion = createMemo(() => {
-    return getSelectedExPromptSuggestion(exCommands, commandPromptValue(), commandPromptSelection())
+    return getSelectedExPromptSuggestion(discoveredExCommands(), commandPromptValue(), commandPromptSelection())
   })
 
   const commandPromptUsage = createMemo(() => {
@@ -597,12 +614,12 @@ export default function KeymapDemo() {
 
   const moveCommandPromptSelection = (direction: 1 | -1) => {
     setCommandPromptSelection((current) => {
-      return moveExPromptSelection(exCommands, commandPromptValue(), current, direction)
+      return moveExPromptSelection(discoveredExCommands(), commandPromptValue(), current, direction)
     })
   }
 
   const applyCommandPromptSuggestion = (direction?: 1 | -1) => {
-    const result = applyExPromptSuggestion(exCommands, commandPromptValue(), commandPromptSelection(), direction)
+    const result = applyExPromptSuggestion(discoveredExCommands(), commandPromptValue(), commandPromptSelection(), direction)
     if (!result) {
       return
     }
@@ -619,10 +636,7 @@ export default function KeymapDemo() {
       return
     }
 
-    const command = exCommands.find((candidate) => {
-      const names = [candidate.name, ...(candidate.aliases ?? [])]
-      return names.some((name) => normalizeExPromptName(name) === parsed.name)
-    })
+    const command = discoveredExCommands().find((candidate) => candidate.name === parsed.name)
 
     if (!command) {
       announce(`Unknown ex command ${parsed.name}`)
@@ -630,7 +644,7 @@ export default function KeymapDemo() {
     }
 
     if (!validateExPromptArgs(command, parsed.args)) {
-      announce(`Usage: ${command.usage}`)
+      announce(`Usage: ${getExPromptCommandFieldText(command, "usage") ?? parsed.name}`)
       return
     }
 
@@ -638,7 +652,7 @@ export default function KeymapDemo() {
     setCommandPromptValue(":")
     setCommandPromptSelection(0)
     restoreCommandPromptFocus()
-    command.run({ raw: parsed.raw, args: parsed.args })
+    manager.runCommand(parsed.raw)
   }
 
   const offLeader = registerTimedLeader(manager, {

@@ -17,6 +17,7 @@ import {
   type KeymapActiveKey,
   type KeymapBindingInput,
   type KeymapCommand,
+  type KeymapCommandRecord,
 } from "@opentui/core/extras"
 import { createRoot, useActiveKeys, useKeymap, useKeymappings, usePendingSequenceParts, useRenderer } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react"
@@ -125,56 +126,67 @@ function parseExPromptInput(input: string): { raw: string; name: string; args: s
   }
 }
 
-function validateExPromptArgs(command: DemoExCommand, args: string[]): boolean {
-  if (!command.nargs) {
+function getExPromptCommandFieldText(command: KeymapCommandRecord, fieldName: string): string | undefined {
+  return getMetadataText(command.fields[fieldName])
+}
+
+function getExPromptCommandNargs(command: KeymapCommandRecord): ExArgCount | undefined {
+  const value = command.fields.nargs
+  if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
+    return value
+  }
+
+  return undefined
+}
+
+function validateExPromptArgs(command: KeymapCommandRecord, args: string[]): boolean {
+  const nargs = getExPromptCommandNargs(command)
+  if (!nargs) {
     return true
   }
 
   const count = args.length
-  if (command.nargs === "0") {
+  if (nargs === "0") {
     return count === 0
   }
 
-  if (command.nargs === "1") {
+  if (nargs === "1") {
     return count === 1
   }
 
-  if (command.nargs === "?") {
+  if (nargs === "?") {
     return count <= 1
   }
 
-  if (command.nargs === "*") {
+  if (nargs === "*") {
     return true
   }
 
-  if (command.nargs === "+") {
+  if (nargs === "+") {
     return count >= 1
   }
 
   return true
 }
 
-function buildExPromptSuggestions(commands: readonly DemoExCommand[]): ExPromptSuggestion[] {
+function buildExPromptSuggestions(commands: readonly KeymapCommandRecord[]): ExPromptSuggestion[] {
   const suggestions: ExPromptSuggestion[] = []
 
   for (const command of commands) {
-    const names = [command.name, ...(command.aliases ?? [])]
-    for (const name of names) {
-      const label = normalizeExPromptName(name)
-      suggestions.push({
-        label,
-        insert: label,
-        usage: command.usage,
-        desc: command.desc,
-        expectsArgs: command.nargs !== "0",
-      })
-    }
+    const label = normalizeExPromptName(command.name)
+    suggestions.push({
+      label,
+      insert: label,
+      usage: getExPromptCommandFieldText(command, "usage") ?? label,
+      desc: getExPromptCommandFieldText(command, "desc") ?? "",
+      expectsArgs: getExPromptCommandNargs(command) !== "0",
+    })
   }
 
   return suggestions
 }
 
-function getExPromptSuggestions(commands: readonly DemoExCommand[], value: string): ExPromptSuggestion[] {
+function getExPromptSuggestions(commands: readonly KeymapCommandRecord[], value: string): ExPromptSuggestion[] {
   const normalized = normalizeExPromptName(value)
   const spaceIndex = normalized.indexOf(" ")
   const query = spaceIndex === -1 ? normalized : normalized.slice(0, spaceIndex)
@@ -188,7 +200,7 @@ function getExPromptSuggestions(commands: readonly DemoExCommand[], value: strin
 }
 
 function getSelectedExPromptSuggestion(
-  commands: readonly DemoExCommand[],
+  commands: readonly KeymapCommandRecord[],
   value: string,
   selection: number,
 ): ExPromptSuggestion | null {
@@ -201,7 +213,7 @@ function getSelectedExPromptSuggestion(
 }
 
 function moveExPromptSelection(
-  commands: readonly DemoExCommand[],
+  commands: readonly KeymapCommandRecord[],
   value: string,
   selection: number,
   direction: 1 | -1,
@@ -216,7 +228,7 @@ function moveExPromptSelection(
 }
 
 function applyExPromptSuggestion(
-  commands: readonly DemoExCommand[],
+  commands: readonly KeymapCommandRecord[],
   value: string,
   selection: number,
   direction?: 1 | -1,
@@ -639,30 +651,39 @@ export const App = () => {
     return registerExCommands(manager, registeredExCommands)
   }, [manager, registeredExCommands])
 
+  const discoveredExCommands = useMemo(() => {
+    return manager.getCommands({ namespace: "excommands" })
+  }, [commandPromptVisible, manager])
+
   const commandPromptSuggestions = useMemo(() => {
-    return getExPromptSuggestions(exCommands, commandPromptValue)
-  }, [commandPromptValue, exCommands])
+    return getExPromptSuggestions(discoveredExCommands, commandPromptValue)
+  }, [commandPromptValue, discoveredExCommands])
 
   const commandPromptSuggestionRows = useMemo(() => {
     return Math.max(commandPromptSuggestions.length, 1)
   }, [commandPromptSuggestions])
 
   const selectedCommandPromptSuggestion = useMemo(() => {
-    return getSelectedExPromptSuggestion(exCommands, commandPromptValue, commandPromptSelection)
-  }, [commandPromptSelection, commandPromptValue, exCommands])
+    return getSelectedExPromptSuggestion(discoveredExCommands, commandPromptValue, commandPromptSelection)
+  }, [commandPromptSelection, commandPromptValue, discoveredExCommands])
 
   const moveCommandPromptSelection = useCallback(
     (direction: 1 | -1) => {
       setCommandPromptSelection((current) => {
-        return moveExPromptSelection(exCommands, commandPromptValueRef.current, current, direction)
+        return moveExPromptSelection(discoveredExCommands, commandPromptValueRef.current, current, direction)
       })
     },
-    [exCommands],
+    [discoveredExCommands],
   )
 
   const applyCommandPromptSuggestion = useCallback(
     (direction?: 1 | -1) => {
-      const result = applyExPromptSuggestion(exCommands, commandPromptValueRef.current, commandPromptSelection, direction)
+      const result = applyExPromptSuggestion(
+        discoveredExCommands,
+        commandPromptValueRef.current,
+        commandPromptSelection,
+        direction,
+      )
       if (!result) {
         return
       }
@@ -671,7 +692,7 @@ export const App = () => {
       setCommandPromptValue(result.value)
       syncCommandPromptInput(result.value)
     },
-    [commandPromptSelection, exCommands, syncCommandPromptInput],
+    [commandPromptSelection, discoveredExCommands, syncCommandPromptInput],
   )
 
   const executeCommandPrompt = useCallback(() => {
@@ -681,10 +702,7 @@ export const App = () => {
       return
     }
 
-    const command = exCommands.find((candidate) => {
-      const names = [candidate.name, ...(candidate.aliases ?? [])]
-      return names.some((name) => normalizeExPromptName(name) === parsed.name)
-    })
+    const command = discoveredExCommands.find((candidate) => candidate.name === parsed.name)
 
     if (!command) {
       announce(`Unknown ex command ${parsed.name}`)
@@ -692,7 +710,7 @@ export const App = () => {
     }
 
     if (!validateExPromptArgs(command, parsed.args)) {
-      announce(`Usage: ${command.usage}`)
+      announce(`Usage: ${getExPromptCommandFieldText(command, "usage") ?? parsed.name}`)
       return
     }
 
@@ -700,8 +718,8 @@ export const App = () => {
     setCommandPromptValue(":")
     setCommandPromptSelection(0)
     restoreCommandPromptFocus()
-    command.run({ raw: parsed.raw, args: parsed.args })
-  }, [announce, closeCommandPrompt, exCommands, restoreCommandPromptFocus])
+    manager.runCommand(parsed.raw)
+  }, [announce, closeCommandPrompt, discoveredExCommands, manager, restoreCommandPromptFocus])
 
   useEffect(() => {
     return registerTimedLeader(manager, {

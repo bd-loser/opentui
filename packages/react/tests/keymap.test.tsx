@@ -275,6 +275,68 @@ describe("React keymap hooks", () => {
     expect(calls).toEqual(["target"])
   })
 
+  test("useKeymap follows a stable ref when it retargets to a new renderable", async () => {
+    const calls: string[] = []
+    let setActive!: Dispatch<SetStateAction<"first" | "second">>
+
+    function App() {
+      const manager = useKeymappings()
+      const [active, setActiveSignal] = useState<"first" | "second">("first")
+      setActive = setActiveSignal
+
+      useEffect(() => {
+        return manager.registerCommands([
+          {
+            name: "target",
+            run() {
+              calls.push("target")
+            },
+          },
+        ])
+      }, [manager])
+
+      const layer = useMemo(
+        () => ({
+          scope: "focus-within" as const,
+          bindings: [{ key: "x", cmd: "target" }],
+        }),
+        [],
+      )
+
+      const keymapRef = useKeymap(layer)
+
+      return (
+        <box width={20} height={6}>
+          {active === "first" ? (
+            <box key="first" id="first" ref={keymapRef} width={8} height={3} focusable focused />
+          ) : (
+            <box key="second" id="second" ref={keymapRef} width={8} height={3} focusable focused />
+          )}
+        </box>
+      )
+    }
+
+    testSetup = await testRender(<App />, { width: 20, height: 6 })
+    await testSetup.renderOnce()
+
+    act(() => {
+      testSetup.mockInput.pressKey("x")
+    })
+    expect(calls).toEqual(["target"])
+
+    act(() => {
+      setActive("second")
+    })
+    await testSetup.renderOnce()
+
+    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("second")
+
+    act(() => {
+      testSetup.mockInput.pressKey("x")
+    })
+    expect(calls).toEqual(["target", "target"])
+  })
+
   test("useKeymap can reactively enable layers with explicit keyed invalidation", async () => {
     const calls: string[] = []
     let setEnabled!: Dispatch<SetStateAction<boolean>>
@@ -348,5 +410,60 @@ describe("React keymap hooks", () => {
       testSetup.mockInput.pressKey("x")
     })
     expect(calls).toEqual(["reactive"])
+  })
+
+  test("useKeymap shows an error for local bindings without a target or ref", async () => {
+    const originalConsoleError = console.error
+    console.error = () => {}
+
+    try {
+      function App() {
+        useKeymap({
+          scope: "focus-within",
+          bindings: { x: "target" },
+        })
+
+        return <text>bindings</text>
+      }
+
+      testSetup = await testRender(<App />, {
+        width: 140,
+        height: 12,
+      })
+      await testSetup.renderOnce()
+
+      const frame = testSetup.captureCharFrame()
+      expect(frame).toContain("useKeymap local bindings need a target or the returned ref callback attached to a renderable")
+    } finally {
+      console.error = originalConsoleError
+    }
+  })
+
+  test("useKeymap shows an error for explicit targets that are unavailable during mount", async () => {
+    const originalConsoleError = console.error
+    console.error = () => {}
+
+    try {
+      function App() {
+        useKeymap({
+          scope: "focus-within",
+          target: () => undefined,
+          bindings: { x: "target" },
+        })
+
+        return <text>bindings</text>
+      }
+
+      testSetup = await testRender(<App />, {
+        width: 140,
+        height: 12,
+      })
+      await testSetup.renderOnce()
+
+      const frame = testSetup.captureCharFrame()
+      expect(frame).toContain("useKeymap target was not available during mount")
+    } finally {
+      console.error = originalConsoleError
+    }
   })
 })

@@ -1,0 +1,344 @@
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import type { Renderable } from "@opentui/core"
+import { registerEnabledField, stringifyKeySequence } from "@opentui/core/extras"
+import { Show, createEffect, createSignal, onCleanup } from "solid-js"
+import { testRender, useActiveKeys, useBindings, useActionMap, usePendingSequenceParts } from "../index.js"
+
+let testSetup: Awaited<ReturnType<typeof testRender>>
+
+describe("solid action map hooks", () => {
+  beforeEach(async () => {
+    if (testSetup) {
+      testSetup.renderer.destroy()
+    }
+  })
+
+  afterEach(() => {
+    if (testSetup) {
+      testSetup.renderer.destroy()
+    }
+  })
+
+  test("useActionMap returns the renderer-scoped singleton", async () => {
+    let first: ReturnType<typeof useActionMap> | undefined
+    let second: ReturnType<typeof useActionMap> | undefined
+
+    function Probe() {
+      first = useActionMap()
+      second = useActionMap()
+
+      return <box width={10} height={4} />
+    }
+
+    testSetup = await testRender(() => <Probe />, { width: 20, height: 6 })
+
+    expect(first).toBeDefined()
+    expect(second).toBe(first)
+  })
+
+  test("useBindings registers global bindings and cleans them up on unmount", async () => {
+    const calls: string[] = []
+    let setVisible!: (value: boolean) => void
+
+    function GlobalBindings() {
+      const manager = useActionMap()
+      const offCommands = manager.registerCommands([
+        {
+          name: "global",
+          run() {
+            calls.push("global")
+          },
+        },
+      ])
+
+      useBindings({
+        scope: "global",
+        bindings: {
+          x: "global",
+        },
+      })
+
+      onCleanup(() => {
+        offCommands()
+      })
+
+      return <text>bindings</text>
+    }
+
+    function App() {
+      const [visible, setVisibleSignal] = createSignal(true)
+      setVisible = setVisibleSignal
+
+      return (
+        <box width={20} height={6}>
+          <Show when={visible()}>
+            <GlobalBindings />
+          </Show>
+        </box>
+      )
+    }
+
+    testSetup = await testRender(() => <App />, { width: 20, height: 6 })
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual(["global"])
+
+    setVisible(false)
+    await Bun.sleep(0)
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual(["global"])
+  })
+
+  test("useActiveKeys updates on focus changes and direct blur", async () => {
+    let firstTarget!: Renderable
+    let secondTarget!: Renderable
+
+    function App() {
+      const manager = useActionMap()
+      const activeKeys = useActiveKeys()
+      const offCommands = manager.registerCommands([
+        { name: "first", run() {} },
+        { name: "second", run() {} },
+      ])
+
+      const firstBindingsRef = useBindings({
+        scope: "focus-within",
+        bindings: { x: "first" },
+      })
+      const secondBindingsRef = useBindings({
+        scope: "focus-within",
+        bindings: { y: "second" },
+      })
+
+      onCleanup(() => {
+        offCommands()
+      })
+
+      return (
+        <box width={24} height={8} flexDirection="column">
+          <text>{`Active: ${
+            activeKeys()
+              .map((key) => key.stroke.name)
+              .join(",") || "<none>"
+          }`}</text>
+          <box
+            ref={(value: Renderable) => {
+              firstBindingsRef(value)
+              firstTarget = value
+            }}
+            width={8}
+            height={2}
+            focusable
+            focused
+          />
+          <box
+            ref={(value: Renderable) => {
+              secondBindingsRef(value)
+              secondTarget = value
+            }}
+            width={8}
+            height={2}
+            focusable
+          />
+        </box>
+      )
+    }
+
+    testSetup = await testRender(() => <App />, { width: 24, height: 8 })
+    await testSetup.renderOnce()
+
+    expect(testSetup.captureCharFrame()).toContain("Active: x")
+
+    secondTarget.focus()
+    await Bun.sleep(0)
+    await testSetup.renderOnce()
+
+    expect(testSetup.captureCharFrame()).toContain("Active: y")
+
+    secondTarget.blur()
+    await Bun.sleep(0)
+    await testSetup.renderOnce()
+
+    expect(testSetup.captureCharFrame()).toContain("Active: <none>")
+  })
+
+  test("usePendingSequenceParts updates without manual subscriptions", async () => {
+    function App() {
+      const manager = useActionMap()
+      const pendingSequenceParts = usePendingSequenceParts()
+      const offCommands = manager.registerCommands([{ name: "delete-line", run() {} }])
+
+      useBindings({
+        scope: "global",
+        bindings: [{ key: "dd", cmd: "delete-line" }],
+      })
+
+      onCleanup(() => {
+        offCommands()
+      })
+
+      return (
+        <text>{`Pending: ${stringifyKeySequence(pendingSequenceParts(), { preferDisplay: true }) || "<root>"}`}</text>
+      )
+    }
+
+    testSetup = await testRender(() => <App />, { width: 24, height: 6 })
+    await testSetup.renderOnce()
+
+    expect(testSetup.captureCharFrame()).toContain("Pending: <root>")
+
+    testSetup.mockInput.pressKey("d")
+    await testSetup.renderOnce()
+
+    expect(testSetup.captureCharFrame()).toContain("Pending: d")
+
+    testSetup.mockInput.pressKey("x")
+    await testSetup.renderOnce()
+
+    expect(testSetup.captureCharFrame()).toContain("Pending: <root>")
+  })
+
+  test("useBindings can bind local bindings through its returned ref", async () => {
+    const calls: string[] = []
+    let setActive!: (value: "first" | "second") => void
+
+    function App() {
+      const manager = useActionMap()
+      const [active, setActiveSignal] = createSignal<"first" | "second">("first")
+      setActive = setActiveSignal
+
+      const offCommands = manager.registerCommands([
+        {
+          name: "target",
+          run() {
+            calls.push("target")
+          },
+        },
+      ])
+
+      onCleanup(() => {
+        offCommands()
+      })
+
+      const bindingsRef = useBindings({
+        scope: "focus-within",
+        bindings: [{ key: "x", cmd: "target" }],
+      })
+
+      return (
+        <box width={20} height={6}>
+          <box ref={bindingsRef} width={8} height={3} focusable focused={active() === "first"} />
+          <box width={8} height={3} focusable focused={active() === "second"} />
+        </box>
+      )
+    }
+
+    testSetup = await testRender(() => <App />, { width: 20, height: 6 })
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual(["target"])
+
+    setActive("second")
+    await Bun.sleep(0)
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual(["target"])
+  })
+
+  test("useBindings can reactively enable layers with explicit keyed invalidation", async () => {
+    const calls: string[] = []
+    let setEnabled!: (value: boolean) => void
+
+    function App() {
+      const manager = useActionMap()
+      const [enabled, setEnabledSignal] = createSignal(false)
+      setEnabled = setEnabledSignal
+
+      const offEnabled = registerEnabledField(manager)
+      const offCommands = manager.registerCommands([
+        {
+          name: "reactive",
+          run() {
+            calls.push("reactive")
+          },
+        },
+      ])
+
+      createEffect(() => {
+        enabled()
+        manager.invalidateRuntimeKey("solid.enabled")
+      })
+
+      useBindings({
+        scope: "global",
+        enabled: {
+          match: enabled,
+          keys: ["solid.enabled"],
+        },
+        bindings: { x: "reactive" },
+      })
+
+      onCleanup(() => {
+        offCommands()
+        offEnabled()
+      })
+
+      return <box width={20} height={6} />
+    }
+
+    testSetup = await testRender(() => <App />, { width: 20, height: 6 })
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual([])
+
+    setEnabled(true)
+    await Bun.sleep(0)
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual(["reactive"])
+
+    setEnabled(false)
+    await Bun.sleep(0)
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual(["reactive"])
+  })
+
+  test("useBindings rejects local bindings without a target or ref", async () => {
+    function App() {
+      useBindings({
+        scope: "focus-within",
+        bindings: { x: "target" },
+      })
+
+      return <text>bindings</text>
+    }
+
+    await expect(
+      testRender(() => <App />, {
+        width: 20,
+        height: 6,
+      }),
+    ).rejects.toThrow("useBindings local bindings need a target or the returned ref callback attached to a renderable")
+  })
+
+  test("useBindings rejects explicit targets that are unavailable during mount", async () => {
+    function App() {
+      useBindings({
+        scope: "focus-within",
+        target: () => undefined,
+        bindings: { x: "target" },
+      })
+
+      return <text>bindings</text>
+    }
+
+    await expect(
+      testRender(() => <App />, {
+        width: 20,
+        height: 6,
+      }),
+    ).rejects.toThrow("useBindings target was not available during mount")
+  })
+})

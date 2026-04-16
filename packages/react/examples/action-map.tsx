@@ -1,0 +1,1271 @@
+import {
+  CliRenderEvents,
+  createCliRenderer,
+  TextAttributes,
+  type InputRenderable,
+  type Renderable,
+  type TextareaRenderable,
+} from "@opentui/core"
+import {
+  registerEnabledField,
+  registerExCommands,
+  registerManagedTextareaLayer,
+  registerMetadataFields,
+  registerTimedLeader,
+  stringifyKeySequence,
+  stringifyKeyStroke,
+  type ActionMapActiveKey,
+  type ActionMapBindingInput,
+  type ActionMapCommand,
+  type ActionMapCommandRecord,
+} from "@opentui/core/extras"
+import {
+  createRoot,
+  useActiveKeys,
+  useBindings,
+  useActionMap,
+  usePendingSequenceParts,
+  useRenderer,
+} from "@opentui/react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react"
+
+const palette = {
+  bg: "#0f172a",
+  surface: "#1e293b",
+  surfaceFocus: "#24324d",
+  border: "#334155",
+  text: "#e2e8f0",
+  textDim: "#94a3b8",
+  textMuted: "#64748b",
+  title: "#f1f5f9",
+  alpha: "#38bdf8",
+  beta: "#34d399",
+  accent: "#a78bfa",
+  leader: "#fb923c",
+  key: "#fbbf24",
+  command: "#67e8f9",
+  separator: "#475569",
+} as const
+
+type PanelId = "alpha" | "beta"
+type EditorId = "notes" | "draft" | "scratch"
+
+interface EditorSpec {
+  id: EditorId
+  label: string
+  color: string
+  initialValue?: string
+  placeholder?: string
+}
+
+const editorSpecs: readonly EditorSpec[] = [
+  {
+    id: "notes",
+    label: "Notes",
+    color: palette.alpha,
+    initialValue: "Notes editor\nTab/Shift+Tab switches focus.",
+  },
+  {
+    id: "draft",
+    label: "Draft",
+    color: palette.beta,
+    initialValue: "Draft editor\nPress dd here to delete the current line.",
+  },
+  {
+    id: "scratch",
+    label: "Scratch",
+    color: palette.accent,
+    placeholder: "Scratch editor. Unmapped text still inserts directly.",
+  },
+] as const
+
+type ExArgCount = "0" | "1" | "?" | "*" | "+"
+
+interface DemoExCommand {
+  name: string
+  aliases?: string[]
+  nargs?: ExArgCount
+  title: string
+  desc: string
+  category: string
+  usage: string
+  run: (ctx: { raw: string; args: string[] }) => void
+}
+
+interface ExPromptSuggestion {
+  label: string
+  insert: string
+  usage: string
+  desc: string
+  expectsArgs: boolean
+}
+
+const EX_PROMPT_WIDTH = 54
+const EX_PROMPT_MAX_VISIBLE_SUGGESTIONS = 4
+const EX_PROMPT_CHROME_ROWS = 5
+const EX_PROMPT_MAX_HEIGHT = EX_PROMPT_CHROME_ROWS + EX_PROMPT_MAX_VISIBLE_SUGGESTIONS
+
+function normalizeExPromptName(name: string): string {
+  const trimmed = name.trim()
+  if (!trimmed) {
+    return ":"
+  }
+
+  return trimmed.startsWith(":") ? trimmed : `:${trimmed}`
+}
+
+function parseExPromptInput(input: string): { raw: string; name: string; args: string[] } | null {
+  const normalized = normalizeExPromptName(input)
+  if (normalized === ":") {
+    return null
+  }
+
+  const parts = normalized.split(/\s+/)
+  const [name, ...args] = parts
+  if (!name) {
+    return null
+  }
+
+  return {
+    raw: normalized,
+    name,
+    args,
+  }
+}
+
+function getExPromptCommandFieldText(command: ActionMapCommandRecord, fieldName: string): string | undefined {
+  return getMetadataText(command.fields[fieldName])
+}
+
+function getExPromptCommandNargs(command: ActionMapCommandRecord): ExArgCount | undefined {
+  const value = command.fields.nargs
+  if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
+    return value
+  }
+
+  return undefined
+}
+
+function buildExPromptSuggestions(commands: readonly ActionMapCommandRecord[]): ExPromptSuggestion[] {
+  const suggestions: ExPromptSuggestion[] = []
+
+  for (const command of commands) {
+    const label = normalizeExPromptName(command.name)
+    suggestions.push({
+      label,
+      insert: label,
+      usage: getExPromptCommandFieldText(command, "usage") ?? label,
+      desc: getExPromptCommandFieldText(command, "desc") ?? "",
+      expectsArgs: getExPromptCommandNargs(command) !== "0",
+    })
+  }
+
+  return suggestions
+}
+
+function getExPromptSuggestions(commands: readonly ActionMapCommandRecord[], value: string): ExPromptSuggestion[] {
+  const normalized = normalizeExPromptName(value)
+  const spaceIndex = normalized.indexOf(" ")
+  const query = spaceIndex === -1 ? normalized : normalized.slice(0, spaceIndex)
+  const suggestions = buildExPromptSuggestions(commands)
+
+  if (query === ":") {
+    return suggestions.slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
+  }
+
+  return suggestions
+    .filter((suggestion) => suggestion.label.startsWith(query))
+    .slice(0, EX_PROMPT_MAX_VISIBLE_SUGGESTIONS)
+}
+
+function getSelectedExPromptSuggestion(
+  commands: readonly ActionMapCommandRecord[],
+  value: string,
+  selection: number,
+): ExPromptSuggestion | null {
+  const suggestions = getExPromptSuggestions(commands, value)
+  if (suggestions.length === 0) {
+    return null
+  }
+
+  return suggestions[Math.min(selection, suggestions.length - 1)] ?? null
+}
+
+function moveExPromptSelection(
+  commands: readonly ActionMapCommandRecord[],
+  value: string,
+  selection: number,
+  direction: 1 | -1,
+): number {
+  const suggestions = getExPromptSuggestions(commands, value)
+  if (suggestions.length === 0) {
+    return 0
+  }
+
+  const current = Math.min(selection, suggestions.length - 1)
+  return (current + direction + suggestions.length) % suggestions.length
+}
+
+function applyExPromptSuggestion(
+  commands: readonly ActionMapCommandRecord[],
+  value: string,
+  selection: number,
+  direction?: 1 | -1,
+): { value: string; selection: number } | null {
+  const suggestions = getExPromptSuggestions(commands, value)
+  if (suggestions.length === 0) {
+    return null
+  }
+
+  const nextSelection = direction
+    ? moveExPromptSelection(commands, value, selection, direction)
+    : Math.min(selection, suggestions.length - 1)
+  const suggestion = suggestions[nextSelection]
+  if (!suggestion) {
+    return null
+  }
+
+  const normalized = normalizeExPromptName(value)
+  const spaceIndex = normalized.indexOf(" ")
+  const rest = spaceIndex === -1 ? "" : normalized.slice(spaceIndex + 1).trimStart()
+  const nextValue = rest
+    ? `${suggestion.insert} ${rest}`
+    : suggestion.expectsArgs
+      ? `${suggestion.insert} `
+      : suggestion.insert
+
+  return {
+    value: nextValue,
+    selection: nextSelection,
+  }
+}
+
+function KeyLabel({ children }: { children: ReactNode }) {
+  return <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>{children}</span>
+}
+
+function getMetadataText(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined
+  }
+
+  const trimmed = value.trim()
+  return trimmed || undefined
+}
+
+function getActiveKeyLabel(activeKey: ActionMapActiveKey): string {
+  if (activeKey.continues) {
+    const group = getMetadataText(activeKey.bindingAttrs?.group)
+    if (group) {
+      return `+${group}`
+    }
+  }
+
+  return (
+    getMetadataText(activeKey.bindingAttrs?.desc) ??
+    getMetadataText(activeKey.commandAttrs?.desc) ??
+    getMetadataText(activeKey.commandAttrs?.title) ??
+    (typeof activeKey.command === "string" ? activeKey.command : undefined) ??
+    ""
+  )
+}
+
+function CounterPanel(props: {
+  id: PanelId
+  label: string
+  saveTarget: string
+  step: number
+  color: string
+  count: number
+  setRef?: (value: Renderable | null) => void
+  setCount: Dispatch<SetStateAction<number>>
+  announce: (message: string) => void
+}) {
+  const manager = useActionMap()
+
+  const incrementCommand = useMemo(() => `${props.id}-up`, [props.id])
+  const decrementCommand = useMemo(() => `${props.id}-down`, [props.id])
+
+  const commands = useMemo<ActionMapCommand[]>(
+    () => [
+      {
+        name: incrementCommand,
+        title: `${props.label} +${props.step}`,
+        desc: `${props.label} +${props.step}`,
+        category: props.label,
+        run() {
+          props.setCount((value) => {
+            const next = value + props.step
+            props.announce(`${props.label} increased to ${next}`)
+            return next
+          })
+        },
+      },
+      {
+        name: decrementCommand,
+        title: `${props.label} -${props.step}`,
+        desc: `${props.label} -${props.step}`,
+        category: props.label,
+        run() {
+          props.setCount((value) => {
+            const next = value - props.step
+            props.announce(`${props.label} decreased to ${next}`)
+            return next
+          })
+        },
+      },
+    ],
+    [decrementCommand, incrementCommand, props.announce, props.label, props.setCount, props.step],
+  )
+
+  useEffect(() => {
+    return manager.registerCommands(commands)
+  }, [commands, manager])
+
+  const layer = useMemo(
+    () => ({
+      bindings: [
+        { key: "j", cmd: incrementCommand, desc: `${props.label} +${props.step}` },
+        { key: "k", cmd: decrementCommand, desc: `${props.label} -${props.step}` },
+        { key: "return", cmd: `:w ${props.saveTarget}`, desc: `Write ${props.label.toLowerCase()} panel` },
+      ] satisfies ActionMapBindingInput[],
+    }),
+    [decrementCommand, incrementCommand, props.label, props.saveTarget, props.step],
+  )
+
+  const bindingsRef = useBindings(layer)
+  const combinedRef = useCallback(
+    (value: Renderable | null) => {
+      bindingsRef(value)
+      props.setRef?.(value)
+    },
+    [bindingsRef, props.setRef],
+  )
+
+  return (
+    <box
+      id={`action-map-demo-${props.id}`}
+      ref={combinedRef}
+      border
+      borderStyle="rounded"
+      focusable
+      borderColor={palette.border}
+      focusedBorderColor={props.color}
+      paddingX={1}
+      flexDirection="column"
+      flexGrow={1}
+      title={` ${props.label} `}
+      titleAlignment="left"
+    >
+      <text height={1}>
+        <span style={{ fg: palette.textDim }}>Count: </span>
+        <span style={{ fg: props.color, attributes: TextAttributes.BOLD }}>{String(props.count)}</span>
+      </text>
+      <text height={1}>
+        <KeyLabel>j</KeyLabel>
+        <span style={{ fg: palette.textDim }}>{` +${props.step}  `}</span>
+        <KeyLabel>k</KeyLabel>
+        <span style={{ fg: palette.textDim }}>{` -${props.step}`}</span>
+        <span style={{ fg: palette.separator }}>{"  |  "}</span>
+        <KeyLabel>enter</KeyLabel>
+        <span style={{ fg: palette.textDim }}>{` save ${props.label.toLowerCase()}`}</span>
+      </text>
+    </box>
+  )
+}
+
+export const App = () => {
+  const renderer = useRenderer()
+  const manager = useActionMap()
+
+  const alphaPanelRef = useRef<Renderable | null>(null)
+  const betaPanelRef = useRef<Renderable | null>(null)
+  const commandInputRef = useRef<InputRenderable | null>(null)
+  const commandPromptRestoreTargetRef = useRef<Renderable | null>(null)
+  const commandPromptVisibleRef = useRef(false)
+  const commandPromptValueRef = useRef(":")
+  const editorRefs = useRef<Array<TextareaRenderable | undefined>>([])
+
+  const [alphaCount, setAlphaCount] = useState(0)
+  const [betaCount, setBetaCount] = useState(0)
+  const [helpVisible, setHelpVisible] = useState(true)
+  const [leaderArmed, setLeaderArmed] = useState(false)
+  const [commandPromptVisible, setCommandPromptVisible] = useState(false)
+  const [commandPromptValue, setCommandPromptValue] = useState(":")
+  const [commandPromptSelection, setCommandPromptSelection] = useState(0)
+  const [lastAction, setLastAction] = useState("Click a panel or press Tab to start.")
+  const [logs, setLogs] = useState<string[]>([])
+  const [statusVersion, setStatusVersion] = useState(0)
+
+  commandPromptVisibleRef.current = commandPromptVisible
+  commandPromptValueRef.current = commandPromptValue
+
+  const bumpStatus = useCallback(() => {
+    setStatusVersion((value) => value + 1)
+  }, [])
+
+  const addLog = useCallback((message: string) => {
+    setLogs((current) => {
+      if (current[0] === message) {
+        return current
+      }
+
+      return [message, ...current].slice(0, 8)
+    })
+  }, [])
+
+  const announce = useCallback(
+    (message: string) => {
+      setLastAction(message)
+      addLog(message)
+    },
+    [addLog],
+  )
+
+  const syncCommandPromptInput = useCallback((value: string) => {
+    const input = commandInputRef.current
+    if (!input) {
+      return
+    }
+
+    if (input.value !== value) {
+      input.value = value
+    }
+
+    input.cursorOffset = value.length
+  }, [])
+
+  const setAlphaPanelRef = useCallback((value: Renderable | null) => {
+    alphaPanelRef.current = value
+  }, [])
+
+  const setBetaPanelRef = useCallback((value: Renderable | null) => {
+    betaPanelRef.current = value
+  }, [])
+
+  const editorRefCallbacks = useMemo(
+    () =>
+      editorSpecs.map((_, index) => {
+        return (value: TextareaRenderable | null) => {
+          editorRefs.current[index] = value ?? undefined
+        }
+      }),
+    [],
+  )
+
+  const getFocusableTargets = useCallback((): Renderable[] => {
+    return [alphaPanelRef.current, betaPanelRef.current, ...editorRefs.current].filter(
+      (target): target is Renderable => target !== null && target !== undefined,
+    )
+  }, [])
+
+  const getFocusableLabel = useCallback((target: Renderable): string => {
+    if (target === alphaPanelRef.current) {
+      return "Alpha panel"
+    }
+
+    if (target === betaPanelRef.current) {
+      return "Beta panel"
+    }
+
+    const editorIndex = editorRefs.current.findIndex((editor) => editor === target)
+    if (editorIndex !== -1) {
+      return `${editorSpecs[editorIndex]!.label} editor`
+    }
+
+    return "target"
+  }, [])
+
+  const moveFocus = useCallback(
+    (direction: 1 | -1) => {
+      const targets = getFocusableTargets()
+      if (targets.length === 0) {
+        return
+      }
+
+      const currentIndex = targets.findIndex((target) => target === renderer.currentFocusedRenderable)
+      const startIndex = currentIndex === -1 ? 0 : currentIndex
+      const nextIndex = (startIndex + direction + targets.length) % targets.length
+      const target = targets[nextIndex]
+      if (!target) {
+        return
+      }
+
+      target.focus()
+      announce(`Focused ${getFocusableLabel(target)}`)
+    },
+    [announce, getFocusableLabel, getFocusableTargets, renderer],
+  )
+
+  const restoreCommandPromptFocus = useCallback(() => {
+    const restoreTarget = commandPromptRestoreTargetRef.current
+    commandPromptRestoreTargetRef.current = null
+
+    if (restoreTarget && !restoreTarget.isDestroyed) {
+      restoreTarget.focus()
+      return
+    }
+
+    alphaPanelRef.current?.focus()
+  }, [])
+
+  const closeCommandPrompt = useCallback(
+    (message: string) => {
+      setCommandPromptVisible(false)
+      setCommandPromptValue(":")
+      setCommandPromptSelection(0)
+      restoreCommandPromptFocus()
+      announce(message)
+    },
+    [announce, restoreCommandPromptFocus],
+  )
+
+  const openCommandPrompt = useCallback(() => {
+    if (commandPromptVisibleRef.current) {
+      return
+    }
+
+    commandPromptRestoreTargetRef.current = renderer.currentFocusedRenderable
+    setCommandPromptVisible(true)
+    setCommandPromptValue(":")
+    setCommandPromptSelection(0)
+    announce("Opened ex prompt")
+  }, [announce, renderer])
+
+  useEffect(() => {
+    const offEnabled = registerEnabledField(manager)
+    const offMetadata = registerMetadataFields(manager)
+
+    return () => {
+      offMetadata()
+      offEnabled()
+    }
+  }, [manager])
+
+  const actions = useMemo<ActionMapCommand[]>(
+    () => [
+      {
+        name: "focus-next",
+        title: "Next target",
+        desc: "Next target",
+        category: "Navigation",
+        run() {
+          moveFocus(1)
+        },
+      },
+      {
+        name: "focus-prev",
+        title: "Previous target",
+        desc: "Previous target",
+        category: "Navigation",
+        run() {
+          moveFocus(-1)
+        },
+      },
+      {
+        name: "toggle-help",
+        title: "Toggle help",
+        desc: "Toggle help",
+        category: "View",
+        run() {
+          setHelpVisible((value) => {
+            const next = !value
+            announce(next ? "Help shown" : "Help hidden")
+            return next
+          })
+        },
+      },
+      {
+        name: "open-ex-prompt",
+        title: "Open ex prompt",
+        desc: "Open ex prompt",
+        category: "Ex",
+        run() {
+          openCommandPrompt()
+        },
+      },
+    ],
+    [announce, moveFocus, openCommandPrompt],
+  )
+
+  useEffect(() => {
+    return manager.registerCommands(actions)
+  }, [actions, manager])
+
+  const exCommands = useMemo<DemoExCommand[]>(
+    () => [
+      {
+        name: "reset",
+        aliases: ["r"],
+        nargs: "0",
+        title: "Reset counters",
+        desc: "Reset counters",
+        category: "Session",
+        usage: ":reset",
+        run() {
+          setAlphaCount(0)
+          setBetaCount(0)
+          announce("Counters reset through :reset")
+        },
+      },
+      {
+        name: "write",
+        aliases: ["w"],
+        nargs: "1",
+        title: "Write file",
+        desc: "Write file",
+        category: "File",
+        usage: ":write <file>",
+        run({ args }) {
+          announce(`Wrote ${args[0]}`)
+        },
+      },
+    ],
+    [announce],
+  )
+
+  const registeredExCommands = useMemo(() => {
+    return exCommands.map(({ usage: _usage, ...command }) => command)
+  }, [exCommands])
+
+  useEffect(() => {
+    return registerExCommands(manager, registeredExCommands)
+  }, [manager, registeredExCommands])
+
+  const discoveredExCommands = useMemo(() => {
+    return manager.getCommands({ namespace: "excommands" })
+  }, [commandPromptVisible, manager])
+
+  const commandPromptSuggestions = useMemo(() => {
+    return getExPromptSuggestions(discoveredExCommands, commandPromptValue)
+  }, [commandPromptValue, discoveredExCommands])
+
+  const commandPromptSuggestionRows = useMemo(() => {
+    return Math.max(commandPromptSuggestions.length, 1)
+  }, [commandPromptSuggestions])
+
+  const selectedCommandPromptSuggestion = useMemo(() => {
+    return getSelectedExPromptSuggestion(discoveredExCommands, commandPromptValue, commandPromptSelection)
+  }, [commandPromptSelection, commandPromptValue, discoveredExCommands])
+
+  const moveCommandPromptSelection = useCallback(
+    (direction: 1 | -1) => {
+      setCommandPromptSelection((current) => {
+        return moveExPromptSelection(discoveredExCommands, commandPromptValueRef.current, current, direction)
+      })
+    },
+    [discoveredExCommands],
+  )
+
+  const applyCommandPromptSuggestion = useCallback(
+    (direction?: 1 | -1) => {
+      const result = applyExPromptSuggestion(
+        discoveredExCommands,
+        commandPromptValueRef.current,
+        commandPromptSelection,
+        direction,
+      )
+      if (!result) {
+        return
+      }
+
+      setCommandPromptSelection(result.selection)
+      setCommandPromptValue(result.value)
+      syncCommandPromptInput(result.value)
+    },
+    [commandPromptSelection, discoveredExCommands, syncCommandPromptInput],
+  )
+
+  const executeCommandPrompt = useCallback(() => {
+    const parsed = parseExPromptInput(commandPromptValueRef.current)
+    if (!parsed) {
+      closeCommandPrompt("Closed ex prompt")
+      return
+    }
+
+    const restoreTarget = commandPromptRestoreTargetRef.current
+    const focused = restoreTarget && !restoreTarget.isDestroyed ? restoreTarget : renderer.currentFocusedRenderable
+    const result = manager.runCommand(parsed.raw, { focused: focused ?? null, includeCommand: true })
+
+    if (!result.ok) {
+      if (result.reason === "not-found") {
+        announce(`Unknown ex command ${parsed.name}`)
+        return
+      }
+
+      if (result.reason === "invalid-args") {
+        announce(
+          `Usage: ${result.command ? (getExPromptCommandFieldText(result.command, "usage") ?? parsed.name) : parsed.name}`,
+        )
+        return
+      }
+
+      if (result.reason === "error") {
+        announce(`Error running ${parsed.name}`)
+        return
+      }
+
+      announce(`Command ${parsed.name} was rejected`)
+      return
+    }
+
+    setCommandPromptVisible(false)
+    setCommandPromptValue(":")
+    setCommandPromptSelection(0)
+    restoreCommandPromptFocus()
+  }, [announce, closeCommandPrompt, manager, renderer, restoreCommandPromptFocus])
+
+  useEffect(() => {
+    return registerTimedLeader(manager, {
+      trigger: { name: "x", ctrl: true },
+      onArm() {
+        setLeaderArmed(true)
+        announce("Leader armed: press s or h")
+      },
+      onDisarm() {
+        setLeaderArmed(false)
+      },
+    })
+  }, [announce, manager])
+
+  const managedTextareaLayer = useMemo(
+    () => ({
+      scope: "global" as const,
+      enabled: () => !commandPromptVisibleRef.current && manager.renderer.currentFocusedEditor !== null,
+      bindings: [
+        { key: "left", cmd: "move-left", desc: "Cursor left" },
+        { key: "right", cmd: "move-right", desc: "Cursor right" },
+        { key: "up", cmd: "move-up", desc: "Cursor up" },
+        { key: "down", cmd: "move-down", desc: "Cursor down" },
+        { key: "backspace", cmd: "backspace", desc: "Delete backward" },
+        { key: "delete", cmd: "delete", desc: "Delete forward" },
+        { key: "return", cmd: "newline", desc: "New line" },
+        { key: "ctrl+a", cmd: "line-home", desc: "Line start" },
+        { key: "ctrl+e", cmd: "line-end", desc: "Line end" },
+        { key: "d", group: "Delete" },
+        { key: "dd", cmd: "delete-line", desc: "Delete line" },
+      ] satisfies ActionMapBindingInput[],
+    }),
+    [manager.renderer],
+  )
+
+  useEffect(() => {
+    return registerManagedTextareaLayer(manager, managedTextareaLayer)
+  }, [managedTextareaLayer, manager])
+
+  const globalLayer = useMemo(
+    () => ({
+      scope: "global" as const,
+      enabled: () => !commandPromptVisibleRef.current,
+      bindings: [
+        { key: "tab", cmd: "focus-next", desc: "Next target" },
+        { key: "shift+tab", cmd: "focus-prev", desc: "Previous target" },
+        { key: "?", cmd: "toggle-help", desc: "Toggle help" },
+        { key: "ctrl+r", cmd: ":reset", desc: "Reset counters" },
+        { key: "<leader>", group: "Leader" },
+        { key: "<leader>s", cmd: ":w session.log", desc: "Write session log", group: "Leader" },
+        { key: "<leader>h", cmd: "toggle-help", desc: "Toggle help", group: "Leader" },
+      ] satisfies ActionMapBindingInput[],
+    }),
+    [],
+  )
+
+  useBindings(globalLayer)
+
+  const commandPromptLayer = useMemo(
+    () => ({
+      scope: "global" as const,
+      enabled: () => !commandPromptVisibleRef.current,
+      bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }] satisfies ActionMapBindingInput[],
+    }),
+    [],
+  )
+
+  useBindings(commandPromptLayer)
+
+  const activeKeys = useActiveKeys({ includeMetadata: true })
+  const pendingSequenceParts = usePendingSequenceParts()
+
+  const focusedEditorIndex = useMemo(() => {
+    void statusVersion
+    return editorRefs.current.findIndex((editor) => editor === renderer.currentFocusedEditor)
+  }, [renderer, statusVersion])
+
+  const focusedLabel = useMemo(() => {
+    void statusVersion
+
+    if (renderer.currentFocusedRenderable === commandInputRef.current) {
+      return "Ex command prompt"
+    }
+
+    if (renderer.currentFocusedRenderable === alphaPanelRef.current) {
+      return "Alpha panel"
+    }
+
+    if (renderer.currentFocusedRenderable === betaPanelRef.current) {
+      return "Beta panel"
+    }
+
+    if (focusedEditorIndex !== -1) {
+      return `${editorSpecs[focusedEditorIndex]!.label} editor`
+    }
+
+    return "None"
+  }, [focusedEditorIndex, renderer, statusVersion])
+
+  const focusedColor = useMemo(() => {
+    void statusVersion
+
+    if (renderer.currentFocusedRenderable === commandInputRef.current) {
+      return palette.leader
+    }
+
+    if (renderer.currentFocusedRenderable === alphaPanelRef.current) {
+      return palette.alpha
+    }
+
+    if (renderer.currentFocusedRenderable === betaPanelRef.current) {
+      return palette.beta
+    }
+
+    if (focusedEditorIndex !== -1) {
+      return editorSpecs[focusedEditorIndex]!.color
+    }
+
+    return palette.textMuted
+  }, [focusedEditorIndex, renderer, statusVersion])
+
+  const focusedEditor = useMemo(() => {
+    void statusVersion
+    return renderer.currentFocusedEditor
+  }, [renderer, statusVersion])
+
+  const whichKeyEntries = useMemo(() => {
+    const sortedActiveKeys = [...activeKeys].sort((left, right) => {
+      return stringifyKeyStroke(left, { preferDisplay: true }).localeCompare(
+        stringifyKeyStroke(right, { preferDisplay: true }),
+      )
+    })
+
+    return sortedActiveKeys.map((activeKey) => ({
+      key: stringifyKeyStroke(activeKey, { preferDisplay: true }),
+      command: getActiveKeyLabel(activeKey),
+    }))
+  }, [activeKeys])
+
+  const whichKeyPrefix = useMemo(() => {
+    return stringifyKeySequence(pendingSequenceParts, { preferDisplay: true }) || "<root>"
+  }, [pendingSequenceParts])
+
+  const commandPromptUsage = useMemo(() => {
+    if (!selectedCommandPromptSuggestion) {
+      return "No matching ex commands"
+    }
+
+    return `Usage: ${selectedCommandPromptSuggestion.usage}  |  ${selectedCommandPromptSuggestion.desc}`
+  }, [selectedCommandPromptSuggestion])
+
+  const onCommandPromptKeyDown = useCallback(
+    (event: { name: string; shift?: boolean; preventDefault: () => void; stopPropagation: () => void }) => {
+      if (!commandPromptVisibleRef.current) {
+        return
+      }
+
+      if (event.name === "escape") {
+        event.preventDefault()
+        event.stopPropagation()
+        closeCommandPrompt("Closed ex prompt")
+        return
+      }
+
+      if (event.name === "up") {
+        event.preventDefault()
+        event.stopPropagation()
+        moveCommandPromptSelection(-1)
+        return
+      }
+
+      if (event.name === "down") {
+        event.preventDefault()
+        event.stopPropagation()
+        moveCommandPromptSelection(1)
+        return
+      }
+
+      if (event.name === "tab") {
+        event.preventDefault()
+        event.stopPropagation()
+        applyCommandPromptSuggestion(event.shift ? -1 : undefined)
+        return
+      }
+
+      if (event.name === "return") {
+        event.preventDefault()
+        event.stopPropagation()
+        executeCommandPrompt()
+      }
+    },
+    [applyCommandPromptSuggestion, closeCommandPrompt, executeCommandPrompt, moveCommandPromptSelection],
+  )
+
+  useEffect(() => {
+    const onFocusedRenderable = () => {
+      bumpStatus()
+    }
+
+    const onFocusedEditor = () => {
+      bumpStatus()
+    }
+
+    renderer.on(CliRenderEvents.FOCUSED_RENDERABLE, onFocusedRenderable)
+    renderer.on(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
+
+    return () => {
+      renderer.off(CliRenderEvents.FOCUSED_RENDERABLE, onFocusedRenderable)
+      renderer.off(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
+    }
+  }, [bumpStatus, renderer])
+
+  useEffect(() => {
+    if (!commandPromptVisible) {
+      return
+    }
+
+    const input = commandInputRef.current
+    if (!input) {
+      return
+    }
+
+    syncCommandPromptInput(commandPromptValueRef.current)
+    input.focus()
+  }, [commandPromptVisible, syncCommandPromptInput])
+
+  useEffect(() => {
+    renderer.setBackgroundColor(palette.bg)
+    addLog("Tab switches focus across panels and editors.")
+    addLog("ctrl+x arms the leader extension.")
+    addLog(": opens the centered ex prompt.")
+    alphaPanelRef.current?.focus()
+    announce("Focused Alpha panel")
+  }, [addLog, announce, renderer])
+
+  return (
+    <box id="action-map-demo-root" flexDirection="column" flexGrow={1} padding={1} backgroundColor={palette.bg}>
+      <text id="action-map-demo-title" style={{ fg: palette.title, attributes: TextAttributes.BOLD }} height={1}>
+        Action Map Demo
+      </text>
+      <text id="action-map-demo-subtitle" fg={palette.textMuted} height={1}>
+        Original Alpha/Beta panels, three switchable textareas, and a centered : prompt.
+      </text>
+
+      <box id="action-map-demo-panels" flexDirection="row" gap={1} height={4}>
+        <CounterPanel
+          id="alpha"
+          label="Alpha"
+          saveTarget="alpha-panel.txt"
+          step={1}
+          color={palette.alpha}
+          setRef={setAlphaPanelRef}
+          count={alphaCount}
+          setCount={setAlphaCount}
+          announce={announce}
+        />
+        <CounterPanel
+          id="beta"
+          label="Beta"
+          saveTarget="beta-panel.txt"
+          step={5}
+          color={palette.beta}
+          setRef={setBetaPanelRef}
+          count={betaCount}
+          setCount={setBetaCount}
+          announce={announce}
+        />
+      </box>
+
+      <box id="action-map-demo-editors" flexDirection="row" gap={1} height={5}>
+        {editorSpecs.map((spec, index) => {
+          return (
+            <box
+              key={spec.id}
+              id={`action-map-demo-editor-frame-${spec.id}`}
+              border
+              borderStyle="rounded"
+              borderColor={focusedEditorIndex === index ? spec.color : palette.border}
+              flexDirection="column"
+              flexGrow={1}
+              flexBasis={0}
+              minWidth={0}
+              title={` ${index + 1}. ${spec.label}${focusedEditorIndex === index ? " *" : ""} `}
+              titleAlignment="left"
+            >
+              <textarea
+                id={`action-map-demo-editor-${index + 1}`}
+                ref={editorRefCallbacks[index]}
+                width="100%"
+                height="100%"
+                initialValue={spec.initialValue}
+                placeholder={spec.placeholder ?? null}
+                backgroundColor={palette.surface}
+                focusedBackgroundColor={palette.surfaceFocus}
+                textColor={palette.text}
+                focusedTextColor={palette.title}
+                placeholderColor={palette.textMuted}
+                selectionBg="#264F78"
+                selectionFg="#FFFFFF"
+                wrapMode="word"
+                onContentChange={bumpStatus}
+                onCursorChange={bumpStatus}
+              />
+            </box>
+          )
+        })}
+      </box>
+
+      <box
+        id="action-map-demo-footer"
+        border
+        borderStyle="rounded"
+        borderColor={palette.border}
+        paddingX={1}
+        gap={2}
+        flexDirection="row"
+        flexGrow={1}
+        minHeight={4}
+      >
+        <box id="action-map-demo-details-column" flexGrow={1} minWidth={0} flexDirection="column">
+          <text id="action-map-demo-status-focused" fg={palette.text} height={1}>
+            <span style={{ fg: palette.textDim }}>Focused: </span>
+            <span style={{ fg: focusedColor, attributes: TextAttributes.BOLD }}>{focusedLabel}</span>
+          </text>
+
+          <text id="action-map-demo-status-info" fg={palette.text} height={1}>
+            {focusedEditor ? (
+              <>
+                <span style={{ fg: palette.textDim }}>Cursor: </span>
+                <span
+                  style={{ fg: palette.text }}
+                >{`${focusedEditor.logicalCursor.row + 1}:${focusedEditor.logicalCursor.col + 1}`}</span>
+                <span style={{ fg: palette.separator }}>{"  |  "}</span>
+                <span style={{ fg: palette.textDim }}>Lines: </span>
+                <span style={{ fg: palette.text }}>{String(focusedEditor.lineCount)}</span>
+                <span style={{ fg: palette.separator }}>{"  |  "}</span>
+                <span style={{ fg: palette.textDim }}>Chars: </span>
+                <span style={{ fg: palette.text }}>{String(focusedEditor.plainText.length)}</span>
+                <span style={{ fg: palette.separator }}>{"  |  "}</span>
+                <span style={{ fg: palette.textDim }}>Keys: </span>
+                <span style={{ fg: palette.command }}>
+                  {focusedEditor.traits.suspend === true ? "action-map" : "local"}
+                </span>
+              </>
+            ) : (
+              <>
+                <span style={{ fg: palette.textDim }}>Alpha: </span>
+                <span style={{ fg: palette.text }}>{String(alphaCount)}</span>
+                <span style={{ fg: palette.separator }}>{"  |  "}</span>
+                <span style={{ fg: palette.textDim }}>Beta: </span>
+                <span style={{ fg: palette.text }}>{String(betaCount)}</span>
+              </>
+            )}
+          </text>
+
+          <text id="action-map-demo-status-leader" fg={palette.text} height={1}>
+            <span style={{ fg: palette.textDim }}>Leader: </span>
+            {leaderArmed ? (
+              <span style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}>armed (ctrl+x)</span>
+            ) : (
+              <span style={{ fg: palette.textMuted }}>idle</span>
+            )}
+          </text>
+
+          <text id="action-map-demo-status-last" fg={palette.text} height={1}>
+            <span style={{ fg: palette.textDim }}>Last: </span>
+            <span style={{ fg: palette.text }}>{lastAction}</span>
+          </text>
+
+          <box id="action-map-demo-help" flexDirection="column" marginTop={1} visible={helpVisible}>
+            <text fg={palette.text} height={1}>
+              <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>tab</span>
+              <span style={{ fg: palette.textMuted }}>{" / "}</span>
+              <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>shift+tab</span>
+              <span style={{ fg: palette.textDim }}>: switch panels and editors</span>
+            </text>
+            <text fg={palette.text} height={1}>
+              <span style={{ fg: palette.textDim }}>Panels use local j/k/enter. </span>
+              <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>:</span>
+              <span style={{ fg: palette.textDim }}> opens the ex prompt.</span>
+            </text>
+          </box>
+
+          <box id="action-map-demo-log" flexDirection="column" marginTop={1}>
+            <text style={{ fg: palette.textDim, attributes: TextAttributes.BOLD }} height={1}>
+              Log
+            </text>
+            {logs.length > 0 ? (
+              logs.map((entry, index) => (
+                <text key={`${index}-${entry}`} fg={palette.textMuted}>
+                  {entry}
+                </text>
+              ))
+            ) : (
+              <text fg={palette.textMuted}>(no events yet)</text>
+            )}
+          </box>
+        </box>
+
+        <box
+          id="action-map-demo-which-key-column"
+          width="40%"
+          minWidth={30}
+          maxWidth={48}
+          flexShrink={0}
+          flexDirection="column"
+        >
+          <text id="action-map-demo-wk-header-text" fg={palette.text} height={1}>
+            <span style={{ fg: palette.accent, attributes: TextAttributes.BOLD }}>Which Key</span>
+            <span style={{ fg: palette.textDim }}>{`  ${whichKeyPrefix}`}</span>
+          </text>
+
+          <scrollbox
+            id="action-map-demo-wk-scrollbox"
+            flexGrow={1}
+            flexShrink={1}
+            contentOptions={{ paddingRight: 1 }}
+            verticalScrollbarOptions={{ visible: true }}
+            horizontalScrollbarOptions={{ visible: false }}
+          >
+            {whichKeyEntries.length > 0 ? (
+              whichKeyEntries.map((entry) => {
+                return (
+                  <text key={`${entry.key}-${entry.command}`} fg={palette.text} width="100%" wrapMode="word">
+                    <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>{entry.key}</span>
+                    <span style={{ fg: palette.textMuted }}>{" -> "}</span>
+                    <span style={{ fg: palette.command }}>{entry.command}</span>
+                  </text>
+                )
+              })
+            ) : (
+              <text fg={palette.textMuted}>(no active keys)</text>
+            )}
+          </scrollbox>
+        </box>
+      </box>
+
+      <box
+        id="action-map-demo-ex-prompt-shell"
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          width: EX_PROMPT_WIDTH,
+          marginLeft: -(EX_PROMPT_WIDTH / 2),
+          marginTop: -Math.ceil(EX_PROMPT_MAX_HEIGHT / 2),
+          flexDirection: "column",
+          zIndex: 40,
+        }}
+        visible={commandPromptVisible}
+      >
+        <box
+          id="action-map-demo-ex-prompt"
+          style={{
+            width: EX_PROMPT_WIDTH,
+            height: EX_PROMPT_CHROME_ROWS,
+            border: true,
+            borderStyle: "rounded",
+            borderColor: palette.accent,
+            backgroundColor: palette.bg,
+            paddingX: 1,
+            paddingY: 0,
+            flexDirection: "column",
+          }}
+          title=" Ex Command "
+          titleAlignment="center"
+        >
+          <text id="action-map-demo-ex-prompt-hint" fg={palette.textMuted} height={1}>
+            tab complete | up/down | enter | esc
+          </text>
+          <input
+            id="action-map-demo-ex-input"
+            ref={commandInputRef}
+            width="100%"
+            value={commandPromptValue}
+            placeholder=":write session.log"
+            backgroundColor={palette.surface}
+            focusedBackgroundColor={palette.surfaceFocus}
+            textColor={palette.title}
+            focusedTextColor={palette.title}
+            placeholderColor={palette.textMuted}
+            onInput={(value) => {
+              setCommandPromptValue(value)
+              setCommandPromptSelection(0)
+            }}
+            onKeyDown={onCommandPromptKeyDown}
+          />
+          <text
+            id="action-map-demo-ex-prompt-usage"
+            fg={selectedCommandPromptSuggestion ? palette.text : palette.textMuted}
+            height={1}
+          >
+            {commandPromptUsage}
+          </text>
+        </box>
+        <box
+          id="action-map-demo-ex-prompt-list"
+          style={{
+            width: EX_PROMPT_WIDTH,
+            height: commandPromptSuggestionRows,
+            backgroundColor: palette.bg,
+            paddingX: 1,
+            paddingY: 0,
+            flexDirection: "column",
+          }}
+        >
+          {commandPromptSuggestions.length > 0 ? (
+            commandPromptSuggestions.map((suggestion, index) => {
+              const isSelected = index === Math.min(commandPromptSelection, commandPromptSuggestions.length - 1)
+
+              return (
+                <text
+                  key={`${suggestion.label}-${index}`}
+                  id={index === 0 ? "action-map-demo-ex-prompt-suggestions" : undefined}
+                  fg={palette.text}
+                  height={1}
+                >
+                  <span style={{ fg: isSelected ? palette.leader : palette.textDim }}>{isSelected ? "> " : "  "}</span>
+                  <span style={{ fg: isSelected ? palette.title : palette.command, attributes: TextAttributes.BOLD }}>
+                    {suggestion.label}
+                  </span>
+                  <span style={{ fg: palette.separator }}>{"  "}</span>
+                  <span style={{ fg: palette.textMuted }}>{suggestion.desc}</span>
+                </text>
+              )
+            })
+          ) : (
+            <text id="action-map-demo-ex-prompt-suggestions" fg={palette.textMuted}>
+              (no suggestions)
+            </text>
+          )}
+        </box>
+      </box>
+    </box>
+  )
+}
+
+if (import.meta.main) {
+  const renderer = await createCliRenderer({
+    exitOnCtrlC: true,
+  })
+
+  createRoot(renderer).render(<App />)
+}
+
+export default App

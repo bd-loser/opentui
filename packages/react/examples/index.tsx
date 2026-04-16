@@ -11,7 +11,7 @@ import { App as DiffDemo } from "./diff.js"
 import { ExtendExample } from "./extend-example.js"
 import ExternalPluginSlotsDemo from "./external-plugin-slots-demo.js"
 import { App as FlushSyncDemo } from "./flush-sync.js"
-import { App as KeymapDemo } from "./keymap.js"
+import { App as ActionMapDemo } from "./action-map.js"
 import LineNumberDemo from "./line-number.js"
 import OpacityDemo from "./opacity.js"
 import { App as ScrollDemo } from "./scroll.js"
@@ -85,9 +85,9 @@ const EXAMPLES: ExampleDefinition[] = [
     component: FlushSyncDemo,
   },
   {
-    name: "Keymap Demo",
-    description: "Panels plus textareas with global, local, managed keymaps, and a centered : prompt",
-    component: KeymapDemo,
+    name: "Action Map Demo",
+    description: "Panels plus textareas with global, local, managed bindings, and a centered : prompt",
+    component: ActionMapDemo,
   },
   {
     name: "Extend Demo",

@@ -9,12 +9,12 @@ import {
   type TimelineOptions,
 } from "@opentui/core"
 import {
-  getKeymapManager,
-  type KeymapActiveKey,
-  type KeymapActiveKeyOptions,
-  type KeymapLayer,
-  type KeymapLayerFields,
-  type KeymapManager,
+  getActionMap,
+  type ActionMapActiveKey,
+  type ActionMapActiveKeyOptions,
+  type ActionMapLayer,
+  type ActionMapLayerFields,
+  type ActionMap,
   type ParsedKeyPart,
 } from "@opentui/core/extras"
 import { createContext, createMemo, createSignal, onCleanup, onMount, useContext, type Accessor } from "solid-js"
@@ -110,48 +110,48 @@ export const usePaste = (callback: (event: PasteEvent) => void) => {
   })
 }
 
-export type UseKeymapTarget<TRenderable extends Renderable = Renderable> =
+export type UseBindingsTarget<TRenderable extends Renderable = Renderable> =
   | TRenderable
   | null
   | undefined
   | (() => TRenderable | null | undefined)
 
-type UseKeymapLayerBase = KeymapLayerFields
+type UseBindingsLayerBase = ActionMapLayerFields
 
-export type KeymapRef<TRenderable extends Renderable = Renderable> = (value: TRenderable) => void
+export type BindingsRef<TRenderable extends Renderable = Renderable> = (value: TRenderable) => void
 
-export interface UseGlobalKeymapLayer extends UseKeymapLayerBase {
+export interface UseGlobalBindingsLayer extends UseBindingsLayerBase {
   scope?: "global"
   target?: undefined
 }
 
-export interface UseFocusKeymapLayer<TRenderable extends Renderable = Renderable> extends UseKeymapLayerBase {
+export interface UseFocusBindingsLayer<TRenderable extends Renderable = Renderable> extends UseBindingsLayerBase {
   scope: "focus"
-  target?: UseKeymapTarget<TRenderable>
+  target?: UseBindingsTarget<TRenderable>
 }
 
-export interface UseFocusWithinKeymapLayer<TRenderable extends Renderable = Renderable> extends UseKeymapLayerBase {
+export interface UseFocusWithinBindingsLayer<TRenderable extends Renderable = Renderable> extends UseBindingsLayerBase {
   scope: "focus-within"
-  target?: UseKeymapTarget<TRenderable>
+  target?: UseBindingsTarget<TRenderable>
 }
 
-export interface UseInferredFocusWithinKeymapLayer<
+export interface UseInferredFocusWithinBindingsLayer<
   TRenderable extends Renderable = Renderable,
-> extends UseKeymapLayerBase {
+> extends UseBindingsLayerBase {
   scope?: undefined
-  target: UseKeymapTarget<TRenderable>
+  target: UseBindingsTarget<TRenderable>
 }
 
-export type UseTargetKeymapLayer<TRenderable extends Renderable = Renderable> =
-  | UseFocusKeymapLayer<TRenderable>
-  | UseFocusWithinKeymapLayer<TRenderable>
-  | UseInferredFocusWithinKeymapLayer<TRenderable>
+export type UseTargetBindingsLayer<TRenderable extends Renderable = Renderable> =
+  | UseFocusBindingsLayer<TRenderable>
+  | UseFocusWithinBindingsLayer<TRenderable>
+  | UseInferredFocusWithinBindingsLayer<TRenderable>
 
-export type UseKeymapLayer<TRenderable extends Renderable = Renderable> =
-  | UseGlobalKeymapLayer
-  | UseTargetKeymapLayer<TRenderable>
+export type UseBindingsLayer<TRenderable extends Renderable = Renderable> =
+  | UseGlobalBindingsLayer
+  | UseTargetBindingsLayer<TRenderable>
 
-function resolveKeymapTarget(target: UseKeymapTarget | undefined): Renderable | undefined {
+function resolveBindingsTarget(target: UseBindingsTarget | undefined): Renderable | undefined {
   if (typeof target === "function") {
     return target() ?? undefined
   }
@@ -159,12 +159,12 @@ function resolveKeymapTarget(target: UseKeymapTarget | undefined): Renderable | 
   return target ?? undefined
 }
 
-export const useKeymappings = (): KeymapManager => {
+export const useActionMap = (): ActionMap => {
   const renderer = useRenderer()
-  return getKeymapManager(renderer)
+  return getActionMap(renderer)
 }
 
-function useKeymapStateVersion(manager: KeymapManager): Accessor<number> {
+function useActionMapStateVersion(manager: ActionMap): Accessor<number> {
   const [version, setVersion] = createSignal(0)
   let dispose: (() => void) | undefined
 
@@ -183,9 +183,9 @@ function useKeymapStateVersion(manager: KeymapManager): Accessor<number> {
   return version
 }
 
-export const useActiveKeys = (options?: KeymapActiveKeyOptions): Accessor<readonly KeymapActiveKey[]> => {
-  const manager = useKeymappings()
-  const version = useKeymapStateVersion(manager)
+export const useActiveKeys = (options?: ActionMapActiveKeyOptions): Accessor<readonly ActionMapActiveKey[]> => {
+  const manager = useActionMap()
+  const version = useActionMapStateVersion(manager)
 
   return createMemo(() => {
     version()
@@ -194,8 +194,8 @@ export const useActiveKeys = (options?: KeymapActiveKeyOptions): Accessor<readon
 }
 
 export const usePendingSequenceParts = (): Accessor<readonly ParsedKeyPart[]> => {
-  const manager = useKeymappings()
-  const version = useKeymapStateVersion(manager)
+  const manager = useActionMap()
+  const version = useActionMapStateVersion(manager)
 
   return createMemo(() => {
     version()
@@ -203,20 +203,20 @@ export const usePendingSequenceParts = (): Accessor<readonly ParsedKeyPart[]> =>
   })
 }
 
-export function useKeymap<TRenderable extends Renderable = Renderable>(
-  layer: UseGlobalKeymapLayer,
-): KeymapRef<TRenderable>
-export function useKeymap<TRenderable extends Renderable = Renderable>(
-  layer: UseTargetKeymapLayer<TRenderable>,
-): KeymapRef<TRenderable>
-export function useKeymap<TRenderable extends Renderable = Renderable>(
-  layer: UseKeymapLayer<TRenderable>,
-): KeymapRef<TRenderable> {
-  const manager = useKeymappings()
+export function useBindings<TRenderable extends Renderable = Renderable>(
+  layer: UseGlobalBindingsLayer,
+): BindingsRef<TRenderable>
+export function useBindings<TRenderable extends Renderable = Renderable>(
+  layer: UseTargetBindingsLayer<TRenderable>,
+): BindingsRef<TRenderable>
+export function useBindings<TRenderable extends Renderable = Renderable>(
+  layer: UseBindingsLayer<TRenderable>,
+): BindingsRef<TRenderable> {
+  const manager = useActionMap()
   let dispose: (() => void) | undefined
   let mounted = false
   let registered = false
-  let registeredScope: KeymapLayer["scope"] | undefined
+  let registeredScope: ActionMapLayer["scope"] | undefined
   let refTarget: Renderable | undefined
 
   const register = (): void => {
@@ -224,7 +224,7 @@ export function useKeymap<TRenderable extends Renderable = Renderable>(
       return
     }
 
-    const explicitTarget = resolveKeymapTarget(layer.target)
+    const explicitTarget = resolveBindingsTarget(layer.target)
     const resolvedTarget = explicitTarget ?? refTarget
     const resolvedScope = layer.scope ?? (resolvedTarget ? "focus-within" : "global")
 
@@ -234,7 +234,7 @@ export function useKeymap<TRenderable extends Renderable = Renderable>(
 
     const { scope: _scope, target: _target, ...baseLayer } = layer
 
-    let resolvedLayer: KeymapLayer
+    let resolvedLayer: ActionMapLayer
     if (resolvedScope === "global") {
       resolvedLayer = {
         ...baseLayer,
@@ -257,7 +257,7 @@ export function useKeymap<TRenderable extends Renderable = Renderable>(
     registeredScope = resolvedScope
   }
 
-  const ref: KeymapRef<TRenderable> = (value) => {
+  const ref: BindingsRef<TRenderable> = (value) => {
     refTarget = value
 
     if (mounted) {
@@ -274,14 +274,14 @@ export function useKeymap<TRenderable extends Renderable = Renderable>(
 
   onMount(() => {
     mounted = true
-    const resolvedTarget = resolveKeymapTarget(layer.target)
+    const resolvedTarget = resolveBindingsTarget(layer.target)
     if (layer.target !== undefined && !resolvedTarget) {
-      throw new Error("useKeymap target was not available during mount")
+      throw new Error("useBindings target was not available during mount")
     }
 
     const resolvedScope = layer.scope ?? (resolvedTarget || refTarget ? "focus-within" : "global")
     if (resolvedScope !== "global" && !resolvedTarget && !refTarget) {
-      throw new Error("useKeymap local bindings need a target or the returned ref callback attached to a renderable")
+      throw new Error("useBindings local bindings need a target or the returned ref callback attached to a renderable")
     }
 
     register()

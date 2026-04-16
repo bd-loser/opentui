@@ -694,7 +694,7 @@ export const App = () => {
 
     const restoreTarget = commandPromptRestoreTargetRef.current
     const focused = restoreTarget && !restoreTarget.isDestroyed ? restoreTarget : renderer.currentFocusedRenderable
-    const result = manager.runCommand(parsed.raw, { focused: focused ?? null })
+    const result = manager.runCommand(parsed.raw, { focused: focused ?? null, includeCommand: true })
 
     if (!result.ok) {
       if (result.reason === "not-found") {

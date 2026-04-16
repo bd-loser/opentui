@@ -414,7 +414,7 @@ function executeCommandPrompt(renderer: CliRenderer): void {
 
   const restoreTarget = commandPromptRestoreTarget
   const focused = restoreTarget && !restoreTarget.isDestroyed ? restoreTarget : renderer.currentFocusedRenderable
-  const result = keymapManager?.runCommand(parsed.raw, { focused: focused ?? null })
+  const result = keymapManager?.runCommand(parsed.raw, { focused: focused ?? null, includeCommand: true })
 
   if (!result || !result.ok) {
     if (!result || result.reason === "not-found") {

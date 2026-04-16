@@ -1855,14 +1855,18 @@ describe("keymap", () => {
       manager
         .getCommands({
           filter: {
-            usage(value) {
-              return typeof value === "string" && value.includes("<file>")
+            usage(value, command) {
+              return (
+                typeof value === "string" &&
+                value.includes("<file>") &&
+                command.fields.namespace === "excommands"
+              )
             },
           },
         })
         .map((command) => command.name),
     ).toEqual(["save-current"])
-    expect(manager.getCommands({ where: (command) => command.name === "palette-help" }).map((command) => command.name)).toEqual([
+    expect(manager.getCommands({ filter: (command) => command.name === "palette-help" }).map((command) => command.name)).toEqual([
       "palette-help",
     ])
 

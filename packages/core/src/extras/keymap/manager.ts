@@ -651,8 +651,16 @@ export class KeymapManager {
 
     const normalizedSearch = query?.search?.trim().toLowerCase() ?? ""
     const searchKeys = query?.searchIn && query.searchIn.length > 0 ? query.searchIn : DEFAULT_COMMAND_SEARCH_FIELDS
-    const filterEntries = query?.filter ? Object.entries(query.filter) : undefined
-    const where = query?.where
+    const filter = query?.filter
+    let filterEntries: readonly [string, KeymapCommandQueryValue][] | undefined
+    let filterPredicate: ((command: KeymapCommandRecord) => boolean) | undefined
+
+    if (typeof filter === "function") {
+      filterPredicate = filter
+    } else if (filter) {
+      filterEntries = Object.entries(filter)
+    }
+
     const results: KeymapCommandRecord[] = []
 
     for (const command of this.commands.values()) {
@@ -666,7 +674,7 @@ export class KeymapManager {
 
       const record = this.getCommandRecord(command)
 
-      if (where && !where(record)) {
+      if (filterPredicate && !filterPredicate(record)) {
         continue
       }
 

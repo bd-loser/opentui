@@ -36,6 +36,7 @@ export type {
   KeymapHookName,
   KeymapHooks,
   KeymapCommand,
+  KeymapCommandFilter,
   KeymapCommandQuery,
   KeymapCommandQueryValue,
   KeymapCommandRecord,

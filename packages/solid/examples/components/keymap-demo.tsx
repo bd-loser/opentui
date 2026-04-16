@@ -93,6 +93,7 @@ interface ExPromptSuggestion {
 const EX_PROMPT_WIDTH = 54
 const EX_PROMPT_MAX_VISIBLE_SUGGESTIONS = 4
 const EX_PROMPT_CHROME_ROWS = 5
+const EX_PROMPT_MAX_HEIGHT = EX_PROMPT_CHROME_ROWS + EX_PROMPT_MAX_VISIBLE_SUGGESTIONS
 
 function normalizeExPromptName(name: string): string {
   const trimmed = name.trim()
@@ -581,10 +582,6 @@ export default function KeymapDemo() {
     return Math.max(commandPromptSuggestions().length, 1)
   })
 
-  const commandPromptHeight = createMemo(() => {
-    return EX_PROMPT_CHROME_ROWS + commandPromptSuggestionRows()
-  })
-
   const selectedCommandPromptSuggestion = createMemo(() => {
     return getSelectedExPromptSuggestion(exCommands, commandPromptValue(), commandPromptSelection())
   })
@@ -1048,70 +1045,85 @@ export default function KeymapDemo() {
       </box>
 
       <box
-        id="keymap-demo-ex-prompt"
+        id="keymap-demo-ex-prompt-shell"
         position="absolute"
         left="50%"
         top="50%"
         width={EX_PROMPT_WIDTH}
-        maxHeight={EX_PROMPT_CHROME_ROWS + EX_PROMPT_MAX_VISIBLE_SUGGESTIONS}
-        height={commandPromptHeight()}
         marginLeft={-(EX_PROMPT_WIDTH / 2)}
-        marginTop={-Math.ceil(commandPromptHeight() / 2)}
-        border
-        borderStyle="rounded"
-        borderColor={palette.accent}
-        backgroundColor={palette.bg}
-        paddingX={1}
-        paddingY={0}
+        marginTop={-Math.ceil(EX_PROMPT_MAX_HEIGHT / 2)}
         flexDirection="column"
         zIndex={40}
         visible={commandPromptVisible()}
-        title=" Ex Command "
-        titleAlignment="center"
       >
-        <text id="keymap-demo-ex-prompt-hint" fg={palette.textMuted} height={1}>
-          tab complete | up/down | enter | esc
-        </text>
-        <input
-          id="keymap-demo-ex-input"
-          ref={(value: InputRenderable) => {
-            commandInputRef = value
-          }}
-          width="100%"
-          value={commandPromptValue()}
-          placeholder=":write session.log"
-          backgroundColor={palette.surface}
-          focusedBackgroundColor={palette.surfaceFocus}
-          textColor={palette.title}
-          focusedTextColor={palette.title}
-          placeholderColor={palette.textMuted}
-          onInput={(value) => {
-            setCommandPromptValue(value)
-            setCommandPromptSelection(0)
-          }}
-          onKeyDown={onCommandPromptKeyDown}
-        />
-        <text id="keymap-demo-ex-prompt-usage" fg={selectedCommandPromptSuggestion() ? palette.text : palette.textMuted} height={1}>
-          {commandPromptUsage()}
-        </text>
-        <Show when={commandPromptSuggestions().length > 0} fallback={<text id="keymap-demo-ex-prompt-suggestions" fg={palette.textMuted}>(no suggestions)</text>}>
-          <For each={commandPromptSuggestions()}>
-            {(suggestion, index) => {
-              const isSelected = () => index() === Math.min(commandPromptSelection(), commandPromptSuggestions().length - 1)
-
-              return (
-                <text id={index() === 0 ? "keymap-demo-ex-prompt-suggestions" : undefined} fg={palette.text} height={1}>
-                  <span style={{ fg: isSelected() ? palette.leader : palette.textDim }}>{isSelected() ? "> " : "  "}</span>
-                  <span style={{ fg: isSelected() ? palette.title : palette.command, attributes: TextAttributes.BOLD }}>
-                    {suggestion.label}
-                  </span>
-                  <span style={{ fg: palette.separator }}>{"  "}</span>
-                  <span style={{ fg: palette.textMuted }}>{suggestion.desc}</span>
-                </text>
-              )
+        <box
+          id="keymap-demo-ex-prompt"
+          width={EX_PROMPT_WIDTH}
+          height={EX_PROMPT_CHROME_ROWS}
+          border
+          borderStyle="rounded"
+          borderColor={palette.accent}
+          backgroundColor={palette.bg}
+          paddingX={1}
+          paddingY={0}
+          flexDirection="column"
+          title=" Ex Command "
+          titleAlignment="center"
+        >
+          <text id="keymap-demo-ex-prompt-hint" fg={palette.textMuted} height={1}>
+            tab complete | up/down | enter | esc
+          </text>
+          <input
+            id="keymap-demo-ex-input"
+            ref={(value: InputRenderable) => {
+              commandInputRef = value
             }}
-          </For>
-        </Show>
+            width="100%"
+            value={commandPromptValue()}
+            placeholder=":write session.log"
+            backgroundColor={palette.surface}
+            focusedBackgroundColor={palette.surfaceFocus}
+            textColor={palette.title}
+            focusedTextColor={palette.title}
+            placeholderColor={palette.textMuted}
+            onInput={(value) => {
+              setCommandPromptValue(value)
+              setCommandPromptSelection(0)
+            }}
+            onKeyDown={onCommandPromptKeyDown}
+          />
+          <text id="keymap-demo-ex-prompt-usage" fg={selectedCommandPromptSuggestion() ? palette.text : palette.textMuted} height={1}>
+            {commandPromptUsage()}
+          </text>
+        </box>
+        <box
+          id="keymap-demo-ex-prompt-list"
+          width={EX_PROMPT_WIDTH}
+          height={commandPromptSuggestionRows()}
+          backgroundColor={palette.bg}
+          paddingX={1}
+          paddingY={0}
+          flexDirection="column"
+        >
+          <Show when={commandPromptSuggestions().length > 0} fallback={<text id="keymap-demo-ex-prompt-suggestions" fg={palette.textMuted}>(no suggestions)</text>}>
+            <For each={commandPromptSuggestions()}>
+              {(suggestion, index) => {
+                const isSelected = () => index() === Math.min(commandPromptSelection(), commandPromptSuggestions().length - 1)
+
+                return (
+                  <text id={index() === 0 ? "keymap-demo-ex-prompt-suggestions" : undefined} fg={palette.text} height={1}>
+                    <span style={{ fg: isSelected() ? palette.leader : palette.textDim }}>{isSelected() ? "> " : "  "}</span>
+                    <span style={{ fg: isSelected() ? palette.title : palette.command, attributes: TextAttributes.BOLD }}>
+                      {suggestion.label}
+                    </span>
+                    <span style={{ fg: palette.separator }}>{"  "}</span>
+                    <span style={{ fg: palette.textMuted }}>{suggestion.desc}</span>
+                  </text>
+                )
+              }}
+            </For>
+          </Show>
+        </box>
       </box>
     </box>
   )

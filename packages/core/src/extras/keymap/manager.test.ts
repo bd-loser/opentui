@@ -1807,7 +1807,7 @@ describe("keymap", () => {
     })
   })
 
-  test("getCommands supports filter and where queries across raw fields and attrs", () => {
+  test("getCommands supports namespace and filter queries across raw fields and attrs", () => {
     const manager = getKeymapManager(renderer)
 
     manager.registerCommandFields({
@@ -1839,8 +1839,24 @@ describe("keymap", () => {
         tags: ["help"],
         run() {},
       },
+      {
+        name: "untagged-help",
+        title: "excommands helper",
+        tags: ["help"],
+        run() {},
+      },
     ])
 
+    expect(manager.getCommands({ namespace: "excommands" }).map((command) => command.name)).toEqual([
+      "save-current",
+      "session-reset",
+    ])
+    expect(manager.getCommands({ namespace: ["palette", "missing"] }).map((command) => command.name)).toEqual([
+      "palette-help",
+    ])
+    expect(manager.getCommands({ namespace: "excommands", search: "reset", searchIn: ["title"] }).map((command) => command.name)).toEqual([
+      "session-reset",
+    ])
     expect(manager.getCommands({ filter: { namespace: "excommands" } }).map((command) => command.name)).toEqual([
       "save-current",
       "session-reset",
@@ -1861,6 +1877,18 @@ describe("keymap", () => {
                 value.includes("<file>") &&
                 command.fields.namespace === "excommands"
               )
+            },
+          },
+        })
+        .map((command) => command.name),
+    ).toEqual(["save-current"])
+    expect(
+      manager
+        .getCommands({
+          namespace: "excommands",
+          filter: {
+            usage(value) {
+              return typeof value === "string" && value.includes("<file>")
             },
           },
         })

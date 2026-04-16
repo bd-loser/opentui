@@ -50,7 +50,7 @@ const EXAMPLES = [
   },
   {
     name: "Keymap Demo",
-    description: "Global and local keymaps with action commands, ex commands, and a ctrl+x leader extension",
+    description: "Global and local keymaps with a centered : prompt, ex commands, and a ctrl+x leader extension",
     scene: "keymap-demo",
   },
   {

@@ -71,14 +71,20 @@ export function registerExCommands(manager: KeymapManager, commands: ExCommand[]
   const commandMap = new Map<string, ExCommand>()
 
   for (const command of commands) {
-    const { name, aliases, nargs: _nargs, run, ...attrs } = command
+    const { name, aliases, run, ...fields } = command
     const names = [name, ...(aliases ?? [])]
+    const registrationFields = {
+      ...fields,
+      aliases,
+      namespace: fields.namespace ?? "excommands",
+    }
+
     for (const name of names) {
       const normalizedName = normalizeExCommandName(name)
       commandMap.set(normalizedName, command)
 
       registrations.push({
-        ...attrs,
+        ...registrationFields,
         name: normalizedName,
         run(ctx) {
           const raw =

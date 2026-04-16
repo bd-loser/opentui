@@ -597,6 +597,89 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "register_commands_custom_fields",
+    description: "Repeated command registration with compiled and raw custom fields",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.manager.registerCommandFields({
+        desc(value, ctx) {
+          ctx.attr("desc", value)
+        },
+        title(value, ctx) {
+          ctx.attr("title", value)
+        },
+        category(value, ctx) {
+          ctx.attr("category", value)
+        },
+      })
+
+      return {
+        resources,
+        runIteration() {
+          const off = resources.manager.registerCommands([
+            {
+              name: "bench-command",
+              namespace: "bench",
+              desc: "Write the current file",
+              title: "Write File",
+              category: "File",
+              usage: ":write <file>",
+              tags: ["file", "write"],
+              run() {},
+            },
+          ])
+
+          off()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "get_commands_query",
+    description: "Repeated command discovery with search and filter over raw fields and attrs",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.manager.registerCommandFields({
+        title(value, ctx) {
+          ctx.attr("label", value)
+        },
+      })
+
+      resources.manager.registerCommands(
+        Array.from({ length: 512 }, (_, index) => ({
+          name: `command-${index}`,
+          namespace: index % 2 === 0 ? "bench" : "other",
+          title: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
+          usage: index % 4 === 0 ? `:write file-${index}.txt` : `:open file-${index}.txt`,
+          tags: index % 4 === 0 ? ["file", "write"] : ["file", "open"],
+          run() {},
+        })),
+      )
+
+      return {
+        resources,
+        runIteration() {
+          resources.manager.getCommands({
+            search: "write",
+            searchIn: ["name", "title", "usage", "label"],
+            filter: {
+              namespace: "bench",
+              tags: "file",
+            },
+          })
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "active_keys_global_layers",
     description: "Repeated getActiveKeys with many global layers",
     async setup() {

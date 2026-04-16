@@ -16,7 +16,7 @@ import {
   stringifyKeyStroke,
   type ActionMapActiveKey,
   type ActionMapBindingInput,
-  type ActionMapCommand,
+  type ActionMapCommandDefinition,
   type ActionMapCommandRecord,
 } from "@opentui/core/extras"
 import {
@@ -295,7 +295,7 @@ function CounterPanel(props: {
   const incrementCommand = useMemo(() => `${props.id}-up`, [props.id])
   const decrementCommand = useMemo(() => `${props.id}-down`, [props.id])
 
-  const commands = useMemo<ActionMapCommand[]>(
+  const commands = useMemo<ActionMapCommandDefinition[]>(
     () => [
       {
         name: incrementCommand,
@@ -551,7 +551,7 @@ export const App = () => {
     }
   }, [manager])
 
-  const actions = useMemo<ActionMapCommand[]>(
+  const actions = useMemo<ActionMapCommandDefinition[]>(
     () => [
       {
         name: "focus-next",

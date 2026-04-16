@@ -26,11 +26,10 @@ import type {
   ActionMapHooks,
   ActionMapEvents,
   ActionMapParsedBindingInput,
-  ActionMapCommand,
+  ActionMapCommandDefinition,
   ActionMapCommandContext,
   ActionMapCommandFieldCompiler,
   ActionMapCommandHandler,
-  ActionMapCommandInfo,
   ActionMapCommandQuery,
   ActionMapCommandQueryValue,
   ActionMapCommandRecord,
@@ -1243,7 +1242,7 @@ export class ActionMap {
     })
   }
 
-  public registerCommands(commands: ActionMapCommand[]): () => void {
+  public registerCommands(commands: ActionMapCommandDefinition[]): () => void {
     if (this.destroyed) {
       return NOOP
     }
@@ -1809,22 +1808,12 @@ export class ActionMap {
     const runner: ActionMapCommandHandler = (ctx) => {
       return command.run({
         ...ctx,
-        command: this.createCommandInfo(command),
+        command: this.getCommandRecord(command),
       })
     }
 
     command.runner = runner
     return runner
-  }
-
-  private createCommandInfo(command: RegisteredCommand): ActionMapCommandInfo {
-    if (command.commandInfo) {
-      return command.commandInfo
-    }
-
-    const info = command.attrs ? { name: command.name, attrs: command.attrs } : { name: command.name }
-    command.commandInfo = info
-    return info
   }
 
   private getCommandRecord(command: RegisteredCommand): ActionMapCommandRecord {

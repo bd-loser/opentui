@@ -89,7 +89,7 @@ export type ActionMapRunCommandResult =
   | { ok: false; reason: "invalid-args" | "rejected" | "error"; command?: ActionMapCommandRecord }
 
 export interface ActionMapCommandContext {
-  manager: ActionMap
+  actionMap: ActionMap
   renderer: CliRenderer
   event: KeyEvent
   focused: Renderable | null

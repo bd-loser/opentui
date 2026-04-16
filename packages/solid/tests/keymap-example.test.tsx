@@ -158,9 +158,16 @@ describe("solid keymap example", () => {
     expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-ex-input")
     expect(testSetup.captureCharFrame()).toContain("Ex Command")
 
+    const prompt = getRenderable("keymap-demo-ex-prompt")
+    const promptList = getRenderable("keymap-demo-ex-prompt-list")
+    const promptY = prompt.y
+    expect(promptList.y).toBe(prompt.y + prompt.height)
+
     testSetup.mockInput.pressKey("r")
     await testSetup.renderOnce()
     expect(testSetup.captureCharFrame()).toContain(":reset")
+    expect(getRenderable("keymap-demo-ex-prompt").y).toBe(promptY)
+    expect(getRenderable("keymap-demo-ex-prompt-list").y).toBe(prompt.y + prompt.height)
 
     testSetup.mockInput.pressTab()
     await testSetup.renderOnce()

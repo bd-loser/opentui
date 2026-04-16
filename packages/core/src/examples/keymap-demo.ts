@@ -99,6 +99,7 @@ interface ExPromptSuggestion {
 const EX_PROMPT_WIDTH = 54
 const EX_PROMPT_MAX_VISIBLE_SUGGESTIONS = 4
 const EX_PROMPT_CHROME_ROWS = 5
+const EX_PROMPT_MAX_HEIGHT = EX_PROMPT_CHROME_ROWS + EX_PROMPT_MAX_VISIBLE_SUGGESTIONS
 
 let root: BoxRenderable | null = null
 let alphaPanel: BoxRenderable | null = null
@@ -107,7 +108,9 @@ let alphaText: TextRenderable | null = null
 let betaText: TextRenderable | null = null
 let editorFrames: BoxRenderable[] = []
 let editors: TextareaRenderable[] = []
+let commandPromptShell: BoxRenderable | null = null
 let commandPromptBox: BoxRenderable | null = null
+let commandPromptSuggestionsBox: BoxRenderable | null = null
 let commandPromptInput: InputRenderable | null = null
 let commandPromptHintText: TextRenderable | null = null
 let commandPromptUsageText: TextRenderable | null = null
@@ -278,10 +281,6 @@ function getExPromptSuggestions(): ExPromptSuggestion[] {
 
 function getCommandPromptSuggestionRows(): number {
   return Math.max(getExPromptSuggestions().length, 1)
-}
-
-function getCommandPromptHeight(): number {
-  return EX_PROMPT_CHROME_ROWS + getCommandPromptSuggestionRows()
 }
 
 function getSelectedExPromptSuggestion(): ExPromptSuggestion | null {
@@ -595,10 +594,18 @@ function buildCommandPromptSuggestions(): StyledText {
 }
 
 function renderCommandPrompt(): void {
+  if (commandPromptShell) {
+    commandPromptShell.visible = commandPromptVisible
+  }
+
   if (commandPromptBox) {
     commandPromptBox.visible = commandPromptVisible
-    commandPromptBox.height = getCommandPromptHeight()
-    commandPromptBox.marginTop = -Math.ceil(getCommandPromptHeight() / 2)
+    commandPromptBox.height = EX_PROMPT_CHROME_ROWS
+  }
+
+  if (commandPromptSuggestionsBox) {
+    commandPromptSuggestionsBox.visible = commandPromptVisible
+    commandPromptSuggestionsBox.height = getCommandPromptSuggestionRows()
   }
 
   if (commandPromptHintText) {
@@ -1242,16 +1249,24 @@ export function run(renderer: CliRenderer): void {
   })
   whichKeyScrollBox.add(whichKeyEntriesText)
 
-  commandPromptBox = new BoxRenderable(renderer, {
-    id: "keymap-demo-ex-prompt",
+  commandPromptShell = new BoxRenderable(renderer, {
+    id: "keymap-demo-ex-prompt-shell",
     position: "absolute",
     left: "50%",
     top: "50%",
     width: EX_PROMPT_WIDTH,
-    maxHeight: EX_PROMPT_CHROME_ROWS + EX_PROMPT_MAX_VISIBLE_SUGGESTIONS,
-    height: getCommandPromptHeight(),
     marginLeft: -(EX_PROMPT_WIDTH / 2),
-    marginTop: -Math.ceil(getCommandPromptHeight() / 2),
+    marginTop: -Math.ceil(EX_PROMPT_MAX_HEIGHT / 2),
+    flexDirection: "column",
+    zIndex: 40,
+    visible: false,
+  })
+  root.add(commandPromptShell)
+
+  commandPromptBox = new BoxRenderable(renderer, {
+    id: "keymap-demo-ex-prompt",
+    width: EX_PROMPT_WIDTH,
+    height: EX_PROMPT_CHROME_ROWS,
     border: true,
     borderStyle: "rounded",
     borderColor: P.accent,
@@ -1259,12 +1274,10 @@ export function run(renderer: CliRenderer): void {
     paddingX: 1,
     paddingY: 0,
     flexDirection: "column",
-    zIndex: 40,
-    visible: false,
     title: " Ex Command ",
     titleAlignment: "center",
   })
-  root.add(commandPromptBox)
+  commandPromptShell.add(commandPromptBox)
 
   commandPromptHintText = new TextRenderable(renderer, {
     id: "keymap-demo-ex-prompt-hint",
@@ -1295,13 +1308,24 @@ export function run(renderer: CliRenderer): void {
   })
   commandPromptBox.add(commandPromptUsageText)
 
+  commandPromptSuggestionsBox = new BoxRenderable(renderer, {
+    id: "keymap-demo-ex-prompt-list",
+    width: EX_PROMPT_WIDTH,
+    height: getCommandPromptSuggestionRows(),
+    backgroundColor: P.bg,
+    paddingX: 1,
+    paddingY: 0,
+    flexDirection: "column",
+  })
+  commandPromptShell.add(commandPromptSuggestionsBox)
+
   commandPromptSuggestionsText = new TextRenderable(renderer, {
     id: "keymap-demo-ex-prompt-suggestions",
     content: "",
     fg: P.text,
     height: getCommandPromptSuggestionRows(),
   })
-  commandPromptBox.add(commandPromptSuggestionsText)
+  commandPromptSuggestionsBox.add(commandPromptSuggestionsText)
 
   commandPromptInput.on(InputRenderableEvents.INPUT, (value: string) => {
     commandPromptValue = value
@@ -1376,7 +1400,9 @@ export function destroy(_renderer: CliRenderer): void {
   betaText = null
   editorFrames = []
   editors = []
+  commandPromptShell = null
   commandPromptBox = null
+  commandPromptSuggestionsBox = null
   commandPromptInput = null
   commandPromptHintText = null
   commandPromptUsageText = null

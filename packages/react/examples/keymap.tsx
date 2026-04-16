@@ -540,7 +540,7 @@ export const App = () => {
         Original Alpha/Beta panels plus three switchable textareas.
       </text>
 
-      <box id="keymap-demo-panels" flexDirection="row" gap={1} height={4} marginTop={1}>
+      <box id="keymap-demo-panels" flexDirection="row" gap={1} height={4}>
         <CounterPanel
           id="alpha"
           label="Alpha"
@@ -565,7 +565,7 @@ export const App = () => {
         />
       </box>
 
-      <box id="keymap-demo-editors" flexDirection="row" gap={1} height={5} marginTop={1}>
+      <box id="keymap-demo-editors" flexDirection="row" gap={1} height={5}>
         {editorSpecs.map((spec, index) => {
           return (
             <box
@@ -610,7 +610,6 @@ export const App = () => {
         borderStyle="rounded"
         borderColor={palette.border}
         paddingX={1}
-        marginTop={1}
         gap={2}
         flexDirection="row"
         flexGrow={1}

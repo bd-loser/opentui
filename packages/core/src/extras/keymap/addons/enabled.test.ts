@@ -168,6 +168,11 @@ describe("enabled addon", () => {
     const manager = getKeymapManager(renderer)
     const offEnabled = registerEnabledField(manager)
     const calls: string[] = []
+    const errors: string[] = []
+
+    manager.on("error", (event) => {
+      errors.push(event.message)
+    })
 
     manager.registerCommands([
       {
@@ -184,7 +189,10 @@ describe("enabled addon", () => {
         enabled: "yes",
         bindings: [{ key: "x", cmd: "noop" }],
       })
-    }).toThrow('Keymap enabled field "enabled" must be a boolean, function, or { match, keys } object')
+    }).not.toThrow()
+
+    expect(errors).toEqual(['Keymap enabled field "enabled" must be a boolean, function, or { match, keys } object'])
+    expect(getActiveKeyNames()).toEqual([])
 
     offEnabled()
 

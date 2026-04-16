@@ -291,14 +291,21 @@ export type KeymapHookName = keyof KeymapHooks
 
 export type KeymapHookListener<TValue> = [TValue] extends [void] ? () => void : (value: TValue) => void
 
-export interface KeymapLogger {
-  warn?(...args: unknown[]): void
-  error?(...args: unknown[]): void
+export interface KeymapWarningEvent {
+  message: string
 }
 
-export interface KeymapManagerOptions {
-  logger?: KeymapLogger
+export interface KeymapErrorEvent {
+  message: string
+  cause?: unknown
 }
+
+export interface KeymapManagerEvents {
+  warning: [event: KeymapWarningEvent]
+  error: [event: KeymapErrorEvent]
+}
+
+export interface KeymapManagerOptions {}
 
 export type { KeymapManager }
 
@@ -400,9 +407,4 @@ export interface RegisteredLayerBucket {
 export interface PendingSequenceState {
   layer: RegisteredLayer
   node: SequenceNode
-}
-
-export interface ResolvedKeymapLogger {
-  warn(...args: unknown[]): void
-  error(...args: unknown[]): void
 }

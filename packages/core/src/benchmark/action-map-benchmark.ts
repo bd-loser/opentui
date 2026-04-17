@@ -300,11 +300,8 @@ function createFlagKey(index: number): string {
   return `flag-${index}`
 }
 
-// External-flag store with per-key subscription. Equivalent in spirit to the
-// previous `{ keys: [key] } + invalidateRuntimeKey(key)` pattern, but using
-// the reactive matcher contract: per-key listener buckets, notify on flag
-// change. Each matcher subscribes once at layer registration and unsubscribes
-// on unregister/destroy automatically.
+// Per-key reactive flag store used to benchmark matcher subscriptions against
+// the old keyed invalidation pattern.
 interface FlagStore {
   flags: Record<string, boolean>
   listeners: Map<string, Set<() => void>>

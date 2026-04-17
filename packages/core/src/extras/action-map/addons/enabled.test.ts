@@ -141,20 +141,17 @@ describe("enabled addon", () => {
       bindings: [{ key: "y", cmd: "dynamic" }],
     })
 
-    // Subscription is wired at layer registration.
     expect(subscribeCalls).toBe(1)
     expect(listeners.size).toBe(1)
 
     expect(getActiveKeyNames()).toEqual([])
     expect(evaluations).toBe(1)
 
-    // Changing external state without notifying does not flip the cache.
     current = true
     expect(getActiveKeyNames()).toEqual([])
     expect(evaluations).toBe(1)
     current = false
 
-    // Notifying via the reactive source invalidates + re-evaluates.
     setEnabled(true)
     expect(getActiveKeyNames()).toEqual(["y"])
     expect(evaluations).toBe(2)
@@ -163,7 +160,6 @@ describe("enabled addon", () => {
     expect(getActiveKeyNames()).toEqual([])
     expect(evaluations).toBe(3)
 
-    // Unregistering the layer disposes the subscription.
     off()
     expect(disposeCalls).toBe(1)
     expect(listeners.size).toBe(0)

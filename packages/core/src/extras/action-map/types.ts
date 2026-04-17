@@ -50,11 +50,8 @@ export interface ActionMapBindingSyntax {
 }
 
 /**
- * Queryable view of a registered command. Returned by `getCommands` /
- * `getCommandRecord`, embedded in `ActionMapRunCommandResult.command`,
- * attached to `ActionMapCommandContext.command` while a handler runs,
- * and passed to filter predicates. `fields` is the raw registration bag;
- * `attrs` is what command-field addons compiled from it.
+ * Read-only view of a registered command. `fields` is raw registration
+ * metadata; `attrs` is compiled command-field metadata.
  */
 export interface ActionMapCommandRecord {
   name: string
@@ -113,30 +110,16 @@ export interface ActionMapBindingInput {
   cmd?: ActionMapBindingCommand
   event?: ActionMapBindingEvent
   /**
-   * When the bound command runs successfully, call `event.preventDefault()`
-   * and `event.stopPropagation()` on the underlying `KeyEvent`. The default
-   * is `true` — a matched binding hides the keystroke from the focused
-   * renderable's key handlers and any lower-priority `renderer.keyInput`
-   * listeners. Set to `false` to let the same keystroke continue through the
-   * normal key-input pipeline after the command runs (e.g., a logging or
-   * telemetry binding that peeks at every press).
-   *
-   * Orthogonal to `fallthrough`: this controls whether the keystroke leaves
-   * the action-map; `fallthrough` controls whether dispatch continues to
-   * other matching bindings inside the action-map.
+   * Default `true`. Calls `event.preventDefault()` and
+   * `event.stopPropagation()` so the matched key does not reach the focused
+   * renderable or later `renderer.keyInput` listeners. Independent of
+   * `fallthrough`, which only controls dispatch inside the action-map.
    */
   preventDefault?: boolean
   /**
-   * When the bound command runs successfully, continue dispatching to the
-   * next matching binding in the same sequence / layer chain. The default
-   * is `false` — the first matching binding with a runnable command wins
-   * and later bindings for the same key are skipped. Set to `true` when
-   * multiple bindings on the same key should all run (e.g., a logging
-   * binding stacked on top of the real command).
-   *
-   * Orthogonal to `preventDefault`: this controls dispatch inside the
-   * action-map; `preventDefault` controls whether the keystroke leaves
-   * the action-map.
+   * Default `false`. Continues to later matching bindings in the same
+   * dispatch chain after this command runs. Independent of `preventDefault`,
+   * which controls whether the key event leaves the action-map.
    */
   fallthrough?: boolean
   [key: string]: unknown
@@ -185,9 +168,8 @@ export interface ActionMapCommandResolverContext {
 }
 
 /**
- * Output of a custom `ActionMapCommandResolver`. `run` executes the binding;
- * `attrs` / `record` surface metadata to observers; `rejectedResult` lets
- * the resolver pre-decide a non-found failure shape.
+ * Resolver output. `run` executes the command, `attrs` / `record` expose
+ * metadata, and `rejectedResult` overrides the default rejected result.
  */
 export interface ActionMapResolvedBindingCommand {
   run: ActionMapCommandHandler
@@ -202,9 +184,8 @@ export type ActionMapCommandResolver = (
 ) => ActionMapResolvedBindingCommand | undefined
 
 /**
- * Registration input for `actionMap.registerCommands([...])`. Open extra
- * fields are read by command-field addons to produce `attrs` on the
- * resulting `ActionMapCommandRecord`.
+ * Input to `registerCommands(...)`. Extra fields stay on `fields` and can be
+ * compiled into `attrs` by command-field addons.
  */
 export interface ActionMapCommandDefinition {
   name: string
@@ -243,12 +224,9 @@ export interface ActionMapActiveKey {
 }
 
 /**
- * Reactive matcher: a value that knows how to produce a boolean and how to
- * notify the manager when that boolean might have changed. Passing a reactive
- * matcher to `ctx.match(...)` wires subscription automatically at layer
- * registration time: when `onChange` fires, the owning binding/layer is
- * marked dirty and re-evaluated on the next read. The returned unsubscribe
- * is called when the layer is unregistered or the manager is destroyed.
+ * Boolean source with subscription-based invalidation. `ctx.match(...)`
+ * subscribes at registration time and unsubscribes when the owning
+ * layer or binding is removed.
  */
 export interface ActionMapReactiveMatcher {
   get(): boolean
@@ -259,10 +237,8 @@ export interface ActionMapBindingFieldContext {
   require(name: string, value: unknown): void
   attr(name: string, value: unknown): void
   /**
-   * Register a matcher that must return true for this binding to be active.
-   * A raw `() => boolean` is re-evaluated on every read (no caching). Pass an
-   * `ActionMapReactiveMatcher` instead when the source can notify on change
-   * \u2014 the manager then caches between notifications.
+   * Registers a runtime matcher. Raw callbacks re-run on every read;
+   * reactive matchers stay cached until they notify.
    */
   match(matcher: (() => boolean) | ActionMapReactiveMatcher): void
 }
@@ -272,10 +248,8 @@ export type ActionMapBindingFieldCompiler = (value: unknown, ctx: ActionMapBindi
 export interface ActionMapLayerFieldContext {
   require(name: string, value: unknown): void
   /**
-   * Register a matcher that must return true for this layer to be active.
-   * A raw `() => boolean` is re-evaluated on every read (no caching). Pass an
-   * `ActionMapReactiveMatcher` instead when the source can notify on change
-   * \u2014 the manager then caches between notifications.
+   * Registers a runtime matcher. Raw callbacks re-run on every read;
+   * reactive matchers stay cached until they notify.
    */
   match(matcher: (() => boolean) | ActionMapReactiveMatcher): void
 }
@@ -348,52 +322,26 @@ export interface ActionMapUnresolvedCommandContext {
 }
 
 /**
- * Events exposed through `ActionMap.hook(name, fn)`.
- *
- * These three hooks target different audiences and have different delivery
- * semantics. In general:
- *
- * - Framework adapters (React/Solid) that re-read through getters like
- *   `getActiveKeys()` or `getPendingSequenceParts()` should subscribe to
- *   `state` and ignore the other two. `state` is a superset signal that fires
- *   whenever any of the derived caches could have changed, and it is batched,
- *   so one user action yields at most one listener call.
- *
- * - Addons or integrations that need the pending sequence value synchronously
- *   (for example, `registerTimedLeader`) should subscribe to `pendingSequence`.
- *   It delivers the value directly without a getter read, and fires inline
- *   (not batched) so observers see each transition.
- *
- * - `unresolvedCommand` is a compile-time diagnostic, not a runtime event; it
- *   fires at most once per binding site, when a bound command name has no
- *   matching registration.
- *
- * Note that `state` and `pendingSequence` are not synchronized: subscribers to
- * `pendingSequence` fire before the pending `state` flush, and subscribers to
- * `state` do not receive the new sequence as a payload. Pick whichever matches
- * your need; subscribing to both would cause duplicate work.
+ * Hooks exposed by `actionMap.hook(...)`. Use `state` for batched derived-
+ * state re-reads, `pendingSequence` when you need synchronous sequence values,
+ * and `unresolvedCommand` for one-time missing-command diagnostics.
+ * `pendingSequence` fires before the batched `state` flush, so most consumers
+ * should pick one or the other.
  */
 export type ActionMapHooks = {
   /**
-   * Fires when any derived state may have changed (layers, commands, tokens,
-   * data, runtime keys, focus, or pending sequence). Batched: at most one
-   * emission per synchronous action. No payload; listeners should re-read
-   * whatever they care about through the relevant getter. This is the hook
-   * framework adapters should use.
+   * Batched "derived state may have changed" signal. Re-read through getters;
+   * framework adapters should use this hook.
    */
   state: void
   /**
-   * Fires when the pending multi-key sequence pointer changes, including when
-   * it is cleared. Payload is the current sequence (empty array when cleared).
-   * Fires inline, not batched. Use this when you need the sequence value
-   * synchronously without going back through the manager.
+   * Synchronous pending-sequence updates, including clear. Payload is the
+   * current sequence.
    */
   pendingSequence: readonly ParsedKeyStroke[]
   /**
-   * Fires at most once per binding site when a binding references a command
-   * name that no registered command or command resolver provides. Intended
-   * for diagnostics (logging, dev-mode warnings). The binding is kept but
-   * will never run until the referenced command becomes resolvable.
+   * One-time diagnostic when a binding references a command name that is not
+   * currently resolvable.
    */
   unresolvedCommand: ActionMapUnresolvedCommandContext
 }
@@ -422,15 +370,13 @@ export interface RuntimeMatcher {
   source: string
   match: () => boolean
   /**
-   * True when this matcher notifies the manager on change (reactive) or is
-   * purely data-dependent via `require`. False when `match` is a raw
-   * `() => boolean` with no subscription and no data dependency — the owning
-   * target must always re-evaluate.
+   * False for raw callbacks with no subscription or data dependency, so the
+   * owner must re-evaluate on every read.
    */
   cacheable: boolean
   /**
-   * Set only on reactive matchers — called during `registerRuntimeMatchable`
-   * to wire invalidation. The returned disposer is stored on `dispose`.
+   * Present for reactive matchers; wired during registration and torn down via
+   * `dispose`.
    */
   subscribe?: (onChange: () => void) => () => void
   dispose?: () => void
@@ -439,9 +385,9 @@ export interface RuntimeMatcher {
 export interface RuntimeMatchable {
   requires: readonly [name: string, value: unknown][]
   matchers: readonly RuntimeMatcher[]
-  /** Names from `require(...)` calls; used for setData-driven invalidation. */
+  /** Data keys referenced via `require(...)`; used for `setData` invalidation. */
   conditionKeys: readonly string[]
-  /** True if any matcher is not cacheable (raw callback without subscription). */
+  /** True when any matcher is a raw callback and therefore cannot be cached. */
   hasUnkeyedMatchers: boolean
   matchCacheDirty?: boolean
   matchCache?: boolean

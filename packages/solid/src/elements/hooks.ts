@@ -176,12 +176,8 @@ export const useActionMap = (): ActionMap => {
   return getActionMap(renderer)
 }
 
-// Subscribes to the `state` hook, which is the batched superset signal covering
-// all derived-state changes (active keys, pending sequence, commands, etc.).
-// Both `useActiveKeys` and `usePendingSequenceParts` share this one subscription
-// and re-read through the relevant getter. Do not switch these hooks to the
-// `pendingSequence` event: `state` already fires for pending-sequence changes,
-// and subscribing to both would double up work.
+// Use the batched `state` hook for derived reads. Pending-sequence changes
+// already flow through `state`, so subscribing to both would duplicate work.
 function useActionMapStateVersion(manager: ActionMap): Accessor<number> {
   const [version, setVersion] = createSignal(0)
   let dispose: (() => void) | undefined
@@ -317,20 +313,9 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
 }
 
 /**
- * Wraps a Solid accessor as an `ActionMapReactiveMatcher`. The returned
- * matcher reads from `accessor` synchronously and subscribes via a deferred
- * `createEffect` inside a `createRoot`, so the manager-supplied disposer
- * tears the reactive scope down when the layer is unregistered.
- *
- * When `predicate` is omitted, the accessor's value is coerced with `Boolean`.
- * Pass a predicate when the value type is not itself boolean.
- *
- * @example
- * const [mode, setMode] = createSignal<"normal" | "visual">("normal")
- * useBindings({
- *   enabled: reactiveMatcherFromSignal(mode, (value) => value === "normal"),
- *   bindings: [{ key: "x", cmd: "delete-char" }],
- * })
+ * Adapts a Solid accessor to `ActionMapReactiveMatcher`. The subscription
+ * lives in a disposable reactive root so unregistering the layer tears it
+ * down. Pass `predicate` when the accessor value is not already boolean.
  */
 export function reactiveMatcherFromSignal<T>(
   accessor: Accessor<T>,

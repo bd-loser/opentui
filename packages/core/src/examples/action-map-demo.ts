@@ -15,12 +15,8 @@ import {
   type TextChunk,
 } from "../index.js"
 import {
+  addons,
   getActionMap,
-  registerEnabledField,
-  registerExCommands,
-  registerManagedTextareaLayer,
-  registerMetadataFields,
-  registerTimedLeader,
   type ActionMapActiveKey,
   type ActionMapCommandRecord,
   type ActionMap,
@@ -762,8 +758,8 @@ function registerActionMap(renderer: CliRenderer): void {
   const actionMapInstance = getActionMap(renderer)
   actionMap = actionMapInstance
 
-  disposers.push(registerEnabledField(actionMapInstance))
-  disposers.push(registerMetadataFields(actionMapInstance))
+  disposers.push(addons.registerEnabledField(actionMapInstance))
+  disposers.push(addons.registerMetadataFields(actionMapInstance))
 
   disposers.push(
     actionMapInstance.registerCommands([
@@ -848,7 +844,7 @@ function registerActionMap(renderer: CliRenderer): void {
   )
 
   disposers.push(
-    registerExCommands(actionMapInstance, [
+    addons.registerExCommands(actionMapInstance, [
       {
         name: "reset",
         aliases: ["r"],
@@ -879,7 +875,7 @@ function registerActionMap(renderer: CliRenderer): void {
   )
 
   disposers.push(
-    registerTimedLeader(actionMapInstance, {
+    addons.registerTimedLeader(actionMapInstance, {
       trigger: { name: "x", ctrl: true },
       onArm() {
         leaderArmed = true
@@ -917,7 +913,7 @@ function registerActionMap(renderer: CliRenderer): void {
   )
 
   disposers.push(
-    registerManagedTextareaLayer(actionMapInstance, {
+    addons.registerManagedTextareaLayer(actionMapInstance, {
       scope: "global",
       enabled: () => !commandPromptVisible && actionMapInstance.renderer.currentFocusedEditor !== null,
       bindings: [

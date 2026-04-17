@@ -288,6 +288,7 @@ export interface ActionMapParsedBindingInput {
 
 export interface ActionMapBindingCompilerContext {
   layer: Readonly<Record<string, unknown>>
+  parseKey(key: KeyLike): ParsedKeyPart
   add(binding: ActionMapParsedBindingInput): void
   skipOriginal(): void
 }

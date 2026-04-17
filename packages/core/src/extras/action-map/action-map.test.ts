@@ -1052,6 +1052,111 @@ describe("action map", () => {
     expect(calls).toEqual(["active"])
   })
 
+  test("binding compiler ctx.parseKey normalizes object keys", () => {
+    const manager = getActionMap(renderer)
+    const calls: string[] = []
+
+    manager.registerBindingCompiler((binding, ctx) => {
+      ctx.add({
+        ...binding,
+        sequence: [ctx.parseKey({ name: " RETURN " })],
+      })
+      ctx.skipOriginal()
+    })
+
+    manager.registerCommands([
+      {
+        name: "submit",
+        run() {
+          calls.push("submit")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "submit" }],
+    })
+
+    mockInput.pressEnter()
+
+    expect(calls).toEqual(["submit"])
+    expect(getActiveKey(manager, "return")?.display).toBe("enter")
+    expect(getActiveKey(manager, "x")).toBeUndefined()
+  })
+
+  test("binding compiler ctx.parseKey uses the current parser and token configuration", () => {
+    const manager = getActionMap(renderer)
+    const calls: string[] = []
+
+    manager.clearBindingParsers()
+    manager.appendBindingParser(({ input, index, tokens }) => {
+      if (input[index] !== "[") {
+        return undefined
+      }
+
+      const end = input.indexOf("]", index)
+      if (end === -1) {
+        throw new Error(`Invalid key sequence "${input}": unterminated token`)
+      }
+
+      const tokenName = input.slice(index, end + 1).trim()
+      const token = tokens.get(tokenName)
+      if (!token) {
+        return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
+      }
+
+      return {
+        parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
+        nextIndex: end + 1,
+        usedTokens: [tokenName],
+      }
+    })
+    manager.appendBindingParser(defaultBindingParser)
+
+    manager.clearBindingSyntax()
+    manager.setBindingSyntax({
+      normalizeTokenName(token) {
+        const normalized = token.trim()
+        if (!normalized) {
+          throw new Error("Invalid action map token: token cannot be empty")
+        }
+
+        return normalized
+      },
+      parseObjectKey(key) {
+        return defaultBindingSyntax.parseObjectKey(key)
+      },
+    })
+
+    manager.registerBindingCompiler((binding, ctx) => {
+      ctx.add({
+        ...binding,
+        sequence: [ctx.parseKey("[Leader]")],
+      })
+      ctx.skipOriginal()
+    })
+
+    manager.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
+    manager.registerCommands([
+      {
+        name: "submit",
+        run() {
+          calls.push("submit")
+        },
+      },
+    ])
+
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "z", cmd: "submit" }],
+    })
+
+    mockInput.pressKey("x", { ctrl: true })
+
+    expect(calls).toEqual(["submit"])
+  })
+
   test("skips bindings when a binding expander returns an empty expansion", () => {
     const manager = getActionMap(renderer)
     const { errors } = captureDiagnostics(manager)

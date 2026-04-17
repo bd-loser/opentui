@@ -1,4 +1,3 @@
-import { createParsedKeyPart, normalizeKeyName } from "../lib/utils.js"
 import type { ActionMap } from "../types.js"
 
 export type ActionMapAliases = Record<string, string>
@@ -70,9 +69,9 @@ export function registerAliasesField(manager: ActionMap): () => void {
     ctx.add({
       ...binding,
       sequence: [
-        createParsedKeyPart({
+        ctx.parseKey({
           ...part.stroke,
-          name: normalizeKeyName(aliasedName),
+          name: aliasedName,
         }),
       ],
     })

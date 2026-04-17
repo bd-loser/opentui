@@ -51,6 +51,14 @@ export function isPromiseLike(value: unknown): value is Promise<unknown> {
   return typeof (value as { then?: unknown }).then === "function"
 }
 
+export function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  return fallback
+}
+
 export function sortByPriorityAndOrder<T extends { priority: number; order: number }>(
   items: T[],
   options?: { order?: "asc" | "desc" },
@@ -118,7 +126,9 @@ export function cloneBindingInput(binding: ActionMapBindingInput): ActionMapBind
   }
 }
 
-export function normalizeBindingCommand(command: ActionMapBindingCommand | undefined): ActionMapBindingCommand | undefined {
+export function normalizeBindingCommand(
+  command: ActionMapBindingCommand | undefined,
+): ActionMapBindingCommand | undefined {
   if (command === undefined || typeof command === "function") {
     return command
   }
@@ -243,7 +253,9 @@ export function normalizeBindingInputs(bindings: ActionMapBindings): ActionMapBi
   const normalized: ActionMapBindingInput[] = []
   for (const [key, cmd] of Object.entries(bindings)) {
     if (typeof cmd !== "string" && typeof cmd !== "function") {
-      throw new Error(`Invalid action map binding for "${key}": shorthand bindings must map to string or function commands`)
+      throw new Error(
+        `Invalid action map binding for "${key}": shorthand bindings must map to string or function commands`,
+      )
     }
 
     normalized.push({ key, cmd })

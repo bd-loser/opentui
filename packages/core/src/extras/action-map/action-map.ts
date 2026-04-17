@@ -67,16 +67,17 @@ import {
   createParsedKeyPart,
   createSequenceNode,
   freezeAttributes,
+  getErrorMessage,
   isPromiseLike,
   mergeAttribute,
   mergeRequirement,
   normalizeBindingCommand,
-  normalizeCommandName,
   snapshotBindingInputs,
   sortByPriorityAndOrder,
   stringifyKeySequence,
   stringifyKeyStroke,
 } from "./utils.js"
+import { getRegisteredCommandRecord, normalizeRegisteredCommands } from "./command-registry.js"
 import { queryRegisteredCommands } from "./command-query.js"
 import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./default-parser.js"
 import { Emitter, OrderedEmitter, RegistrationList, type EmitterListener } from "./emitter.js"
@@ -90,15 +91,6 @@ const RESERVED_LAYER_FIELDS = new Set(["target", "scope", "priority", "bindings"
 
 const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
 const EMPTY_COMPILE_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
-const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-
-  return fallback
-}
 
 function isReactiveMatcher(value: unknown): value is ActionMapReactiveMatcher {
   if (!value || typeof value !== "object") {
@@ -148,43 +140,6 @@ function createSyntheticCommandEvent(): KeyEvent {
     eventType: "press",
     source: "raw",
   })
-}
-
-function isPlainObject(value: object): boolean {
-  const prototype = Object.getPrototypeOf(value)
-  return prototype === Object.prototype || prototype === null
-}
-
-function cloneCommandMetadataValue(value: unknown, options?: { freeze?: boolean }): unknown {
-  const freeze = options?.freeze === true
-
-  if (Array.isArray(value)) {
-    const cloned = value.map((entry) => cloneCommandMetadataValue(entry, options))
-    if (freeze) {
-      return Object.freeze(cloned)
-    }
-
-    return cloned
-  }
-
-  if (value && typeof value === "object") {
-    if (!isPlainObject(value)) {
-      return value
-    }
-
-    const cloned: Record<string, unknown> = {}
-    for (const [key, entry] of Object.entries(value)) {
-      cloned[key] = cloneCommandMetadataValue(entry, options)
-    }
-
-    if (freeze) {
-      return Object.freeze(cloned)
-    }
-
-    return cloned
-  }
-
-  return value
 }
 
 function cloneCompileFieldValue(value: unknown): unknown {
@@ -363,7 +318,10 @@ export class ActionMap {
   private runtimeKeyDependents = new Map<string, Set<RuntimeMatchable>>()
   private commandResolvers = new RegistrationList<ActionMapCommandResolver>()
   private eventMatchResolvers = new RegistrationList<ActionMapEventMatchResolver>()
-  private keyHooks = new OrderedEmitter<(ctx: ActionMapKeyInputContext) => void, { priority: number; release: boolean }>()
+  private keyHooks = new OrderedEmitter<
+    (ctx: ActionMapKeyInputContext) => void,
+    { priority: number; release: boolean }
+  >()
   private rawHooks = new OrderedEmitter<(ctx: ActionMapRawInputContext) => void, { priority: number }>()
   // Reuse `Emitter`, but keep its `onError` hook as a no-op so throwing error
   // listeners cannot re-enter `emitError` and loop forever.
@@ -796,7 +754,10 @@ export class ActionMap {
     return resolved.record ? { ok: true, command: resolved.record } : { ok: true }
   }
 
-  public hook<TName extends ActionMapHookName>(name: TName, fn: ActionMapHookListener<ActionMapHooks[TName]>): () => void {
+  public hook<TName extends ActionMapHookName>(
+    name: TName,
+    fn: ActionMapHookListener<ActionMapHooks[TName]>,
+  ): () => void {
     if (this.destroyed) {
       return NOOP
     }
@@ -804,10 +765,7 @@ export class ActionMap {
     return this.hooks.hook(name, fn)
   }
 
-  public on<TName extends keyof ActionMapEvents>(
-    name: TName,
-    fn: EmitterListener<ActionMapEvents[TName]>,
-  ): this {
+  public on<TName extends keyof ActionMapEvents>(name: TName, fn: EmitterListener<ActionMapEvents[TName]>): this {
     if (this.destroyed) {
       return this
     }
@@ -816,10 +774,7 @@ export class ActionMap {
     return this
   }
 
-  public off<TName extends keyof ActionMapEvents>(
-    name: TName,
-    fn: EmitterListener<ActionMapEvents[TName]>,
-  ): this {
+  public off<TName extends keyof ActionMapEvents>(name: TName, fn: EmitterListener<ActionMapEvents[TName]>): this {
     this.events.off(name, fn)
     return this
   }
@@ -1225,70 +1180,14 @@ export class ActionMap {
     }
 
     return this.runWithStateChangeBatch(() => {
-      const normalizedCommands: RegisteredCommand[] = []
-      const seen = new Set<string>()
-
-      for (const command of commands) {
-        let normalizedCommand: RegisteredCommand | undefined
-
-        try {
-          const mergedAttrs: ActionMapAttributes = {}
-          const mergedFields: Record<string, unknown> = {}
-          const normalizedName = normalizeCommandName(command.name)
-
-          if (seen.has(normalizedName)) {
-            this.emitError(`Duplicate action map command "${normalizedName}" in the same registration batch`)
-            continue
-          }
-
-          if (this.commands.has(normalizedName)) {
-            this.emitError(`ActionMap command "${normalizedName}" is already registered`)
-            continue
-          }
-
-          for (const [fieldName, value] of Object.entries(command)) {
-            if (RESERVED_COMMAND_FIELDS.has(fieldName)) {
-              continue
-            }
-
-            if (value === undefined) {
-              continue
-            }
-
-            mergedFields[fieldName] = cloneCommandMetadataValue(value)
-
-            const compiler = this.commandFields.get(fieldName)
-            if (!compiler) {
-              continue
-            }
-
-            compiler(value, {
-              attr(name, attributeValue) {
-                mergeAttribute(mergedAttrs, name, cloneCommandMetadataValue(attributeValue), `field ${fieldName}`)
-              },
-            })
-          }
-
-          const attrs = Object.keys(mergedAttrs).length === 0 ? undefined : Object.freeze(mergedAttrs)
-          const fields = Object.keys(mergedFields).length === 0 ? EMPTY_COMMAND_FIELDS : Object.freeze(mergedFields)
-
-          normalizedCommand = {
-            name: normalizedName,
-            fields,
-            run: command.run,
-          }
-
-          if (attrs) {
-            normalizedCommand.attrs = attrs
-          }
-        } catch (error) {
-          this.emitError(getErrorMessage(error, `Failed to register action map command "${String(command.name)}"`), error)
-          continue
-        }
-
-        seen.add(normalizedCommand.name)
-        normalizedCommands.push(normalizedCommand)
-      }
+      const normalizedCommands = normalizeRegisteredCommands({
+        commands,
+        commandFields: this.commandFields,
+        hasCommand: (name) => this.commands.has(name),
+        onError: (message, cause) => {
+          this.emitError(message, cause)
+        },
+      })
 
       for (const command of normalizedCommands) {
         this.commands.set(command.name, command)
@@ -1785,31 +1684,7 @@ export class ActionMap {
   }
 
   private getCommandRecord(command: RegisteredCommand): ActionMapCommandRecord {
-    if (command.record) {
-      return command.record
-    }
-
-    let fields = EMPTY_COMMAND_FIELDS
-    if (command.fields !== EMPTY_COMMAND_FIELDS) {
-      fields = cloneCommandMetadataValue(command.fields, { freeze: true }) as Readonly<Record<string, unknown>>
-    }
-
-    let record: ActionMapCommandRecord
-    if (command.attrs) {
-      record = Object.freeze({
-        name: command.name,
-        fields,
-        attrs: cloneCommandMetadataValue(command.attrs, { freeze: true }) as Readonly<ActionMapAttributes>,
-      })
-    } else {
-      record = Object.freeze({
-        name: command.name,
-        fields,
-      })
-    }
-
-    command.record = record
-    return record
+    return getRegisteredCommandRecord(command)
   }
 
   private getBindingSyntax(): ActionMapBindingSyntax {
@@ -2929,10 +2804,7 @@ export class ActionMap {
           this.queueStateChange()
         })
       } catch (error) {
-        this.emitError(
-          getErrorMessage(error, `Failed to subscribe to reactive matcher from ${matcher.source}`),
-          error,
-        )
+        this.emitError(getErrorMessage(error, `Failed to subscribe to reactive matcher from ${matcher.source}`), error)
       }
     }
 
@@ -2962,10 +2834,7 @@ export class ActionMap {
       try {
         matcher.dispose()
       } catch (error) {
-        this.emitError(
-          getErrorMessage(error, `Failed to dispose reactive matcher from ${matcher.source}`),
-          error,
-        )
+        this.emitError(getErrorMessage(error, `Failed to dispose reactive matcher from ${matcher.source}`), error)
       }
 
       matcher.dispose = undefined

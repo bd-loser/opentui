@@ -1,10 +1,10 @@
 import { KeyEvent } from "../../../lib/KeyHandler.js"
 import type { Renderable } from "../../../Renderable.js"
-import type { ActionMapCompiler } from "./compiler.js"
-import type { ActionMapCommands } from "./commands.js"
-import type { ActionMapConditions } from "./conditions.js"
-import type { ActionMapNotifier } from "./notify.js"
-import type { ActionMapRuntime } from "./runtime.js"
+import type { CompilerService } from "./compiler.js"
+import type { CommandService } from "./commands.js"
+import type { ConditionService } from "./conditions.js"
+import type { NotificationService } from "./notify.js"
+import type { RuntimeService } from "./runtime.js"
 import type { ActionMapState } from "./state.js"
 import type {
   ActionMapEventMatchResolverContext,
@@ -17,16 +17,16 @@ import type {
   SequenceNode,
 } from "../types.js"
 
-export class ActionMapDispatch {
+export class DispatchService {
   private readonly eventMatchResolverContext: ActionMapEventMatchResolverContext
 
   constructor(
     private readonly state: ActionMapState,
-    private readonly notify: ActionMapNotifier,
-    private readonly runtime: ActionMapRuntime,
-    private readonly conditions: ActionMapConditions,
-    private readonly commands: ActionMapCommands,
-    private readonly compiler: ActionMapCompiler,
+    private readonly notify: NotificationService,
+    private readonly runtime: RuntimeService,
+    private readonly conditions: ConditionService,
+    private readonly commands: CommandService,
+    private readonly compiler: CompilerService,
   ) {
     this.eventMatchResolverContext = {
       matchKey: (key) => {
@@ -354,7 +354,7 @@ function resolveSingleEventMatchKeys(
   resolver: ActionMapEventMatchResolver,
   event: KeyEvent,
   ctx: ActionMapEventMatchResolverContext,
-  notify: ActionMapNotifier,
+  notify: NotificationService,
 ): string[] {
   let resolved: readonly string[] | undefined
   try {

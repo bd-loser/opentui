@@ -1,4 +1,4 @@
-import type { ActionMapNotifier } from "./notify.js"
+import type { NotificationService } from "./notify.js"
 import type { ActionMapState } from "./state.js"
 import type { ActionMapReactiveMatcher, RegisteredLayer, RuntimeMatchable, RuntimeMatcher } from "../types.js"
 import { getErrorMessage } from "../lib/utils.js"
@@ -12,10 +12,10 @@ function isReactiveMatcher(value: unknown): value is ActionMapReactiveMatcher {
   return typeof candidate.get === "function" && typeof candidate.subscribe === "function"
 }
 
-export class ActionMapConditions {
+export class ConditionService {
   constructor(
     private readonly state: ActionMapState,
-    private readonly notify: ActionMapNotifier,
+    private readonly notify: NotificationService,
   ) {}
 
   public buildRuntimeMatcher(matcher: (() => boolean) | ActionMapReactiveMatcher, source: string): RuntimeMatcher {

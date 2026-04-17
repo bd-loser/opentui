@@ -1,8 +1,8 @@
 import type { Renderable } from "../../../Renderable.js"
-import type { ActionMapCommands } from "./commands.js"
-import type { ActionMapConditions } from "./conditions.js"
+import type { CommandService } from "./commands.js"
+import type { ConditionService } from "./conditions.js"
 import type { ActionMapState } from "./state.js"
-import type { ActionMapNotifier } from "./notify.js"
+import type { NotificationService } from "./notify.js"
 import type {
   ActionMapAttributes,
   ActionMapBindingCompiler,
@@ -57,12 +57,12 @@ export interface ActionMapCompilerOptions {
   warnUnknownToken: (token: string, sequence: string) => void
 }
 
-export class ActionMapCompiler {
+export class CompilerService {
   constructor(
     private readonly state: ActionMapState,
-    private readonly notify: ActionMapNotifier,
-    private readonly commands: ActionMapCommands,
-    private readonly conditions: ActionMapConditions,
+    private readonly notify: NotificationService,
+    private readonly commands: CommandService,
+    private readonly conditions: ConditionService,
     private readonly options: ActionMapCompilerOptions,
   ) {}
 

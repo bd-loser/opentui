@@ -1,5 +1,4 @@
 import type { ActionMap, ParsedKeyStroke } from "../types.js"
-import { parseKeyLike } from "../lib/default-parser.js"
 import { registerLeader, type LeaderOptions } from "./leader.js"
 
 export interface TimedLeaderOptions extends LeaderOptions {
@@ -8,24 +7,8 @@ export interface TimedLeaderOptions extends LeaderOptions {
   onDisarm?: () => void
 }
 
-function startsWithTrigger(sequence: readonly ParsedKeyStroke[], trigger: ParsedKeyStroke): boolean {
-  const head = sequence[0]
-  if (!head) {
-    return false
-  }
-
-  return (
-    head.name === trigger.name &&
-    head.ctrl === trigger.ctrl &&
-    head.shift === trigger.shift &&
-    head.meta === trigger.meta &&
-    head.super === trigger.super &&
-    (head.hyper ?? false) === (trigger.hyper ?? false)
-  )
-}
-
 export function registerTimedLeader(manager: ActionMap, options: TimedLeaderOptions): () => void {
-  const trigger = parseKeyLike(options.trigger)
+  const matchesTrigger = manager.createKeyMatcher(options.trigger)
   const timeoutMs = options.timeoutMs ?? 1500
 
   let armed = false
@@ -48,7 +31,7 @@ export function registerTimedLeader(manager: ActionMap, options: TimedLeaderOpti
   }
 
   const syncArmedState = (sequence: readonly ParsedKeyStroke[]): void => {
-    const nextArmed = startsWithTrigger(sequence, trigger)
+    const nextArmed = matchesTrigger(sequence[0])
     if (nextArmed) {
       scheduleTimeout()
     } else {

@@ -24,13 +24,15 @@ import type {
   ActionMapLayerFieldCompiler,
   ActionMapRawInputContext,
   ActionMapEventMatchResolver,
+  ActionMapStringifiableKey,
   ActionMapToken,
+  KeyLike,
   ParsedKeyPart,
   ParsedKeyToken,
   ParsedKeyStroke,
   PendingSequenceState,
 } from "./types.js"
-import { getErrorMessage } from "./lib/utils.js"
+import { buildBindingKey, getErrorMessage } from "./lib/utils.js"
 import { ActionMapCommands } from "./action-map-commands.js"
 import { ActionMapCompiler, RESERVED_BINDING_FIELDS } from "./action-map-compiler.js"
 import { ActionMapConditions } from "./action-map-conditions.js"
@@ -47,6 +49,18 @@ const actionMapsByRenderer = new WeakMap<CliRenderer, ActionMap>()
 const NOOP = (): void => {}
 
 type ActionMapFieldKind = "layer" | "binding" | "command"
+
+function getKeyMatchKey(input: ActionMapStringifiableKey): string {
+  if ("matchKey" in input) {
+    return input.matchKey
+  }
+
+  if ("stroke" in input) {
+    return buildBindingKey(input.stroke)
+  }
+
+  return buildBindingKey(input)
+}
 
 function registerFieldCompilers<T>(
   fields: Record<string, T>,
@@ -223,6 +237,22 @@ export class ActionMap {
 
   public getPendingSequenceParts(): readonly ParsedKeyPart[] {
     return this.runtime.getPendingSequenceParts()
+  }
+
+  public createKeyMatcher(key: KeyLike): (input: ActionMapStringifiableKey | null | undefined) => boolean {
+    if (this.state.core.destroyed) {
+      return () => false
+    }
+
+    const matchKey = this.compiler.parseTokenKey(key).matchKey
+
+    return (input) => {
+      if (!input) {
+        return false
+      }
+
+      return getKeyMatchKey(input) === matchKey
+    }
   }
 
   public clearPendingSequence(): void {

@@ -50,10 +50,6 @@ export class LayerService {
   ) {}
 
   public registerLayer(layer: ActionMapLayer): () => void {
-    if (this.state.core.destroyed) {
-      return NOOP
-    }
-
     return this.notify.runWithStateChangeBatch(() => {
       const target = layer.target
       if (target && target.isDestroyed) {

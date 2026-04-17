@@ -28,7 +28,6 @@ const EMPTY_DATA: Readonly<ActionMapEventData> = Object.freeze({})
 
 export interface ActionMapCoreState {
   order: number
-  destroyed: boolean
 }
 
 export interface ActionMapConfigState {
@@ -100,15 +99,10 @@ export interface ActionMapState {
   notify: ActionMapNotifyState
 }
 
-export interface ResetActionMapStateOptions {
-  destroyed?: boolean
-}
-
 export function createActionMapState(): ActionMapState {
   return {
     core: {
       order: 0,
-      destroyed: false,
     },
     config: {
       tokens: new Map<string, ParsedKeyToken>(),
@@ -164,56 +158,4 @@ export function createActionMapState(): ActionMapState {
       usedWarningKeys: new Set<string>(),
     },
   }
-}
-
-export function resetActionMapState(state: ActionMapState, options?: ResetActionMapStateOptions): void {
-  state.core.order = 0
-  state.core.destroyed = options?.destroyed === true
-
-  state.config.tokens.clear()
-  state.config.bindingSyntax = undefined
-  state.config.layerFields.clear()
-  state.config.bindingExpanders.clear()
-  state.config.bindingParsers.clear()
-  state.config.bindingCompilers.clear()
-  state.config.bindingFields.clear()
-  state.config.commandFields.clear()
-  state.config.commandResolvers.clear()
-  state.config.eventMatchResolvers.clear()
-  state.config.keyHooks.clear()
-  state.config.rawHooks.clear()
-
-  state.layers.layers.clear()
-  state.layers.globalLayers = []
-  state.layers.targetLayers = new WeakMap<Renderable, RegisteredLayerBucket>()
-  state.layers.layersWithConditions = 0
-
-  state.commands.commands.clear()
-  state.commands.commandMetadataVersion = 0
-
-  state.conditions.runtimeKeyDependents.clear()
-
-  state.runtime.data = {}
-  state.runtime.dataVersion = 0
-  state.runtime.readonlyDataVersion = -1
-  state.runtime.readonlyData = EMPTY_DATA
-  state.runtime.pendingSequence = null
-  state.runtime.pendingSequenceCacheVersion = -1
-  state.runtime.pendingSequenceCache = []
-  state.runtime.pendingSequencePartsCacheVersion = -1
-  state.runtime.pendingSequencePartsCache = []
-  state.runtime.activeKeysPlainCacheVersion = -1
-  state.runtime.activeKeysPlainCache = []
-  state.runtime.activeKeysBindingsCacheVersion = -1
-  state.runtime.activeKeysBindingsCache = []
-  state.runtime.activeKeysMetadataCacheVersion = -1
-  state.runtime.activeKeysMetadataCache = []
-  state.runtime.activeKeysBindingsAndMetadataCacheVersion = -1
-  state.runtime.activeKeysBindingsAndMetadataCache = []
-
-  state.notify.derivedStateVersion = 0
-  state.notify.stateChangeDepth = 0
-  state.notify.stateChangePending = false
-  state.notify.flushingStateChange = false
-  state.notify.usedWarningKeys.clear()
 }

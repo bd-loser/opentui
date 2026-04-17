@@ -176,6 +176,15 @@ function createTextareaBindingsWithDescriptions(
   return [...overrideBindings, ...createDefaultTextareaBindings(descriptions)]
 }
 
+function getLiveRenderer(actionMap: ActionMap) {
+  const renderer = actionMap.renderer
+  if (renderer.isDestroyed) {
+    throw new Error("Cannot use an action map after its renderer was destroyed")
+  }
+
+  return renderer
+}
+
 /**
  * Suspends a focused `TextareaRenderable`'s own key handling so action-map
  * bindings can take over, restoring the previous suspend state on cleanup or
@@ -244,11 +253,13 @@ export function registerTextareaMappingSuspension(actionMap: ActionMap): () => v
     suspendEditor(current)
   }
 
-  actionMap.renderer.on(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
-  suspendEditor(actionMap.renderer.currentFocusedEditor)
+  const renderer = getLiveRenderer(actionMap)
+
+  renderer.on(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
+  suspendEditor(renderer.currentFocusedEditor)
 
   const dispose = (): void => {
-    actionMap.renderer.off(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
+    renderer.off(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
     restoreEditor(suspendedEditor)
   }
 
@@ -272,7 +283,7 @@ export function registerTextareaMappingSuspension(actionMap: ActionMap): () => v
 }
 
 function withFocusedEditor(ctx: ActionMapCommandContext, run: (editor: EditBufferRenderable) => boolean): boolean {
-  const editor = ctx.actionMap.renderer.currentFocusedEditor
+  const editor = getLiveRenderer(ctx.actionMap).currentFocusedEditor
   if (!editor || editor.isDestroyed) {
     return false
   }

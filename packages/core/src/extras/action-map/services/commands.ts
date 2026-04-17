@@ -373,7 +373,7 @@ export class CommandService {
     const context = this.createCommandResolverContext(includeRecord)
     let hadError = false
 
-    for (const resolver of this.state.config.commandResolvers.snapshot()) {
+    for (const resolver of this.state.config.commandResolvers.values()) {
       let resolved: ActionMapResolvedBindingCommand | undefined
 
       try {

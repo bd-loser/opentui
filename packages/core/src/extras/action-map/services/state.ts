@@ -22,7 +22,7 @@ import type {
   RegisteredLayerBucket,
   RuntimeMatchable,
 } from "../types.js"
-import { OrderedEmitter, RegistrationList } from "../lib/emitter.js"
+import { OrderedRegistry, PriorityRegistry } from "../lib/emitter.js"
 
 const EMPTY_DATA: Readonly<ActionMapEventData> = Object.freeze({})
 
@@ -35,15 +35,15 @@ export interface ActionMapConfigState {
   tokens: Map<string, ParsedKeyToken>
   bindingSyntax: ActionMapBindingSyntax | undefined
   layerFields: Map<string, ActionMapLayerFieldCompiler>
-  bindingExpanders: RegistrationList<ActionMapBindingExpander>
-  bindingParsers: RegistrationList<ActionMapBindingParser>
-  bindingCompilers: RegistrationList<ActionMapBindingCompiler>
+  bindingExpanders: OrderedRegistry<ActionMapBindingExpander>
+  bindingParsers: OrderedRegistry<ActionMapBindingParser>
+  bindingCompilers: OrderedRegistry<ActionMapBindingCompiler>
   bindingFields: Map<string, ActionMapBindingFieldCompiler>
   commandFields: Map<string, ActionMapCommandFieldCompiler>
-  commandResolvers: RegistrationList<ActionMapCommandResolver>
-  eventMatchResolvers: RegistrationList<ActionMapEventMatchResolver>
-  keyHooks: OrderedEmitter<(ctx: ActionMapKeyInputContext) => void, { priority: number; release: boolean }>
-  rawHooks: OrderedEmitter<(ctx: ActionMapRawInputContext) => void, { priority: number }>
+  commandResolvers: OrderedRegistry<ActionMapCommandResolver>
+  eventMatchResolvers: OrderedRegistry<ActionMapEventMatchResolver>
+  keyHooks: PriorityRegistry<(ctx: ActionMapKeyInputContext) => void, { priority: number; release: boolean }>
+  rawHooks: PriorityRegistry<(ctx: ActionMapRawInputContext) => void, { priority: number }>
 }
 
 export interface ActionMapLayersState {
@@ -114,15 +114,15 @@ export function createActionMapState(): ActionMapState {
       tokens: new Map<string, ParsedKeyToken>(),
       bindingSyntax: undefined,
       layerFields: new Map<string, ActionMapLayerFieldCompiler>(),
-      bindingExpanders: new RegistrationList<ActionMapBindingExpander>(),
-      bindingParsers: new RegistrationList<ActionMapBindingParser>(),
-      bindingCompilers: new RegistrationList<ActionMapBindingCompiler>(),
+      bindingExpanders: new OrderedRegistry<ActionMapBindingExpander>(),
+      bindingParsers: new OrderedRegistry<ActionMapBindingParser>(),
+      bindingCompilers: new OrderedRegistry<ActionMapBindingCompiler>(),
       bindingFields: new Map<string, ActionMapBindingFieldCompiler>(),
       commandFields: new Map<string, ActionMapCommandFieldCompiler>(),
-      commandResolvers: new RegistrationList<ActionMapCommandResolver>(),
-      eventMatchResolvers: new RegistrationList<ActionMapEventMatchResolver>(),
-      keyHooks: new OrderedEmitter<(ctx: ActionMapKeyInputContext) => void, { priority: number; release: boolean }>(),
-      rawHooks: new OrderedEmitter<(ctx: ActionMapRawInputContext) => void, { priority: number }>(),
+      commandResolvers: new OrderedRegistry<ActionMapCommandResolver>(),
+      eventMatchResolvers: new OrderedRegistry<ActionMapEventMatchResolver>(),
+      keyHooks: new PriorityRegistry<(ctx: ActionMapKeyInputContext) => void, { priority: number; release: boolean }>(),
+      rawHooks: new PriorityRegistry<(ctx: ActionMapRawInputContext) => void, { priority: number }>(),
     },
     layers: {
       layers: new Set<RegisteredLayer>(),

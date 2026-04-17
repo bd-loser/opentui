@@ -1,7 +1,13 @@
 import type { ActionMap } from "../types.js"
 
 export interface EscapeClearsPendingSequenceOptions {
-  consume?: boolean
+  /**
+   * When Escape clears a pending multi-key sequence, also call
+   * `event.preventDefault()` + `event.stopPropagation()` so the keystroke is
+   * hidden from the focused renderable and lower-priority key-input
+   * listeners. Default: `true`.
+   */
+  preventDefault?: boolean
   priority?: number
 }
 
@@ -9,7 +15,7 @@ export function registerEscapeClearsPendingSequence(
   manager: ActionMap,
   options?: EscapeClearsPendingSequenceOptions,
 ): () => void {
-  const shouldConsume = options?.consume ?? true
+  const shouldPreventDefault = options?.preventDefault ?? true
 
   return manager.onKeyInput(
     ({ event, consume }) => {
@@ -23,7 +29,7 @@ export function registerEscapeClearsPendingSequence(
 
       manager.clearPendingSequence()
 
-      if (shouldConsume) {
+      if (shouldPreventDefault) {
         consume()
       }
     },

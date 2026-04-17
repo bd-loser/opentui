@@ -88,7 +88,7 @@ describe("escape clears pending sequence addon", () => {
       ],
     })
 
-    registerEscapeClearsPendingSequence(manager, { consume: false })
+    registerEscapeClearsPendingSequence(manager, { preventDefault: false })
 
     mockInput.pressKey("d")
     expect(manager.hasPendingSequence()).toBe(true)
@@ -126,7 +126,7 @@ describe("escape clears pending sequence addon", () => {
       ],
     })
 
-    const offEscapeAddon = registerEscapeClearsPendingSequence(manager, { consume: false })
+    const offEscapeAddon = registerEscapeClearsPendingSequence(manager, { preventDefault: false })
 
     mockInput.pressKey("d")
     mockInput.pressEscape()

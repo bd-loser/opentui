@@ -84,7 +84,7 @@ import { Emitter, OrderedEmitter, RegistrationList, type EmitterListener } from 
 const actionMapsByRenderer = new WeakMap<CliRenderer, ActionMap>()
 const NOOP = (): void => {}
 
-export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "event", "consume", "fallthrough"])
+export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "event", "preventDefault", "fallthrough"])
 
 const RESERVED_LAYER_FIELDS = new Set(["target", "scope", "priority", "bindings"])
 
@@ -2229,7 +2229,7 @@ export class ActionMap {
               conditionKeys: [...conditionKeys],
               hasUnkeyedMatchers,
               matchCacheDirty: true,
-              consume: compiledInput.consume !== false,
+              preventDefault: compiledInput.preventDefault !== false,
               fallthrough: compiledInput.fallthrough ?? false,
             }
 
@@ -2804,7 +2804,7 @@ export class ActionMap {
       commandAttrs: binding.commandAttrs,
       attrs: binding.attrs,
       event: binding.event,
-      consume: binding.consume,
+      preventDefault: binding.preventDefault,
       fallthrough: binding.fallthrough,
     }
 
@@ -3148,7 +3148,7 @@ export class ActionMap {
   }
 
   private applyBindingEventEffects(binding: CompiledBinding, event: KeyEvent): void {
-    if (!binding.consume) {
+    if (!binding.preventDefault) {
       return
     }
 

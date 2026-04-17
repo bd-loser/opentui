@@ -112,7 +112,32 @@ export interface ActionMapBindingInput {
   key: KeyLike
   cmd?: ActionMapBindingCommand
   event?: ActionMapBindingEvent
-  consume?: boolean
+  /**
+   * When the bound command runs successfully, call `event.preventDefault()`
+   * and `event.stopPropagation()` on the underlying `KeyEvent`. The default
+   * is `true` — a matched binding hides the keystroke from the focused
+   * renderable's key handlers and any lower-priority `renderer.keyInput`
+   * listeners. Set to `false` to let the same keystroke continue through the
+   * normal key-input pipeline after the command runs (e.g., a logging or
+   * telemetry binding that peeks at every press).
+   *
+   * Orthogonal to `fallthrough`: this controls whether the keystroke leaves
+   * the action-map; `fallthrough` controls whether dispatch continues to
+   * other matching bindings inside the action-map.
+   */
+  preventDefault?: boolean
+  /**
+   * When the bound command runs successfully, continue dispatching to the
+   * next matching binding in the same sequence / layer chain. The default
+   * is `false` — the first matching binding with a runnable command wins
+   * and later bindings for the same key are skipped. Set to `true` when
+   * multiple bindings on the same key should all run (e.g., a logging
+   * binding stacked on top of the real command).
+   *
+   * Orthogonal to `preventDefault`: this controls dispatch inside the
+   * action-map; `preventDefault` controls whether the keystroke leaves
+   * the action-map.
+   */
   fallthrough?: boolean
   [key: string]: unknown
 }
@@ -198,7 +223,7 @@ export interface ActionMapActiveBinding {
   commandAttrs?: Readonly<ActionMapAttributes>
   attrs?: Readonly<ActionMapAttributes>
   event: ActionMapBindingEvent
-  consume: boolean
+  preventDefault: boolean
   fallthrough: boolean
 }
 
@@ -284,7 +309,7 @@ export interface ActionMapParsedBindingInput {
   sequence: ParsedKeyPart[]
   cmd?: ActionMapBindingCommand
   event?: ActionMapBindingEvent
-  consume?: boolean
+  preventDefault?: boolean
   fallthrough?: boolean
   [key: string]: unknown
 }

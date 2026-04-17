@@ -48,7 +48,9 @@ describe("escape clears pending sequence addon", () => {
 
     mockInput.pressKey("d")
     expect(actionMap.hasPendingSequence()).toBe(true)
-    expect(actionMap.getPendingSequence()).toEqual([{ name: "d", ctrl: false, shift: false, meta: false, super: false }])
+    expect(actionMap.getPendingSequence()).toEqual([
+      { name: "d", ctrl: false, shift: false, meta: false, super: false },
+    ])
 
     mockInput.pressEscape()
 

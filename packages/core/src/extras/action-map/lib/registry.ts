@@ -5,26 +5,18 @@ export type PriorityRegistration<TListener, TOptions extends { priority: number 
   }
 >
 
-export class OrderedRegistry<TValue> {
+abstract class CopyOnWriteRegistry<TValue> {
   private items: readonly TValue[] = []
 
-  public append(value: TValue): () => void {
-    this.items = [...this.items, value]
-
-    return () => {
-      this.remove(value)
-    }
+  protected getItems(): readonly TValue[] {
+    return this.items
   }
 
-  public prepend(value: TValue): () => void {
-    this.items = [value, ...this.items]
-
-    return () => {
-      this.remove(value)
-    }
+  protected setItems(items: readonly TValue[]): void {
+    this.items = items
   }
 
-  public remove(value: TValue): boolean {
+  protected removeItem(value: TValue): boolean {
     const current = this.items
     if (current.length === 0) {
       return false
@@ -43,55 +35,62 @@ export class OrderedRegistry<TValue> {
     return this.items.length > 0
   }
 
-  public values(): readonly TValue[] {
-    return this.items
-  }
-
   public clear(): void {
     this.items = []
   }
 }
 
-export class PriorityRegistry<TListener, TOptions extends { priority: number }> {
-  private listeners: readonly PriorityRegistration<TListener, TOptions>[] = []
+export class OrderedRegistry<TValue> extends CopyOnWriteRegistry<TValue> {
+  public append(value: TValue): () => void {
+    this.setItems([...this.getItems(), value])
+
+    return () => {
+      this.remove(value)
+    }
+  }
+
+  public prepend(value: TValue): () => void {
+    this.setItems([value, ...this.getItems()])
+
+    return () => {
+      this.remove(value)
+    }
+  }
+
+  public remove(value: TValue): boolean {
+    return this.removeItem(value)
+  }
+
+  public values(): readonly TValue[] {
+    return this.getItems()
+  }
+}
+
+export class PriorityRegistry<TListener, TOptions extends { priority: number }> extends CopyOnWriteRegistry<
+  PriorityRegistration<TListener, TOptions>
+> {
   private order = 0
 
   public register(listener: TListener, options: TOptions): () => void {
     const registered = { ...options, listener, order: this.order++ } as PriorityRegistration<TListener, TOptions>
 
-    this.listeners = [...this.listeners, registered].sort((left, right) => {
-      const priorityDiff = right.priority - left.priority
-      if (priorityDiff !== 0) {
-        return priorityDiff
-      }
+    this.setItems(
+      [...this.getItems(), registered].sort((left, right) => {
+        const priorityDiff = right.priority - left.priority
+        if (priorityDiff !== 0) {
+          return priorityDiff
+        }
 
-      return left.order - right.order
-    })
+        return left.order - right.order
+      }),
+    )
 
     return () => {
-      const current = this.listeners
-      if (current.length === 0) {
-        return
-      }
-
-      const next = current.filter((candidate) => candidate !== registered)
-      if (next.length === current.length) {
-        return
-      }
-
-      this.listeners = next
+      this.removeItem(registered)
     }
   }
 
-  public has(): boolean {
-    return this.listeners.length > 0
-  }
-
   public entries(): readonly PriorityRegistration<TListener, TOptions>[] {
-    return this.listeners
-  }
-
-  public clear(): void {
-    this.listeners = []
+    return this.getItems()
   }
 }

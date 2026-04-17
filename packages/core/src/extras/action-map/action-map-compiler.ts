@@ -145,7 +145,7 @@ export class ActionMapCompiler {
           )
         }
 
-        for (const compiledInput of this.expandParsedBindings(binding, sequence, compileFields)) {
+        for (const compiledInput of this.expandParsedBindings(binding, sequence, tokens, bindingParsers, compileFields)) {
           try {
             const event = this.normalizeBindingEvent(compiledInput.event)
             const compiledSequence = compiledInput.sequence
@@ -288,6 +288,8 @@ export class ActionMapCompiler {
   private expandParsedBindings(
     binding: ActionMapBindingInput,
     sequence: ParsedKeyPart[],
+    tokens: ReadonlyMap<string, ParsedKeyToken>,
+    bindingParsers: readonly ActionMapBindingParser[],
     compileFields?: Readonly<Record<string, unknown>>,
   ): ActionMapParsedBindingInput[] {
     const bindingCompilers = this.state.config.bindingCompilers.snapshot()
@@ -310,6 +312,13 @@ export class ActionMapCompiler {
       try {
         compiler(parsedBinding, {
           layer,
+          parseKey: (key) => {
+            return parseSingleKeyPartWithParsers(key, bindingParsers, {
+              tokens,
+              layer,
+              parseObjectKey: (value) => this.parseObjectKeyPart(value),
+            })
+          },
           add: (nextBinding) => {
             extraBindings.push(snapshotParsedBindingInput(nextBinding))
           },

@@ -22,14 +22,12 @@ import type {
   ActionMapRunCommandOptions,
   ActionMapRunCommandResult,
   ActionMapCommandResolver,
-  ActionMapEventData,
   ActionMapKeyInputContext,
   ActionMapLayer,
   ActionMapLayerFieldCompiler,
   ActionMapRawInputContext,
   ActionMapEventMatchResolver,
   ActionMapToken,
-  ActionMapUnresolvedCommandContext,
   ParsedKeyPart,
   ParsedKeyToken,
   ParsedKeyStroke,
@@ -37,16 +35,14 @@ import type {
   RegisteredCommand,
   RegisteredLayer,
   RuntimeMatchable,
-  SequenceNode,
 } from "./types.js"
-import { getErrorMessage, snapshotParsedBindingInput, stringifyKeySequence } from "./utils.js"
+import { getErrorMessage } from "./utils.js"
 import { ActionMapCommands } from "./action-map-commands.js"
 import { ActionMapCompiler } from "./action-map-compiler.js"
 import { ActionMapConditions } from "./action-map-conditions.js"
 import { ActionMapDispatch } from "./action-map-dispatch.js"
 import { ActionMapLayers, RESERVED_LAYER_FIELDS } from "./action-map-layers.js"
 import { ActionMapNotifier } from "./action-map-notify.js"
-import { ActionMapProjections } from "./action-map-projections.js"
 import { ActionMapRuntime } from "./action-map-runtime.js"
 import { createActionMapState, resetActionMapState } from "./action-map-state.js"
 import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./default-parser.js"
@@ -74,7 +70,6 @@ export class ActionMap {
   private readonly compiler: ActionMapCompiler
   private readonly dispatch: ActionMapDispatch
   private readonly layers: ActionMapLayers
-  private readonly projections: ActionMapProjections
 
   private readonly keypressListener: (event: KeyEvent) => void
   private readonly keyreleaseListener: (event: KeyEvent) => void
@@ -86,21 +81,11 @@ export class ActionMap {
     this.hooks = new Emitter<ActionMapHooks>((name, error) => {
       this.notify.reportHookError(name, error)
     })
-    this.runtime = new ActionMapRuntime(this.state, this.renderer)
-    this.notify = new ActionMapNotifier(this.state, this.events, this.hooks, {
-      getPendingSequenceStrokes: (pending) => {
-        return pending ? this.projections.collectSequenceStrokesFromNode(pending.node) : []
-      },
-    })
+    this.notify = new ActionMapNotifier(this.state, this.events, this.hooks)
     this.conditions = new ActionMapConditions(this.state, this.notify)
-    this.commands = new ActionMapCommands(this.state, this.notify, this.runtime, {
+    this.runtime = new ActionMapRuntime(this.state, this.renderer, this.hooks, this.notify, this.conditions)
+    this.commands = new ActionMapCommands(this.state, this.notify, this.runtime, this.hooks, {
       actionMap: this,
-      ensureValidPendingSequence: () => {
-        this.ensureValidPendingSequence()
-      },
-      handleUnresolvedCommand: (command, binding) => {
-        this.handleUnresolvedCommand(command, binding)
-      },
     })
     this.compiler = new ActionMapCompiler(this.state, this.notify, this.commands, this.conditions, {
       reservedBindingFields: RESERVED_BINDING_FIELDS,
@@ -111,23 +96,13 @@ export class ActionMap {
         this.warnUnknownToken(token, sequence)
       },
     })
-    this.layers = new ActionMapLayers(this.state, this.notify, this.conditions, {
+    this.layers = new ActionMapLayers(this.state, this.notify, this.conditions, this.runtime, {
       compiler: this.compiler,
       warnUnknownField: (kind, fieldName) => {
         this.warnUnknownField(kind, fieldName)
       },
     })
-    this.projections = new ActionMapProjections(this.state, this.notify, this.runtime, this.layers, this.conditions)
-    this.dispatch = new ActionMapDispatch(
-      this.state,
-      this.notify,
-      this,
-      this.runtime,
-      this.layers,
-      this.projections,
-      this.conditions,
-      (name, value) => this.setData(name, value),
-    )
+    this.dispatch = new ActionMapDispatch(this.state, this.notify, this.runtime, this.conditions, this.commands)
     this.state.config.bindingSyntax = defaultBindingSyntax
     this.state.config.bindingParsers.append(defaultBindingParser)
     this.state.config.eventMatchResolvers.append(defaultEventMatchResolver)
@@ -188,30 +163,7 @@ export class ActionMap {
       return
     }
 
-    this.runWithStateChangeBatch(() => {
-      if (value === undefined) {
-        if (!(name in this.state.runtime.data)) {
-          return
-        }
-
-        delete this.state.runtime.data[name]
-        this.state.runtime.dataVersion += 1
-        this.conditions.invalidateRuntimeConditionKey(name)
-        this.projections.ensureValidPendingSequence()
-        this.queueStateChange()
-        return
-      }
-
-      if (Object.is(this.state.runtime.data[name], value)) {
-        return
-      }
-
-      this.state.runtime.data[name] = value
-      this.state.runtime.dataVersion += 1
-      this.conditions.invalidateRuntimeConditionKey(name)
-      this.projections.ensureValidPendingSequence()
-      this.queueStateChange()
-    })
+    this.runtime.setData(name, value)
   }
 
   public getData(name: string): unknown {
@@ -227,15 +179,15 @@ export class ActionMap {
       return false
     }
 
-    return this.projections.ensureValidPendingSequence() !== undefined
+    return this.runtime.ensureValidPendingSequence() !== undefined
   }
 
   public getPendingSequence(): readonly ParsedKeyStroke[] {
-    return this.projections.getPendingSequence()
+    return this.runtime.getPendingSequence()
   }
 
   public getPendingSequenceParts(): readonly ParsedKeyPart[] {
-    return this.projections.getPendingSequenceParts()
+    return this.runtime.getPendingSequenceParts()
   }
 
   public clearPendingSequence(): void {
@@ -251,7 +203,7 @@ export class ActionMap {
       return false
     }
 
-    const pending = this.projections.ensureValidPendingSequence()
+    const pending = this.runtime.ensureValidPendingSequence()
     if (!pending) {
       return false
     }
@@ -275,7 +227,7 @@ export class ActionMap {
   }
 
   public getActiveKeys(options?: ActionMapActiveKeyOptions): readonly ActionMapActiveKey[] {
-    return this.projections.getActiveKeys(options)
+    return this.runtime.getActiveKeys(options)
   }
 
   public getCommands(query?: ActionMapCommandQuery): readonly ActionMapCommandRecord[] {
@@ -645,10 +597,6 @@ export class ActionMap {
     return this.commands.getCommandRecord(command)
   }
 
-  private nodeHasReachableBindings(node: SequenceNode): boolean {
-    return this.projections.nodeHasReachableBindings(node)
-  }
-
   private hasNoConditions(target: RuntimeMatchable): boolean {
     return this.conditions.hasNoConditions(target)
   }
@@ -662,54 +610,7 @@ export class ActionMap {
   }
 
   private setPendingSequence(next: PendingSequenceState | null): void {
-    this.notify.setPendingSequence(next)
-  }
-
-  private getFocusedRenderable(): Renderable | null {
-    return this.runtime.getFocusedRenderable()
-  }
-
-  private layerCanCacheActiveKeys(layer: RegisteredLayer): boolean {
-    return this.layers.layerCanCacheActiveKeys(layer)
-  }
-
-  private activeLayersCanCacheActiveKeys(activeLayers: readonly RegisteredLayer[]): boolean {
-    return this.layers.activeLayersCanCacheActiveKeys(activeLayers)
-  }
-
-  private getActiveLayers(focused: Renderable | null): RegisteredLayer[] {
-    return this.layers.getActiveLayers(focused)
-  }
-
-  private isLayerActiveForFocused(layer: RegisteredLayer, focused: Renderable | null): boolean {
-    return this.layers.isLayerActiveForFocused(layer, focused)
-  }
-
-  private getReadonlyData(): Readonly<ActionMapEventData> {
-    return this.notify.getReadonlyData()
-  }
-
-  private handleUnresolvedCommand(command: string, binding: CompiledBinding): void {
-    const sequence = stringifyKeySequence(binding.sourceBinding.sequence, { preferDisplay: true })
-    const warningKey = `unresolved:${binding.sourceLayerOrder}:${binding.sourceBindingIndex}:${command}:${sequence}`
-
-    this.warnOnce(
-      warningKey,
-      `[ActionMap] Unresolved command "${command}" for binding "${sequence}" in ${binding.sourceScope} layer`,
-    )
-
-    if (!this.hooks.has("unresolvedCommand")) {
-      return
-    }
-
-    const context: ActionMapUnresolvedCommandContext = {
-      command,
-      binding: snapshotParsedBindingInput(binding.sourceBinding),
-      scope: binding.sourceScope,
-      target: binding.sourceTarget,
-    }
-
-    this.hooks.emit("unresolvedCommand", context)
+    this.runtime.setPendingSequence(next)
   }
 
   private warnOnce(key: string, message: string): void {
@@ -722,10 +623,6 @@ export class ActionMap {
 
   private warnUnknownToken(token: string, sequence: string): void {
     this.warnOnce(`token:${token}`, `[ActionMap] Unknown token "${token}" in key sequence "${sequence}" was ignored`)
-  }
-
-  private ensureValidPendingSequence(): PendingSequenceState | undefined {
-    return this.projections.ensureValidPendingSequence()
   }
 }
 

@@ -366,13 +366,8 @@ export class ActionMap {
   private eventMatchResolvers = new RegistrationList<ActionMapEventMatchResolver>()
   private keyHooks = new OrderedEmitter<(ctx: ActionMapKeyInputContext) => void, { priority: number; release: boolean }>()
   private rawHooks = new OrderedEmitter<(ctx: ActionMapRawInputContext) => void, { priority: number }>()
-  // Reuses the same `Emitter` primitive that backs `hook(...)`. The `onError`
-  // callback is invoked when a registered listener throws during dispatch; we
-  // set it to a no-op because the `error` channel is terminal and must not
-  // re-enter emission (a throwing error listener would otherwise infinite-loop
-  // back through `onError` → `emitError` → dispatch). When no listener is
-  // registered at all, `emitWarning` / `emitError` fall back to `console.warn`
-  // / `console.error` so diagnostics are never silently dropped.
+  // Reuse `Emitter`, but keep its `onError` hook as a no-op so throwing error
+  // listeners cannot re-enter `emitError` and loop forever.
   private events = new Emitter<ActionMapEvents>(() => {})
   private hooks: Emitter<ActionMapHooks>
   private commands = new Map<string, RegisteredCommand>()
@@ -447,8 +442,7 @@ export class ActionMap {
     this.setPendingSequence(null)
 
     for (const layer of this.layers) {
-      // Dispose reactive-matcher subscriptions for the layer and all its
-      // compiled bindings before clearing the layer set.
+      // Drop matcher subscriptions before clearing layer state.
       this.unregisterRuntimeMatchable(layer)
       for (const binding of layer.compiledBindings) {
         this.unregisterRuntimeMatchable(binding)
@@ -3175,11 +3169,8 @@ export class ActionMap {
   }
 
   private registerRuntimeMatchable(target: RuntimeMatchable): void {
-    // Wire reactive-matcher subscriptions: each reactive matcher receives a
-    // callback that dirties this target's cache. Errors in `subscribe` are
-    // routed to the error channel but do not abort registration — the matcher
-    // just runs without auto-invalidation (it still evaluates on every read
-    // because a non-cacheable or uninvalidated cached path re-reads anyway).
+    // Reactive matchers invalidate only their own target. If subscription
+    // setup fails, keep the matcher registered but lose automatic invalidation.
     for (const matcher of target.matchers) {
       if (!matcher.subscribe) {
         continue
@@ -3198,7 +3189,6 @@ export class ActionMap {
       }
     }
 
-    // Register setData-driven dependencies from `require(...)` calls.
     if (target.conditionKeys.length > 0) {
       for (const key of target.conditionKeys) {
         const dependents = this.runtimeKeyDependents.get(key)
@@ -3217,7 +3207,6 @@ export class ActionMap {
   }
 
   private unregisterRuntimeMatchable(target: RuntimeMatchable): void {
-    // Dispose reactive-matcher subscriptions.
     for (const matcher of target.matchers) {
       if (!matcher.dispose) {
         continue
@@ -3264,10 +3253,7 @@ export class ActionMap {
   }
 
   private hasFreshConditionCache(target: RuntimeMatchable): boolean {
-    // A target is cacheable when all of its matchers are either subscription-
-    // backed (reactive) or data-backed (via `require`). `hasUnkeyedMatchers`
-    // flags the presence of raw `() => boolean` matchers which force re-evaluation
-    // on every read because we can't know when their result changes.
+    // Raw callbacks are never cacheable because nothing can invalidate them.
     if (target.hasUnkeyedMatchers) {
       return false
     }

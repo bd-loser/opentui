@@ -17,11 +17,11 @@ describe("base layout fallback addon", () => {
   })
 
   test("matches bindings through Kitty base-layout codepoints", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    registerBaseLayoutFallback(manager)
-    manager.registerCommands([
+    registerBaseLayoutFallback(actionMap)
+    actionMap.registerCommands([
       {
         name: "copy",
         run() {
@@ -29,7 +29,7 @@ describe("base layout fallback addon", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "ctrl+c", cmd: "copy" }],
     })
@@ -40,11 +40,11 @@ describe("base layout fallback addon", () => {
   })
 
   test("keeps direct stroke matches ahead of base-layout fallbacks", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    registerBaseLayoutFallback(manager)
-    manager.registerCommands([
+    registerBaseLayoutFallback(actionMap)
+    actionMap.registerCommands([
       {
         name: "fallback-copy",
         run() {
@@ -58,7 +58,7 @@ describe("base layout fallback addon", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "ctrl+c", cmd: "fallback-copy" },
@@ -72,13 +72,13 @@ describe("base layout fallback addon", () => {
   })
 
   test("can be disposed to stop base-layout fallback matching", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    const offFallback = registerBaseLayoutFallback(manager)
+    const offFallback = registerBaseLayoutFallback(actionMap)
     offFallback()
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "copy",
         run() {
@@ -86,7 +86,7 @@ describe("base layout fallback addon", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "ctrl+c", cmd: "copy" }],
     })

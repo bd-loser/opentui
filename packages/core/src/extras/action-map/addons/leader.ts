@@ -5,8 +5,8 @@ export interface LeaderOptions {
   name?: string
 }
 
-export function registerLeader(manager: ActionMap, options: LeaderOptions): () => void {
-  return manager.registerToken({
+export function registerLeader(actionMap: ActionMap, options: LeaderOptions): () => void {
+  return actionMap.registerToken({
     name: options.name ?? "<leader>",
     key: options.trigger,
   })

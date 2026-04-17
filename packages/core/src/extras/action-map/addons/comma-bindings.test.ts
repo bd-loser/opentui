@@ -18,11 +18,11 @@ describe("comma bindings addon", () => {
   })
 
   test("splits comma-delimited key strings into multiple bindings", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    registerCommaBindings(manager)
-    manager.registerCommands([
+    registerCommaBindings(actionMap)
+    actionMap.registerCommands([
       {
         name: "command",
         run() {
@@ -31,7 +31,7 @@ describe("comma bindings addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x, y", cmd: "command" }],
     })
@@ -43,33 +43,33 @@ describe("comma bindings addon", () => {
   })
 
   test("skips bindings when a comma-delimited key string contains empty entries", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const errors: string[] = []
 
-    manager.on("error", (event) => {
+    actionMap.on("error", (event) => {
       errors.push(event.message)
     })
-    registerCommaBindings(manager)
+    registerCommaBindings(actionMap)
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "x,,y", cmd() {} }],
       })
     }).not.toThrow()
 
     expect(errors).toEqual(['Invalid key sequence "x,,y": comma-separated bindings cannot contain empty entries'])
-    expect(manager.getActiveKeys()).toEqual([])
+    expect(actionMap.getActiveKeys()).toEqual([])
   })
 
   test("can be disposed to restore default comma behavior", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    const offCommaBindings = registerCommaBindings(manager)
+    const offCommaBindings = registerCommaBindings(actionMap)
     offCommaBindings()
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "sequence",
         run() {
@@ -78,7 +78,7 @@ describe("comma bindings addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x,y", cmd: "sequence" }],
     })

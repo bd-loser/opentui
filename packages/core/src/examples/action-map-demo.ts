@@ -759,14 +759,14 @@ function renderAll(renderer: CliRenderer): void {
 }
 
 function registerActionMap(renderer: CliRenderer): void {
-  const manager = getActionMap(renderer)
-  actionMap = manager
+  const actionMapInstance = getActionMap(renderer)
+  actionMap = actionMapInstance
 
-  disposers.push(registerEnabledField(manager))
-  disposers.push(registerMetadataFields(manager))
+  disposers.push(registerEnabledField(actionMapInstance))
+  disposers.push(registerMetadataFields(actionMapInstance))
 
   disposers.push(
-    manager.registerCommands([
+    actionMapInstance.registerCommands([
       {
         name: "focus-next",
         title: "Next target",
@@ -848,7 +848,7 @@ function registerActionMap(renderer: CliRenderer): void {
   )
 
   disposers.push(
-    registerExCommands(manager, [
+    registerExCommands(actionMapInstance, [
       {
         name: "reset",
         aliases: ["r"],
@@ -879,7 +879,7 @@ function registerActionMap(renderer: CliRenderer): void {
   )
 
   disposers.push(
-    registerTimedLeader(manager, {
+    registerTimedLeader(actionMapInstance, {
       trigger: { name: "x", ctrl: true },
       onArm() {
         leaderArmed = true
@@ -893,7 +893,7 @@ function registerActionMap(renderer: CliRenderer): void {
   )
 
   disposers.push(
-    manager.registerLayer({
+    actionMapInstance.registerLayer({
       scope: "global",
       enabled: () => !commandPromptVisible,
       bindings: [
@@ -909,7 +909,7 @@ function registerActionMap(renderer: CliRenderer): void {
   )
 
   disposers.push(
-    manager.registerLayer({
+    actionMapInstance.registerLayer({
       scope: "global",
       enabled: () => !commandPromptVisible,
       bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }],
@@ -917,9 +917,9 @@ function registerActionMap(renderer: CliRenderer): void {
   )
 
   disposers.push(
-    registerManagedTextareaLayer(manager, {
+    registerManagedTextareaLayer(actionMapInstance, {
       scope: "global",
-      enabled: () => !commandPromptVisible && manager.renderer.currentFocusedEditor !== null,
+      enabled: () => !commandPromptVisible && actionMapInstance.renderer.currentFocusedEditor !== null,
       bindings: [
         { key: "left", cmd: "move-left", desc: "Cursor left" },
         { key: "right", cmd: "move-right", desc: "Cursor right" },
@@ -937,14 +937,14 @@ function registerActionMap(renderer: CliRenderer): void {
   )
 
   disposers.push(
-    manager.hook("state", () => {
+    actionMapInstance.hook("state", () => {
       renderStatus(renderer)
     }),
   )
 
   if (alphaPanel) {
     disposers.push(
-      manager.registerLayer({
+      actionMapInstance.registerLayer({
         target: alphaPanel,
         bindings: [
           { key: "j", cmd: "alpha-up", desc: "Alpha +1" },
@@ -957,7 +957,7 @@ function registerActionMap(renderer: CliRenderer): void {
 
   if (betaPanel) {
     disposers.push(
-      manager.registerLayer({
+      actionMapInstance.registerLayer({
         target: betaPanel,
         bindings: [
           { key: "j", cmd: "beta-up", desc: "Beta +5" },

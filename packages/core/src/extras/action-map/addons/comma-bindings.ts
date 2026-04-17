@@ -13,6 +13,6 @@ const commaBindingExpander: ActionMapBindingExpander = ({ input }) => {
   return parts
 }
 
-export function registerCommaBindings(manager: ActionMap): () => void {
-  return manager.appendBindingExpander(commaBindingExpander)
+export function registerCommaBindings(actionMap: ActionMap): () => void {
+  return actionMap.appendBindingExpander(commaBindingExpander)
 }

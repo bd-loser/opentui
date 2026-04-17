@@ -612,13 +612,13 @@ export function getActionMap(renderer: CliRenderer): ActionMap {
     }
   }
 
-  const manager = new ActionMap(renderer)
-  actionMapsByRenderer.set(renderer, manager)
+  const actionMap = new ActionMap(renderer)
+  actionMapsByRenderer.set(renderer, actionMap)
 
   renderer.once("destroy", () => {
-    manager.destroy()
+    actionMap.destroy()
     actionMapsByRenderer.delete(renderer)
   })
 
-  return manager
+  return actionMap
 }

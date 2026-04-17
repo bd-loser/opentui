@@ -39,14 +39,14 @@ function getAliases(layer: Readonly<Record<string, unknown>>): ActionMapAliases 
   return normalizeAliases(aliases)
 }
 
-export function registerAliasesField(manager: ActionMap): () => void {
-  const offLayerField = manager.registerLayerFields({
+export function registerAliasesField(actionMap: ActionMap): () => void {
+  const offLayerField = actionMap.registerLayerFields({
     aliases(value, ctx) {
       normalizeAliases(value)
     },
   })
 
-  const offBindingCompiler = manager.registerBindingCompiler((binding, ctx) => {
+  const offBindingCompiler = actionMap.registerBindingCompiler((binding, ctx) => {
     const aliases = getAliases(ctx.layer)
     if (!aliases) {
       return

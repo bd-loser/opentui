@@ -10,22 +10,22 @@ export interface EscapeClearsPendingSequenceOptions {
 }
 
 export function registerEscapeClearsPendingSequence(
-  manager: ActionMap,
+  actionMap: ActionMap,
   options?: EscapeClearsPendingSequenceOptions,
 ): () => void {
   const shouldPreventDefault = options?.preventDefault ?? true
 
-  return manager.onKeyInput(
+  return actionMap.onKeyInput(
     ({ event, consume }) => {
       if (event.name !== "escape") {
         return
       }
 
-      if (!manager.hasPendingSequence()) {
+      if (!actionMap.hasPendingSequence()) {
         return
       }
 
-      manager.clearPendingSequence()
+      actionMap.clearPendingSequence()
 
       if (shouldPreventDefault) {
         consume()

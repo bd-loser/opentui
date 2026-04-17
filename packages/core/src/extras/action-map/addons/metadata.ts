@@ -13,8 +13,8 @@ function normalizeMetadataText(fieldName: string, value: unknown): string {
   return trimmed
 }
 
-export function registerMetadataFields(manager: ActionMap): () => void {
-  const offBindingFields = manager.registerBindingFields({
+export function registerMetadataFields(actionMap: ActionMap): () => void {
+  const offBindingFields = actionMap.registerBindingFields({
     desc(value, ctx) {
       ctx.attr("desc", normalizeMetadataText("desc", value))
     },
@@ -23,7 +23,7 @@ export function registerMetadataFields(manager: ActionMap): () => void {
     },
   })
 
-  const offCommandFields = manager.registerCommandFields({
+  const offCommandFields = actionMap.registerCommandFields({
     desc(value, ctx) {
       ctx.attr("desc", normalizeMetadataText("desc", value))
     },

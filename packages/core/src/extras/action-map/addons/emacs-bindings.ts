@@ -83,7 +83,7 @@ function parseEmacsSequence(
   return strokes.map((stroke) => parseEmacsStroke(stroke, input, parseObjectKey))
 }
 
-export function registerEmacsBindings(manager: ActionMap): () => void {
+export function registerEmacsBindings(actionMap: ActionMap): () => void {
   const parseEmacsBinding: ActionMapBindingParser = ({ input, index, parseObjectKey }) => {
     const parsed = parseEmacsSequence(input, parseObjectKey)
     if (!parsed || index !== 0) {
@@ -96,5 +96,5 @@ export function registerEmacsBindings(manager: ActionMap): () => void {
     }
   }
 
-  return manager.prependBindingParser(parseEmacsBinding)
+  return actionMap.prependBindingParser(parseEmacsBinding)
 }

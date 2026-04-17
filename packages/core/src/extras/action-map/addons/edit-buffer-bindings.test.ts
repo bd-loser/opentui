@@ -27,20 +27,20 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("registerEditBufferCommands resolves plain layers that were registered first", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
     })
 
-    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
+    expect(actionMap.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
       false,
     )
 
-    registerEditBufferCommands(manager)
+    registerEditBufferCommands(actionMap)
 
-    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
+    expect(actionMap.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
       true,
     )
 
@@ -59,10 +59,10 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("supports sequence bindings through plain layers", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    registerEditBufferCommands(manager)
-    manager.registerLayer({
+    registerEditBufferCommands(actionMap)
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
@@ -83,10 +83,10 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("passes uncaptured input through to the focused textarea", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    registerEditBufferCommands(manager)
-    manager.registerLayer({
+    registerEditBufferCommands(actionMap)
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "left", cmd: "move-left" }],
     })
@@ -118,7 +118,7 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("registerTextareaMappingSuspension disables local textarea shortcuts but preserves plain typing", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const textarea = new TextareaRenderable(renderer, {
       width: 20,
       height: 4,
@@ -126,7 +126,7 @@ describe("edit buffer bindings addon", () => {
     })
     renderer.root.add(textarea)
 
-    const offSuspension = registerTextareaMappingSuspension(manager)
+    const offSuspension = registerTextareaMappingSuspension(actionMap)
 
     textarea.focus()
     textarea.cursorOffset = 3
@@ -146,7 +146,7 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("registerTextareaMappingSuspension leaves input renderables using their own mappings", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     let submitted = 0
 
     const input = new InputRenderable(renderer, {
@@ -158,7 +158,7 @@ describe("edit buffer bindings addon", () => {
     })
     renderer.root.add(input)
 
-    const offSuspension = registerTextareaMappingSuspension(manager)
+    const offSuspension = registerTextareaMappingSuspension(actionMap)
 
     input.focus()
     expect(input.traits.suspend).toBeUndefined()
@@ -170,10 +170,10 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("does not double-run textarea actions when a global binding uses the same stroke", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    registerEditBufferCommands(manager)
-    manager.registerLayer({
+    registerEditBufferCommands(actionMap)
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "backspace", cmd: "backspace" }],
     })
@@ -194,11 +194,11 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("supports submit on input renderables through plain layers", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     let submitted = 0
 
-    registerEditBufferCommands(manager)
-    manager.registerLayer({
+    registerEditBufferCommands(actionMap)
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
     })
@@ -220,12 +220,12 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("keeps shared commands alive across registrations", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     let submitted = 0
 
-    const offFirst = registerEditBufferCommands(manager)
-    const offSecond = registerEditBufferCommands(manager)
-    manager.registerLayer({
+    const offFirst = registerEditBufferCommands(actionMap)
+    const offSecond = registerEditBufferCommands(actionMap)
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
     })
@@ -249,10 +249,10 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("falls through when there is no focused editor or submit is unsupported", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "fallback",
         run() {
@@ -260,13 +260,13 @@ describe("edit buffer bindings addon", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "fallback" }],
     })
 
-    registerEditBufferCommands(manager)
-    manager.registerLayer({
+    registerEditBufferCommands(actionMap)
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
     })
@@ -297,9 +297,9 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("registerManagedTextareaLayer combines commands, suspension, defaults, and overrides", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    const off = registerManagedTextareaLayer(manager, {
+    const off = registerManagedTextareaLayer(actionMap, {
       scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
@@ -331,10 +331,10 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("registerManagedTextareaLayer lets overrides replace default textarea shortcuts by order", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "custom-left",
         run() {
@@ -343,7 +343,7 @@ describe("edit buffer bindings addon", () => {
       },
     ])
 
-    const off = registerManagedTextareaLayer(manager, {
+    const off = registerManagedTextareaLayer(actionMap, {
       scope: "global",
       bindings: [{ key: "left", cmd: "custom-left" }],
     })
@@ -367,21 +367,21 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("registerEditBufferCommands applies custom command descriptions when metadata fields are registered", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    registerMetadataFields(manager)
-    registerEditBufferCommands(manager, {
+    registerMetadataFields(actionMap)
+    registerEditBufferCommands(actionMap, {
       descriptions: {
         "delete-line": "Supprimer la ligne",
       },
     })
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "delete-line" }],
     })
 
-    const activeKey = manager
+    const activeKey = actionMap
       .getActiveKeys({ includeMetadata: true })
       .find((candidate) => candidate.stroke.name === "x")
 
@@ -389,11 +389,11 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("registerManagedTextareaLayer applies custom descriptions to generated default bindings", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    registerMetadataFields(manager)
+    registerMetadataFields(actionMap)
     const off = registerManagedTextareaLayer(
-      manager,
+      actionMap,
       {
         scope: "global",
       },
@@ -404,7 +404,7 @@ describe("edit buffer bindings addon", () => {
       },
     )
 
-    const activeKey = manager
+    const activeKey = actionMap
       .getActiveKeys({ includeMetadata: true })
       .find((candidate) => candidate.stroke.name === "left")
 
@@ -415,16 +415,16 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("shared edit buffer command registrations ignore later description overrides", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    registerEditBufferCommands(manager, {
+    registerEditBufferCommands(actionMap, {
       descriptions: {
         "move-left": "Cursor left",
       },
     })
 
     expect(() => {
-      registerEditBufferCommands(manager, {
+      registerEditBufferCommands(actionMap, {
         descriptions: {
           "move-left": "Curseur gauche",
         },
@@ -433,29 +433,29 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("disposes single registrations cleanly and supports re-registration", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
     })
 
-    const off = registerEditBufferCommands(manager)
+    const off = registerEditBufferCommands(actionMap)
 
-    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
+    expect(actionMap.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
       true,
     )
 
     off()
     off()
 
-    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
+    expect(actionMap.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
       false,
     )
 
-    registerEditBufferCommands(manager)
+    registerEditBufferCommands(actionMap)
 
-    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
+    expect(actionMap.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
       true,
     )
 
@@ -474,9 +474,9 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("keeps shared commands registered until the last registration is removed regardless of dispose order", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
     })
@@ -488,8 +488,8 @@ describe("edit buffer bindings addon", () => {
     })
     renderer.root.add(textarea)
 
-    const offFirst = registerEditBufferCommands(manager)
-    const offSecond = registerEditBufferCommands(manager)
+    const offFirst = registerEditBufferCommands(actionMap)
+    const offSecond = registerEditBufferCommands(actionMap)
 
     textarea.focus()
     textarea.gotoLine(1)
@@ -504,30 +504,30 @@ describe("edit buffer bindings addon", () => {
   })
 
   test("skips colliding commands and continues registering the rest of the batch", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const errors: string[] = []
 
-    manager.on("error", (event) => {
+    actionMap.on("error", (event) => {
       errors.push(event.message)
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "delete-line",
         run() {},
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
     })
 
     expect(() => {
-      registerEditBufferCommands(manager)
+      registerEditBufferCommands(actionMap)
     }).not.toThrow()
 
     expect(errors).toEqual(['ActionMap command "delete-line" is already registered'])
-    expect(manager.getCommands().some((command) => command.name === "submit")).toBe(true)
-    expect(manager.getActiveKeys().find((candidate) => candidate.stroke.name === "x")?.command).toBe("submit")
+    expect(actionMap.getCommands().some((command) => command.name === "submit")).toBe(true)
+    expect(actionMap.getActiveKeys().find((candidate) => candidate.stroke.name === "x")?.command).toBe("submit")
   })
 })

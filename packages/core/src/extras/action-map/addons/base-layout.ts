@@ -18,8 +18,8 @@ function getBaseLayoutKeyName(baseCode: number | undefined): string | undefined 
   }
 }
 
-export function registerBaseLayoutFallback(manager: ActionMap): () => void {
-  return manager.registerEventMatchResolver((event, ctx) => {
+export function registerBaseLayoutFallback(actionMap: ActionMap): () => void {
+  return actionMap.registerEventMatchResolver((event, ctx) => {
     const name = getBaseLayoutKeyName(event.baseCode)
     if (!name) {
       return undefined

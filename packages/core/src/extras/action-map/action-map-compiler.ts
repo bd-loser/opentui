@@ -146,7 +146,13 @@ export class ActionMapCompiler {
           )
         }
 
-        for (const compiledInput of this.expandParsedBindings(binding, sequence, tokens, bindingParsers, compileFields)) {
+        for (const compiledInput of this.expandParsedBindings(
+          binding,
+          sequence,
+          tokens,
+          bindingParsers,
+          compileFields,
+        )) {
           try {
             const event = this.normalizeBindingEvent(compiledInput.event)
             const compiledSequence = compiledInput.sequence
@@ -486,7 +492,13 @@ function parseBindingSequenceWithParsers(
     let matched = false
 
     for (const parser of parsers) {
-      const result = parser({ input: key, index, layer, tokens, parseObjectKey } satisfies ActionMapBindingParserContext)
+      const result = parser({
+        input: key,
+        index,
+        layer,
+        tokens,
+        parseObjectKey,
+      } satisfies ActionMapBindingParserContext)
       if (!result) {
         continue
       }

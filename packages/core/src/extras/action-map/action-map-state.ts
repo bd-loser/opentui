@@ -68,9 +68,6 @@ export interface ActionMapRuntimeState {
   readonlyDataVersion: number
   readonlyData: Readonly<ActionMapEventData>
   pendingSequence: PendingSequenceState | null
-}
-
-export interface ActionMapProjectionsState {
   pendingSequenceCacheVersion: number
   pendingSequenceCache: readonly ParsedKeyStroke[]
   pendingSequencePartsCacheVersion: number
@@ -100,7 +97,6 @@ export interface ActionMapState {
   commands: ActionMapCommandsState
   conditions: ActionMapConditionsState
   runtime: ActionMapRuntimeState
-  projections: ActionMapProjectionsState
   notify: ActionMapNotifyState
 }
 
@@ -147,8 +143,6 @@ export function createActionMapState(): ActionMapState {
       readonlyDataVersion: -1,
       readonlyData: EMPTY_DATA,
       pendingSequence: null,
-    },
-    projections: {
       pendingSequenceCacheVersion: -1,
       pendingSequenceCache: [],
       pendingSequencePartsCacheVersion: -1,
@@ -204,19 +198,18 @@ export function resetActionMapState(state: ActionMapState, options?: ResetAction
   state.runtime.readonlyDataVersion = -1
   state.runtime.readonlyData = EMPTY_DATA
   state.runtime.pendingSequence = null
-
-  state.projections.pendingSequenceCacheVersion = -1
-  state.projections.pendingSequenceCache = []
-  state.projections.pendingSequencePartsCacheVersion = -1
-  state.projections.pendingSequencePartsCache = []
-  state.projections.activeKeysPlainCacheVersion = -1
-  state.projections.activeKeysPlainCache = []
-  state.projections.activeKeysBindingsCacheVersion = -1
-  state.projections.activeKeysBindingsCache = []
-  state.projections.activeKeysMetadataCacheVersion = -1
-  state.projections.activeKeysMetadataCache = []
-  state.projections.activeKeysBindingsAndMetadataCacheVersion = -1
-  state.projections.activeKeysBindingsAndMetadataCache = []
+  state.runtime.pendingSequenceCacheVersion = -1
+  state.runtime.pendingSequenceCache = []
+  state.runtime.pendingSequencePartsCacheVersion = -1
+  state.runtime.pendingSequencePartsCache = []
+  state.runtime.activeKeysPlainCacheVersion = -1
+  state.runtime.activeKeysPlainCache = []
+  state.runtime.activeKeysBindingsCacheVersion = -1
+  state.runtime.activeKeysBindingsCache = []
+  state.runtime.activeKeysMetadataCacheVersion = -1
+  state.runtime.activeKeysMetadataCache = []
+  state.runtime.activeKeysBindingsAndMetadataCacheVersion = -1
+  state.runtime.activeKeysBindingsAndMetadataCache = []
 
   state.notify.derivedStateVersion = 0
   state.notify.stateChangeDepth = 0

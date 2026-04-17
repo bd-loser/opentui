@@ -133,7 +133,7 @@ export class ActionMapRuntime {
       return []
     }
 
-    const projections = this.state.projections
+    const projections = this.state.runtime
     const derivedStateVersion = this.state.notify.derivedStateVersion
 
     if (projections.pendingSequenceCacheVersion === derivedStateVersion) {
@@ -158,7 +158,7 @@ export class ActionMapRuntime {
       return []
     }
 
-    const projections = this.state.projections
+    const projections = this.state.runtime
     const derivedStateVersion = this.state.notify.derivedStateVersion
 
     if (projections.pendingSequencePartsCacheVersion === derivedStateVersion) {
@@ -183,7 +183,7 @@ export class ActionMapRuntime {
       return []
     }
 
-    const projections = this.state.projections
+    const projections = this.state.runtime
     const derivedStateVersion = this.state.notify.derivedStateVersion
     const includeBindings = options?.includeBindings === true
     const includeMetadata = options?.includeMetadata === true
@@ -668,12 +668,12 @@ export class ActionMapRuntime {
   }
 
   private invalidateDerivedStateCaches(): void {
-    this.state.projections.pendingSequenceCacheVersion = -1
-    this.state.projections.pendingSequencePartsCacheVersion = -1
-    this.state.projections.activeKeysPlainCacheVersion = -1
-    this.state.projections.activeKeysBindingsCacheVersion = -1
-    this.state.projections.activeKeysMetadataCacheVersion = -1
-    this.state.projections.activeKeysBindingsAndMetadataCacheVersion = -1
+    this.state.runtime.pendingSequenceCacheVersion = -1
+    this.state.runtime.pendingSequencePartsCacheVersion = -1
+    this.state.runtime.activeKeysPlainCacheVersion = -1
+    this.state.runtime.activeKeysBindingsCacheVersion = -1
+    this.state.runtime.activeKeysMetadataCacheVersion = -1
+    this.state.runtime.activeKeysBindingsAndMetadataCacheVersion = -1
   }
 
   private notifyPendingSequenceChange(): void {

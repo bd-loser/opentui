@@ -2576,6 +2576,51 @@ describe("action map", () => {
     })
   })
 
+  test("getCommands clones plain metadata deeply but preserves opaque values by reference", () => {
+    const manager = getActionMap(renderer)
+    const opaque = new Map([["recent", 1]])
+    const helper = () => "ok"
+    const payload = {
+      nested: { title: "Write File" },
+      tags: ["file", { kind: "write" }],
+      opaque,
+      helper,
+    }
+
+    manager.registerCommands([
+      {
+        name: "save-current",
+        payload,
+        run() {},
+      },
+    ])
+
+    payload.nested.title = "Mutated"
+    ;(payload.tags[1] as { kind: string }).kind = "mutated"
+
+    const command = getCommand(manager, "save-current")
+    const storedPayload = command?.fields.payload as {
+      nested: { title: string }
+      tags: [string, { kind: string }]
+      opaque: Map<string, number>
+      helper: () => string
+    }
+
+    expect(storedPayload).toBeDefined()
+    expect(storedPayload).not.toBe(payload)
+    expect(storedPayload.nested).not.toBe(payload.nested)
+    expect(storedPayload.tags).not.toBe(payload.tags)
+    expect(storedPayload.tags[1]).not.toBe(payload.tags[1])
+    expect(storedPayload.nested.title).toBe("Write File")
+    expect(storedPayload.tags[1]).toEqual({ kind: "write" })
+    expect(storedPayload.opaque).toBe(opaque)
+    expect(storedPayload.helper).toBe(helper)
+    expect(Object.isFrozen(storedPayload)).toBe(true)
+    expect(Object.isFrozen(storedPayload.nested)).toBe(true)
+    expect(Object.isFrozen(storedPayload.tags)).toBe(true)
+    expect(Object.isFrozen(storedPayload.tags[1])).toBe(true)
+  })
+
   test("keeps active key projections isolated across repeated reads", () => {
     const manager = getActionMap(renderer)
 

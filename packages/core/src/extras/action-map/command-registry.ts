@@ -6,9 +6,15 @@ import type {
   ActionMapCommandRecord,
   RegisteredCommand,
 } from "./types.js"
-import { getErrorMessage, mergeAttribute, normalizeCommandName } from "./utils.js"
+import { cloneDataValue, getErrorMessage, mergeAttribute, normalizeCommandName } from "./utils.js"
 
 const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
+const CLONE_COMMAND_METADATA_OPTIONS = Object.freeze({ deep: true, preserveNonPlainObjects: true })
+const CLONE_FROZEN_COMMAND_METADATA_OPTIONS = Object.freeze({
+  deep: true,
+  freeze: true,
+  preserveNonPlainObjects: true,
+})
 
 export const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 
@@ -17,43 +23,6 @@ interface NormalizeRegisteredCommandsOptions {
   commandFields: ReadonlyMap<string, ActionMapCommandFieldCompiler>
   hasCommand(name: string): boolean
   onError(message: string, cause?: unknown): void
-}
-
-function isPlainObject(value: object): boolean {
-  const prototype = Object.getPrototypeOf(value)
-  return prototype === Object.prototype || prototype === null
-}
-
-export function cloneCommandMetadataValue(value: unknown, options?: { freeze?: boolean }): unknown {
-  const freeze = options?.freeze === true
-
-  if (Array.isArray(value)) {
-    const cloned = value.map((entry) => cloneCommandMetadataValue(entry, options))
-    if (freeze) {
-      return Object.freeze(cloned)
-    }
-
-    return cloned
-  }
-
-  if (value && typeof value === "object") {
-    if (!isPlainObject(value)) {
-      return value
-    }
-
-    const cloned: Record<string, unknown> = {}
-    for (const [key, entry] of Object.entries(value)) {
-      cloned[key] = cloneCommandMetadataValue(entry, options)
-    }
-
-    if (freeze) {
-      return Object.freeze(cloned)
-    }
-
-    return cloned
-  }
-
-  return value
 }
 
 export function normalizeRegisteredCommands(options: NormalizeRegisteredCommandsOptions): RegisteredCommand[] {
@@ -87,7 +56,7 @@ export function normalizeRegisteredCommands(options: NormalizeRegisteredCommands
           continue
         }
 
-        mergedFields[fieldName] = cloneCommandMetadataValue(value)
+        mergedFields[fieldName] = cloneDataValue(value, CLONE_COMMAND_METADATA_OPTIONS)
 
         const compiler = options.commandFields.get(fieldName)
         if (!compiler) {
@@ -124,7 +93,12 @@ export function normalizeRegisteredCommands(options: NormalizeRegisteredCommands
 function createCommandFieldContext(mergedAttrs: ActionMapAttributes, fieldName: string): ActionMapCommandFieldContext {
   return {
     attr(name, attributeValue) {
-      mergeAttribute(mergedAttrs, name, cloneCommandMetadataValue(attributeValue), `field ${fieldName}`)
+      mergeAttribute(
+        mergedAttrs,
+        name,
+        cloneDataValue(attributeValue, CLONE_COMMAND_METADATA_OPTIONS),
+        `field ${fieldName}`,
+      )
     },
   }
 }
@@ -136,7 +110,7 @@ export function getRegisteredCommandRecord(command: RegisteredCommand): ActionMa
 
   let fields = EMPTY_COMMAND_FIELDS
   if (command.fields !== EMPTY_COMMAND_FIELDS && Object.keys(command.fields).length > 0) {
-    fields = cloneCommandMetadataValue(command.fields, { freeze: true }) as Readonly<Record<string, unknown>>
+    fields = cloneDataValue(command.fields, CLONE_FROZEN_COMMAND_METADATA_OPTIONS) as Readonly<Record<string, unknown>>
   }
 
   let record: ActionMapCommandRecord
@@ -144,7 +118,7 @@ export function getRegisteredCommandRecord(command: RegisteredCommand): ActionMa
     record = Object.freeze({
       name: command.name,
       fields,
-      attrs: cloneCommandMetadataValue(command.attrs, { freeze: true }) as Readonly<ActionMapAttributes>,
+      attrs: cloneDataValue(command.attrs, CLONE_FROZEN_COMMAND_METADATA_OPTIONS) as Readonly<ActionMapAttributes>,
     })
   } else {
     record = Object.freeze({

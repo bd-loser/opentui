@@ -3093,7 +3093,9 @@ describe("action map", () => {
 
     mockInput.pressKey("d")
 
-    expect(actionMap.getPendingSequence()).toEqual([{ name: "d", ctrl: false, shift: false, meta: false, super: false }])
+    expect(actionMap.getPendingSequence()).toEqual([
+      { name: "d", ctrl: false, shift: false, meta: false, super: false },
+    ])
     expect(actionMap.getPendingSequenceParts()).toEqual([
       {
         stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
@@ -3645,7 +3647,9 @@ describe("action map", () => {
 
     mockInput.pressBackspace()
 
-    expect(actionMap.getPendingSequence()).toEqual([{ name: "d", ctrl: false, shift: false, meta: false, super: false }])
+    expect(actionMap.getPendingSequence()).toEqual([
+      { name: "d", ctrl: false, shift: false, meta: false, super: false },
+    ])
     expect(getActiveKeyNames(actionMap)).toEqual(["c"])
 
     mockInput.pressKey("c")
@@ -4950,7 +4954,9 @@ describe("action map", () => {
 
     mockInput.pressKey("a")
 
-    expect(actionMap.getPendingSequence()).toEqual([{ name: "a", ctrl: false, shift: false, meta: false, super: false }])
+    expect(actionMap.getPendingSequence()).toEqual([
+      { name: "a", ctrl: false, shift: false, meta: false, super: false },
+    ])
 
     actionMap.registerToken({
       name: "<leader>",

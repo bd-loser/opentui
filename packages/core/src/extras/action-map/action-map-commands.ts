@@ -524,7 +524,9 @@ function queryRegisteredCommands(options: QueryRegisteredCommandsOptions): reado
   const namespace = options.query?.namespace
   const normalizedSearch = options.query?.search?.trim().toLowerCase() ?? ""
   const searchKeys =
-    options.query?.searchIn && options.query.searchIn.length > 0 ? options.query.searchIn : DEFAULT_COMMAND_SEARCH_FIELDS
+    options.query?.searchIn && options.query.searchIn.length > 0
+      ? options.query.searchIn
+      : DEFAULT_COMMAND_SEARCH_FIELDS
   const filter = options.query?.filter
   let filterEntries: readonly [string, ActionMapCommandQueryValue][] | undefined
   let filterPredicate: ((command: ActionMapCommandRecord) => boolean) | undefined
@@ -638,10 +640,7 @@ function normalizeRegisteredCommands(options: NormalizeRegisteredCommandsOptions
   return normalizedCommands
 }
 
-function createCommandFieldContext(
-  mergedAttrs: ActionMapAttributes,
-  fieldName: string,
-): ActionMapCommandFieldContext {
+function createCommandFieldContext(mergedAttrs: ActionMapAttributes, fieldName: string): ActionMapCommandFieldContext {
   return {
     attr(name, attributeValue) {
       mergeAttribute(
@@ -671,9 +670,10 @@ function getRegisteredCommandRecord(command: RegisteredCommand): ActionMapComman
     record = Object.freeze({
       name: command.name,
       fields,
-      attrs: snapshotDataValue(command.attrs, SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS) as Readonly<
-        ActionMapAttributes
-      >,
+      attrs: snapshotDataValue(
+        command.attrs,
+        SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS,
+      ) as Readonly<ActionMapAttributes>,
     })
   } else {
     record = Object.freeze({
@@ -738,7 +738,10 @@ function commandKeyMatchesSearch(command: RegisteredCommand, key: string, search
     return true
   }
 
-  if (Object.prototype.hasOwnProperty.call(command.fields, key) && commandValueMatchesSearch(command.fields[key], search)) {
+  if (
+    Object.prototype.hasOwnProperty.call(command.fields, key) &&
+    commandValueMatchesSearch(command.fields[key], search)
+  ) {
     return true
   }
 
@@ -819,12 +822,19 @@ function commandKeyMatchesQuery(
   return commandKeyMatchesExact(command, key, matcher)
 }
 
-function commandKeyMatchesExact(command: RegisteredCommand, key: string, matcher: unknown | readonly unknown[]): boolean {
+function commandKeyMatchesExact(
+  command: RegisteredCommand,
+  key: string,
+  matcher: unknown | readonly unknown[],
+): boolean {
   if (key === "name" && commandValueMatchesFilter(command.name, matcher)) {
     return true
   }
 
-  if (Object.prototype.hasOwnProperty.call(command.fields, key) && commandValueMatchesFilter(command.fields[key], matcher)) {
+  if (
+    Object.prototype.hasOwnProperty.call(command.fields, key) &&
+    commandValueMatchesFilter(command.fields[key], matcher)
+  ) {
     return true
   }
 

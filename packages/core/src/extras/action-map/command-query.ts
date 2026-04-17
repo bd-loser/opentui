@@ -18,7 +18,9 @@ export function queryRegisteredCommands(options: QueryRegisteredCommandsOptions)
   const namespace = options.query?.namespace
   const normalizedSearch = options.query?.search?.trim().toLowerCase() ?? ""
   const searchKeys =
-    options.query?.searchIn && options.query.searchIn.length > 0 ? options.query.searchIn : DEFAULT_COMMAND_SEARCH_FIELDS
+    options.query?.searchIn && options.query.searchIn.length > 0
+      ? options.query.searchIn
+      : DEFAULT_COMMAND_SEARCH_FIELDS
   const filter = options.query?.filter
   let filterEntries: readonly [string, ActionMapCommandQueryValue][] | undefined
   let filterPredicate: ((command: ActionMapCommandRecord) => boolean) | undefined
@@ -206,7 +208,11 @@ function commandKeyMatchesQuery(
   return commandKeyMatchesExact(command, key, matcher)
 }
 
-function commandKeyMatchesExact(command: RegisteredCommand, key: string, matcher: unknown | readonly unknown[]): boolean {
+function commandKeyMatchesExact(
+  command: RegisteredCommand,
+  key: string,
+  matcher: unknown | readonly unknown[],
+): boolean {
   if (key === "name") {
     if (commandValueMatchesFilter(command.name, matcher)) {
       return true

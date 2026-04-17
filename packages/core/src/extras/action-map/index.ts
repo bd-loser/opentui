@@ -61,6 +61,7 @@ export type {
   ActionMapEvents,
   ActionMapParsedCommand,
   ActionMapRawInputContext,
+  ActionMapReactiveMatcher,
   ActionMapUnresolvedCommandContext,
   ActionMapWarningEvent,
   ActionMapResolvedBindingCommand,
@@ -89,7 +90,7 @@ export {
 export { registerLeader } from "./addons/leader.js"
 export { registerMetadataFields } from "./addons/metadata.js"
 export { registerTimedLeader } from "./addons/timed-leader.js"
-export type { ActionMapEnabled, ActionMapKeyedEnabled } from "./addons/enabled.js"
+export type { ActionMapEnabled } from "./addons/enabled.js"
 export type { ActionMapAliases } from "./addons/aliases.js"
 export type {
   EditBufferCommandName,

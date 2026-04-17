@@ -44,6 +44,7 @@ import type {
   ActionMapLayer,
   ActionMapLayerFieldCompiler,
   ActionMapRawInputContext,
+  ActionMapReactiveMatcher,
   ActionMapResolvedBindingCommand,
   ActionMapScope,
   ActionMapEventMatchResolver,
@@ -98,6 +99,36 @@ function getErrorMessage(error: unknown, fallback: string): string {
   }
 
   return fallback
+}
+
+function isReactiveMatcher(value: unknown): value is ActionMapReactiveMatcher {
+  if (!value || typeof value !== "object") {
+    return false
+  }
+
+  const candidate = value as { get?: unknown; subscribe?: unknown }
+  return typeof candidate.get === "function" && typeof candidate.subscribe === "function"
+}
+
+function buildRuntimeMatcher(matcher: (() => boolean) | ActionMapReactiveMatcher, source: string): RuntimeMatcher {
+  if (typeof matcher === "function") {
+    return {
+      source,
+      match: matcher,
+      cacheable: false,
+    }
+  }
+
+  if (isReactiveMatcher(matcher)) {
+    return {
+      source,
+      match: () => matcher.get(),
+      cacheable: true,
+      subscribe: (onChange) => matcher.subscribe(onChange),
+    }
+  }
+
+  throw new Error(`ActionMap ${source} expected a function or a reactive matcher`)
 }
 
 interface ResolvedCommandLookup {
@@ -416,6 +447,13 @@ export class ActionMap {
     this.setPendingSequence(null)
 
     for (const layer of this.layers) {
+      // Dispose reactive-matcher subscriptions for the layer and all its
+      // compiled bindings before clearing the layer set.
+      this.unregisterRuntimeMatchable(layer)
+      for (const binding of layer.compiledBindings) {
+        this.unregisterRuntimeMatchable(binding)
+      }
+
       layer.offTargetDestroy?.()
       layer.offTargetDestroy = undefined
       layer.bucket = undefined
@@ -508,18 +546,6 @@ export class ActionMap {
     }
 
     return this.data[name]
-  }
-
-  public invalidateRuntimeKey(name: string): void {
-    if (this.destroyed) {
-      return
-    }
-
-    this.runWithStateChangeBatch(() => {
-      this.invalidateRuntimeConditionKey(name)
-      this.ensureValidPendingSequence()
-      this.queueStateChange()
-    })
   }
 
   public hasPendingSequence(): boolean {
@@ -1486,21 +1512,12 @@ export class ActionMap {
           mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
           conditionKeys.add(name)
         },
-        match(matcher, options) {
-          const keys = options?.keys ? [...options.keys] : []
-          if (keys.length === 0) {
+        match(matcher) {
+          const runtimeMatcher = buildRuntimeMatcher(matcher, `field ${fieldName}`)
+          if (!runtimeMatcher.cacheable) {
             hasUnkeyedMatchers = true
-          } else {
-            for (const key of keys) {
-              conditionKeys.add(key)
-            }
           }
-
-          matchers.push({
-            source: `field ${fieldName}`,
-            match: matcher,
-            keys,
-          })
+          matchers.push(runtimeMatcher)
         },
       })
     }
@@ -2186,21 +2203,12 @@ export class ActionMap {
                 attr(name, attributeValue) {
                   mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
                 },
-                match(matcher, options) {
-                  const keys = options?.keys ? [...options.keys] : []
-                  if (keys.length === 0) {
+                match(matcher) {
+                  const runtimeMatcher = buildRuntimeMatcher(matcher, `field ${fieldName}`)
+                  if (!runtimeMatcher.cacheable) {
                     hasUnkeyedMatchers = true
-                  } else {
-                    for (const key of keys) {
-                      conditionKeys.add(key)
-                    }
                   }
-
-                  matchers.push({
-                    source: `field ${fieldName}`,
-                    match: matcher,
-                    keys,
-                  })
+                  matchers.push(runtimeMatcher)
                 },
               })
             }
@@ -3167,18 +3175,40 @@ export class ActionMap {
   }
 
   private registerRuntimeMatchable(target: RuntimeMatchable): void {
-    if (target.conditionKeys.length === 0) {
-      return
-    }
-
-    for (const key of target.conditionKeys) {
-      const dependents = this.runtimeKeyDependents.get(key)
-      if (dependents) {
-        dependents.add(target)
+    // Wire reactive-matcher subscriptions: each reactive matcher receives a
+    // callback that dirties this target's cache. Errors in `subscribe` are
+    // routed to the error channel but do not abort registration — the matcher
+    // just runs without auto-invalidation (it still evaluates on every read
+    // because a non-cacheable or uninvalidated cached path re-reads anyway).
+    for (const matcher of target.matchers) {
+      if (!matcher.subscribe) {
         continue
       }
 
-      this.runtimeKeyDependents.set(key, new Set([target]))
+      try {
+        matcher.dispose = matcher.subscribe(() => {
+          target.matchCacheDirty = true
+          this.queueStateChange()
+        })
+      } catch (error) {
+        this.emitError(
+          getErrorMessage(error, `Failed to subscribe to reactive matcher from ${matcher.source}`),
+          error,
+        )
+      }
+    }
+
+    // Register setData-driven dependencies from `require(...)` calls.
+    if (target.conditionKeys.length > 0) {
+      for (const key of target.conditionKeys) {
+        const dependents = this.runtimeKeyDependents.get(key)
+        if (dependents) {
+          dependents.add(target)
+          continue
+        }
+
+        this.runtimeKeyDependents.set(key, new Set([target]))
+      }
     }
 
     if (!target.hasUnkeyedMatchers) {
@@ -3187,6 +3217,24 @@ export class ActionMap {
   }
 
   private unregisterRuntimeMatchable(target: RuntimeMatchable): void {
+    // Dispose reactive-matcher subscriptions.
+    for (const matcher of target.matchers) {
+      if (!matcher.dispose) {
+        continue
+      }
+
+      try {
+        matcher.dispose()
+      } catch (error) {
+        this.emitError(
+          getErrorMessage(error, `Failed to dispose reactive matcher from ${matcher.source}`),
+          error,
+        )
+      }
+
+      matcher.dispose = undefined
+    }
+
     if (target.conditionKeys.length === 0) {
       return
     }
@@ -3216,7 +3264,11 @@ export class ActionMap {
   }
 
   private hasFreshConditionCache(target: RuntimeMatchable): boolean {
-    if (target.hasUnkeyedMatchers || target.conditionKeys.length === 0) {
+    // A target is cacheable when all of its matchers are either subscription-
+    // backed (reactive) or data-backed (via `require`). `hasUnkeyedMatchers`
+    // flags the presence of raw `() => boolean` matchers which force re-evaluation
+    // on every read because we can't know when their result changes.
+    if (target.hasUnkeyedMatchers) {
       return false
     }
 
@@ -3224,7 +3276,7 @@ export class ActionMap {
   }
 
   private updateConditionCache(target: RuntimeMatchable, matched: boolean): void {
-    if (target.hasUnkeyedMatchers || target.conditionKeys.length === 0) {
+    if (target.hasUnkeyedMatchers) {
       return
     }
 

@@ -12,6 +12,7 @@ import {
   type ActionMapActiveKey,
   type ActionMapActiveKeyOptions,
   type ActionMap,
+  type ActionMapReactiveMatcher,
 } from "./index.js"
 
 let renderer: TestRenderer
@@ -76,6 +77,58 @@ function getMatchKeyForEventName(event: KeyEvent, name: string): string {
   return `${normalizedName}:${event.ctrl ? 1 : 0}:${event.shift ? 1 : 0}:${event.meta ? 1 : 0}:${event.super ? 1 : 0}:${event.hyper ? 1 : 0}`
 }
 
+// Minimal reactive-boolean helper for tests. Mirrors the contract expected of
+// real reactive sources (signal, observable, etc.): a synchronous `get` and a
+// `subscribe(onChange)` that returns an unsubscribe. Set `onSubscribe` /
+// `onDispose` to observe subscription lifecycle.
+interface ReactiveBoolean extends ActionMapReactiveMatcher {
+  set(next: boolean): void
+  readonly subscriptions: number
+  readonly subscribeCalls: number
+  readonly disposeCalls: number
+}
+
+function createReactiveBoolean(initial: boolean): ReactiveBoolean {
+  let current = initial
+  const listeners = new Set<() => void>()
+  let subscribeCalls = 0
+  let disposeCalls = 0
+
+  const matcher: ReactiveBoolean = {
+    get() {
+      return current
+    },
+    subscribe(onChange) {
+      subscribeCalls += 1
+      listeners.add(onChange)
+      return () => {
+        disposeCalls += 1
+        listeners.delete(onChange)
+      }
+    },
+    set(next) {
+      if (current === next) {
+        return
+      }
+      current = next
+      for (const fn of listeners) {
+        fn()
+      }
+    },
+    get subscriptions() {
+      return listeners.size
+    },
+    get subscribeCalls() {
+      return subscribeCalls
+    },
+    get disposeCalls() {
+      return disposeCalls
+    },
+  }
+
+  return matcher
+}
+
 describe("action map", () => {
   beforeEach(async () => {
     const testSetup = await createTestRenderer({ width: 40, height: 10 })
@@ -124,7 +177,6 @@ describe("action map", () => {
 
     expect(() => {
       manager.setData("mode", "normal")
-      manager.invalidateRuntimeKey("mode")
       manager.clearPendingSequence()
       manager.setBindingSyntax(defaultBindingSyntax)
       manager.clearBindingSyntax()
@@ -1598,10 +1650,10 @@ describe("action map", () => {
     expect(calls).toEqual([])
   })
 
-  test("typed binding field matchers can use keyed invalidation", () => {
+  test("typed binding field matchers can use reactive matchers", () => {
     const manager = getActionMap(renderer)
     const calls: string[] = []
-    let enabled = false
+    const enabled = createReactiveBoolean(false)
     let evaluations = 0
 
     manager.registerBindingFields({
@@ -1610,13 +1662,15 @@ describe("action map", () => {
           throw new Error('ActionMap binding field "active" must be true')
         }
 
-        ctx.match(
-          () => {
+        ctx.match({
+          get() {
             evaluations += 1
-            return enabled
+            return enabled.get()
           },
-          { keys: ["binding.active"] },
-        )
+          subscribe(onChange) {
+            return enabled.subscribe(onChange)
+          },
+        })
       },
     })
 
@@ -1633,23 +1687,22 @@ describe("action map", () => {
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
     })
 
+    // Initial evaluation happens on first `getActiveKeys`; subsequent reads
+    // are cached until the reactive source notifies.
     expect(getActiveKeyNames(manager)).toEqual([])
     expect(evaluations).toBe(1)
 
     expect(getActiveKeyNames(manager)).toEqual([])
     expect(evaluations).toBe(1)
 
+    // Unrelated data changes must not invalidate a purely reactive matcher.
     manager.setData("unrelated", true)
 
     expect(getActiveKeyNames(manager)).toEqual([])
     expect(evaluations).toBe(1)
 
-    enabled = true
-
-    expect(getActiveKeyNames(manager)).toEqual([])
-    expect(evaluations).toBe(1)
-
-    manager.invalidateRuntimeKey("binding.active")
+    // Flipping the reactive source notifies subscribers and re-evaluates.
+    enabled.set(true)
 
     expect(getActiveKeyNames(manager)).toEqual(["x"])
     expect(evaluations).toBe(2)
@@ -1658,14 +1711,366 @@ describe("action map", () => {
 
     expect(calls).toEqual(["binding"])
 
-    enabled = false
-
-    expect(getActiveKeyNames(manager)).toEqual(["x"])
-
-    manager.invalidateRuntimeKey("binding.active")
+    enabled.set(false)
 
     expect(getActiveKeyNames(manager)).toEqual([])
     expect(evaluations).toBe(3)
+  })
+
+  test("reactive matchers: subscribe at layer register, dispose at unregister", () => {
+    const manager = getActionMap(renderer)
+    const enabled = createReactiveBoolean(true)
+
+    manager.registerLayerFields({
+      active(_value, ctx) {
+        ctx.match(enabled)
+      },
+    })
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+
+    expect(enabled.subscribeCalls).toBe(0)
+    expect(enabled.subscriptions).toBe(0)
+
+    const off = manager.registerLayer({
+      scope: "global",
+      active: true,
+      bindings: [{ key: "x", cmd: "noop" }],
+    })
+
+    expect(enabled.subscribeCalls).toBe(1)
+    expect(enabled.subscriptions).toBe(1)
+    expect(enabled.disposeCalls).toBe(0)
+
+    off()
+
+    expect(enabled.disposeCalls).toBe(1)
+    expect(enabled.subscriptions).toBe(0)
+  })
+
+  test("reactive matchers: dispose on manager destroy", () => {
+    const manager = getActionMap(renderer)
+    const enabled = createReactiveBoolean(true)
+
+    manager.registerLayerFields({
+      active(_value, ctx) {
+        ctx.match(enabled)
+      },
+    })
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      active: true,
+      bindings: [{ key: "x", cmd: "noop" }],
+    })
+
+    expect(enabled.subscriptions).toBe(1)
+
+    manager.destroy()
+
+    expect(enabled.disposeCalls).toBe(1)
+    expect(enabled.subscriptions).toBe(0)
+  })
+
+  test("reactive matchers: only invalidate their own target, not other layers", () => {
+    const manager = getActionMap(renderer)
+    const firstEnabled = createReactiveBoolean(false)
+    const secondEnabled = createReactiveBoolean(false)
+
+    let firstEvals = 0
+    let secondEvals = 0
+
+    manager.registerLayerFields({
+      first(_value, ctx) {
+        ctx.match({
+          get() {
+            firstEvals += 1
+            return firstEnabled.get()
+          },
+          subscribe: firstEnabled.subscribe,
+        })
+      },
+      second(_value, ctx) {
+        ctx.match({
+          get() {
+            secondEvals += 1
+            return secondEnabled.get()
+          },
+          subscribe: secondEnabled.subscribe,
+        })
+      },
+    })
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      first: true,
+      bindings: [{ key: "a", cmd: "noop" }],
+    })
+    manager.registerLayer({
+      scope: "global",
+      second: true,
+      bindings: [{ key: "b", cmd: "noop" }],
+    })
+
+    // First read evaluates both matchers; caches are warm.
+    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(firstEvals).toBe(1)
+    expect(secondEvals).toBe(1)
+
+    // Flipping firstEnabled must only re-evaluate the first matcher.
+    firstEnabled.set(true)
+    expect(getActiveKeyNames(manager)).toEqual(["a"])
+    expect(firstEvals).toBe(2)
+    expect(secondEvals).toBe(1)
+
+    // Flipping secondEnabled must only re-evaluate the second matcher.
+    secondEnabled.set(true)
+    expect(getActiveKeyNames(manager)).toEqual(["a", "b"])
+    expect(firstEvals).toBe(2)
+    expect(secondEvals).toBe(2)
+  })
+
+  test("reactive matchers: errors in subscribe are routed to error channel and registration continues", () => {
+    const manager = getActionMap(renderer)
+    const errors: string[] = []
+    const causes: unknown[] = []
+    manager.on("error", (event) => {
+      errors.push(event.message)
+      causes.push(event.cause)
+    })
+
+    const badMatcher: ActionMapReactiveMatcher = {
+      get: () => true,
+      subscribe() {
+        throw new Error("subscribe boom")
+      },
+    }
+
+    manager.registerLayerFields({
+      active(_value, ctx) {
+        ctx.match(badMatcher)
+      },
+    })
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+
+    expect(() => {
+      manager.registerLayer({
+        scope: "global",
+        active: true,
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+    }).not.toThrow()
+
+    // The layer is still registered; the matcher still evaluates (true) on
+    // every read, just without subscription-based caching.
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toBe("subscribe boom")
+    expect(causes[0]).toBeInstanceOf(Error)
+    expect(getActiveKeyNames(manager)).toEqual(["x"])
+  })
+
+  test("reactive matchers: errors in dispose are routed to error channel", () => {
+    const manager = getActionMap(renderer)
+    const errors: string[] = []
+    manager.on("error", (event) => {
+      errors.push(event.message)
+    })
+
+    const badMatcher: ActionMapReactiveMatcher = {
+      get: () => true,
+      subscribe() {
+        return () => {
+          throw new Error("dispose boom")
+        }
+      },
+    }
+
+    manager.registerLayerFields({
+      active(_value, ctx) {
+        ctx.match(badMatcher)
+      },
+    })
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+    const off = manager.registerLayer({
+      scope: "global",
+      active: true,
+      bindings: [{ key: "x", cmd: "noop" }],
+    })
+
+    expect(() => off()).not.toThrow()
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toBe("dispose boom")
+  })
+
+  test("reactive matchers: errors in get are routed to error channel and evaluate to false", () => {
+    const manager = getActionMap(renderer)
+    const errors: { message: string; cause?: unknown }[] = []
+    manager.on("error", (event) => {
+      errors.push({ message: event.message, cause: event.cause })
+    })
+
+    const cause = new Error("get boom")
+    const badMatcher: ActionMapReactiveMatcher = {
+      get() {
+        throw cause
+      },
+      subscribe: () => () => {},
+    }
+
+    manager.registerLayerFields({
+      active(_value, ctx) {
+        ctx.match(badMatcher)
+      },
+    })
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      active: true,
+      bindings: [{ key: "x", cmd: "noop" }],
+    })
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(errors.some((e) => e.message.includes("Error evaluating runtime matcher") && e.cause === cause)).toBe(true)
+  })
+
+  test("reactive matchers: coexist with require()-based data dependencies on the same layer", () => {
+    const manager = getActionMap(renderer)
+    const enabled = createReactiveBoolean(false)
+
+    manager.registerLayerFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
+      active(_value, ctx) {
+        ctx.match(enabled)
+      },
+    })
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      mode: "normal",
+      active: true,
+      bindings: [{ key: "x", cmd: "noop" }],
+    })
+
+    // Neither condition is satisfied.
+    expect(getActiveKeyNames(manager)).toEqual([])
+
+    // Only data matches; reactive still false.
+    manager.setData("vim.mode", "normal")
+    expect(getActiveKeyNames(manager)).toEqual([])
+
+    // Only reactive matches; data wiped.
+    manager.setData("vim.mode", undefined)
+    enabled.set(true)
+    expect(getActiveKeyNames(manager)).toEqual([])
+
+    // Both match.
+    manager.setData("vim.mode", "normal")
+    expect(getActiveKeyNames(manager)).toEqual(["x"])
+
+    // Flip reactive alone → binding disappears.
+    enabled.set(false)
+    expect(getActiveKeyNames(manager)).toEqual([])
+  })
+
+  test("reactive matchers: raw callback matchers still work (non-cacheable path)", () => {
+    const manager = getActionMap(renderer)
+    let enabled = false
+    let evaluations = 0
+
+    manager.registerLayerFields({
+      active(_value, ctx) {
+        ctx.match(() => {
+          evaluations += 1
+          return enabled
+        })
+      },
+    })
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+    manager.registerLayer({
+      scope: "global",
+      active: true,
+      bindings: [{ key: "x", cmd: "noop" }],
+    })
+
+    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(evaluations).toBe(1)
+
+    // Raw callbacks are not cached — every read re-evaluates.
+    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(evaluations).toBe(2)
+
+    enabled = true
+    expect(getActiveKeyNames(manager)).toEqual(["x"])
+    expect(evaluations).toBe(3)
+  })
+
+  test("reactive matchers: rejects non-function non-reactive matcher values", () => {
+    const manager = getActionMap(renderer)
+    const errors: string[] = []
+    manager.on("error", (event) => {
+      errors.push(event.message)
+    })
+
+    manager.registerLayerFields({
+      active(_value, ctx) {
+        ctx.match(42 as unknown as () => boolean)
+      },
+    })
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+
+    expect(() => {
+      manager.registerLayer({
+        scope: "global",
+        active: true,
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+    }).not.toThrow()
+
+    expect(errors.some((m) => m.includes("expected a function or a reactive matcher"))).toBe(true)
+  })
+
+  test("reactive matchers on binding fields: re-subscribe after token-driven recompile", () => {
+    // When tokens change, bindings in affected layers are re-compiled. The
+    // old per-binding subscription must be disposed and a new one created so
+    // the replacement binding is still wired to its reactive source.
+    const manager = getActionMap(renderer)
+    const enabled = createReactiveBoolean(true)
+
+    manager.registerBindingFields({
+      active(_value, ctx) {
+        ctx.match(enabled)
+      },
+    })
+
+    manager.registerCommands([{ name: "noop", run() {} }])
+
+    const offToken = manager.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "<leader>a", active: true, cmd: "noop" }],
+    })
+
+    expect(enabled.subscriptions).toBe(1)
+    const subscribesBefore = enabled.subscribeCalls
+    const disposesBefore = enabled.disposeCalls
+
+    // Unregistering the token triggers recompilation of any layer with token
+    // bindings — the binding-level matcher must dispose + re-subscribe.
+    offToken()
+
+    expect(enabled.disposeCalls).toBe(disposesBefore + 1)
+    expect(enabled.subscribeCalls).toBe(subscribesBefore + 1)
+    expect(enabled.subscriptions).toBe(1)
   })
 
   test("supports typed layer fields for local scopes", () => {
@@ -1787,9 +2192,9 @@ describe("action map", () => {
     expect(getActiveKeyNames(manager)).toEqual([])
   })
 
-  test("typed layer field matchers clear pending sequences after keyed invalidation", () => {
+  test("typed layer field matchers clear pending sequences when reactive matchers flip off", () => {
     const manager = getActionMap(renderer)
-    let enabled = true
+    const enabled = createReactiveBoolean(true)
 
     manager.registerLayerFields({
       active(value, ctx) {
@@ -1797,7 +2202,7 @@ describe("action map", () => {
           throw new Error('ActionMap layer field "active" must be true')
         }
 
-        ctx.match(() => enabled, { keys: ["layer.active"] })
+        ctx.match(enabled)
       },
     })
 
@@ -1812,11 +2217,9 @@ describe("action map", () => {
 
     expect(manager.getPendingSequence()).toHaveLength(1)
 
-    enabled = false
-
-    expect(manager.getPendingSequence()).toHaveLength(1)
-
-    manager.invalidateRuntimeKey("layer.active")
+    // Flipping the reactive source notifies the manager; the matcher
+    // re-evaluates false, the pending sequence clears.
+    enabled.set(false)
 
     expect(manager.getPendingSequence()).toEqual([])
     expect(getActiveKeyNames(manager)).toEqual([])

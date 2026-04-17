@@ -294,16 +294,16 @@ export interface ActionMapParsedBindingInput {
   [key: string]: unknown
 }
 
-export interface ActionMapBindingCompilerContext {
+export interface ActionMapBindingTransformerContext {
   layer: Readonly<Record<string, unknown>>
   parseKey(key: KeyLike): ParsedKeyPart
   add(binding: ActionMapParsedBindingInput): void
   skipOriginal(): void
 }
 
-export type ActionMapBindingCompiler = (
+export type ActionMapBindingTransformer = (
   binding: ActionMapParsedBindingInput,
-  ctx: ActionMapBindingCompilerContext,
+  ctx: ActionMapBindingTransformerContext,
 ) => void
 
 export interface ActionMapCommandFieldContext {

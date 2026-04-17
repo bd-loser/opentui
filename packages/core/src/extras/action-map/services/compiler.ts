@@ -5,7 +5,6 @@ import type { ActionMapState } from "./state.js"
 import type { NotificationService } from "./notify.js"
 import type {
   ActionMapAttributes,
-  ActionMapBindingCompiler,
   ActionMapBindingCommand,
   ActionMapBindingEvent,
   ActionMapBindingExpander,
@@ -299,9 +298,9 @@ export class CompilerService {
     bindingParsers: readonly ActionMapBindingParser[],
     compileFields?: Readonly<Record<string, unknown>>,
   ): ActionMapParsedBindingInput[] {
-    const bindingCompilers = this.state.config.bindingCompilers.values()
+    const bindingTransformers = this.state.config.bindingTransformers.values()
 
-    if (bindingCompilers.length === 0) {
+    if (bindingTransformers.length === 0) {
       return [
         { ...binding, sequence: sequence.map((part) => createParsedKeyPart(part.stroke, part.display, part.matchKey)) },
       ]
@@ -315,9 +314,9 @@ export class CompilerService {
     let keepOriginal = true
     const layer = compileFields ?? EMPTY_COMPILE_FIELDS
 
-    for (const compiler of bindingCompilers) {
+    for (const transformer of bindingTransformers) {
       try {
-        compiler(parsedBinding, {
+        transformer(parsedBinding, {
           layer,
           parseKey: (key) => {
             return parseSingleKeyPartWithParsers(key, bindingParsers, {
@@ -334,7 +333,7 @@ export class CompilerService {
           },
         })
       } catch (error) {
-        this.notify.emitError("[ActionMap] Error in binding compiler:", error)
+        this.notify.emitError("[ActionMap] Error in binding transformer:", error)
       }
     }
 

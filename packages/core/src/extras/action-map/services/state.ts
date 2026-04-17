@@ -1,11 +1,11 @@
 import type { Renderable } from "../../../Renderable.js"
 import type {
   ActionMapActiveKey,
-  ActionMapBindingCompiler,
   ActionMapBindingExpander,
   ActionMapBindingFieldCompiler,
   ActionMapBindingParser,
   ActionMapBindingSyntax,
+  ActionMapBindingTransformer,
   ActionMapCommandFieldCompiler,
   ActionMapCommandResolver,
   ActionMapEventData,
@@ -36,7 +36,7 @@ export interface ActionMapConfigState {
   layerFields: Map<string, ActionMapLayerFieldCompiler>
   bindingExpanders: OrderedRegistry<ActionMapBindingExpander>
   bindingParsers: OrderedRegistry<ActionMapBindingParser>
-  bindingCompilers: OrderedRegistry<ActionMapBindingCompiler>
+  bindingTransformers: OrderedRegistry<ActionMapBindingTransformer>
   bindingFields: Map<string, ActionMapBindingFieldCompiler>
   commandFields: Map<string, ActionMapCommandFieldCompiler>
   commandResolvers: OrderedRegistry<ActionMapCommandResolver>
@@ -110,7 +110,7 @@ export function createActionMapState(): ActionMapState {
       layerFields: new Map<string, ActionMapLayerFieldCompiler>(),
       bindingExpanders: new OrderedRegistry<ActionMapBindingExpander>(),
       bindingParsers: new OrderedRegistry<ActionMapBindingParser>(),
-      bindingCompilers: new OrderedRegistry<ActionMapBindingCompiler>(),
+      bindingTransformers: new OrderedRegistry<ActionMapBindingTransformer>(),
       bindingFields: new Map<string, ActionMapBindingFieldCompiler>(),
       commandFields: new Map<string, ActionMapCommandFieldCompiler>(),
       commandResolvers: new OrderedRegistry<ActionMapCommandResolver>(),

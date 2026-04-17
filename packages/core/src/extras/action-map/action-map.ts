@@ -4,11 +4,11 @@ import { KeyEvent } from "../../lib/KeyHandler.js"
 import type {
   ActionMapActiveKey,
   ActionMapActiveKeyOptions,
-  ActionMapBindingCompiler,
   ActionMapBindingExpander,
   ActionMapBindingParser,
   ActionMapBindingSyntax,
   ActionMapBindingFieldCompiler,
+  ActionMapBindingTransformer,
   ActionMapHookListener,
   ActionMapHooks,
   ActionMapEvents,
@@ -323,8 +323,8 @@ export class ActionMap {
     })
   }
 
-  public registerBindingCompiler(compiler: ActionMapBindingCompiler): () => void {
-    return this.state.config.bindingCompilers.append(compiler)
+  public registerBindingTransformer(transformer: ActionMapBindingTransformer): () => void {
+    return this.state.config.bindingTransformers.append(transformer)
   }
 
   public prependBindingParser(parser: ActionMapBindingParser): () => void {

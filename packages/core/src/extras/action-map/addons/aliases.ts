@@ -46,7 +46,7 @@ export function registerAliasesField(actionMap: ActionMap): () => void {
     },
   })
 
-  const offBindingCompiler = actionMap.registerBindingCompiler((binding, ctx) => {
+  const offBindingTransformer = actionMap.registerBindingTransformer((binding, ctx) => {
     const aliases = getAliases(ctx.layer)
     if (!aliases) {
       return
@@ -78,7 +78,7 @@ export function registerAliasesField(actionMap: ActionMap): () => void {
   })
 
   return () => {
-    offBindingCompiler()
+    offBindingTransformer()
     offLayerField()
   }
 }

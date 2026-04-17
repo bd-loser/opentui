@@ -995,11 +995,11 @@ describe("action map", () => {
     expect(calls).toEqual(["comma", "pipe", "pipe"])
   })
 
-  test("can dispose binding compilers to stop transforming future layer registrations", () => {
+  test("can dispose binding transformers to stop transforming future layer registrations", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    const offCompiler = actionMap.registerBindingCompiler((binding, ctx) => {
+    const offTransformer = actionMap.registerBindingTransformer((binding, ctx) => {
       if (binding.blocked !== true) {
         return
       }
@@ -1030,7 +1030,7 @@ describe("action map", () => {
     mockInput.pressKey("x")
     expect(calls).toEqual([])
 
-    offCompiler()
+    offTransformer()
 
     actionMap.registerLayer({
       scope: "global",
@@ -1041,11 +1041,11 @@ describe("action map", () => {
     expect(calls).toEqual(["active"])
   })
 
-  test("binding compiler ctx.parseKey normalizes object keys", () => {
+  test("binding transformer ctx.parseKey normalizes object keys", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerBindingCompiler((binding, ctx) => {
+    actionMap.registerBindingTransformer((binding, ctx) => {
       ctx.add({
         ...binding,
         sequence: [ctx.parseKey({ name: " RETURN " })],
@@ -1074,7 +1074,7 @@ describe("action map", () => {
     expect(getActiveKey(actionMap, "x")).toBeUndefined()
   })
 
-  test("binding compiler ctx.parseKey uses the current parser and token configuration", () => {
+  test("binding transformer ctx.parseKey uses the current parser and token configuration", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
@@ -1118,7 +1118,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerBindingCompiler((binding, ctx) => {
+    actionMap.registerBindingTransformer((binding, ctx) => {
       ctx.add({
         ...binding,
         sequence: [ctx.parseKey("[Leader]")],

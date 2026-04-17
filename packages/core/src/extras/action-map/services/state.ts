@@ -1,4 +1,4 @@
-import type { Renderable } from "../../Renderable.js"
+import type { Renderable } from "../../../Renderable.js"
 import type {
   ActionMapActiveKey,
   ActionMapBindingCompiler,
@@ -21,8 +21,8 @@ import type {
   RegisteredLayer,
   RegisteredLayerBucket,
   RuntimeMatchable,
-} from "./types.js"
-import { OrderedEmitter, RegistrationList } from "./lib/emitter.js"
+} from "../types.js"
+import { OrderedEmitter, RegistrationList } from "../lib/emitter.js"
 
 const EMPTY_DATA: Readonly<ActionMapEventData> = Object.freeze({})
 

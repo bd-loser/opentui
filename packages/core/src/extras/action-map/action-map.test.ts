@@ -1288,7 +1288,77 @@ describe("action map", () => {
     expect(renderableCount).toBe(0)
   })
 
-  test("consume false lets the focused renderable keep handling the key", () => {
+  test("preventDefault and fallthrough are orthogonal: two axes, four combinations", () => {
+    // Locks in the contract: `preventDefault` only affects whether the
+    // underlying key event leaves the action-map (reaches later keyInput
+    // listeners via `event.preventDefault()` / `event.stopPropagation()`);
+    // `fallthrough` only affects whether the action-map continues dispatching
+    // to later matching bindings on the same key. Changing one must not
+    // change the behaviour of the other.
+    const manager = getActionMap(renderer)
+    const runs: Record<string, string[]> = { a: [], b: [], c: [], d: [] }
+    const outsideSeen: Record<string, boolean> = { a: false, b: false, c: false, d: false }
+
+    function register(
+      keyName: "a" | "b" | "c" | "d",
+      preventDefault: boolean,
+      fallthrough: boolean,
+    ): void {
+      const bucket = runs[keyName]!
+      manager.registerCommands([
+        { name: `primary-${keyName}`, run() { bucket.push("primary") } },
+        { name: `followup-${keyName}`, run() { bucket.push("followup") } },
+      ])
+      // The followup binding inherits the *same* `preventDefault` as the
+      // primary so this test isolates the two axes: flipping one axis does
+      // not implicitly change the other via a downstream binding. In a real
+      // app, any binding in a fallthrough chain with `preventDefault: true`
+      // consumes the event on behalf of the whole chain.
+      manager.registerLayer({
+        scope: "global",
+        bindings: [
+          { key: keyName, cmd: `primary-${keyName}`, preventDefault, fallthrough },
+          { key: keyName, cmd: `followup-${keyName}`, preventDefault },
+        ],
+      })
+    }
+
+    // One renderer-wide listener: records which keys were observable *outside*
+    // the action-map. Action-map prepends its own listener, so this runs after
+    // dispatch. A binding with `preventDefault: true` calls stopPropagation
+    // which blocks this listener (KeyHandler checks propagationStopped between
+    // global listeners).
+    renderer.keyInput.on("keypress", (event) => {
+      if (event.name in outsideSeen) {
+        outsideSeen[event.name] = true
+      }
+    })
+
+    register("a", true, false) // defaults: consumed, no fallthrough
+    register("b", false, false) // not consumed, no fallthrough
+    register("c", true, true) // consumed, fallthrough
+    register("d", false, true) // not consumed, fallthrough
+
+    mockInput.pressKey("a")
+    mockInput.pressKey("b")
+    mockInput.pressKey("c")
+    mockInput.pressKey("d")
+
+    // fallthrough axis: false → only primary ran; true → primary + followup ran.
+    expect(runs.a).toEqual(["primary"])
+    expect(runs.b).toEqual(["primary"])
+    expect(runs.c).toEqual(["primary", "followup"])
+    expect(runs.d).toEqual(["primary", "followup"])
+
+    // preventDefault axis: true → event did not reach the outside listener;
+    // false → event was observable outside. (Independent of fallthrough.)
+    expect(outsideSeen.a).toBe(false)
+    expect(outsideSeen.b).toBe(true)
+    expect(outsideSeen.c).toBe(false)
+    expect(outsideSeen.d).toBe(true)
+  })
+
+  test("preventDefault false lets the focused renderable keep handling the key", () => {
     const manager = getActionMap(renderer)
     const calls: string[] = []
     let laterGlobalCount = 0
@@ -1315,7 +1385,7 @@ describe("action map", () => {
 
     manager.registerLayer({
       target,
-      bindings: [{ key: "x", cmd: "passthrough", consume: false }],
+      bindings: [{ key: "x", cmd: "passthrough", preventDefault: false }],
     })
 
     target.focus()

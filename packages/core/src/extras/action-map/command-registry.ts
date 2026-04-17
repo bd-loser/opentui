@@ -8,7 +8,7 @@ import type {
 } from "./types.js"
 import { getErrorMessage, mergeAttribute, normalizeCommandName, snapshotDataValue } from "./utils.js"
 
-const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
+export const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
 const SNAPSHOT_COMMAND_METADATA_OPTIONS = Object.freeze({ deep: true, preserveNonPlainObjects: true })
 const SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS = Object.freeze({
   deep: true,

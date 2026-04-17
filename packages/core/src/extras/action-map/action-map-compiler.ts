@@ -57,7 +57,7 @@ export class ActionMapCompiler {
   constructor(
     private readonly state: ActionMapState,
     private readonly notify: ActionMapNotifier,
-    private readonly commands: Pick<ActionMapCommands, "resolveCompiledBindingCommand">,
+    private readonly commands: ActionMapCommands,
     private readonly conditions: ActionMapConditions,
     private readonly options: ActionMapCompilerOptions,
   ) {}

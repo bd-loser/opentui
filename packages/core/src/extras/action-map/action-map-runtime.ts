@@ -26,12 +26,9 @@ export class ActionMapRuntime {
   constructor(
     private readonly state: ActionMapState,
     private readonly renderer: CliRenderer,
-    private readonly hooks: Pick<Emitter<ActionMapHooks>, "has" | "emit">,
+    private readonly hooks: Emitter<ActionMapHooks>,
     private readonly notify: ActionMapNotifier,
-    private readonly conditions: Pick<
-      ActionMapConditions,
-      "matchesConditions" | "hasNoConditions" | "layerMatchesRuntimeState"
-    >,
+    private readonly conditions: ActionMapConditions,
   ) {}
 
   public getFocusedRenderable(): Renderable | null {

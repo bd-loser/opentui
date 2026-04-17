@@ -36,7 +36,7 @@ interface CompileLayerRuntimeStateResult {
 }
 
 interface ActionMapLayersOptions {
-  compiler: Pick<ActionMapCompiler, "compileBindings">
+  compiler: ActionMapCompiler
   warnUnknownField: (kind: "binding" | "layer", fieldName: string) => void
 }
 
@@ -45,7 +45,7 @@ export class ActionMapLayers {
     private readonly state: ActionMapState,
     private readonly notify: ActionMapNotifier,
     private readonly conditions: ActionMapConditions,
-    private readonly runtime: Pick<ActionMapRuntime, "setPendingSequence">,
+    private readonly runtime: ActionMapRuntime,
     private readonly options: ActionMapLayersOptions,
   ) {}
 

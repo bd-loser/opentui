@@ -53,11 +53,8 @@ export class ActionMapCommands {
   constructor(
     private readonly state: ActionMapState,
     private readonly notify: ActionMapNotifier,
-    private readonly runtime: Pick<
-      ActionMapRuntime,
-      "getFocusedRenderable" | "getReadonlyData" | "ensureValidPendingSequence"
-    >,
-    private readonly hooks: Pick<Emitter<ActionMapHooks>, "has" | "emit">,
+    private readonly runtime: ActionMapRuntime,
+    private readonly hooks: Emitter<ActionMapHooks>,
     private readonly options: ActionMapCommandsOptions,
   ) {}
 

@@ -19,18 +19,9 @@ export class ActionMapDispatch {
   constructor(
     private readonly state: ActionMapState,
     private readonly notify: ActionMapNotifier,
-    private readonly runtime: Pick<
-      ActionMapRuntime,
-      | "getFocusedRenderable"
-      | "getActiveLayers"
-      | "ensureValidPendingSequence"
-      | "nodeHasReachableBindings"
-      | "setPendingSequence"
-      | "setData"
-      | "getData"
-    >,
-    private readonly conditions: Pick<ActionMapConditions, "matchesConditions" | "hasNoConditions">,
-    private readonly commands: Pick<ActionMapCommands, "runBinding">,
+    private readonly runtime: ActionMapRuntime,
+    private readonly conditions: ActionMapConditions,
+    private readonly commands: ActionMapCommands,
   ) {}
 
   public handleRawSequence(sequence: string): boolean {

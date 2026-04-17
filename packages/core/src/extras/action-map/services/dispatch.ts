@@ -1,11 +1,11 @@
-import { KeyEvent } from "../../lib/KeyHandler.js"
-import type { Renderable } from "../../Renderable.js"
-import type { ActionMapCompiler } from "./action-map-compiler.js"
-import type { ActionMapCommands } from "./action-map-commands.js"
-import type { ActionMapConditions } from "./action-map-conditions.js"
-import type { ActionMapNotifier } from "./action-map-notify.js"
-import type { ActionMapRuntime } from "./action-map-runtime.js"
-import type { ActionMapState } from "./action-map-state.js"
+import { KeyEvent } from "../../../lib/KeyHandler.js"
+import type { Renderable } from "../../../Renderable.js"
+import type { ActionMapCompiler } from "./compiler.js"
+import type { ActionMapCommands } from "./commands.js"
+import type { ActionMapConditions } from "./conditions.js"
+import type { ActionMapNotifier } from "./notify.js"
+import type { ActionMapRuntime } from "./runtime.js"
+import type { ActionMapState } from "./state.js"
 import type {
   ActionMapEventMatchResolverContext,
   ActionMapEventMatchResolver,
@@ -15,7 +15,7 @@ import type {
   PendingSequenceState,
   RegisteredLayer,
   SequenceNode,
-} from "./types.js"
+} from "../types.js"
 
 export class ActionMapDispatch {
   private readonly eventMatchResolverContext: ActionMapEventMatchResolverContext

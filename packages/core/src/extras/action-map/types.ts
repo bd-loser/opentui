@@ -266,6 +266,7 @@ export interface ActionMapBindingParserContext {
   index: number
   layer: Readonly<Record<string, unknown>>
   tokens: ReadonlyMap<string, ParsedKeyToken>
+  parseObjectKey(key: KeyStroke): ParsedKeyPart
 }
 
 export interface ActionMapBindingExpanderContext {

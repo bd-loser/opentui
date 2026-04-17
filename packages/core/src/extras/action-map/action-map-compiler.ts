@@ -123,6 +123,7 @@ export class ActionMapCompiler {
               ? parseBindingSequenceWithParsers(expandedBindingKey, bindingParsers, {
                   tokens,
                   layer: compileFields,
+                  parseObjectKey: (value) => this.parseObjectKeyPart(value),
                 })
               : {
                   parts: [this.parseObjectKeyPart(expandedBindingKey)],
@@ -459,9 +460,10 @@ function expandBindingInputWithExpanders(
 function parseBindingSequenceWithParsers(
   key: string,
   parsers: readonly ActionMapBindingParser[],
-  options?: {
+  options: {
     tokens?: ReadonlyMap<string, ParsedKeyToken>
     layer?: Readonly<Record<string, unknown>>
+    parseObjectKey: (key: KeyStroke) => ParsedKeyPart
   },
 ): ParsedBindingSequenceResult {
   if (key.length === 0) {
@@ -472,8 +474,9 @@ function parseBindingSequenceWithParsers(
     throw new Error("No action map binding parsers are registered")
   }
 
-  const tokens = options?.tokens ?? new Map<string, ParsedKeyToken>()
-  const layer = options?.layer ?? EMPTY_COMPILE_FIELDS
+  const tokens = options.tokens ?? new Map<string, ParsedKeyToken>()
+  const layer = options.layer ?? EMPTY_COMPILE_FIELDS
+  const parseObjectKey = options.parseObjectKey
   const parts: ParsedKeyPart[] = []
   const usedTokens = new Set<string>()
   const unknownTokens = new Set<string>()
@@ -483,7 +486,7 @@ function parseBindingSequenceWithParsers(
     let matched = false
 
     for (const parser of parsers) {
-      const result = parser({ input: key, index, layer, tokens } satisfies ActionMapBindingParserContext)
+      const result = parser({ input: key, index, layer, tokens, parseObjectKey } satisfies ActionMapBindingParserContext)
       if (!result) {
         continue
       }
@@ -521,19 +524,14 @@ function parseBindingSequenceWithParsers(
 function parseSingleKeyPartWithParsers(
   key: KeyLike,
   parsers: readonly ActionMapBindingParser[],
-  options?: {
+  options: {
     tokens?: ReadonlyMap<string, ParsedKeyToken>
     layer?: Readonly<Record<string, unknown>>
-    parseObjectKey?: (key: KeyStroke) => ParsedKeyPart
+    parseObjectKey: (key: KeyStroke) => ParsedKeyPart
   },
 ): ParsedKeyPart {
   if (typeof key !== "string") {
-    const parseObjectKey = options?.parseObjectKey
-    if (!parseObjectKey) {
-      throw new Error("No action map binding syntax is registered")
-    }
-
-    return parseObjectKey(key)
+    return options.parseObjectKey(key)
   }
 
   const { parts } = parseBindingSequenceWithParsers(key, parsers, options)

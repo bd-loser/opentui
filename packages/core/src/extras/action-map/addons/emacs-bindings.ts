@@ -1,10 +1,12 @@
-import type { ActionMapBindingParser, ActionMap, ParsedKeyPart } from "../types.js"
-import { createParsedKeyPart, normalizeKeyName } from "../lib/utils.js"
+import type { ActionMapBindingParser, ActionMap, ActionMapBindingParserContext, ParsedKeyPart } from "../types.js"
 
-function parseEmacsStroke(input: string, sequence: string): ParsedKeyPart {
+function parseEmacsStroke(
+  input: string,
+  sequence: string,
+  parseObjectKey: ActionMapBindingParserContext["parseObjectKey"],
+): ParsedKeyPart {
   const parts = input.split("+")
   let name = ""
-  let displayName = ""
   let ctrl = false
   let shift = false
   let meta = false
@@ -47,36 +49,27 @@ function parseEmacsStroke(input: string, sequence: string): ParsedKeyPart {
       throw new Error(`Invalid emacs key sequence "${sequence}": stroke "${input}" contains multiple key names`)
     }
 
-    name = normalizeKeyName(part)
-    displayName = lowered
+    name = part
   }
 
   if (!name) {
     throw new Error(`Invalid emacs key sequence "${sequence}": stroke "${input}" is missing a key name`)
   }
 
-  const displayParts: string[] = []
-  if (ctrl) displayParts.push("ctrl")
-  if (shift) displayParts.push("shift")
-  if (meta) displayParts.push("meta")
-  if (superKey) displayParts.push("super")
-  if (hyper) displayParts.push("hyper")
-  displayParts.push(displayName)
-
-  return createParsedKeyPart(
-    {
-      name,
-      ctrl,
-      shift,
-      meta,
-      super: superKey,
-      hyper: hyper || undefined,
-    },
-    displayParts.join("+"),
-  )
+  return parseObjectKey({
+    name,
+    ctrl,
+    shift,
+    meta,
+    super: superKey,
+    hyper: hyper || undefined,
+  })
 }
 
-function parseEmacsSequence(input: string): ParsedKeyPart[] | undefined {
+function parseEmacsSequence(
+  input: string,
+  parseObjectKey: ActionMapBindingParserContext["parseObjectKey"],
+): ParsedKeyPart[] | undefined {
   const strokes = input.trim().split(/\s+/).filter(Boolean)
 
   if (strokes.length <= 1) {
@@ -87,12 +80,12 @@ function parseEmacsSequence(input: string): ParsedKeyPart[] | undefined {
     return undefined
   }
 
-  return strokes.map((stroke) => parseEmacsStroke(stroke, input))
+  return strokes.map((stroke) => parseEmacsStroke(stroke, input, parseObjectKey))
 }
 
 export function registerEmacsBindings(manager: ActionMap): () => void {
-  const parseEmacsBinding: ActionMapBindingParser = ({ input, index }) => {
-    const parsed = parseEmacsSequence(input)
+  const parseEmacsBinding: ActionMapBindingParser = ({ input, index, parseObjectKey }) => {
+    const parsed = parseEmacsSequence(input, parseObjectKey)
     if (!parsed || index !== 0) {
       return undefined
     }

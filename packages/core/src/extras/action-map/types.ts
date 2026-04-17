@@ -217,17 +217,42 @@ export interface ActionMapActiveKey {
   continues: boolean
 }
 
+/**
+ * Reactive matcher: a value that knows how to produce a boolean and how to
+ * notify the manager when that boolean might have changed. Passing a reactive
+ * matcher to `ctx.match(...)` wires subscription automatically at layer
+ * registration time: when `onChange` fires, the owning binding/layer is
+ * marked dirty and re-evaluated on the next read. The returned unsubscribe
+ * is called when the layer is unregistered or the manager is destroyed.
+ */
+export interface ActionMapReactiveMatcher {
+  get(): boolean
+  subscribe(onChange: () => void): () => void
+}
+
 export interface ActionMapBindingFieldContext {
   require(name: string, value: unknown): void
   attr(name: string, value: unknown): void
-  match(matcher: () => boolean, options?: { keys?: readonly string[] }): void
+  /**
+   * Register a matcher that must return true for this binding to be active.
+   * A raw `() => boolean` is re-evaluated on every read (no caching). Pass an
+   * `ActionMapReactiveMatcher` instead when the source can notify on change
+   * \u2014 the manager then caches between notifications.
+   */
+  match(matcher: (() => boolean) | ActionMapReactiveMatcher): void
 }
 
 export type ActionMapBindingFieldCompiler = (value: unknown, ctx: ActionMapBindingFieldContext) => void
 
 export interface ActionMapLayerFieldContext {
   require(name: string, value: unknown): void
-  match(matcher: () => boolean, options?: { keys?: readonly string[] }): void
+  /**
+   * Register a matcher that must return true for this layer to be active.
+   * A raw `() => boolean` is re-evaluated on every read (no caching). Pass an
+   * `ActionMapReactiveMatcher` instead when the source can notify on change
+   * \u2014 the manager then caches between notifications.
+   */
+  match(matcher: (() => boolean) | ActionMapReactiveMatcher): void
 }
 
 export type ActionMapLayerFieldCompiler = (value: unknown, ctx: ActionMapLayerFieldContext) => void
@@ -371,13 +396,27 @@ export type { ActionMap }
 export interface RuntimeMatcher {
   source: string
   match: () => boolean
-  keys: readonly string[]
+  /**
+   * True when this matcher notifies the manager on change (reactive) or is
+   * purely data-dependent via `require`. False when `match` is a raw
+   * `() => boolean` with no subscription and no data dependency — the owning
+   * target must always re-evaluate.
+   */
+  cacheable: boolean
+  /**
+   * Set only on reactive matchers — called during `registerRuntimeMatchable`
+   * to wire invalidation. The returned disposer is stored on `dispose`.
+   */
+  subscribe?: (onChange: () => void) => () => void
+  dispose?: () => void
 }
 
 export interface RuntimeMatchable {
   requires: readonly [name: string, value: unknown][]
   matchers: readonly RuntimeMatcher[]
+  /** Names from `require(...)` calls; used for setData-driven invalidation. */
   conditionKeys: readonly string[]
+  /** True if any matcher is not cacheable (raw callback without subscription). */
   hasUnkeyedMatchers: boolean
   matchCacheDirty?: boolean
   matchCache?: boolean

@@ -10,6 +10,7 @@ import {
   registerMetadataFields,
   type ActionMapBindingParser,
   type ActionMap,
+  type ActionMapReactiveMatcher,
 } from "../extras/action-map/index.js"
 
 const DEFAULT_ITERATIONS = 20_000
@@ -299,11 +300,69 @@ function createFlagKey(index: number): string {
   return `flag-${index}`
 }
 
-function registerExternalBindingFields(manager: ActionMap, flags: Record<string, boolean>): void {
+// External-flag store with per-key subscription. Equivalent in spirit to the
+// previous `{ keys: [key] } + invalidateRuntimeKey(key)` pattern, but using
+// the reactive matcher contract: per-key listener buckets, notify on flag
+// change. Each matcher subscribes once at layer registration and unsubscribes
+// on unregister/destroy automatically.
+interface FlagStore {
+  flags: Record<string, boolean>
+  listeners: Map<string, Set<() => void>>
+  set(key: string, value: boolean): void
+}
+
+function createFlagStore(): FlagStore {
+  const flags: Record<string, boolean> = Object.create(null)
+  const listeners = new Map<string, Set<() => void>>()
+
+  return {
+    flags,
+    listeners,
+    set(key, value) {
+      if (flags[key] === value) {
+        return
+      }
+      flags[key] = value
+      const bucket = listeners.get(key)
+      if (!bucket) {
+        return
+      }
+      for (const onChange of bucket) {
+        onChange()
+      }
+    },
+  }
+}
+
+function createFlagMatcher(store: FlagStore, key: string): ActionMapReactiveMatcher {
+  return {
+    get: () => store.flags[key] === true,
+    subscribe(onChange) {
+      let bucket = store.listeners.get(key)
+      if (!bucket) {
+        bucket = new Set()
+        store.listeners.set(key, bucket)
+      }
+      bucket.add(onChange)
+      return () => {
+        const current = store.listeners.get(key)
+        if (!current) {
+          return
+        }
+        current.delete(onChange)
+        if (current.size === 0) {
+          store.listeners.delete(key)
+        }
+      }
+    },
+  }
+}
+
+function registerExternalBindingFields(manager: ActionMap, store: FlagStore): void {
   manager.registerBindingFields({
     activeExternally(value, ctx) {
       const key = normalizeFlagKey(value, "binding field activeExternally")
-      ctx.match(() => flags[key] === true, { keys: [key] })
+      ctx.match(createFlagMatcher(store, key))
     },
   })
 }
@@ -1464,17 +1523,17 @@ const scenarios: BenchmarkScenario[] = [
   },
   {
     name: "state_change_external_invalidation_read_heavy",
-    description: "Repeated external keyed invalidation with state listeners",
+    description: "Repeated external reactive-matcher invalidation with state listeners",
     async setup() {
       const resources = await createScenarioResources()
-      const flags: Record<string, boolean> = Object.create(null)
+      const store = createFlagStore()
       const offStateChange = registerStateChangeReadListeners(resources.manager)
 
-      registerExternalBindingFields(resources.manager, flags)
+      registerExternalBindingFields(resources.manager, store)
 
       for (let index = 0; index < 320; index += 1) {
         const key = createFlagKey(index)
-        flags[key] = true
+        store.flags[key] = true
         resources.manager.registerLayer({
           scope: "global",
           bindings: [
@@ -1493,8 +1552,7 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           const key = createFlagKey(iteration % 320)
-          flags[key] = iteration % 2 === 0
-          resources.manager.invalidateRuntimeKey(key)
+          store.set(key, iteration % 2 === 0)
           iteration += 1
         },
         cleanup() {

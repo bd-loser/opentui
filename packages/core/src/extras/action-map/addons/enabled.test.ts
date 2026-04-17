@@ -100,46 +100,73 @@ describe("enabled addon", () => {
     expect(calls).toEqual(["dynamic"])
   })
 
-  test("supports keyed enabled matchers with explicit invalidation", () => {
+  test("supports reactive enabled matchers and unsubscribes on layer unregister", () => {
     const manager = getActionMap(renderer)
-    let enabled = false
+    let current = false
+    const listeners = new Set<() => void>()
     let evaluations = 0
+    let subscribeCalls = 0
+    let disposeCalls = 0
+
+    const enabledMatcher = {
+      get() {
+        evaluations += 1
+        return current
+      },
+      subscribe(onChange: () => void) {
+        subscribeCalls += 1
+        listeners.add(onChange)
+        return () => {
+          disposeCalls += 1
+          listeners.delete(onChange)
+        }
+      },
+    }
+
+    const setEnabled = (next: boolean) => {
+      if (current === next) {
+        return
+      }
+      current = next
+      for (const fn of listeners) {
+        fn()
+      }
+    }
 
     registerEnabledField(manager)
     manager.registerCommands([{ name: "dynamic", run() {} }])
-    manager.registerLayer({
+    const off = manager.registerLayer({
       scope: "global",
-      enabled: {
-        match: () => {
-          evaluations += 1
-          return enabled
-        },
-        keys: ["layer.enabled"],
-      },
+      enabled: enabledMatcher,
       bindings: [{ key: "y", cmd: "dynamic" }],
     })
 
+    // Subscription is wired at layer registration.
+    expect(subscribeCalls).toBe(1)
+    expect(listeners.size).toBe(1)
+
     expect(getActiveKeyNames()).toEqual([])
     expect(evaluations).toBe(1)
 
-    enabled = true
-
+    // Changing external state without notifying does not flip the cache.
+    current = true
     expect(getActiveKeyNames()).toEqual([])
     expect(evaluations).toBe(1)
+    current = false
 
-    manager.invalidateRuntimeKey("layer.enabled")
-
+    // Notifying via the reactive source invalidates + re-evaluates.
+    setEnabled(true)
     expect(getActiveKeyNames()).toEqual(["y"])
     expect(evaluations).toBe(2)
 
-    enabled = false
-
-    expect(getActiveKeyNames()).toEqual(["y"])
-
-    manager.invalidateRuntimeKey("layer.enabled")
-
+    setEnabled(false)
     expect(getActiveKeyNames()).toEqual([])
     expect(evaluations).toBe(3)
+
+    // Unregistering the layer disposes the subscription.
+    off()
+    expect(disposeCalls).toBe(1)
+    expect(listeners.size).toBe(0)
   })
 
   test("clears pending sequences when enabled stops matching", () => {
@@ -191,7 +218,7 @@ describe("enabled addon", () => {
       })
     }).not.toThrow()
 
-    expect(errors).toEqual(['ActionMap enabled field "enabled" must be a boolean, function, or { match, keys } object'])
+    expect(errors).toEqual(['ActionMap enabled field "enabled" must be a boolean, a function, or a reactive matcher'])
     expect(getActiveKeyNames()).toEqual([])
 
     offEnabled()

@@ -6,6 +6,7 @@ import {
   type ActionMapLayer,
   type ActionMapLayerFields,
   type ActionMap,
+  type ActionMapReactiveMatcher,
   type ParsedKeyPart,
 } from "@opentui/core/extras"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react"
@@ -213,4 +214,39 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
   })
 
   return ref
+}
+
+/**
+ * Wraps an external store (anything compatible with `useSyncExternalStore`'s
+ * `subscribe` + `getSnapshot` contract) as an `ActionMapReactiveMatcher`.
+ * Works with Zustand, Redux (`store.subscribe` + `store.getState`), Valtio,
+ * Jotai's `jotai/vanilla`, or any hand-written observable store.
+ *
+ * When `predicate` is omitted, the snapshot value is coerced with `Boolean`.
+ * Pass a predicate when the value type is not itself boolean.
+ *
+ * @example
+ * const matcher = reactiveMatcherFromStore(
+ *   (onChange) => store.subscribe(onChange),
+ *   () => store.getState().mode,
+ *   (mode) => mode === "normal",
+ * )
+ * useBindings({
+ *   enabled: matcher,
+ *   bindings: [{ key: "x", cmd: "delete-char" }],
+ * })
+ */
+export function reactiveMatcherFromStore<T>(
+  subscribe: (onStoreChange: () => void) => () => void,
+  getSnapshot: () => T,
+  predicate?: (value: T) => boolean,
+): ActionMapReactiveMatcher {
+  return {
+    get() {
+      return predicate ? predicate(getSnapshot()) : Boolean(getSnapshot())
+    },
+    subscribe(onChange) {
+      return subscribe(onChange)
+    },
+  }
 }

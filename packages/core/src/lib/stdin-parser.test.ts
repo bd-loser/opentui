@@ -1304,6 +1304,37 @@ describe("StdinParser", () => {
       }
     })
 
+    test("theme mode replies are emitted as CSI responses", () => {
+      const parser = createParser({
+        protocolContext: { privateCapabilityRepliesActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[?997;1n"))
+        expect(snap(parser)).toEqual([resp("csi", "\x1b[?997;1n")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
+    test("partial theme mode reply stays pending after timeout while capability probe is active", () => {
+      const { parser, clock } = createTimedParser({
+        protocolContext: { privateCapabilityRepliesActive: true },
+      })
+
+      try {
+        parser.push(Buffer.from("\x1b[?997;1"))
+        expect(snap(parser)).toEqual([])
+        clock.advance(10)
+        expect(snap(parser)).toEqual([])
+
+        parser.push(Buffer.from("n"))
+        expect(snap(parser)).toEqual([resp("csi", "\x1b[?997;1n")])
+      } finally {
+        parser.destroy()
+      }
+    })
+
     test("timed-out modified CSI key still flushes before later final byte", () => {
       const { parser, clock } = createTimedParser({
         protocolContext: { explicitWidthCprActive: true },

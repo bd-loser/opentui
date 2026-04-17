@@ -434,6 +434,7 @@ function canCompleteDeferredPrivateReplyCsi(
   if (!context.privateCapabilityRepliesActive) return false
   if (state.sawDollar) return state.hasDigit && byte === 0x79
   if (byte === 0x63) return state.hasDigit || state.semicolons > 0
+  if (byte === 0x6e) return state.hasDigit
   return state.hasDigit && byte === 0x75
 }
 
@@ -1341,7 +1342,7 @@ export class StdinParser {
 
           if (byte >= 0x40 && byte <= 0x7e) {
             const end = this.cursor + 1
-            this.emitKeyOrResponse("csi", decodeUtf8(bytes.subarray(this.unitStart, end)))
+            this.emitOpaqueResponse("csi", bytes.subarray(this.unitStart, end))
             this.state = { tag: "ground" }
             this.consumePrefix(end)
             continue

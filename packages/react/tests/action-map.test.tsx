@@ -4,7 +4,13 @@ import { act } from "react"
 import { registerEnabledField, stringifyKeySequence } from "@opentui/core/extras"
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react"
 import { testRender } from "../src/test-utils.js"
-import { useActiveKeys, useBindings, useActionMap, usePendingSequenceParts } from "../src/index.js"
+import {
+  reactiveMatcherFromStore,
+  useActionMap,
+  useActiveKeys,
+  useBindings,
+  usePendingSequenceParts,
+} from "../src/index.js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -359,14 +365,31 @@ describe("React action map hooks", () => {
     expect(calls).toEqual(["target", "target"])
   })
 
-  test("useBindings can reactively enable layers with explicit keyed invalidation", async () => {
+  test("useBindings can reactively enable layers via reactiveMatcherFromStore", async () => {
     const calls: string[] = []
-    let setEnabled!: Dispatch<SetStateAction<boolean>>
+
+    // Minimal external store with useSyncExternalStore-style subscribe + getSnapshot.
+    const createEnabledStore = () => {
+      let enabled = false
+      const listeners = new Set<() => void>()
+      return {
+        getSnapshot: () => enabled,
+        subscribe: (onChange: () => void) => {
+          listeners.add(onChange)
+          return () => listeners.delete(onChange)
+        },
+        set(next: boolean) {
+          if (enabled === next) return
+          enabled = next
+          for (const fn of listeners) fn()
+        },
+      }
+    }
+
+    const store = createEnabledStore()
 
     function App() {
       const manager = useActionMap()
-      const [enabled, setEnabledSignal] = useState(false)
-      setEnabled = setEnabledSignal
 
       useEffect(() => {
         const offEnabled = registerEnabledField(manager)
@@ -385,20 +408,15 @@ describe("React action map hooks", () => {
         }
       }, [manager])
 
-      useEffect(() => {
-        manager.invalidateRuntimeKey("react.enabled")
-      }, [enabled, manager])
+      const matcher = useMemo(() => reactiveMatcherFromStore(store.subscribe, store.getSnapshot), [])
 
       const layer = useMemo(
         () => ({
           scope: "global" as const,
-          enabled: {
-            match: () => enabled,
-            keys: ["react.enabled"],
-          },
+          enabled: matcher,
           bindings: { x: "reactive" },
         }),
-        [enabled],
+        [matcher],
       )
 
       useBindings(layer)
@@ -416,9 +434,8 @@ describe("React action map hooks", () => {
     expect(calls).toEqual([])
 
     act(() => {
-      setEnabled(true)
+      store.set(true)
     })
-    await testSetup.renderOnce()
 
     act(() => {
       testSetup.mockInput.pressKey("x")
@@ -426,14 +443,135 @@ describe("React action map hooks", () => {
     expect(calls).toEqual(["reactive"])
 
     act(() => {
-      setEnabled(false)
+      store.set(false)
     })
-    await testSetup.renderOnce()
 
     act(() => {
       testSetup.mockInput.pressKey("x")
     })
     expect(calls).toEqual(["reactive"])
+  })
+
+  test("reactiveMatcherFromStore: applies predicate when snapshot is not boolean", async () => {
+    const calls: string[] = []
+
+    const createModeStore = () => {
+      let mode: "normal" | "visual" = "visual"
+      const listeners = new Set<() => void>()
+      return {
+        getSnapshot: () => mode,
+        subscribe: (onChange: () => void) => {
+          listeners.add(onChange)
+          return () => listeners.delete(onChange)
+        },
+        set(next: "normal" | "visual") {
+          if (mode === next) return
+          mode = next
+          for (const fn of listeners) fn()
+        },
+      }
+    }
+
+    const store = createModeStore()
+
+    function App() {
+      const manager = useActionMap()
+
+      useEffect(() => {
+        const offEnabled = registerEnabledField(manager)
+        const offCommands = manager.registerCommands([
+          { name: "normal-only", run() { calls.push("normal") } },
+        ])
+        return () => {
+          offCommands()
+          offEnabled()
+        }
+      }, [manager])
+
+      const matcher = useMemo(
+        () =>
+          reactiveMatcherFromStore(store.subscribe, store.getSnapshot, (mode) => mode === "normal"),
+        [],
+      )
+
+      const layer = useMemo(
+        () => ({ scope: "global" as const, enabled: matcher, bindings: { x: "normal-only" } }),
+        [matcher],
+      )
+
+      useBindings(layer)
+
+      return <box width={20} height={6} />
+    }
+
+    await act(async () => {
+      testSetup = await testRender(<App />, { width: 20, height: 6 })
+    })
+
+    act(() => testSetup.mockInput.pressKey("x"))
+    expect(calls).toEqual([])
+
+    act(() => store.set("normal"))
+    act(() => testSetup.mockInput.pressKey("x"))
+    expect(calls).toEqual(["normal"])
+
+    act(() => store.set("visual"))
+    act(() => testSetup.mockInput.pressKey("x"))
+    expect(calls).toEqual(["normal"])
+  })
+
+  test("reactiveMatcherFromStore: unsubscribes from store on layer unregister", async () => {
+    let listenerCount = 0
+    const storeListeners = new Set<() => void>()
+    const store = {
+      getSnapshot: () => false,
+      subscribe(onChange: () => void) {
+        listenerCount += 1
+        storeListeners.add(onChange)
+        return () => {
+          listenerCount -= 1
+          storeListeners.delete(onChange)
+        }
+      },
+    }
+
+    let setMounted!: Dispatch<SetStateAction<boolean>>
+
+    function Child() {
+      const matcher = useMemo(() => reactiveMatcherFromStore(store.subscribe, store.getSnapshot), [])
+      useBindings({ scope: "global", enabled: matcher, bindings: { x: "probe" } })
+      return <box width={10} height={2} />
+    }
+
+    function App() {
+      const [mounted, setter] = useState(true)
+      setMounted = setter
+
+      const manager = useActionMap()
+
+      // Register the enabled field + commands synchronously via useMemo so
+      // they're in place before the child's `useBindings` effect compiles.
+      // Teardown runs on unmount via a separate useEffect cleanup below.
+      useMemo(() => {
+        registerEnabledField(manager)
+        manager.registerCommands([{ name: "probe", run() {} }])
+      }, [manager])
+
+      return <>{mounted ? <Child /> : null}</>
+    }
+
+    await act(async () => {
+      testSetup = await testRender(<App />, { width: 20, height: 6 })
+    })
+
+    expect(listenerCount).toBe(1)
+
+    act(() => {
+      setMounted(false)
+    })
+
+    expect(listenerCount).toBe(0)
+    expect(storeListeners.size).toBe(0)
   })
 
   test("useBindings shows an error for local bindings without a target or ref", async () => {

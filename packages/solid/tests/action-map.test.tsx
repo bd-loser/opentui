@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { Renderable } from "@opentui/core"
 import { registerEnabledField, stringifyKeySequence } from "@opentui/core/extras"
 import { Show, createEffect, createSignal, onCleanup } from "solid-js"
-import { testRender, useActiveKeys, useBindings, useActionMap, usePendingSequenceParts } from "../index.js"
+import {
+  reactiveMatcherFromSignal,
+  testRender,
+  useActionMap,
+  useActiveKeys,
+  useBindings,
+  usePendingSequenceParts,
+} from "../index.js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -246,7 +253,7 @@ describe("solid action map hooks", () => {
     expect(calls).toEqual(["target"])
   })
 
-  test("useBindings can reactively enable layers with explicit keyed invalidation", async () => {
+  test("useBindings can reactively enable layers with a Solid signal", async () => {
     const calls: string[] = []
     let setEnabled!: (value: boolean) => void
 
@@ -265,17 +272,9 @@ describe("solid action map hooks", () => {
         },
       ])
 
-      createEffect(() => {
-        enabled()
-        manager.invalidateRuntimeKey("solid.enabled")
-      })
-
       useBindings({
         scope: "global",
-        enabled: {
-          match: enabled,
-          keys: ["solid.enabled"],
-        },
+        enabled: reactiveMatcherFromSignal(enabled),
         bindings: { x: "reactive" },
       })
 
@@ -293,14 +292,10 @@ describe("solid action map hooks", () => {
     expect(calls).toEqual([])
 
     setEnabled(true)
-    await Bun.sleep(0)
-
     testSetup.mockInput.pressKey("x")
     expect(calls).toEqual(["reactive"])
 
     setEnabled(false)
-    await Bun.sleep(0)
-
     testSetup.mockInput.pressKey("x")
     expect(calls).toEqual(["reactive"])
   })
@@ -340,5 +335,144 @@ describe("solid action map hooks", () => {
         height: 6,
       }),
     ).rejects.toThrow("useBindings target was not available during mount")
+  })
+
+  test("reactiveMatcherFromSignal: coerces accessor value and re-evaluates on signal change", async () => {
+    const calls: string[] = []
+    let setEnabled!: (value: boolean) => void
+
+    function App() {
+      const manager = useActionMap()
+      const offCommands = manager.registerCommands([
+        {
+          name: "guarded",
+          run() {
+            calls.push("guarded")
+          },
+        },
+      ])
+      onCleanup(offCommands)
+
+      registerEnabledField(manager)
+
+      const [enabled, setter] = createSignal(false)
+      setEnabled = setter
+
+      useBindings({
+        scope: "global",
+        enabled: reactiveMatcherFromSignal(enabled),
+        bindings: { x: "guarded" },
+      })
+
+      return <text>reactive</text>
+    }
+
+    testSetup = await testRender(() => <App />, { width: 20, height: 6 })
+
+    // Disabled initially: pressing x does nothing.
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual([])
+
+    // Flip reactive source: binding becomes active.
+    setEnabled(true)
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual(["guarded"])
+
+    // Flip off again: binding disappears.
+    setEnabled(false)
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual(["guarded"])
+  })
+
+  test("reactiveMatcherFromSignal: disposes reactive scope on layer unregister", async () => {
+    let unmount!: () => void
+    let setEnabled!: (value: boolean) => void
+    const evaluations: number[] = []
+
+    function Child() {
+      const [enabled, setter] = createSignal(false)
+      setEnabled = setter
+
+      const matcher = reactiveMatcherFromSignal(() => {
+        const value = enabled()
+        evaluations.push(evaluations.length)
+        return value
+      })
+
+      useBindings({
+        scope: "global",
+        enabled: matcher,
+        bindings: { x: "probe" },
+      })
+
+      return <text>child</text>
+    }
+
+    function App() {
+      const [mounted, setMounted] = createSignal(true)
+      unmount = () => setMounted(false)
+
+      const manager = useActionMap()
+      registerEnabledField(manager)
+      const offCommands = manager.registerCommands([{ name: "probe", run() {} }])
+      onCleanup(offCommands)
+
+      return <Show when={mounted()}>{() => <Child />}</Show>
+    }
+
+    testSetup = await testRender(() => <App />, { width: 20, height: 6 })
+
+    // Trigger an evaluation so we know the matcher is wired.
+    setEnabled(true)
+    const evaluationsBeforeUnmount = evaluations.length
+    expect(evaluationsBeforeUnmount).toBeGreaterThan(0)
+
+    // Unmount the child — this should unregister the layer and dispose the
+    // reactive scope. Further signal changes must not invoke the matcher.
+    unmount()
+
+    setEnabled(false)
+    setEnabled(true)
+
+    expect(evaluations.length).toBe(evaluationsBeforeUnmount)
+  })
+
+  test("reactiveMatcherFromSignal: applies predicate when signal value is not boolean", async () => {
+    const calls: string[] = []
+    let setMode!: (value: "normal" | "visual") => void
+
+    function App() {
+      const manager = useActionMap()
+      const offCommands = manager.registerCommands([
+        { name: "normal-only", run() { calls.push("normal") } },
+      ])
+      onCleanup(offCommands)
+
+      registerEnabledField(manager)
+
+      const [mode, setter] = createSignal<"normal" | "visual">("visual")
+      setMode = setter
+
+      useBindings({
+        scope: "global",
+        enabled: reactiveMatcherFromSignal(mode, (value) => value === "normal"),
+        bindings: { x: "normal-only" },
+      })
+
+      return <text>mode</text>
+    }
+
+    testSetup = await testRender(() => <App />, { width: 20, height: 6 })
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual([])
+
+    setMode("normal")
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual(["normal"])
+
+    setMode("visual")
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual(["normal"])
   })
 })

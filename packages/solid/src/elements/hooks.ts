@@ -15,9 +15,21 @@ import {
   type ActionMapLayer,
   type ActionMapLayerFields,
   type ActionMap,
+  type ActionMapReactiveMatcher,
   type ParsedKeyPart,
 } from "@opentui/core/extras"
-import { createContext, createMemo, createSignal, onCleanup, onMount, useContext, type Accessor } from "solid-js"
+import {
+  createContext,
+  createEffect,
+  createMemo,
+  createRoot,
+  createSignal,
+  on,
+  onCleanup,
+  onMount,
+  useContext,
+  type Accessor,
+} from "solid-js"
 
 export const RendererContext = createContext<CliRenderer>()
 
@@ -302,6 +314,39 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
   })
 
   return ref
+}
+
+/**
+ * Wraps a Solid accessor as an `ActionMapReactiveMatcher`. The returned
+ * matcher reads from `accessor` synchronously and subscribes via a deferred
+ * `createEffect` inside a `createRoot`, so the manager-supplied disposer
+ * tears the reactive scope down when the layer is unregistered.
+ *
+ * When `predicate` is omitted, the accessor's value is coerced with `Boolean`.
+ * Pass a predicate when the value type is not itself boolean.
+ *
+ * @example
+ * const [mode, setMode] = createSignal<"normal" | "visual">("normal")
+ * useBindings({
+ *   enabled: reactiveMatcherFromSignal(mode, (value) => value === "normal"),
+ *   bindings: [{ key: "x", cmd: "delete-char" }],
+ * })
+ */
+export function reactiveMatcherFromSignal<T>(
+  accessor: Accessor<T>,
+  predicate?: (value: T) => boolean,
+): ActionMapReactiveMatcher {
+  return {
+    get() {
+      return predicate ? predicate(accessor()) : Boolean(accessor())
+    },
+    subscribe(onChange) {
+      return createRoot((dispose) => {
+        createEffect(on(accessor, () => onChange(), { defer: true }))
+        return dispose
+      })
+    },
+  }
 }
 
 /**

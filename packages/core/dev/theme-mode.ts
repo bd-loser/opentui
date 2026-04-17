@@ -117,14 +117,17 @@ async function main() {
   mainContainer.add(historyText)
   mainContainer.add(helpText)
 
-  // Initial display
-  updateThemeDisplay()
-
   // Listen for theme mode changes from the terminal
   renderer.on("theme_mode", () => {
     themeModeEventCount++
     updateThemeDisplay()
   })
+
+  await renderer.waitForThemeMode()
+
+  if (themeModeEventCount === 0) {
+    updateThemeDisplay()
+  }
 
   renderer.requestRender()
 }

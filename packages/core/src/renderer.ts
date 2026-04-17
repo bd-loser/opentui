@@ -1204,6 +1204,47 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._themeMode
   }
 
+  public waitForThemeMode(timeoutMs: number = 1000): Promise<ThemeMode | null> {
+    if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+      throw new Error("timeoutMs must be a non-negative finite number")
+    }
+
+    if (this._themeMode !== null || this._isDestroyed || timeoutMs === 0) {
+      return Promise.resolve(this._themeMode)
+    }
+
+    return new Promise<ThemeMode | null>((resolve) => {
+      let timeoutHandle: TimerHandle | null = null
+
+      const cleanup = () => {
+        if (timeoutHandle !== null) {
+          this.clock.clearTimeout(timeoutHandle)
+          timeoutHandle = null
+        }
+
+        this.off(CliRenderEvents.THEME_MODE, handleThemeMode)
+        this.off(CliRenderEvents.DESTROY, handleDestroy)
+      }
+
+      const finish = () => {
+        cleanup()
+        resolve(this._themeMode)
+      }
+
+      const handleThemeMode = () => {
+        finish()
+      }
+
+      const handleDestroy = () => {
+        finish()
+      }
+
+      this.on(CliRenderEvents.THEME_MODE, handleThemeMode)
+      this.on(CliRenderEvents.DESTROY, handleDestroy)
+      timeoutHandle = this.clock.setTimeout(finish, timeoutMs)
+    })
+  }
+
   public getDebugInputs(): Array<{ timestamp: string; sequence: string }> {
     return [...this._debugInputs]
   }

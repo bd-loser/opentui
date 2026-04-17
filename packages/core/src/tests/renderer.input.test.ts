@@ -91,6 +91,10 @@ function advanceKittyClock(ms: number = 20): void {
   kittyClock.advance(ms)
 }
 
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve()
+}
+
 class MouseTarget extends Renderable {
   constructor(context: RenderContext, options: RenderableOptions) {
     super(context, options)
@@ -1742,6 +1746,46 @@ test("OSC fallback does not override CSI 997", () => {
 
   expect(currentRenderer.themeMode).toBe("light")
   expect(themeModes).toEqual(["light"])
+})
+
+test("waitForThemeMode resolves when initial theme mode is set", async () => {
+  const themeModePromise = currentRenderer.waitForThemeMode(500)
+
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;1n"))
+  advanceCurrentClock()
+
+  await expect(themeModePromise).resolves.toBe("dark")
+})
+
+test("waitForThemeMode resolves immediately when theme mode is already set", async () => {
+  currentRenderer.stdin.emit("data", Buffer.from("\x1b[?997;2n"))
+  advanceCurrentClock()
+
+  await expect(currentRenderer.waitForThemeMode()).resolves.toBe("light")
+})
+
+test("waitForThemeMode returns current theme mode after the default timeout", async () => {
+  let resolvedThemeMode: string | null | undefined
+
+  currentRenderer.waitForThemeMode().then((mode) => {
+    resolvedThemeMode = mode
+  })
+
+  advanceCurrentClock(999)
+  await flushMicrotasks()
+  expect(resolvedThemeMode).toBeUndefined()
+
+  advanceCurrentClock(1)
+  await flushMicrotasks()
+  expect(resolvedThemeMode).toBeNull()
+})
+
+test("waitForThemeMode resolves with current theme mode when renderer is destroyed", async () => {
+  const themeModePromise = currentRenderer.waitForThemeMode(500)
+
+  currentRenderer.destroy()
+
+  await expect(themeModePromise).resolves.toBeNull()
 })
 
 test("pixel resolution response should not trigger keypress", async () => {

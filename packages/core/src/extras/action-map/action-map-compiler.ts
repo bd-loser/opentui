@@ -39,6 +39,9 @@ import {
 } from "./utils.js"
 
 const EMPTY_COMPILE_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
+const EMPTY_REQUIRES: readonly [name: string, value: unknown][] = []
+const EMPTY_MATCHERS: readonly RuntimeMatcher[] = []
+const EMPTY_CONDITION_KEYS: readonly string[] = []
 
 interface ParsedBindingSequenceResult {
   parts: ParsedKeyPart[]
@@ -145,18 +148,23 @@ export class ActionMapCompiler {
         for (const compiledInput of this.expandParsedBindings(binding, sequence, compileFields)) {
           try {
             const event = this.normalizeBindingEvent(compiledInput.event)
-            const mergedRequires: ActionMapEventData = {}
-            const mergedAttrs: ActionMapAttributes = {}
-            const matchers: RuntimeMatcher[] = []
-            const conditionKeys = new Set<string>()
+            const compiledSequence = compiledInput.sequence
+            let mergedRequires: ActionMapEventData | undefined
+            let mergedAttrs: ActionMapAttributes | undefined
+            let matchers: RuntimeMatcher[] | undefined
+            let conditionKeys: Set<string> | undefined
             let hasUnkeyedMatchers = false
 
-            const { sequence, ...bindingFields } = compiledInput
+            for (const fieldName in compiledInput) {
+              if (fieldName === "sequence") {
+                continue
+              }
 
-            for (const [fieldName, value] of Object.entries(bindingFields)) {
               if (reservedBindingFields.has(fieldName)) {
                 continue
               }
+
+              const value = compiledInput[fieldName as keyof ActionMapParsedBindingInput]
 
               if (value === undefined) {
                 continue
@@ -170,10 +178,19 @@ export class ActionMapCompiler {
 
               compiler(value, {
                 require(name, requiredValue) {
+                  if (!mergedRequires) {
+                    mergedRequires = {}
+                  }
                   mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
+                  if (!conditionKeys) {
+                    conditionKeys = new Set<string>()
+                  }
                   conditionKeys.add(name)
                 },
                 attr(name, attributeValue) {
+                  if (!mergedAttrs) {
+                    mergedAttrs = {}
+                  }
                   mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
                 },
                 match: (matcher) => {
@@ -181,15 +198,18 @@ export class ActionMapCompiler {
                   if (!runtimeMatcher.cacheable) {
                     hasUnkeyedMatchers = true
                   }
+                  if (!matchers) {
+                    matchers = []
+                  }
                   matchers.push(runtimeMatcher)
                 },
               })
             }
 
-            const attrs = snapshotAttributes(mergedAttrs)
+            const attrs = mergedAttrs ? snapshotAttributes(mergedAttrs) : undefined
             const command = normalizeBindingCommand(compiledInput.cmd)
             const compiledBinding: CompiledBinding = {
-              sequence,
+              sequence: compiledSequence,
               command,
               event,
               sourceBinding: snapshotParsedBindingInput(compiledInput),
@@ -197,9 +217,9 @@ export class ActionMapCompiler {
               sourceTarget,
               sourceLayerOrder,
               sourceBindingIndex: bindingIndex,
-              requires: Object.entries(mergedRequires),
-              matchers,
-              conditionKeys: [...conditionKeys],
+              requires: mergedRequires ? Object.entries(mergedRequires) : EMPTY_REQUIRES,
+              matchers: matchers ?? EMPTY_MATCHERS,
+              conditionKeys: conditionKeys ? [...conditionKeys] : EMPTY_CONDITION_KEYS,
               hasUnkeyedMatchers,
               matchCacheDirty: true,
               preventDefault: compiledInput.preventDefault !== false,
@@ -212,11 +232,11 @@ export class ActionMapCompiler {
 
             commands.resolveCompiledBindingCommand(compiledBinding)
 
-            if (sequence.length === 0) {
+            if (compiledSequence.length === 0) {
               continue
             }
 
-            if (event === "release" && sequence.length > 1) {
+            if (event === "release" && compiledSequence.length > 1) {
               throw new Error("ActionMap release bindings only support a single key stroke")
             }
 

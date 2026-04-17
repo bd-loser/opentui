@@ -2,7 +2,6 @@ import type { Renderable } from "../../Renderable.js"
 import { CliRenderEvents, type CliRenderer } from "../../renderer.js"
 import { KeyEvent } from "../../lib/KeyHandler.js"
 import type {
-  CompiledBinding,
   ActionMapActiveKey,
   ActionMapActiveKeyOptions,
   ActionMapBindingCompiler,
@@ -10,11 +9,9 @@ import type {
   ActionMapBindingParser,
   ActionMapBindingSyntax,
   ActionMapBindingFieldCompiler,
-  ActionMapBindingInput,
   ActionMapHookListener,
   ActionMapHooks,
   ActionMapEvents,
-  ActionMapParsedBindingInput,
   ActionMapCommandDefinition,
   ActionMapCommandFieldCompiler,
   ActionMapCommandQuery,
@@ -32,9 +29,6 @@ import type {
   ParsedKeyToken,
   ParsedKeyStroke,
   PendingSequenceState,
-  RegisteredCommand,
-  RegisteredLayer,
-  RuntimeMatchable,
 } from "./types.js"
 import { getErrorMessage } from "./utils.js"
 import { ActionMapCommands } from "./action-map-commands.js"
@@ -583,30 +577,6 @@ export class ActionMap {
 
   private applyTokenState(nextTokens: Map<string, ParsedKeyToken>): void {
     this.layers.applyTokenState(nextTokens)
-  }
-
-  private refreshBindingCommandResolution(): void {
-    this.commands.refreshBindingCommandResolution()
-  }
-
-  private resolveCompiledBindingCommand(binding: CompiledBinding): void {
-    this.commands.resolveCompiledBindingCommand(binding)
-  }
-
-  private getCommandRecord(command: RegisteredCommand): ActionMapCommandRecord {
-    return this.commands.getCommandRecord(command)
-  }
-
-  private hasNoConditions(target: RuntimeMatchable): boolean {
-    return this.conditions.hasNoConditions(target)
-  }
-
-  private matchesConditions(target: RuntimeMatchable): boolean {
-    return this.conditions.matchesConditions(target)
-  }
-
-  private layerMatchesRuntimeState(layer: RegisteredLayer): boolean {
-    return this.conditions.layerMatchesRuntimeState(layer)
   }
 
   private setPendingSequence(next: PendingSequenceState | null): void {

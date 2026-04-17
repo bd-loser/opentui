@@ -617,6 +617,70 @@ describe("action map", () => {
     expect(calls).toEqual(["case-token"])
   })
 
+  test("createKeyMatcher uses the manager's current parser and token configuration", () => {
+    const manager = getActionMap(renderer)
+
+    manager.clearBindingParsers()
+    manager.appendBindingParser(({ input, index, tokens }) => {
+      if (input[index] !== "[") {
+        return undefined
+      }
+
+      const end = input.indexOf("]", index)
+      if (end === -1) {
+        throw new Error(`Invalid key sequence "${input}": unterminated token`)
+      }
+
+      const tokenName = input.slice(index, end + 1).trim()
+      const token = tokens.get(tokenName)
+      if (!token) {
+        return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
+      }
+
+      return {
+        parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
+        nextIndex: end + 1,
+        usedTokens: [tokenName],
+      }
+    })
+    manager.appendBindingParser(defaultBindingParser)
+
+    manager.clearBindingSyntax()
+    manager.setBindingSyntax({
+      normalizeTokenName(token) {
+        const normalized = token.trim()
+        if (!normalized) {
+          throw new Error("Invalid action map token: token cannot be empty")
+        }
+
+        return normalized
+      },
+      parseObjectKey(key) {
+        return defaultBindingSyntax.parseObjectKey(key)
+      },
+    })
+
+    manager.registerCommands([
+      {
+        name: "case-token",
+        run() {},
+      },
+    ])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "[Leader]d", cmd: "case-token" }],
+    })
+
+    manager.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
+
+    const matchesLeader = manager.createKeyMatcher("[Leader]")
+
+    mockInput.pressKey("x", { ctrl: true })
+
+    const [head] = manager.getPendingSequence()
+    expect(matchesLeader(head)).toBe(true)
+  })
+
   test("clearEventMatchResolvers disables default event matching until custom resolvers are added", () => {
     const manager = getActionMap(renderer)
     const calls: string[] = []

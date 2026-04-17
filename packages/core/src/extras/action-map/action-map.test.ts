@@ -77,10 +77,7 @@ function getMatchKeyForEventName(event: KeyEvent, name: string): string {
   return `${normalizedName}:${event.ctrl ? 1 : 0}:${event.shift ? 1 : 0}:${event.meta ? 1 : 0}:${event.super ? 1 : 0}:${event.hyper ? 1 : 0}`
 }
 
-// Minimal reactive-boolean helper for tests. Mirrors the contract expected of
-// real reactive sources (signal, observable, etc.): a synchronous `get` and a
-// `subscribe(onChange)` that returns an unsubscribe. Set `onSubscribe` /
-// `onDispose` to observe subscription lifecycle.
+// Tiny reactive-matcher test helper that exposes subscription counts.
 interface ReactiveBoolean extends ActionMapReactiveMatcher {
   set(next: boolean): void
   readonly subscriptions: number
@@ -1289,12 +1286,8 @@ describe("action map", () => {
   })
 
   test("preventDefault and fallthrough are orthogonal: two axes, four combinations", () => {
-    // Locks in the contract: `preventDefault` only affects whether the
-    // underlying key event leaves the action-map (reaches later keyInput
-    // listeners via `event.preventDefault()` / `event.stopPropagation()`);
-    // `fallthrough` only affects whether the action-map continues dispatching
-    // to later matching bindings on the same key. Changing one must not
-    // change the behaviour of the other.
+    // `preventDefault` controls whether the key leaves the action-map;
+    // `fallthrough` controls whether dispatch continues inside it.
     const manager = getActionMap(renderer)
     const runs: Record<string, string[]> = { a: [], b: [], c: [], d: [] }
     const outsideSeen: Record<string, boolean> = { a: false, b: false, c: false, d: false }
@@ -1309,11 +1302,8 @@ describe("action map", () => {
         { name: `primary-${keyName}`, run() { bucket.push("primary") } },
         { name: `followup-${keyName}`, run() { bucket.push("followup") } },
       ])
-      // The followup binding inherits the *same* `preventDefault` as the
-      // primary so this test isolates the two axes: flipping one axis does
-      // not implicitly change the other via a downstream binding. In a real
-      // app, any binding in a fallthrough chain with `preventDefault: true`
-      // consumes the event on behalf of the whole chain.
+      // Keep both bindings on the same `preventDefault` value so each case
+      // varies only one axis.
       manager.registerLayer({
         scope: "global",
         bindings: [
@@ -1323,11 +1313,8 @@ describe("action map", () => {
       })
     }
 
-    // One renderer-wide listener: records which keys were observable *outside*
-    // the action-map. Action-map prepends its own listener, so this runs after
-    // dispatch. A binding with `preventDefault: true` calls stopPropagation
-    // which blocks this listener (KeyHandler checks propagationStopped between
-    // global listeners).
+    // This runs after action-map dispatch, so it only sees keys that were not
+    // consumed.
     renderer.keyInput.on("keypress", (event) => {
       if (event.name in outsideSeen) {
         outsideSeen[event.name] = true
@@ -1344,14 +1331,11 @@ describe("action map", () => {
     mockInput.pressKey("c")
     mockInput.pressKey("d")
 
-    // fallthrough axis: false → only primary ran; true → primary + followup ran.
     expect(runs.a).toEqual(["primary"])
     expect(runs.b).toEqual(["primary"])
     expect(runs.c).toEqual(["primary", "followup"])
     expect(runs.d).toEqual(["primary", "followup"])
 
-    // preventDefault axis: true → event did not reach the outside listener;
-    // false → event was observable outside. (Independent of fallthrough.)
     expect(outsideSeen.a).toBe(false)
     expect(outsideSeen.b).toBe(true)
     expect(outsideSeen.c).toBe(false)
@@ -1757,21 +1741,19 @@ describe("action map", () => {
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
     })
 
-    // Initial evaluation happens on first `getActiveKeys`; subsequent reads
-    // are cached until the reactive source notifies.
+    // First read warms the cache.
     expect(getActiveKeyNames(manager)).toEqual([])
     expect(evaluations).toBe(1)
 
     expect(getActiveKeyNames(manager)).toEqual([])
     expect(evaluations).toBe(1)
 
-    // Unrelated data changes must not invalidate a purely reactive matcher.
+    // Unrelated `setData` invalidation should not touch a purely reactive matcher.
     manager.setData("unrelated", true)
 
     expect(getActiveKeyNames(manager)).toEqual([])
     expect(evaluations).toBe(1)
 
-    // Flipping the reactive source notifies subscribers and re-evaluates.
     enabled.set(true)
 
     expect(getActiveKeyNames(manager)).toEqual(["x"])
@@ -1884,18 +1866,15 @@ describe("action map", () => {
       bindings: [{ key: "b", cmd: "noop" }],
     })
 
-    // First read evaluates both matchers; caches are warm.
     expect(getActiveKeyNames(manager)).toEqual([])
     expect(firstEvals).toBe(1)
     expect(secondEvals).toBe(1)
 
-    // Flipping firstEnabled must only re-evaluate the first matcher.
     firstEnabled.set(true)
     expect(getActiveKeyNames(manager)).toEqual(["a"])
     expect(firstEvals).toBe(2)
     expect(secondEvals).toBe(1)
 
-    // Flipping secondEnabled must only re-evaluate the second matcher.
     secondEnabled.set(true)
     expect(getActiveKeyNames(manager)).toEqual(["a", "b"])
     expect(firstEvals).toBe(2)
@@ -1934,8 +1913,6 @@ describe("action map", () => {
       })
     }).not.toThrow()
 
-    // The layer is still registered; the matcher still evaluates (true) on
-    // every read, just without subscription-based caching.
     expect(errors).toHaveLength(1)
     expect(errors[0]).toBe("subscribe boom")
     expect(causes[0]).toBeInstanceOf(Error)
@@ -2029,23 +2006,18 @@ describe("action map", () => {
       bindings: [{ key: "x", cmd: "noop" }],
     })
 
-    // Neither condition is satisfied.
     expect(getActiveKeyNames(manager)).toEqual([])
 
-    // Only data matches; reactive still false.
     manager.setData("vim.mode", "normal")
     expect(getActiveKeyNames(manager)).toEqual([])
 
-    // Only reactive matches; data wiped.
     manager.setData("vim.mode", undefined)
     enabled.set(true)
     expect(getActiveKeyNames(manager)).toEqual([])
 
-    // Both match.
     manager.setData("vim.mode", "normal")
     expect(getActiveKeyNames(manager)).toEqual(["x"])
 
-    // Flip reactive alone → binding disappears.
     enabled.set(false)
     expect(getActiveKeyNames(manager)).toEqual([])
   })
@@ -2074,7 +2046,6 @@ describe("action map", () => {
     expect(getActiveKeyNames(manager)).toEqual([])
     expect(evaluations).toBe(1)
 
-    // Raw callbacks are not cached — every read re-evaluates.
     expect(getActiveKeyNames(manager)).toEqual([])
     expect(evaluations).toBe(2)
 
@@ -2110,9 +2081,6 @@ describe("action map", () => {
   })
 
   test("reactive matchers on binding fields: re-subscribe after token-driven recompile", () => {
-    // When tokens change, bindings in affected layers are re-compiled. The
-    // old per-binding subscription must be disposed and a new one created so
-    // the replacement binding is still wired to its reactive source.
     const manager = getActionMap(renderer)
     const enabled = createReactiveBoolean(true)
 
@@ -2134,8 +2102,8 @@ describe("action map", () => {
     const subscribesBefore = enabled.subscribeCalls
     const disposesBefore = enabled.disposeCalls
 
-    // Unregistering the token triggers recompilation of any layer with token
-    // bindings — the binding-level matcher must dispose + re-subscribe.
+    // Token changes recompile bindings, so binding-level matchers must
+    // re-subscribe.
     offToken()
 
     expect(enabled.disposeCalls).toBe(disposesBefore + 1)
@@ -2287,8 +2255,6 @@ describe("action map", () => {
 
     expect(manager.getPendingSequence()).toHaveLength(1)
 
-    // Flipping the reactive source notifies the manager; the matcher
-    // re-evaluates false, the pending sequence clears.
     enabled.set(false)
 
     expect(manager.getPendingSequence()).toEqual([])
@@ -3672,7 +3638,7 @@ describe("action map", () => {
     }
 
     try {
-      // `name` is a reserved command field and triggers a no-cause emitError
+      // Use a no-cause error path so console.error only receives the message.
       manager.registerCommandFields({
         name() {},
       })

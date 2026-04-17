@@ -369,16 +369,13 @@ describe("solid action map hooks", () => {
 
     testSetup = await testRender(() => <App />, { width: 20, height: 6 })
 
-    // Disabled initially: pressing x does nothing.
     testSetup.mockInput.pressKey("x")
     expect(calls).toEqual([])
 
-    // Flip reactive source: binding becomes active.
     setEnabled(true)
     testSetup.mockInput.pressKey("x")
     expect(calls).toEqual(["guarded"])
 
-    // Flip off again: binding disappears.
     setEnabled(false)
     testSetup.mockInput.pressKey("x")
     expect(calls).toEqual(["guarded"])
@@ -422,13 +419,11 @@ describe("solid action map hooks", () => {
 
     testSetup = await testRender(() => <App />, { width: 20, height: 6 })
 
-    // Trigger an evaluation so we know the matcher is wired.
     setEnabled(true)
     const evaluationsBeforeUnmount = evaluations.length
     expect(evaluationsBeforeUnmount).toBeGreaterThan(0)
 
-    // Unmount the child — this should unregister the layer and dispose the
-    // reactive scope. Further signal changes must not invoke the matcher.
+    // After unmount, signal changes must not re-evaluate the matcher.
     unmount()
 
     setEnabled(false)

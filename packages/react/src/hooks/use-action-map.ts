@@ -66,12 +66,8 @@ export const useActionMap = (): ActionMap => {
   return useMemo(() => getActionMap(renderer), [renderer])
 }
 
-// Subscribes to the `state` hook, which is the batched superset signal covering
-// all derived-state changes (active keys, pending sequence, commands, etc.).
-// Both `useActiveKeys` and `usePendingSequenceParts` share this one subscription
-// and re-read through the relevant getter. Do not switch these hooks to the
-// `pendingSequence` event: `state` already fires for pending-sequence changes,
-// and subscribing to both would double up work.
+// Use the batched `state` hook for derived reads. Pending-sequence changes
+// already flow through `state`, so subscribing to both would duplicate work.
 function useActionMapStateVersion(manager: ActionMap): number {
   const [version, bumpVersion] = useReducer((value: number) => value + 1, 0)
 
@@ -217,24 +213,9 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
 }
 
 /**
- * Wraps an external store (anything compatible with `useSyncExternalStore`'s
- * `subscribe` + `getSnapshot` contract) as an `ActionMapReactiveMatcher`.
- * Works with Zustand, Redux (`store.subscribe` + `store.getState`), Valtio,
- * Jotai's `jotai/vanilla`, or any hand-written observable store.
- *
- * When `predicate` is omitted, the snapshot value is coerced with `Boolean`.
- * Pass a predicate when the value type is not itself boolean.
- *
- * @example
- * const matcher = reactiveMatcherFromStore(
- *   (onChange) => store.subscribe(onChange),
- *   () => store.getState().mode,
- *   (mode) => mode === "normal",
- * )
- * useBindings({
- *   enabled: matcher,
- *   bindings: [{ key: "x", cmd: "delete-char" }],
- * })
+ * Adapts any `subscribe` + `getSnapshot` store to
+ * `ActionMapReactiveMatcher`. Pass `predicate` when the snapshot value is not
+ * already boolean.
  */
 export function reactiveMatcherFromStore<T>(
   subscribe: (onStoreChange: () => void) => () => void,

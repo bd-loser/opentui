@@ -1,14 +1,8 @@
 import type { ActionMap, ActionMapReactiveMatcher } from "../types.js"
 
 /**
- * Accepted shapes for the `enabled` layer field:
- *
- * - `boolean` — static on/off. No matcher; static `false` disables the layer.
- * - `() => boolean` — raw callback, re-evaluated on every read. Simple but
- *   not cacheable; use for state the manager has no way to observe.
- * - `ActionMapReactiveMatcher` — a `{ get, subscribe }` pair. The manager
- *   subscribes at layer registration and invalidates the cache on change,
- *   then unsubscribes when the layer is unregistered.
+ * Accepted `enabled` values: boolean, raw `() => boolean`, or an
+ * `ActionMapReactiveMatcher` for subscription-driven invalidation.
  */
 export type ActionMapEnabled = boolean | (() => boolean) | ActionMapReactiveMatcher
 
@@ -50,8 +44,6 @@ export function registerEnabledField(manager: ActionMap): () => void {
         return
       }
 
-      // Either a function or a reactive matcher — both are accepted directly
-      // by `ctx.match`, which wires subscription for the reactive form.
       ctx.match(normalized)
     },
   })

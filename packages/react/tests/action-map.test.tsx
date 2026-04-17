@@ -368,7 +368,6 @@ describe("React action map hooks", () => {
   test("useBindings can reactively enable layers via reactiveMatcherFromStore", async () => {
     const calls: string[] = []
 
-    // Minimal external store with useSyncExternalStore-style subscribe + getSnapshot.
     const createEnabledStore = () => {
       let enabled = false
       const listeners = new Set<() => void>()
@@ -549,9 +548,7 @@ describe("React action map hooks", () => {
 
       const manager = useActionMap()
 
-      // Register the enabled field + commands synchronously via useMemo so
-      // they're in place before the child's `useBindings` effect compiles.
-      // Teardown runs on unmount via a separate useEffect cleanup below.
+      // Install these before the child's `useBindings` effect runs.
       useMemo(() => {
         registerEnabledField(manager)
         manager.registerCommands([{ name: "probe", run() {} }])

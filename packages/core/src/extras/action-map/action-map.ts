@@ -32,22 +32,64 @@ import type {
 } from "./types.js"
 import { getErrorMessage } from "./utils.js"
 import { ActionMapCommands } from "./action-map-commands.js"
-import { ActionMapCompiler } from "./action-map-compiler.js"
+import { ActionMapCompiler, RESERVED_BINDING_FIELDS } from "./action-map-compiler.js"
 import { ActionMapConditions } from "./action-map-conditions.js"
 import { ActionMapDispatch } from "./action-map-dispatch.js"
 import { ActionMapLayers, RESERVED_LAYER_FIELDS } from "./action-map-layers.js"
 import { ActionMapNotifier } from "./action-map-notify.js"
 import { ActionMapRuntime } from "./action-map-runtime.js"
 import { createActionMapState, resetActionMapState } from "./action-map-state.js"
+import { RESERVED_COMMAND_FIELDS } from "./command-registry.js"
 import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./default-parser.js"
 import { Emitter, type EmitterListener } from "./emitter.js"
 
 const actionMapsByRenderer = new WeakMap<CliRenderer, ActionMap>()
 const NOOP = (): void => {}
 
-export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "event", "preventDefault", "fallthrough"])
+type ActionMapFieldKind = "layer" | "binding" | "command"
 
-const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
+function registerFieldCompilers<T>(
+  fields: Record<string, T>,
+  options: {
+    kind: ActionMapFieldKind
+    reservedFields: ReadonlySet<string>
+    registeredFields: Map<string, T>
+    emitError(message: string): void
+  },
+): () => void {
+  const { kind, reservedFields, registeredFields, emitError } = options
+  const entries = Object.entries(fields)
+  const registered: Array<[string, T]> = []
+
+  for (const [name] of entries) {
+    if (reservedFields.has(name)) {
+      emitError(`ActionMap ${kind} field "${name}" is reserved`)
+      continue
+    }
+
+    if (registeredFields.has(name)) {
+      emitError(`ActionMap ${kind} field "${name}" is already registered`)
+    }
+  }
+
+  for (const [name, compiler] of entries) {
+    if (reservedFields.has(name) || registeredFields.has(name)) {
+      continue
+    }
+
+    registeredFields.set(name, compiler)
+    registered.push([name, compiler])
+  }
+
+  return () => {
+    for (const [name, compiler] of registered) {
+      const current = registeredFields.get(name)
+      if (current === compiler) {
+        registeredFields.delete(name)
+      }
+    }
+  }
+}
 
 export class ActionMap {
   public readonly renderer: CliRenderer
@@ -82,7 +124,6 @@ export class ActionMap {
       actionMap: this,
     })
     this.compiler = new ActionMapCompiler(this.state, this.notify, this.commands, this.conditions, {
-      reservedBindingFields: RESERVED_BINDING_FIELDS,
       warnUnknownField: (kind, fieldName) => {
         this.warnUnknownField(kind, fieldName)
       },
@@ -266,37 +307,14 @@ export class ActionMap {
       return NOOP
     }
 
-    const entries = Object.entries(fields)
-    const registered: Array<[string, ActionMapLayerFieldCompiler]> = []
-
-    for (const [name] of entries) {
-      if (RESERVED_LAYER_FIELDS.has(name)) {
-        this.emitError(`ActionMap layer field "${name}" is reserved`)
-        continue
-      }
-
-      if (this.state.config.layerFields.has(name)) {
-        this.emitError(`ActionMap layer field "${name}" is already registered`)
-      }
-    }
-
-    for (const [name, compiler] of entries) {
-      if (RESERVED_LAYER_FIELDS.has(name) || this.state.config.layerFields.has(name)) {
-        continue
-      }
-
-      this.state.config.layerFields.set(name, compiler)
-      registered.push([name, compiler])
-    }
-
-    return () => {
-      for (const [name, compiler] of registered) {
-        const current = this.state.config.layerFields.get(name)
-        if (current === compiler) {
-          this.state.config.layerFields.delete(name)
-        }
-      }
-    }
+    return registerFieldCompilers(fields, {
+      kind: "layer",
+      reservedFields: RESERVED_LAYER_FIELDS,
+      registeredFields: this.state.config.layerFields,
+      emitError: (message) => {
+        this.emitError(message)
+      },
+    })
   }
 
   public registerBindingCompiler(compiler: ActionMapBindingCompiler): () => void {
@@ -434,37 +452,14 @@ export class ActionMap {
       return NOOP
     }
 
-    const entries = Object.entries(fields)
-    const registered: Array<[string, ActionMapBindingFieldCompiler]> = []
-
-    for (const [name] of entries) {
-      if (RESERVED_BINDING_FIELDS.has(name)) {
-        this.emitError(`ActionMap binding field "${name}" is reserved`)
-        continue
-      }
-
-      if (this.state.config.bindingFields.has(name)) {
-        this.emitError(`ActionMap binding field "${name}" is already registered`)
-      }
-    }
-
-    for (const [name, compiler] of entries) {
-      if (RESERVED_BINDING_FIELDS.has(name) || this.state.config.bindingFields.has(name)) {
-        continue
-      }
-
-      this.state.config.bindingFields.set(name, compiler)
-      registered.push([name, compiler])
-    }
-
-    return () => {
-      for (const [name, compiler] of registered) {
-        const current = this.state.config.bindingFields.get(name)
-        if (current === compiler) {
-          this.state.config.bindingFields.delete(name)
-        }
-      }
-    }
+    return registerFieldCompilers(fields, {
+      kind: "binding",
+      reservedFields: RESERVED_BINDING_FIELDS,
+      registeredFields: this.state.config.bindingFields,
+      emitError: (message) => {
+        this.emitError(message)
+      },
+    })
   }
 
   public registerCommandFields(fields: Record<string, ActionMapCommandFieldCompiler>): () => void {
@@ -472,37 +467,14 @@ export class ActionMap {
       return NOOP
     }
 
-    const entries = Object.entries(fields)
-    const registered: Array<[string, ActionMapCommandFieldCompiler]> = []
-
-    for (const [name] of entries) {
-      if (RESERVED_COMMAND_FIELDS.has(name)) {
-        this.emitError(`ActionMap command field "${name}" is reserved`)
-        continue
-      }
-
-      if (this.state.config.commandFields.has(name)) {
-        this.emitError(`ActionMap command field "${name}" is already registered`)
-      }
-    }
-
-    for (const [name, compiler] of entries) {
-      if (RESERVED_COMMAND_FIELDS.has(name) || this.state.config.commandFields.has(name)) {
-        continue
-      }
-
-      this.state.config.commandFields.set(name, compiler)
-      registered.push([name, compiler])
-    }
-
-    return () => {
-      for (const [name, compiler] of registered) {
-        const current = this.state.config.commandFields.get(name)
-        if (current === compiler) {
-          this.state.config.commandFields.delete(name)
-        }
-      }
-    }
+    return registerFieldCompilers(fields, {
+      kind: "command",
+      reservedFields: RESERVED_COMMAND_FIELDS,
+      registeredFields: this.state.config.commandFields,
+      emitError: (message) => {
+        this.emitError(message)
+      },
+    })
   }
 
   public registerCommandResolver(resolver: ActionMapCommandResolver): () => void {

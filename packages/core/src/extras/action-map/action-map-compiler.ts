@@ -43,6 +43,8 @@ const EMPTY_REQUIRES: readonly [name: string, value: unknown][] = []
 const EMPTY_MATCHERS: readonly RuntimeMatcher[] = []
 const EMPTY_CONDITION_KEYS: readonly string[] = []
 
+export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "event", "preventDefault", "fallthrough"])
+
 interface ParsedBindingSequenceResult {
   parts: ParsedKeyPart[]
   usedTokens: readonly string[]
@@ -51,7 +53,6 @@ interface ParsedBindingSequenceResult {
 }
 
 export interface ActionMapCompilerOptions {
-  reservedBindingFields: ReadonlySet<string>
   warnUnknownField: (kind: "binding" | "layer", fieldName: string) => void
   warnUnknownToken: (token: string, sequence: string) => void
 }
@@ -96,7 +97,6 @@ export class ActionMapCompiler {
     const bindingExpanders = this.state.config.bindingExpanders.snapshot()
     const bindingParsers = this.state.config.bindingParsers.snapshot()
     const bindingFieldCompilers = this.state.config.bindingFields
-    const reservedBindingFields = this.options.reservedBindingFields
     const warnUnknownField = this.options.warnUnknownField
     const warnUnknownToken = this.options.warnUnknownToken
     const conditions = this.conditions
@@ -160,7 +160,7 @@ export class ActionMapCompiler {
                 continue
               }
 
-              if (reservedBindingFields.has(fieldName)) {
+              if (RESERVED_BINDING_FIELDS.has(fieldName)) {
                 continue
               }
 

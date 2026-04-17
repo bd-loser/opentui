@@ -2,18 +2,18 @@ export type EmitterListener<TValue> = [TValue] extends [void] ? () => void : (va
 
 type EmitterArgs<TValue> = [TValue] extends [void] ? [] : [TValue]
 
-export type OrderedEmitterListener<TListener, TOptions extends { priority: number }> = Readonly<
+export type PriorityRegistration<TListener, TOptions extends { priority: number }> = Readonly<
   TOptions & {
     listener: TListener
     order: number
   }
 >
 
-export class RegistrationList<TValue> {
-  private values: readonly TValue[] = []
+export class OrderedRegistry<TValue> {
+  private items: readonly TValue[] = []
 
   public append(value: TValue): () => void {
-    this.values = [...this.values, value]
+    this.items = [...this.items, value]
 
     return () => {
       this.remove(value)
@@ -21,7 +21,7 @@ export class RegistrationList<TValue> {
   }
 
   public prepend(value: TValue): () => void {
-    this.values = [value, ...this.values]
+    this.items = [value, ...this.items]
 
     return () => {
       this.remove(value)
@@ -29,7 +29,7 @@ export class RegistrationList<TValue> {
   }
 
   public remove(value: TValue): boolean {
-    const current = this.values
+    const current = this.items
     if (current.length === 0) {
       return false
     }
@@ -39,20 +39,20 @@ export class RegistrationList<TValue> {
       return false
     }
 
-    this.values = next
+    this.items = next
     return true
   }
 
   public has(): boolean {
-    return this.values.length > 0
+    return this.items.length > 0
   }
 
-  public snapshot(): readonly TValue[] {
-    return this.values
+  public values(): readonly TValue[] {
+    return this.items
   }
 
   public clear(): void {
-    this.values = []
+    this.items = []
   }
 }
 
@@ -132,12 +132,12 @@ export class Emitter<TEvents extends Record<string, unknown>> {
   }
 }
 
-export class OrderedEmitter<TListener, TOptions extends { priority: number }> {
-  private listeners: readonly OrderedEmitterListener<TListener, TOptions>[] = []
+export class PriorityRegistry<TListener, TOptions extends { priority: number }> {
+  private listeners: readonly PriorityRegistration<TListener, TOptions>[] = []
   private order = 0
 
-  public hook(listener: TListener, options: TOptions): () => void {
-    const registered = { ...options, listener, order: this.order++ } as OrderedEmitterListener<TListener, TOptions>
+  public register(listener: TListener, options: TOptions): () => void {
+    const registered = { ...options, listener, order: this.order++ } as PriorityRegistration<TListener, TOptions>
 
     this.listeners = [...this.listeners, registered].sort((left, right) => {
       const priorityDiff = right.priority - left.priority
@@ -167,7 +167,7 @@ export class OrderedEmitter<TListener, TOptions extends { priority: number }> {
     return this.listeners.length > 0
   }
 
-  public snapshot(): readonly OrderedEmitterListener<TListener, TOptions>[] {
+  public entries(): readonly PriorityRegistration<TListener, TOptions>[] {
     return this.listeners
   }
 

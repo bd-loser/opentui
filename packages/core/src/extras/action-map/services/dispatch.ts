@@ -40,7 +40,7 @@ export class DispatchService {
       return false
     }
 
-    const hooks = this.state.config.rawHooks.snapshot()
+    const hooks = this.state.config.rawHooks.entries()
     if (hooks.length === 0) {
       return false
     }
@@ -73,7 +73,7 @@ export class DispatchService {
       return
     }
 
-    const hooks = this.state.config.keyHooks.snapshot()
+    const hooks = this.state.config.keyHooks.entries()
     const context: ActionMapKeyInputContext = {
       event,
       setData: (name, value) => {
@@ -228,7 +228,7 @@ export class DispatchService {
   }
 
   private resolveEventMatchKeys(event: KeyEvent): string[] {
-    const resolvers = this.state.config.eventMatchResolvers.snapshot()
+    const resolvers = this.state.config.eventMatchResolvers.values()
 
     if (resolvers.length === 0) {
       return []

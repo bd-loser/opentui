@@ -1,8 +1,8 @@
-import type { Renderable } from "../../Renderable.js"
-import type { ActionMapCommands } from "./action-map-commands.js"
-import type { ActionMapConditions } from "./action-map-conditions.js"
-import type { ActionMapState } from "./action-map-state.js"
-import type { ActionMapNotifier } from "./action-map-notify.js"
+import type { Renderable } from "../../../Renderable.js"
+import type { ActionMapCommands } from "./commands.js"
+import type { ActionMapConditions } from "./conditions.js"
+import type { ActionMapState } from "./state.js"
+import type { ActionMapNotifier } from "./notify.js"
 import type {
   ActionMapAttributes,
   ActionMapBindingCompiler,
@@ -26,7 +26,7 @@ import type {
   ParsedKeyToken,
   RuntimeMatcher,
   SequenceNode,
-} from "./types.js"
+} from "../types.js"
 import {
   createParsedKeyPart,
   createSequenceNode,
@@ -36,7 +36,7 @@ import {
   normalizeBindingCommand,
   snapshotAttributes,
   snapshotParsedBindingInput,
-} from "./lib/utils.js"
+} from "../lib/utils.js"
 
 const EMPTY_COMPILE_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 const EMPTY_REQUIRES: readonly [name: string, value: unknown][] = []

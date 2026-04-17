@@ -1,7 +1,7 @@
-import { RenderableEvents, type Renderable } from "../../Renderable.js"
-import type { ActionMapCompiler } from "./action-map-compiler.js"
-import type { ActionMapConditions } from "./action-map-conditions.js"
-import type { ActionMapRuntime } from "./action-map-runtime.js"
+import { RenderableEvents, type Renderable } from "../../../Renderable.js"
+import type { ActionMapCompiler } from "./compiler.js"
+import type { ActionMapConditions } from "./conditions.js"
+import type { ActionMapRuntime } from "./runtime.js"
 import type {
   ActionMapBindingInput,
   ActionMapEventData,
@@ -12,16 +12,16 @@ import type {
   RegisteredLayer,
   RegisteredLayerBucket,
   RuntimeMatcher,
-} from "./types.js"
-import type { ActionMapState } from "./action-map-state.js"
-import type { ActionMapNotifier } from "./action-map-notify.js"
+} from "../types.js"
+import type { ActionMapState } from "./state.js"
+import type { ActionMapNotifier } from "./notify.js"
 import {
   getErrorMessage,
   mergeRequirement,
   snapshotBindingInputs,
   snapshotDataValue,
   sortByPriorityAndOrder,
-} from "./lib/utils.js"
+} from "../lib/utils.js"
 
 const NOOP = (): void => {}
 

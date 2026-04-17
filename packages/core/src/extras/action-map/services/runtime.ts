@@ -1,8 +1,8 @@
-import type { Renderable } from "../../Renderable.js"
-import type { CliRenderer } from "../../renderer.js"
-import type { ActionMapConditions } from "./action-map-conditions.js"
-import type { ActionMapNotifier } from "./action-map-notify.js"
-import type { ActionMapState } from "./action-map-state.js"
+import type { Renderable } from "../../../Renderable.js"
+import type { CliRenderer } from "../../../renderer.js"
+import type { ActionMapConditions } from "./conditions.js"
+import type { ActionMapNotifier } from "./notify.js"
+import type { ActionMapState } from "./state.js"
 import type {
   ActiveKeySelection,
   ActiveKeyState,
@@ -18,9 +18,9 @@ import type {
   PendingSequenceState,
   RegisteredLayer,
   SequenceNode,
-} from "./types.js"
-import type { Emitter } from "./lib/emitter.js"
-import { createParsedKeyPart, snapshotStroke, stringifyKeyStroke } from "./lib/utils.js"
+} from "../types.js"
+import type { Emitter } from "../lib/emitter.js"
+import { createParsedKeyPart, snapshotStroke, stringifyKeyStroke } from "../lib/utils.js"
 
 export class ActionMapRuntime {
   constructor(

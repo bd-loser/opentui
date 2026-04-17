@@ -1157,6 +1157,93 @@ describe("action map", () => {
     expect(calls).toEqual(["submit"])
   })
 
+  test("binding parser ctx.parseObjectKey normalizes object keys", () => {
+    const manager = getActionMap(renderer)
+    const calls: string[] = []
+
+    manager.prependBindingParser(({ input, index, parseObjectKey }) => {
+      if (index !== 0 || input !== "@") {
+        return undefined
+      }
+
+      return {
+        parts: [parseObjectKey({ name: " RETURN " })],
+        nextIndex: input.length,
+      }
+    })
+
+    manager.registerCommands([
+      {
+        name: "submit",
+        run() {
+          calls.push("submit")
+        },
+      },
+    ])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "@", cmd: "submit" }],
+    })
+
+    mockInput.pressEnter()
+
+    expect(calls).toEqual(["submit"])
+    expect(getActiveKey(manager, "return")?.display).toBe("enter")
+  })
+
+  test("binding parser ctx.parseObjectKey uses the current binding syntax", () => {
+    const manager = getActionMap(renderer)
+    const calls: string[] = []
+
+    manager.clearBindingSyntax()
+    manager.setBindingSyntax({
+      normalizeTokenName(token) {
+        const normalized = token.trim().toLowerCase()
+        if (!normalized) {
+          throw new Error("Invalid action map token: token cannot be empty")
+        }
+
+        return normalized
+      },
+      parseObjectKey(key) {
+        const parsed = defaultBindingSyntax.parseObjectKey(key)
+        return {
+          ...parsed,
+          display: `custom:${parsed.display}`,
+        }
+      },
+    })
+
+    manager.prependBindingParser(({ input, index, parseObjectKey }) => {
+      if (index !== 0 || input !== "@") {
+        return undefined
+      }
+
+      return {
+        parts: [parseObjectKey({ name: "x" })],
+        nextIndex: input.length,
+      }
+    })
+
+    manager.registerCommands([
+      {
+        name: "submit",
+        run() {
+          calls.push("submit")
+        },
+      },
+    ])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "@", cmd: "submit" }],
+    })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["submit"])
+    expect(getActiveKey(manager, "x")?.display).toBe("custom:x")
+  })
+
   test("skips bindings when a binding expander returns an empty expansion", () => {
     const manager = getActionMap(renderer)
     const { errors } = captureDiagnostics(manager)

@@ -63,6 +63,7 @@ import type {
   ActionMapWarningEvent,
 } from "./types.js"
 import {
+  cloneDataValue,
   cloneStroke,
   createParsedKeyPart,
   createSequenceNode,
@@ -140,18 +141,6 @@ function createSyntheticCommandEvent(): KeyEvent {
     eventType: "press",
     source: "raw",
   })
-}
-
-function cloneCompileFieldValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return [...value]
-  }
-
-  if (value && typeof value === "object") {
-    return { ...(value as Record<string, unknown>) }
-  }
-
-  return value
 }
 
 function cloneParsedBindingInput(binding: ActionMapParsedBindingInput): ActionMapParsedBindingInput {
@@ -1349,7 +1338,7 @@ export class ActionMap {
         continue
       }
 
-      compileFields[fieldName] = cloneCompileFieldValue(value)
+      compileFields[fieldName] = cloneDataValue(value)
 
       const compiler = this.layerFields.get(fieldName)
       if (!compiler) {

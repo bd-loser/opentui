@@ -13,6 +13,12 @@ import type {
   SequenceNode,
 } from "./types.js"
 
+export interface CloneDataValueOptions {
+  deep?: boolean
+  freeze?: boolean
+  preserveNonPlainObjects?: boolean
+}
+
 export function normalizeKeyName(name: string): string {
   if (name === " ") {
     return "space"
@@ -57,6 +63,39 @@ export function getErrorMessage(error: unknown, fallback: string): string {
   }
 
   return fallback
+}
+
+function isPlainObject(value: object): boolean {
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+// This is intentionally narrower than `structuredClone(...)`: some action-map
+// metadata needs to preserve opaque values such as functions or class instances.
+export function cloneDataValue(value: unknown, options?: CloneDataValueOptions): unknown {
+  const deep = options?.deep === true
+  const freeze = options?.freeze === true
+  const preserveNonPlainObjects = options?.preserveNonPlainObjects === true
+
+  if (Array.isArray(value)) {
+    const cloned = deep ? value.map((entry) => cloneDataValue(entry, options)) : [...value]
+    return freeze ? Object.freeze(cloned) : cloned
+  }
+
+  if (value && typeof value === "object") {
+    if (preserveNonPlainObjects && !isPlainObject(value)) {
+      return value
+    }
+
+    const cloned: Record<string, unknown> = {}
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      cloned[key] = deep ? cloneDataValue(entry, options) : entry
+    }
+
+    return freeze ? Object.freeze(cloned) : cloned
+  }
+
+  return value
 }
 
 export function sortByPriorityAndOrder<T extends { priority: number; order: number }>(
@@ -116,7 +155,7 @@ export function freezeAttributes(attrs: ActionMapAttributes): Readonly<ActionMap
     return undefined
   }
 
-  return Object.freeze({ ...attrs })
+  return cloneDataValue(attrs, { freeze: true }) as Readonly<ActionMapAttributes>
 }
 
 export function cloneBindingInput(binding: ActionMapBindingInput): ActionMapBindingInput {

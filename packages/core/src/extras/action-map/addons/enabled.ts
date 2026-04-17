@@ -1,23 +1,24 @@
-import type { ActionMap } from "../types.js"
+import type { ActionMap, ActionMapReactiveMatcher } from "../types.js"
 
-export interface ActionMapKeyedEnabled {
-  match: () => boolean
-  keys: readonly string[]
-}
+/**
+ * Accepted shapes for the `enabled` layer field:
+ *
+ * - `boolean` — static on/off. No matcher; static `false` disables the layer.
+ * - `() => boolean` — raw callback, re-evaluated on every read. Simple but
+ *   not cacheable; use for state the manager has no way to observe.
+ * - `ActionMapReactiveMatcher` — a `{ get, subscribe }` pair. The manager
+ *   subscribes at layer registration and invalidates the cache on change,
+ *   then unsubscribes when the layer is unregistered.
+ */
+export type ActionMapEnabled = boolean | (() => boolean) | ActionMapReactiveMatcher
 
-export type ActionMapEnabled = boolean | (() => boolean) | ActionMapKeyedEnabled
-
-function isKeyedEnabledValue(value: unknown): value is ActionMapKeyedEnabled {
+function isReactiveMatcher(value: unknown): value is ActionMapReactiveMatcher {
   if (!value || typeof value !== "object") {
     return false
   }
 
-  const candidate = value as { match?: unknown; keys?: unknown }
-  if (typeof candidate.match !== "function") {
-    return false
-  }
-
-  return Array.isArray(candidate.keys)
+  const candidate = value as { get?: unknown; subscribe?: unknown }
+  return typeof candidate.get === "function" && typeof candidate.subscribe === "function"
 }
 
 function normalizeEnabledValue(fieldName: string, value: unknown): ActionMapEnabled {
@@ -29,19 +30,11 @@ function normalizeEnabledValue(fieldName: string, value: unknown): ActionMapEnab
     return value as () => boolean
   }
 
-  if (isKeyedEnabledValue(value)) {
+  if (isReactiveMatcher(value)) {
     return value
   }
 
-  throw new Error(`ActionMap enabled field "${fieldName}" must be a boolean, function, or { match, keys } object`)
-}
-
-function resolveEnabledValue(value: boolean | (() => boolean)): boolean {
-  if (typeof value !== "function") {
-    return value
-  }
-
-  return value()
+  throw new Error(`ActionMap enabled field "${fieldName}" must be a boolean, a function, or a reactive matcher`)
 }
 
 export function registerEnabledField(manager: ActionMap): () => void {
@@ -57,12 +50,9 @@ export function registerEnabledField(manager: ActionMap): () => void {
         return
       }
 
-      if (typeof normalized === "function") {
-        ctx.match(() => resolveEnabledValue(normalized))
-        return
-      }
-
-      ctx.match(() => resolveEnabledValue(normalized.match), { keys: normalized.keys })
+      // Either a function or a reactive matcher — both are accepted directly
+      // by `ctx.match`, which wires subscription for the reactive form.
+      ctx.match(normalized)
     },
   })
 }

@@ -66,6 +66,7 @@ export type {
   ActionMapWarningEvent,
   ActionMapResolvedBindingCommand,
   ActionMapScope,
+  ActionMapEventMatchResolverContext,
   ActionMapEventMatchResolver,
   ActionMapTargetLayer,
   ActionMapToken,

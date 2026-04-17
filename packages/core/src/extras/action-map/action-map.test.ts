@@ -1241,6 +1241,107 @@ describe("action map", () => {
     expect(calls).toEqual(["release"])
   })
 
+  test("event match resolver ctx.matchKey normalizes object keys", () => {
+    const manager = getActionMap(renderer)
+    const calls: string[] = []
+
+    manager.registerEventMatchResolver((event, ctx) => {
+      if (event.name !== "x") {
+        return undefined
+      }
+
+      return [ctx.matchKey({ name: " RETURN " })]
+    })
+
+    manager.registerCommands([
+      {
+        name: "submit",
+        run() {
+          calls.push("submit")
+        },
+      },
+    ])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "return", cmd: "submit" }],
+    })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["submit"])
+  })
+
+  test("event match resolver ctx.matchKey uses the current parser and token configuration", () => {
+    const manager = getActionMap(renderer)
+    const calls: string[] = []
+
+    manager.clearBindingParsers()
+    manager.appendBindingParser(({ input, index, tokens }) => {
+      if (input[index] !== "[") {
+        return undefined
+      }
+
+      const end = input.indexOf("]", index)
+      if (end === -1) {
+        throw new Error(`Invalid key sequence "${input}": unterminated token`)
+      }
+
+      const tokenName = input.slice(index, end + 1).trim()
+      const token = tokens.get(tokenName)
+      if (!token) {
+        return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
+      }
+
+      return {
+        parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
+        nextIndex: end + 1,
+        usedTokens: [tokenName],
+      }
+    })
+    manager.appendBindingParser(defaultBindingParser)
+
+    manager.clearBindingSyntax()
+    manager.setBindingSyntax({
+      normalizeTokenName(token) {
+        const normalized = token.trim()
+        if (!normalized) {
+          throw new Error("Invalid action map token: token cannot be empty")
+        }
+
+        return normalized
+      },
+      parseObjectKey(key) {
+        return defaultBindingSyntax.parseObjectKey(key)
+      },
+    })
+
+    manager.registerEventMatchResolver((event, ctx) => {
+      if (event.name !== "x" || !event.ctrl) {
+        return undefined
+      }
+
+      return [ctx.matchKey("[Leader]")]
+    })
+
+    manager.registerToken({ name: "[Leader]", key: { name: "z" } })
+    manager.registerCommands([
+      {
+        name: "leader-fallback",
+        run() {
+          calls.push("leader")
+        },
+      },
+    ])
+    manager.registerLayer({
+      scope: "global",
+      bindings: [{ key: "[Leader]", cmd: "leader-fallback" }],
+    })
+
+    mockInput.pressKey("x", { ctrl: true })
+
+    expect(calls).toEqual(["leader"])
+  })
+
   test("supports hyper key bindings", () => {
     const manager = getActionMap(renderer)
     const calls: string[] = []

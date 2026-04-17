@@ -22,7 +22,14 @@ export interface ParsedKeyStroke extends KeyStroke {
   super: boolean
 }
 
-export type ActionMapEventMatchResolver = (event: KeyEvent) => readonly string[] | undefined
+export interface ActionMapEventMatchResolverContext {
+  matchKey(key: KeyLike): string
+}
+
+export type ActionMapEventMatchResolver = (
+  event: KeyEvent,
+  ctx: ActionMapEventMatchResolverContext,
+) => readonly string[] | undefined
 
 export interface ParsedKeyToken {
   stroke: ParsedKeyStroke

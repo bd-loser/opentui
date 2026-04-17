@@ -1,11 +1,13 @@
 import { KeyEvent } from "../../lib/KeyHandler.js"
 import type { Renderable } from "../../Renderable.js"
+import type { ActionMapCompiler } from "./action-map-compiler.js"
 import type { ActionMapCommands } from "./action-map-commands.js"
 import type { ActionMapConditions } from "./action-map-conditions.js"
 import type { ActionMapNotifier } from "./action-map-notify.js"
 import type { ActionMapRuntime } from "./action-map-runtime.js"
 import type { ActionMapState } from "./action-map-state.js"
 import type {
+  ActionMapEventMatchResolverContext,
   ActionMapEventMatchResolver,
   ActionMapKeyInputContext,
   ActionMapRawInputContext,
@@ -16,13 +18,22 @@ import type {
 } from "./types.js"
 
 export class ActionMapDispatch {
+  private readonly eventMatchResolverContext: ActionMapEventMatchResolverContext
+
   constructor(
     private readonly state: ActionMapState,
     private readonly notify: ActionMapNotifier,
     private readonly runtime: ActionMapRuntime,
     private readonly conditions: ActionMapConditions,
     private readonly commands: ActionMapCommands,
-  ) {}
+    private readonly compiler: ActionMapCompiler,
+  ) {
+    this.eventMatchResolverContext = {
+      matchKey: (key) => {
+        return this.compiler.parseTokenKey(key).matchKey
+      },
+    }
+  }
 
   public handleRawSequence(sequence: string): boolean {
     if (this.state.core.destroyed) {
@@ -224,7 +235,7 @@ export class ActionMapDispatch {
     }
 
     if (resolvers.length === 1) {
-      return resolveSingleEventMatchKeys(resolvers[0]!, event, this.notify)
+      return resolveSingleEventMatchKeys(resolvers[0]!, event, this.eventMatchResolverContext, this.notify)
     }
 
     const keys: string[] = []
@@ -234,7 +245,7 @@ export class ActionMapDispatch {
       let resolved: readonly string[] | undefined
 
       try {
-        resolved = resolver(event)
+        resolved = resolver(event, this.eventMatchResolverContext)
       } catch (error) {
         this.notify.emitError("[ActionMap] Error in event match resolver:", error)
         continue
@@ -342,11 +353,12 @@ export class ActionMapDispatch {
 function resolveSingleEventMatchKeys(
   resolver: ActionMapEventMatchResolver,
   event: KeyEvent,
+  ctx: ActionMapEventMatchResolverContext,
   notify: ActionMapNotifier,
 ): string[] {
   let resolved: readonly string[] | undefined
   try {
-    resolved = resolver(event)
+    resolved = resolver(event, ctx)
   } catch (error) {
     notify.emitError("[ActionMap] Error in event match resolver:", error)
     return []

@@ -151,7 +151,7 @@ export class ActionMap {
         this.warnUnknownField(kind, fieldName)
       },
     })
-    this.dispatch = new ActionMapDispatch(this.state, this.notify, this.runtime, this.conditions, this.commands)
+    this.dispatch = new ActionMapDispatch(this.state, this.notify, this.runtime, this.conditions, this.commands, this.compiler)
     this.state.config.bindingSyntax = defaultBindingSyntax
     this.state.config.bindingParsers.append(defaultBindingParser)
     this.state.config.eventMatchResolvers.append(defaultEventMatchResolver)

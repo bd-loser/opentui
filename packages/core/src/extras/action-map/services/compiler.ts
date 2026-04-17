@@ -145,7 +145,7 @@ export class CompilerService {
           )
         }
 
-        for (const compiledInput of this.expandParsedBindings(
+        for (const compiledInput of this.applyBindingTransformers(
           binding,
           sequence,
           tokens,
@@ -291,7 +291,7 @@ export class CompilerService {
     throw new Error(`Invalid action map binding event "${String(event)}": expected "press" or "release"`)
   }
 
-  private expandParsedBindings(
+  private applyBindingTransformers(
     binding: ActionMapBindingInput,
     sequence: ParsedKeyPart[],
     tokens: ReadonlyMap<string, ParsedKeyToken>,

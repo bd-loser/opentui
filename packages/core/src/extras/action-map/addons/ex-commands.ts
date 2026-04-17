@@ -5,7 +5,6 @@ import type {
   ActionMap,
   ActionMapParsedCommand,
 } from "../types.js"
-import { normalizeCommandName } from "../lib/utils.js"
 
 const EMPTY_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 
@@ -17,8 +16,8 @@ export interface ExCommand {
   [key: string]: unknown
 }
 
-function normalizeExCommandName(name: string): string {
-  const normalized = normalizeCommandName(name)
+function normalizeExCommandName(manager: ActionMap, name: string): string {
+  const normalized = manager.normalizeCommandName(name)
   if (normalized.startsWith(":")) {
     return normalized
   }
@@ -88,7 +87,7 @@ export function registerExCommands(manager: ActionMap, commands: ExCommand[]): (
     }
 
     for (const name of names) {
-      const normalizedName = normalizeExCommandName(name)
+      const normalizedName = normalizeExCommandName(manager, name)
       commandMap.set(normalizedName, command)
 
       registrations.push({
@@ -121,7 +120,7 @@ export function registerExCommands(manager: ActionMap, commands: ExCommand[]): (
     }
 
     const parsed = parseCommandInput(input)
-    const normalizedName = normalizeExCommandName(parsed.name)
+    const normalizedName = normalizeExCommandName(manager, parsed.name)
     const command = commandMap.get(normalizedName)
     if (!command) {
       return undefined

@@ -299,6 +299,10 @@ export class ActionMap {
     return this.commands.getCommands(query)
   }
 
+  public normalizeCommandName(name: string): string {
+    return this.commands.normalizeCommandName(name)
+  }
+
   public runCommand(cmd: string, options?: ActionMapRunCommandOptions): ActionMapRunCommandResult {
     return this.commands.runCommand(cmd, options)
   }

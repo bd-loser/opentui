@@ -266,6 +266,15 @@ describe("action map", () => {
     expect(calls).toEqual(["save-file", "save-file"])
   })
 
+  test("normalizeCommandName exposes command normalization on the public facade", () => {
+    const manager = getActionMap(renderer)
+
+    expect(manager.normalizeCommandName("  save-file  ")).toBe("save-file")
+    expect(() => manager.normalizeCommandName("save file")).toThrow(
+      'Invalid action map command name "save file": command names cannot contain whitespace',
+    )
+  })
+
   test("runCommand and key-triggered commands share resolver precedence", () => {
     const manager = getActionMap(renderer)
     const calls: string[] = []

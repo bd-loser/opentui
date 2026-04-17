@@ -110,6 +110,10 @@ export class ActionMapCommands {
     })
   }
 
+  public normalizeCommandName(name: string): string {
+    return normalizeCommandName(name)
+  }
+
   public runCommand(cmd: string, options?: ActionMapRunCommandOptions): ActionMapRunCommandResult {
     if (this.state.core.destroyed) {
       return { ok: false, reason: "error" }

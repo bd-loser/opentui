@@ -292,7 +292,10 @@ export interface ActionMapBindingCompilerContext {
   skipOriginal(): void
 }
 
-export type ActionMapBindingCompiler = (binding: ActionMapParsedBindingInput, ctx: ActionMapBindingCompilerContext) => void
+export type ActionMapBindingCompiler = (
+  binding: ActionMapParsedBindingInput,
+  ctx: ActionMapBindingCompilerContext,
+) => void
 
 export interface ActionMapCommandFieldContext {
   attr(name: string, value: unknown): void

@@ -970,7 +970,9 @@ export default function ActionMapDemo() {
                   <span style={{ fg: palette.text }}>{String(editor().plainText.length)}</span>
                   <span style={{ fg: palette.separator }}>{"  |  "}</span>
                   <span style={{ fg: palette.textDim }}>Keys: </span>
-                  <span style={{ fg: palette.command }}>{editor().traits.suspend === true ? "action-map" : "local"}</span>
+                  <span style={{ fg: palette.command }}>
+                    {editor().traits.suspend === true ? "action-map" : "local"}
+                  </span>
                 </>
               )}
             </Show>

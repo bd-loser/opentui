@@ -148,7 +148,9 @@ export function registerExCommands(manager: ActionMap, commands: ExCommand[]): (
       run(baseCtx) {
         const commandView: ActionMapCommandRecord =
           record ??
-          (attrs ? { name: normalizedName, fields: EMPTY_FIELDS, attrs } : { name: normalizedName, fields: EMPTY_FIELDS })
+          (attrs
+            ? { name: normalizedName, fields: EMPTY_FIELDS, attrs }
+            : { name: normalizedName, fields: EMPTY_FIELDS })
         return command.run({
           ...baseCtx,
           command: commandView,

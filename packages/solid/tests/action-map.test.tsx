@@ -439,7 +439,12 @@ describe("solid action map hooks", () => {
     function App() {
       const manager = useActionMap()
       const offCommands = manager.registerCommands([
-        { name: "normal-only", run() { calls.push("normal") } },
+        {
+          name: "normal-only",
+          run() {
+            calls.push("normal")
+          },
+        },
       ])
       onCleanup(offCommands)
 

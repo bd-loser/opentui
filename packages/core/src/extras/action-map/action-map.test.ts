@@ -1292,15 +1292,21 @@ describe("action map", () => {
     const runs: Record<string, string[]> = { a: [], b: [], c: [], d: [] }
     const outsideSeen: Record<string, boolean> = { a: false, b: false, c: false, d: false }
 
-    function register(
-      keyName: "a" | "b" | "c" | "d",
-      preventDefault: boolean,
-      fallthrough: boolean,
-    ): void {
+    function register(keyName: "a" | "b" | "c" | "d", preventDefault: boolean, fallthrough: boolean): void {
       const bucket = runs[keyName]!
       manager.registerCommands([
-        { name: `primary-${keyName}`, run() { bucket.push("primary") } },
-        { name: `followup-${keyName}`, run() { bucket.push("followup") } },
+        {
+          name: `primary-${keyName}`,
+          run() {
+            bucket.push("primary")
+          },
+        },
+        {
+          name: `followup-${keyName}`,
+          run() {
+            bucket.push("followup")
+          },
+        },
       ])
       // Keep both bindings on the same `preventDefault` value so each case
       // varies only one axis.

@@ -479,7 +479,12 @@ describe("React action map hooks", () => {
       useEffect(() => {
         const offEnabled = registerEnabledField(manager)
         const offCommands = manager.registerCommands([
-          { name: "normal-only", run() { calls.push("normal") } },
+          {
+            name: "normal-only",
+            run() {
+              calls.push("normal")
+            },
+          },
         ])
         return () => {
           offCommands()
@@ -488,8 +493,7 @@ describe("React action map hooks", () => {
       }, [manager])
 
       const matcher = useMemo(
-        () =>
-          reactiveMatcherFromStore(store.subscribe, store.getSnapshot, (mode) => mode === "normal"),
+        () => reactiveMatcherFromStore(store.subscribe, store.getSnapshot, (mode) => mode === "normal"),
         [],
       )
 

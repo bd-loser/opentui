@@ -28,10 +28,10 @@ describe("ex commands addon", () => {
   })
 
   test("supports aliases and nargs validation", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "fallback",
         run() {
@@ -40,7 +40,7 @@ describe("ex commands addon", () => {
       },
     ])
 
-    registerExCommands(manager, [
+    registerExCommands(actionMap, [
       {
         name: "write",
         aliases: ["w"],
@@ -54,7 +54,7 @@ describe("ex commands addon", () => {
     const target = createFocusableBox("ex-target")
     renderer.root.add(target)
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "x", cmd: "fallback" },
@@ -62,7 +62,7 @@ describe("ex commands addon", () => {
       ],
     })
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: ":write" }],
     })
@@ -75,11 +75,11 @@ describe("ex commands addon", () => {
   })
 
   test("supports colon-prefixed names and each nargs mode", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
     let passthroughCount = 0
 
-    registerExCommands(manager, [
+    registerExCommands(actionMap, [
       {
         name: ":quit",
         nargs: "0",
@@ -122,7 +122,7 @@ describe("ex commands addon", () => {
     }
     renderer.root.add(target)
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       target,
       bindings: [
         { key: "a", cmd: ":quit" },
@@ -156,9 +156,9 @@ describe("ex commands addon", () => {
   })
 
   test("forwards extra command fields into registered ex commands", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerCommandFields({
+    actionMap.registerCommandFields({
       desc(value, ctx) {
         ctx.attr("desc", value)
       },
@@ -170,7 +170,7 @@ describe("ex commands addon", () => {
       },
     })
 
-    registerExCommands(manager, [
+    registerExCommands(actionMap, [
       {
         name: "write",
         aliases: ["w"],
@@ -182,20 +182,20 @@ describe("ex commands addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: ":w file.txt" }],
     })
 
     expect(
-      manager.getActiveKeys({ includeMetadata: true }).find((candidate) => candidate.stroke.name === "x")?.commandAttrs,
+      actionMap.getActiveKeys({ includeMetadata: true }).find((candidate) => candidate.stroke.name === "x")?.commandAttrs,
     ).toEqual({
       desc: "Write the current buffer",
       title: "Write Buffer",
       category: "File",
     })
 
-    expect(manager.getCommands({ filter: { namespace: "excommands" } })).toEqual([
+    expect(actionMap.getCommands({ filter: { namespace: "excommands" } })).toEqual([
       {
         name: ":write",
         fields: {
@@ -232,10 +232,10 @@ describe("ex commands addon", () => {
   })
 
   test("can be disposed to remove ex-command resolution", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "fallback",
         run() {
@@ -244,12 +244,12 @@ describe("ex commands addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "fallback" }],
     })
 
-    const offExCommands = registerExCommands(manager, [
+    const offExCommands = registerExCommands(actionMap, [
       {
         name: "write",
         aliases: ["w"],
@@ -259,7 +259,7 @@ describe("ex commands addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: ":w file.txt" }],
     })
@@ -274,10 +274,10 @@ describe("ex commands addon", () => {
   })
 
   test("runCommand resolves ex commands programmatically", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    registerExCommands(manager, [
+    registerExCommands(actionMap, [
       {
         name: "write",
         aliases: ["w"],
@@ -289,10 +289,10 @@ describe("ex commands addon", () => {
       },
     ])
 
-    expect(manager.runCommand(":w file.txt")).toEqual({
+    expect(actionMap.runCommand(":w file.txt")).toEqual({
       ok: true,
     })
-    expect(manager.runCommand(":w file.txt", { includeCommand: true })).toEqual({
+    expect(actionMap.runCommand(":w file.txt", { includeCommand: true })).toEqual({
       ok: true,
       command: {
         name: ":w",
@@ -304,11 +304,11 @@ describe("ex commands addon", () => {
         },
       },
     })
-    expect(manager.runCommand(":w")).toEqual({
+    expect(actionMap.runCommand(":w")).toEqual({
       ok: false,
       reason: "invalid-args",
     })
-    expect(manager.runCommand(":w", { includeCommand: true })).toEqual({
+    expect(actionMap.runCommand(":w", { includeCommand: true })).toEqual({
       ok: false,
       reason: "invalid-args",
       command: {
@@ -321,7 +321,7 @@ describe("ex commands addon", () => {
         },
       },
     })
-    expect(manager.runCommand(":missing")).toEqual({ ok: false, reason: "not-found" })
+    expect(actionMap.runCommand(":missing")).toEqual({ ok: false, reason: "not-found" })
     expect(calls).toEqual([":w file.txt:file.txt", ":w file.txt:file.txt"])
   })
 })

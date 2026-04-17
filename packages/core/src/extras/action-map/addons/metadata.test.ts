@@ -16,10 +16,10 @@ describe("metadata addon", () => {
   })
 
   test("registers binding and command metadata fields", () => {
-    const manager = getActionMap(renderer)
-    registerMetadataFields(manager)
+    const actionMap = getActionMap(renderer)
+    registerMetadataFields(actionMap)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "save-file",
         desc: "Save file",
@@ -29,12 +29,12 @@ describe("metadata addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
     })
 
-    const activeKey = manager
+    const activeKey = actionMap
       .getActiveKeys({ includeBindings: true })
       .find((candidate) => candidate.stroke.name === "x")
 
@@ -44,10 +44,10 @@ describe("metadata addon", () => {
   })
 
   test("exposes generic binding and command metadata through includeMetadata", () => {
-    const manager = getActionMap(renderer)
-    registerMetadataFields(manager)
+    const actionMap = getActionMap(renderer)
+    registerMetadataFields(actionMap)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "save-file",
         desc: "Save file",
@@ -57,12 +57,12 @@ describe("metadata addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
     })
 
-    const activeKey = manager
+    const activeKey = actionMap
       .getActiveKeys({ includeMetadata: true })
       .find((candidate) => candidate.stroke.name === "x")
 
@@ -73,10 +73,10 @@ describe("metadata addon", () => {
   })
 
   test("can include both metadata and bindings", () => {
-    const manager = getActionMap(renderer)
-    registerMetadataFields(manager)
+    const actionMap = getActionMap(renderer)
+    registerMetadataFields(actionMap)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "save-file",
         desc: "Save file",
@@ -86,12 +86,12 @@ describe("metadata addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
     })
 
-    const activeKey = manager
+    const activeKey = actionMap
       .getActiveKeys({ includeBindings: true, includeMetadata: true })
       .find((candidate) => candidate.stroke.name === "x")
 
@@ -101,15 +101,15 @@ describe("metadata addon", () => {
   })
 
   test("normalizes metadata strings and rejects invalid values", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const errors: string[] = []
 
-    manager.on("error", (event) => {
+    actionMap.on("error", (event) => {
       errors.push(event.message)
     })
-    registerMetadataFields(manager)
+    registerMetadataFields(actionMap)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "save-file",
         desc: "  Save file  ",
@@ -119,12 +119,12 @@ describe("metadata addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "  Write file  ", group: "  File  " }],
     })
 
-    const activeKey = manager
+    const activeKey = actionMap
       .getActiveKeys({ includeBindings: true })
       .find((candidate) => candidate.stroke.name === "x")
     expect(activeKey?.bindings?.[0]?.attrs).toEqual({ desc: "Write file", group: "File" })
@@ -132,7 +132,7 @@ describe("metadata addon", () => {
     expect(activeKey?.bindings?.[0]?.commandAttrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
 
     expect(() => {
-      manager.registerCommands([
+      actionMap.registerCommands([
         {
           name: "bad-command",
           desc: 123,
@@ -142,7 +142,7 @@ describe("metadata addon", () => {
     }).not.toThrow()
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "y", cmd: "save-file", group: "   " }],
       })
@@ -152,17 +152,17 @@ describe("metadata addon", () => {
       'ActionMap metadata field "desc" must be a string',
       'ActionMap metadata field "group" cannot be empty',
     ])
-    expect(manager.getCommands().some((command) => command.name === "bad-command")).toBe(false)
-    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "y")).toBe(false)
+    expect(actionMap.getCommands().some((command) => command.name === "bad-command")).toBe(false)
+    expect(actionMap.getActiveKeys().some((candidate) => candidate.stroke.name === "y")).toBe(false)
   })
 
   test("can be disposed to stop compiling metadata fields", () => {
-    const manager = getActionMap(renderer)
-    const offMetadata = registerMetadataFields(manager)
+    const actionMap = getActionMap(renderer)
+    const offMetadata = registerMetadataFields(actionMap)
 
     offMetadata()
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "save-file",
         desc: "Save file",
@@ -172,12 +172,12 @@ describe("metadata addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
     })
 
-    const activeKey = manager
+    const activeKey = actionMap
       .getActiveKeys({ includeBindings: true, includeMetadata: true })
       .find((candidate) => candidate.stroke.name === "x")
 

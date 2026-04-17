@@ -182,12 +182,12 @@ function createTextareaBindingsWithDescriptions(
  * focus change. Reference-counted per `ActionMap`; prefer
  * `registerManagedTextareaLayer` unless you need this separately.
  */
-export function registerTextareaMappingSuspension(manager: ActionMap): () => void {
-  const existing = textareaMappingSuspensionRegistrations.get(manager)
+export function registerTextareaMappingSuspension(actionMap: ActionMap): () => void {
+  const existing = textareaMappingSuspensionRegistrations.get(actionMap)
   if (existing) {
     existing.count += 1
     return () => {
-      const current = textareaMappingSuspensionRegistrations.get(manager)
+      const current = textareaMappingSuspensionRegistrations.get(actionMap)
       if (current !== existing) {
         return
       }
@@ -198,7 +198,7 @@ export function registerTextareaMappingSuspension(manager: ActionMap): () => voi
       }
 
       current.dispose()
-      textareaMappingSuspensionRegistrations.delete(manager)
+      textareaMappingSuspensionRegistrations.delete(actionMap)
     }
   }
 
@@ -244,19 +244,19 @@ export function registerTextareaMappingSuspension(manager: ActionMap): () => voi
     suspendEditor(current)
   }
 
-  manager.renderer.on(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
-  suspendEditor(manager.renderer.currentFocusedEditor)
+  actionMap.renderer.on(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
+  suspendEditor(actionMap.renderer.currentFocusedEditor)
 
   const dispose = (): void => {
-    manager.renderer.off(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
+    actionMap.renderer.off(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
     restoreEditor(suspendedEditor)
   }
 
   const registration = { count: 1, dispose }
-  textareaMappingSuspensionRegistrations.set(manager, registration)
+  textareaMappingSuspensionRegistrations.set(actionMap, registration)
 
   return () => {
-    const current = textareaMappingSuspensionRegistrations.get(manager)
+    const current = textareaMappingSuspensionRegistrations.get(actionMap)
     if (current !== registration) {
       return
     }
@@ -267,7 +267,7 @@ export function registerTextareaMappingSuspension(manager: ActionMap): () => voi
     }
 
     registration.dispose()
-    textareaMappingSuspensionRegistrations.delete(manager)
+    textareaMappingSuspensionRegistrations.delete(actionMap)
   }
 }
 
@@ -369,13 +369,13 @@ function createEditBufferCommands(
  * `registerManagedTextareaLayer` unless you need the commands without the
  * default bindings or textarea suspension.
  */
-export function registerEditBufferCommands(manager: ActionMap, options?: EditBufferCommandOptions): () => void {
+export function registerEditBufferCommands(actionMap: ActionMap, options?: EditBufferCommandOptions): () => void {
   const descriptions = resolveEditBufferCommandDescriptions(options)
-  const existing = editBufferCommandRegistrations.get(manager)
+  const existing = editBufferCommandRegistrations.get(actionMap)
   if (existing) {
     existing.count += 1
     return () => {
-      const current = editBufferCommandRegistrations.get(manager)
+      const current = editBufferCommandRegistrations.get(actionMap)
       if (current !== existing) {
         return
       }
@@ -386,16 +386,16 @@ export function registerEditBufferCommands(manager: ActionMap, options?: EditBuf
       }
 
       current.dispose()
-      editBufferCommandRegistrations.delete(manager)
+      editBufferCommandRegistrations.delete(actionMap)
     }
   }
 
-  const dispose = manager.registerCommands(createEditBufferCommands(descriptions))
+  const dispose = actionMap.registerCommands(createEditBufferCommands(descriptions))
   const registration = { count: 1, dispose }
-  editBufferCommandRegistrations.set(manager, registration)
+  editBufferCommandRegistrations.set(actionMap, registration)
 
   return () => {
-    const current = editBufferCommandRegistrations.get(manager)
+    const current = editBufferCommandRegistrations.get(actionMap)
     if (current !== registration) {
       return
     }
@@ -406,7 +406,7 @@ export function registerEditBufferCommands(manager: ActionMap, options?: EditBuf
     }
 
     registration.dispose()
-    editBufferCommandRegistrations.delete(manager)
+    editBufferCommandRegistrations.delete(actionMap)
   }
 }
 
@@ -417,17 +417,17 @@ export function registerEditBufferCommands(manager: ActionMap, options?: EditBuf
  * lower-level helpers because they are reference-counted.
  */
 export function registerManagedTextareaLayer(
-  manager: ActionMap,
+  actionMap: ActionMap,
   layer: ManagedTextareaLayer,
   options?: EditBufferCommandOptions,
 ): () => void {
   const descriptions = resolveEditBufferCommandDescriptions(options)
-  const offCommands = registerEditBufferCommands(manager, options)
-  const offSuspension = registerTextareaMappingSuspension(manager)
+  const offCommands = registerEditBufferCommands(actionMap, options)
+  const offSuspension = registerTextareaMappingSuspension(actionMap)
 
   try {
     const { bindings, ...rest } = layer
-    const offLayer = manager.registerLayer({
+    const offLayer = actionMap.registerLayer({
       ...rest,
       bindings: createTextareaBindingsWithDescriptions(bindings, descriptions),
     })

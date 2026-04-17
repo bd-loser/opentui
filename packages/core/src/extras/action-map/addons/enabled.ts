@@ -31,8 +31,8 @@ function normalizeEnabledValue(fieldName: string, value: unknown): ActionMapEnab
   throw new Error(`ActionMap enabled field "${fieldName}" must be a boolean, a function, or a reactive matcher`)
 }
 
-export function registerEnabledField(manager: ActionMap): () => void {
-  return manager.registerLayerFields({
+export function registerEnabledField(actionMap: ActionMap): () => void {
+  return actionMap.registerLayerFields({
     enabled(value, ctx) {
       const normalized = normalizeEnabledValue("enabled", value)
       if (normalized === true) {

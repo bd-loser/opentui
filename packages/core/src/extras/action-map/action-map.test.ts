@@ -28,40 +28,40 @@ function createFocusableBox(id: string): BoxRenderable {
 }
 
 function getActiveKey(
-  manager: ActionMap,
+  actionMap: ActionMap,
   name: string,
   options?: ActionMapActiveKeyOptions,
 ): ActionMapActiveKey | undefined {
-  return manager.getActiveKeys(options).find((candidate) => candidate.stroke.name === name)
+  return actionMap.getActiveKeys(options).find((candidate) => candidate.stroke.name === name)
 }
 
-function getActiveKeyNames(manager: ActionMap): string[] {
-  return manager
+function getActiveKeyNames(actionMap: ActionMap): string[] {
+  return actionMap
     .getActiveKeys()
     .map((candidate) => candidate.stroke.name)
     .sort()
 }
 
-function getCommand(manager: ActionMap, name: string) {
-  return manager.getCommands().find((candidate) => candidate.name === name)
+function getCommand(actionMap: ActionMap, name: string) {
+  return actionMap.getCommands().find((candidate) => candidate.name === name)
 }
 
 function getActiveKeyDisplay(
-  manager: ActionMap,
+  actionMap: ActionMap,
   display: string,
   options?: ActionMapActiveKeyOptions,
 ): ActionMapActiveKey | undefined {
-  return manager.getActiveKeys(options).find((candidate) => candidate.display === display)
+  return actionMap.getActiveKeys(options).find((candidate) => candidate.display === display)
 }
 
-function captureDiagnostics(manager: ActionMap): { warnings: string[]; errors: string[] } {
+function captureDiagnostics(actionMap: ActionMap): { warnings: string[]; errors: string[] } {
   const warnings: string[] = []
   const errors: string[] = []
 
-  manager.on("warning", (event) => {
+  actionMap.on("warning", (event) => {
     warnings.push(event.message)
   })
-  manager.on("error", (event) => {
+  actionMap.on("error", (event) => {
     errors.push(event.message)
   })
 
@@ -137,14 +137,14 @@ describe("action map", () => {
     renderer?.destroy()
   })
 
-  test("returns the same manager for the same renderer", () => {
+  test("returns the same action map for the same renderer", () => {
     const first = getActionMap(renderer)
     const second = getActionMap(renderer)
 
     expect(first).toBe(second)
   })
 
-  test("creates a fresh manager after manual destroy", () => {
+  test("creates a fresh action map after manual destroy", () => {
     const first = getActionMap(renderer)
     first.destroy()
 
@@ -153,57 +153,57 @@ describe("action map", () => {
   })
 
   test("returns safe defaults after destroy", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerCommands([{ name: "noop", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "noop" }],
     })
 
-    manager.destroy()
+    actionMap.destroy()
 
-    expect(manager.getData("mode")).toBeUndefined()
-    expect(manager.hasPendingSequence()).toBe(false)
-    expect(manager.getPendingSequence()).toEqual([])
-    expect(manager.getPendingSequenceParts()).toEqual([])
-    expect(manager.getActiveKeys()).toEqual([])
-    expect(manager.getCommands()).toEqual([])
-    expect(manager.popPendingSequence()).toBe(false)
-    expect(manager.runCommand("noop")).toEqual({ ok: false, reason: "error" })
+    expect(actionMap.getData("mode")).toBeUndefined()
+    expect(actionMap.hasPendingSequence()).toBe(false)
+    expect(actionMap.getPendingSequence()).toEqual([])
+    expect(actionMap.getPendingSequenceParts()).toEqual([])
+    expect(actionMap.getActiveKeys()).toEqual([])
+    expect(actionMap.getCommands()).toEqual([])
+    expect(actionMap.popPendingSequence()).toBe(false)
+    expect(actionMap.runCommand("noop")).toEqual({ ok: false, reason: "error" })
 
     expect(() => {
-      manager.setData("mode", "normal")
-      manager.clearPendingSequence()
-      manager.setBindingSyntax(defaultBindingSyntax)
-      manager.clearBindingSyntax()
-      manager.clearBindingParsers()
-      manager.clearBindingExpanders()
-      manager.clearEventMatchResolvers()
-      manager.hook("state", () => {})()
-      manager.registerLayer({ scope: "global", bindings: [{ key: "y", cmd: "noop" }] })()
-      manager.registerToken({ name: "<leader>", key: { name: "x" } })()
-      manager.registerCommands([{ name: "other", run() {} }])()
-      manager.registerLayerFields({ mode() {} })()
-      manager.registerBindingFields({ active() {} })()
-      manager.registerCommandFields({ title() {} })()
-      manager.registerBindingCompiler(() => {})()
-      manager.prependBindingParser(() => undefined)()
-      manager.appendBindingParser(() => undefined)()
-      manager.prependBindingExpander(() => undefined)()
-      manager.appendBindingExpander(() => undefined)()
-      manager.registerCommandResolver(() => undefined)()
-      manager.registerEventMatchResolver(() => undefined)()
-      manager.onKeyInput(() => {})()
-      manager.onRawInput(() => {})()
+      actionMap.setData("mode", "normal")
+      actionMap.clearPendingSequence()
+      actionMap.setBindingSyntax(defaultBindingSyntax)
+      actionMap.clearBindingSyntax()
+      actionMap.clearBindingParsers()
+      actionMap.clearBindingExpanders()
+      actionMap.clearEventMatchResolvers()
+      actionMap.hook("state", () => {})()
+      actionMap.registerLayer({ scope: "global", bindings: [{ key: "y", cmd: "noop" }] })()
+      actionMap.registerToken({ name: "<leader>", key: { name: "x" } })()
+      actionMap.registerCommands([{ name: "other", run() {} }])()
+      actionMap.registerLayerFields({ mode() {} })()
+      actionMap.registerBindingFields({ active() {} })()
+      actionMap.registerCommandFields({ title() {} })()
+      actionMap.registerBindingCompiler(() => {})()
+      actionMap.prependBindingParser(() => undefined)()
+      actionMap.appendBindingParser(() => undefined)()
+      actionMap.prependBindingExpander(() => undefined)()
+      actionMap.appendBindingExpander(() => undefined)()
+      actionMap.registerCommandResolver(() => undefined)()
+      actionMap.registerEventMatchResolver(() => undefined)()
+      actionMap.onKeyInput(() => {})()
+      actionMap.onRawInput(() => {})()
     }).not.toThrow()
   })
 
   test("defaults targetless layers to global scope", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "global-default",
         run() {
@@ -212,7 +212,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       bindings: [{ key: "x", cmd: "global-default" }],
     })
 
@@ -222,19 +222,19 @@ describe("action map", () => {
   })
 
   test("supports function binding commands", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
     const handler = () => {
       calls.push("handled")
     }
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       bindings: [{ key: "x", cmd: handler }],
     })
 
-    expect(getActiveKey(manager, "x")?.command).toBe(handler)
-    expect(getActiveKey(manager, "x", { includeBindings: true })?.bindings?.[0]?.command).toBe(handler)
+    expect(getActiveKey(actionMap, "x")?.command).toBe(handler)
+    expect(getActiveKey(actionMap, "x", { includeBindings: true })?.bindings?.[0]?.command).toBe(handler)
 
     mockInput.pressKey("x")
 
@@ -242,10 +242,10 @@ describe("action map", () => {
   })
 
   test("runCommand executes a registered command and only includes command metadata when requested", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "save-file",
         run() {
@@ -254,32 +254,32 @@ describe("action map", () => {
       },
     ])
 
-    expect(manager.runCommand("save-file")).toEqual({ ok: true })
-    expect(manager.runCommand("save-file", { includeCommand: true })).toEqual({
+    expect(actionMap.runCommand("save-file")).toEqual({ ok: true })
+    expect(actionMap.runCommand("save-file", { includeCommand: true })).toEqual({
       ok: true,
       command: {
         name: "save-file",
         fields: {},
       },
     })
-    expect(manager.runCommand("missing-command")).toEqual({ ok: false, reason: "not-found" })
+    expect(actionMap.runCommand("missing-command")).toEqual({ ok: false, reason: "not-found" })
     expect(calls).toEqual(["save-file", "save-file"])
   })
 
   test("normalizeCommandName exposes command normalization on the public facade", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    expect(manager.normalizeCommandName("  save-file  ")).toBe("save-file")
-    expect(() => manager.normalizeCommandName("save file")).toThrow(
+    expect(actionMap.normalizeCommandName("  save-file  ")).toBe("save-file")
+    expect(() => actionMap.normalizeCommandName("save file")).toThrow(
       'Invalid action map command name "save file": command names cannot contain whitespace',
     )
   })
 
   test("runCommand and key-triggered commands share resolver precedence", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "shared-command",
         run() {
@@ -288,7 +288,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerCommandResolver((command) => {
+    actionMap.registerCommandResolver((command) => {
       if (command !== "shared-command") {
         return undefined
       }
@@ -300,43 +300,43 @@ describe("action map", () => {
       }
     })
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "shared-command" }],
     })
 
     mockInput.pressKey("x")
-    expect(manager.runCommand("shared-command")).toEqual({ ok: true })
+    expect(actionMap.runCommand("shared-command")).toEqual({ ok: true })
     expect(calls).toEqual(["resolver", "resolver"])
   })
 
   test("treats thrown command resolvers as errors without emitting unresolved warnings", () => {
-    const manager = getActionMap(renderer)
-    const { warnings, errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { warnings, errors } = captureDiagnostics(actionMap)
 
-    manager.registerCommandResolver(() => {
+    actionMap.registerCommandResolver(() => {
       throw new Error("resolver boom")
     })
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "x", cmd: "external-run" }],
       })
     }).not.toThrow()
 
-    expect(getActiveKey(manager, "x")?.command).toBeUndefined()
+    expect(getActiveKey(actionMap, "x")?.command).toBeUndefined()
     expect(warnings).toEqual([])
-    expect(manager.runCommand("external-run")).toEqual({ ok: false, reason: "error" })
+    expect(actionMap.runCommand("external-run")).toEqual({ ok: false, reason: "error" })
     expect(errors).toHaveLength(2)
     expect(errors.every((message) => message.includes('Error in command resolver for "external-run":'))).toBe(true)
   })
 
   test("prefers direct stroke matches over registered fallback strokes", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerEventMatchResolver((event) => {
+    actionMap.registerEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -344,7 +344,7 @@ describe("action map", () => {
       return [getMatchKeyForEventName(event, "y")]
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "fallback",
         run() {
@@ -359,7 +359,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "y", cmd: "fallback" },
@@ -373,10 +373,10 @@ describe("action map", () => {
   })
 
   test("supports pending-sequence dispatch through registered fallback strokes", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerEventMatchResolver((event) => {
+    actionMap.registerEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -384,7 +384,7 @@ describe("action map", () => {
       return [getMatchKeyForEventName(event, "g")]
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "delete-line",
         run() {
@@ -393,25 +393,25 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "ga", cmd: "delete-line" }],
     })
 
     mockInput.pressKey("x")
-    expect(stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true })).toBe("g")
+    expect(stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true })).toBe("g")
 
     mockInput.pressKey("a")
 
     expect(calls).toEqual(["delete-line"])
-    expect(manager.getPendingSequenceParts()).toEqual([])
+    expect(actionMap.getPendingSequenceParts()).toEqual([])
   })
 
   test("supports custom binding parsers ahead of the default parser", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.prependBindingParser(({ input, index, tokens }) => {
+    actionMap.prependBindingParser(({ input, index, tokens }) => {
       if (input[index] !== "[") {
         return undefined
       }
@@ -437,8 +437,8 @@ describe("action map", () => {
       }
     })
 
-    manager.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
-    manager.registerCommands([
+    actionMap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
+    actionMap.registerCommands([
       {
         name: "leader-action",
         run() {
@@ -446,7 +446,7 @@ describe("action map", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "[leader]d", cmd: "leader-action" }],
     })
@@ -458,11 +458,11 @@ describe("action map", () => {
   })
 
   test("clearBindingParsers allows replacing the default parser", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.clearBindingParsers()
-    manager.appendBindingParser(({ input, index, tokens }) => {
+    actionMap.clearBindingParsers()
+    actionMap.appendBindingParser(({ input, index, tokens }) => {
       if (input[index] !== "[") {
         return undefined
       }
@@ -488,8 +488,8 @@ describe("action map", () => {
       }
     })
 
-    manager.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
-    manager.registerCommands([
+    actionMap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
+    actionMap.registerCommands([
       {
         name: "leader-only",
         run() {
@@ -497,7 +497,7 @@ describe("action map", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "[leader]", cmd: "leader-only" }],
     })
@@ -508,30 +508,30 @@ describe("action map", () => {
   })
 
   test("clearBindingSyntax disables object keys and token registration until syntax is restored", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
-    const { errors } = captureDiagnostics(manager)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.clearBindingSyntax()
+    actionMap.clearBindingSyntax()
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: { name: "x" }, cmd: "object" }],
       })
     }).not.toThrow()
 
     expect(() => {
-      manager.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
+      actionMap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
     }).not.toThrow()
 
     expect(errors).toEqual(["No action map binding syntax is registered", "No action map binding syntax is registered"])
 
-    expect(getActiveKey(manager, "x")).toBeUndefined()
+    expect(getActiveKey(actionMap, "x")).toBeUndefined()
 
-    manager.setBindingSyntax(defaultBindingSyntax)
+    actionMap.setBindingSyntax(defaultBindingSyntax)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "object",
         run() {
@@ -545,12 +545,12 @@ describe("action map", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: { name: "x" }, cmd: "object" }],
     })
-    manager.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
-    manager.registerLayer({
+    actionMap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>", cmd: "token" }],
     })
@@ -562,11 +562,11 @@ describe("action map", () => {
   })
 
   test("supports case-sensitive token names when parser and binding syntax are case-sensitive", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.clearBindingParsers()
-    manager.appendBindingParser(({ input, index, tokens }) => {
+    actionMap.clearBindingParsers()
+    actionMap.appendBindingParser(({ input, index, tokens }) => {
       if (input[index] !== "[") {
         return undefined
       }
@@ -588,10 +588,10 @@ describe("action map", () => {
         usedTokens: [tokenName],
       }
     })
-    manager.appendBindingParser(defaultBindingParser)
+    actionMap.appendBindingParser(defaultBindingParser)
 
-    manager.clearBindingSyntax()
-    manager.setBindingSyntax({
+    actionMap.clearBindingSyntax()
+    actionMap.setBindingSyntax({
       normalizeTokenName(token) {
         const normalized = token.trim()
         if (!normalized) {
@@ -605,7 +605,7 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "case-token",
         run() {
@@ -613,12 +613,12 @@ describe("action map", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "[Leader]d", cmd: "case-token" }],
     })
 
-    manager.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
+    actionMap.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
 
     mockInput.pressKey("x", { ctrl: true })
     mockInput.pressKey("d")
@@ -626,11 +626,11 @@ describe("action map", () => {
     expect(calls).toEqual(["case-token"])
   })
 
-  test("createKeyMatcher uses the manager's current parser and token configuration", () => {
-    const manager = getActionMap(renderer)
+  test("createKeyMatcher uses the action map's current parser and token configuration", () => {
+    const actionMap = getActionMap(renderer)
 
-    manager.clearBindingParsers()
-    manager.appendBindingParser(({ input, index, tokens }) => {
+    actionMap.clearBindingParsers()
+    actionMap.appendBindingParser(({ input, index, tokens }) => {
       if (input[index] !== "[") {
         return undefined
       }
@@ -652,10 +652,10 @@ describe("action map", () => {
         usedTokens: [tokenName],
       }
     })
-    manager.appendBindingParser(defaultBindingParser)
+    actionMap.appendBindingParser(defaultBindingParser)
 
-    manager.clearBindingSyntax()
-    manager.setBindingSyntax({
+    actionMap.clearBindingSyntax()
+    actionMap.setBindingSyntax({
       normalizeTokenName(token) {
         const normalized = token.trim()
         if (!normalized) {
@@ -669,32 +669,32 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "case-token",
         run() {},
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "[Leader]d", cmd: "case-token" }],
     })
 
-    manager.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
+    actionMap.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
 
-    const matchesLeader = manager.createKeyMatcher("[Leader]")
+    const matchesLeader = actionMap.createKeyMatcher("[Leader]")
 
     mockInput.pressKey("x", { ctrl: true })
 
-    const [head] = manager.getPendingSequence()
+    const [head] = actionMap.getPendingSequence()
     expect(matchesLeader(head)).toBe(true)
   })
 
   test("clearEventMatchResolvers disables default event matching until custom resolvers are added", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "run",
         run() {
@@ -702,16 +702,16 @@ describe("action map", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "run" }],
     })
 
-    manager.clearEventMatchResolvers()
+    actionMap.clearEventMatchResolvers()
     mockInput.pressKey("x")
     expect(calls).toEqual([])
 
-    manager.registerEventMatchResolver((event) => {
+    actionMap.registerEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -724,10 +724,10 @@ describe("action map", () => {
   })
 
   test("can dispose registered event match resolvers", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    const offResolver = manager.registerEventMatchResolver((event) => {
+    const offResolver = actionMap.registerEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -735,7 +735,7 @@ describe("action map", () => {
       return [getMatchKeyForEventName(event, "y")]
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "fallback",
         run() {
@@ -743,7 +743,7 @@ describe("action map", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "y", cmd: "fallback" }],
     })
@@ -758,10 +758,10 @@ describe("action map", () => {
   })
 
   test("matches bindings using parser-provided match keys", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.prependBindingParser(({ input, index }) => {
+    actionMap.prependBindingParser(({ input, index }) => {
       if (index !== 0 || input !== "@") {
         return undefined
       }
@@ -778,7 +778,7 @@ describe("action map", () => {
       }
     })
 
-    manager.registerEventMatchResolver((event) => {
+    actionMap.registerEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -786,7 +786,7 @@ describe("action map", () => {
       return ["custom:stroke"]
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "custom-match",
         run() {
@@ -794,7 +794,7 @@ describe("action map", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "@", cmd: "custom-match" }],
     })
@@ -802,14 +802,14 @@ describe("action map", () => {
     mockInput.pressKey("x")
 
     expect(calls).toEqual(["custom"])
-    expect(getActiveKey(manager, "custom-visible")?.display).toBe("custom-visible")
+    expect(getActiveKey(actionMap, "custom-visible")?.display).toBe("custom-visible")
   })
 
   test("supports binding expanders that split one key definition into multiple bindings", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.appendBindingExpander(({ input }) => {
+    actionMap.appendBindingExpander(({ input }) => {
       if (!input.includes(",")) {
         return undefined
       }
@@ -820,7 +820,7 @@ describe("action map", () => {
         .filter(Boolean)
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "split-command",
         run() {
@@ -829,12 +829,12 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x, y", cmd: "split-command" }],
     })
 
-    expect(getActiveKeyNames(manager)).toEqual(["x", "y"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["x", "y"])
 
     mockInput.pressKey("x")
     mockInput.pressKey("y")
@@ -843,10 +843,10 @@ describe("action map", () => {
   })
 
   test("supports prepending binding expanders ahead of appended expanders", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.appendBindingExpander(({ input }) => {
+    actionMap.appendBindingExpander(({ input }) => {
       if (!input.includes(",")) {
         return undefined
       }
@@ -856,7 +856,7 @@ describe("action map", () => {
         .map((candidate) => candidate.trim())
         .filter(Boolean)
     })
-    manager.prependBindingExpander(({ input }) => {
+    actionMap.prependBindingExpander(({ input }) => {
       if (!input.includes("~")) {
         return undefined
       }
@@ -864,7 +864,7 @@ describe("action map", () => {
       return [input.replaceAll("~", "")]
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "prepend-append",
         run() {
@@ -873,7 +873,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "~x,~y", cmd: "prepend-append" }],
     })
@@ -885,11 +885,11 @@ describe("action map", () => {
   })
 
   test("binding expanders can use layer fields for optional emacs-style key strings", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
-    const { errors } = captureDiagnostics(manager)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       emacsStyle(value) {
         if (typeof value !== "boolean") {
           throw new Error('ActionMap layer field "emacsStyle" must be a boolean')
@@ -897,7 +897,7 @@ describe("action map", () => {
       },
     })
 
-    manager.appendBindingExpander(({ input, layer }) => {
+    actionMap.appendBindingExpander(({ input, layer }) => {
       if (layer.emacsStyle !== true) {
         return undefined
       }
@@ -921,9 +921,9 @@ describe("action map", () => {
       return [tokenized.join("")]
     })
 
-    manager.registerToken({ name: "<c-x>", key: { name: "x", ctrl: true } })
-    manager.registerToken({ name: "<c-s>", key: { name: "s", ctrl: true } })
-    manager.registerCommands([
+    actionMap.registerToken({ name: "<c-x>", key: { name: "x", ctrl: true } })
+    actionMap.registerToken({ name: "<c-s>", key: { name: "s", ctrl: true } })
+    actionMap.registerCommands([
       {
         name: "save-buffer",
         run() {
@@ -932,7 +932,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       emacsStyle: true,
       bindings: [{ key: "ctrl+x ctrl+s", cmd: "save-buffer" }],
@@ -944,7 +944,7 @@ describe("action map", () => {
     expect(calls).toEqual(["save"])
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "ctrl+x ctrl+s", cmd: "save-buffer" }],
       })
@@ -954,10 +954,10 @@ describe("action map", () => {
   })
 
   test("clearBindingExpanders allows replacing the expander chain", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.appendBindingExpander(({ input }) => {
+    actionMap.appendBindingExpander(({ input }) => {
       if (!input.includes(",")) {
         return undefined
       }
@@ -967,9 +967,9 @@ describe("action map", () => {
         .map((candidate) => candidate.trim())
         .filter(Boolean)
     })
-    manager.clearBindingExpanders()
+    actionMap.clearBindingExpanders()
 
-    manager.appendBindingExpander(({ input }) => {
+    actionMap.appendBindingExpander(({ input }) => {
       if (!input.includes("|")) {
         return undefined
       }
@@ -980,7 +980,7 @@ describe("action map", () => {
         .filter(Boolean)
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "comma-command",
         run() {
@@ -995,11 +995,11 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "a,b", cmd: "comma-command" }],
     })
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x|y", cmd: "pipe-command" }],
     })
@@ -1016,10 +1016,10 @@ describe("action map", () => {
   })
 
   test("can dispose binding compilers to stop transforming future layer registrations", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    const offCompiler = manager.registerBindingCompiler((binding, ctx) => {
+    const offCompiler = actionMap.registerBindingCompiler((binding, ctx) => {
       if (binding.blocked !== true) {
         return
       }
@@ -1027,7 +1027,7 @@ describe("action map", () => {
       ctx.skipOriginal()
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "blocked",
         run() {
@@ -1042,7 +1042,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", blocked: true, cmd: "blocked" }],
     })
@@ -1052,7 +1052,7 @@ describe("action map", () => {
 
     offCompiler()
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "y", blocked: true, cmd: "active" }],
     })
@@ -1062,10 +1062,10 @@ describe("action map", () => {
   })
 
   test("binding compiler ctx.parseKey normalizes object keys", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerBindingCompiler((binding, ctx) => {
+    actionMap.registerBindingCompiler((binding, ctx) => {
       ctx.add({
         ...binding,
         sequence: [ctx.parseKey({ name: " RETURN " })],
@@ -1073,7 +1073,7 @@ describe("action map", () => {
       ctx.skipOriginal()
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "submit",
         run() {
@@ -1082,7 +1082,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
     })
@@ -1090,16 +1090,16 @@ describe("action map", () => {
     mockInput.pressEnter()
 
     expect(calls).toEqual(["submit"])
-    expect(getActiveKey(manager, "return")?.display).toBe("enter")
-    expect(getActiveKey(manager, "x")).toBeUndefined()
+    expect(getActiveKey(actionMap, "return")?.display).toBe("enter")
+    expect(getActiveKey(actionMap, "x")).toBeUndefined()
   })
 
   test("binding compiler ctx.parseKey uses the current parser and token configuration", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.clearBindingParsers()
-    manager.appendBindingParser(({ input, index, tokens }) => {
+    actionMap.clearBindingParsers()
+    actionMap.appendBindingParser(({ input, index, tokens }) => {
       if (input[index] !== "[") {
         return undefined
       }
@@ -1121,10 +1121,10 @@ describe("action map", () => {
         usedTokens: [tokenName],
       }
     })
-    manager.appendBindingParser(defaultBindingParser)
+    actionMap.appendBindingParser(defaultBindingParser)
 
-    manager.clearBindingSyntax()
-    manager.setBindingSyntax({
+    actionMap.clearBindingSyntax()
+    actionMap.setBindingSyntax({
       normalizeTokenName(token) {
         const normalized = token.trim()
         if (!normalized) {
@@ -1138,7 +1138,7 @@ describe("action map", () => {
       },
     })
 
-    manager.registerBindingCompiler((binding, ctx) => {
+    actionMap.registerBindingCompiler((binding, ctx) => {
       ctx.add({
         ...binding,
         sequence: [ctx.parseKey("[Leader]")],
@@ -1146,8 +1146,8 @@ describe("action map", () => {
       ctx.skipOriginal()
     })
 
-    manager.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
-    manager.registerCommands([
+    actionMap.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
+    actionMap.registerCommands([
       {
         name: "submit",
         run() {
@@ -1156,7 +1156,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "z", cmd: "submit" }],
     })
@@ -1167,10 +1167,10 @@ describe("action map", () => {
   })
 
   test("binding parser ctx.parseObjectKey normalizes object keys", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.prependBindingParser(({ input, index, parseObjectKey }) => {
+    actionMap.prependBindingParser(({ input, index, parseObjectKey }) => {
       if (index !== 0 || input !== "@") {
         return undefined
       }
@@ -1181,7 +1181,7 @@ describe("action map", () => {
       }
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "submit",
         run() {
@@ -1189,7 +1189,7 @@ describe("action map", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "@", cmd: "submit" }],
     })
@@ -1197,15 +1197,15 @@ describe("action map", () => {
     mockInput.pressEnter()
 
     expect(calls).toEqual(["submit"])
-    expect(getActiveKey(manager, "return")?.display).toBe("enter")
+    expect(getActiveKey(actionMap, "return")?.display).toBe("enter")
   })
 
   test("binding parser ctx.parseObjectKey uses the current binding syntax", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.clearBindingSyntax()
-    manager.setBindingSyntax({
+    actionMap.clearBindingSyntax()
+    actionMap.setBindingSyntax({
       normalizeTokenName(token) {
         const normalized = token.trim().toLowerCase()
         if (!normalized) {
@@ -1223,7 +1223,7 @@ describe("action map", () => {
       },
     })
 
-    manager.prependBindingParser(({ input, index, parseObjectKey }) => {
+    actionMap.prependBindingParser(({ input, index, parseObjectKey }) => {
       if (index !== 0 || input !== "@") {
         return undefined
       }
@@ -1234,7 +1234,7 @@ describe("action map", () => {
       }
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "submit",
         run() {
@@ -1242,7 +1242,7 @@ describe("action map", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "@", cmd: "submit" }],
     })
@@ -1250,53 +1250,53 @@ describe("action map", () => {
     mockInput.pressKey("x")
 
     expect(calls).toEqual(["submit"])
-    expect(getActiveKey(manager, "x")?.display).toBe("custom:x")
+    expect(getActiveKey(actionMap, "x")?.display).toBe("custom:x")
   })
 
   test("skips bindings when a binding expander returns an empty expansion", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.appendBindingExpander(() => {
+    actionMap.appendBindingExpander(() => {
       return []
     })
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "x", cmd: "noop" }],
       })
     }).not.toThrow()
 
     expect(errors).toEqual(['ActionMap binding expander must return at least one key sequence for "x"'])
-    expect(getActiveKey(manager, "x")).toBeUndefined()
+    expect(getActiveKey(actionMap, "x")).toBeUndefined()
   })
 
   test("skips bindings when a binding parser does not advance the input", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.clearBindingParsers()
-    manager.appendBindingParser(() => {
+    actionMap.clearBindingParsers()
+    actionMap.appendBindingParser(() => {
       return { parts: [], nextIndex: 0 }
     })
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "x", cmd: "noop" }],
       })
     }).not.toThrow()
 
     expect(errors).toEqual(['ActionMap binding parser must advance the input for "x" at index 0'])
-    expect(getActiveKey(manager, "x")).toBeUndefined()
+    expect(getActiveKey(actionMap, "x")).toBeUndefined()
   })
 
   test("supports release dispatch through registered fallback strokes", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerEventMatchResolver((event) => {
+    actionMap.registerEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -1304,7 +1304,7 @@ describe("action map", () => {
       return [getMatchKeyForEventName(event, "y")]
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "release-action",
         run() {
@@ -1313,7 +1313,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "y", event: "release", cmd: "release-action" }],
     })
@@ -1338,10 +1338,10 @@ describe("action map", () => {
   })
 
   test("event match resolver ctx.matchKey normalizes object keys", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerEventMatchResolver((event, ctx) => {
+    actionMap.registerEventMatchResolver((event, ctx) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -1349,7 +1349,7 @@ describe("action map", () => {
       return [ctx.matchKey({ name: " RETURN " })]
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "submit",
         run() {
@@ -1357,7 +1357,7 @@ describe("action map", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "return", cmd: "submit" }],
     })
@@ -1368,11 +1368,11 @@ describe("action map", () => {
   })
 
   test("event match resolver ctx.matchKey uses the current parser and token configuration", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.clearBindingParsers()
-    manager.appendBindingParser(({ input, index, tokens }) => {
+    actionMap.clearBindingParsers()
+    actionMap.appendBindingParser(({ input, index, tokens }) => {
       if (input[index] !== "[") {
         return undefined
       }
@@ -1394,10 +1394,10 @@ describe("action map", () => {
         usedTokens: [tokenName],
       }
     })
-    manager.appendBindingParser(defaultBindingParser)
+    actionMap.appendBindingParser(defaultBindingParser)
 
-    manager.clearBindingSyntax()
-    manager.setBindingSyntax({
+    actionMap.clearBindingSyntax()
+    actionMap.setBindingSyntax({
       normalizeTokenName(token) {
         const normalized = token.trim()
         if (!normalized) {
@@ -1411,7 +1411,7 @@ describe("action map", () => {
       },
     })
 
-    manager.registerEventMatchResolver((event, ctx) => {
+    actionMap.registerEventMatchResolver((event, ctx) => {
       if (event.name !== "x" || !event.ctrl) {
         return undefined
       }
@@ -1419,8 +1419,8 @@ describe("action map", () => {
       return [ctx.matchKey("[Leader]")]
     })
 
-    manager.registerToken({ name: "[Leader]", key: { name: "z" } })
-    manager.registerCommands([
+    actionMap.registerToken({ name: "[Leader]", key: { name: "z" } })
+    actionMap.registerCommands([
       {
         name: "leader-fallback",
         run() {
@@ -1428,7 +1428,7 @@ describe("action map", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "[Leader]", cmd: "leader-fallback" }],
     })
@@ -1439,10 +1439,10 @@ describe("action map", () => {
   })
 
   test("supports hyper key bindings", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "plain",
         run() {
@@ -1457,7 +1457,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "x", cmd: "plain" },
@@ -1477,10 +1477,10 @@ describe("action map", () => {
     renderer = testSetup.renderer
     mockInput = testSetup.mockInput
 
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: Array<{ capsLock: boolean; numLock: boolean }> = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "inspect-locks",
         run({ event }) {
@@ -1492,7 +1492,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "a", cmd: "inspect-locks" }],
     })
@@ -1503,7 +1503,7 @@ describe("action map", () => {
   })
 
   test("matches a target layer by default with focus-within semantics", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
     const parent = createFocusableBox("parent")
@@ -1511,7 +1511,7 @@ describe("action map", () => {
     parent.add(child)
     renderer.root.add(parent)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "parent-action",
         run() {
@@ -1520,7 +1520,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       target: parent,
       bindings: [{ key: "x", cmd: "parent-action" }],
     })
@@ -1532,7 +1532,7 @@ describe("action map", () => {
   })
 
   test("does not match focus-only layers for focused descendants", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
     const parent = createFocusableBox("focus-parent")
@@ -1540,7 +1540,7 @@ describe("action map", () => {
     parent.add(child)
     renderer.root.add(parent)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "focus-only",
         run() {
@@ -1549,7 +1549,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       target: parent,
       scope: "focus",
       bindings: [{ key: "x", cmd: "focus-only" }],
@@ -1562,13 +1562,13 @@ describe("action map", () => {
   })
 
   test("prefers local layers over global ones and supports fallthrough", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
     const target = createFocusableBox("target")
     renderer.root.add(target)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "global-action",
         run() {
@@ -1589,7 +1589,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "x", cmd: "global-action" },
@@ -1597,7 +1597,7 @@ describe("action map", () => {
       ],
     })
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       target,
       bindings: [
         { key: "x", cmd: "local-action" },
@@ -1614,7 +1614,7 @@ describe("action map", () => {
   })
 
   test("consumes matched keys by default", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
     let laterGlobalCount = 0
     let renderableCount = 0
@@ -1629,7 +1629,7 @@ describe("action map", () => {
       laterGlobalCount += 1
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "consume",
         run() {
@@ -1638,7 +1638,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "consume" }],
     })
@@ -1654,13 +1654,13 @@ describe("action map", () => {
   test("preventDefault and fallthrough are orthogonal: two axes, four combinations", () => {
     // `preventDefault` controls whether the key leaves the action-map;
     // `fallthrough` controls whether dispatch continues inside it.
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const runs: Record<string, string[]> = { a: [], b: [], c: [], d: [] }
     const outsideSeen: Record<string, boolean> = { a: false, b: false, c: false, d: false }
 
     function register(keyName: "a" | "b" | "c" | "d", preventDefault: boolean, fallthrough: boolean): void {
       const bucket = runs[keyName]!
-      manager.registerCommands([
+      actionMap.registerCommands([
         {
           name: `primary-${keyName}`,
           run() {
@@ -1676,7 +1676,7 @@ describe("action map", () => {
       ])
       // Keep both bindings on the same `preventDefault` value so each case
       // varies only one axis.
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [
           { key: keyName, cmd: `primary-${keyName}`, preventDefault, fallthrough },
@@ -1715,7 +1715,7 @@ describe("action map", () => {
   })
 
   test("preventDefault false lets the focused renderable keep handling the key", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
     let laterGlobalCount = 0
     let renderableCount = 0
@@ -1730,7 +1730,7 @@ describe("action map", () => {
       laterGlobalCount += 1
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "passthrough",
         run() {
@@ -1739,7 +1739,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "passthrough", preventDefault: false }],
     })
@@ -1753,10 +1753,10 @@ describe("action map", () => {
   })
 
   test("supports object shorthand bindings", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "shorthand",
         run() {
@@ -1765,7 +1765,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: {
         x: "shorthand",
@@ -1778,31 +1778,31 @@ describe("action map", () => {
   })
 
   test("ignores duplicate command names when registering commands", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.registerCommands([{ name: "dup", run() {} }])
+    actionMap.registerCommands([{ name: "dup", run() {} }])
 
     expect(() => {
-      manager.registerCommands([{ name: "dup", run() {} }])
+      actionMap.registerCommands([{ name: "dup", run() {} }])
     }).not.toThrow()
 
     expect(errors).toEqual(['ActionMap command "dup" is already registered'])
-    expect(manager.getCommands().map((command) => command.name)).toEqual(["dup"])
+    expect(actionMap.getCommands().map((command) => command.name)).toEqual(["dup"])
   })
 
   test("can dispose command resolvers and refresh existing bindings", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "external-run" }],
     })
 
-    expect(getActiveKey(manager, "x")?.command).toBeUndefined()
+    expect(getActiveKey(actionMap, "x")?.command).toBeUndefined()
 
-    const offResolver = manager.registerCommandResolver((command) => {
+    const offResolver = actionMap.registerCommandResolver((command) => {
       if (command !== "external-run") {
         return undefined
       }
@@ -1814,36 +1814,36 @@ describe("action map", () => {
       }
     })
 
-    expect(getActiveKey(manager, "x")?.command).toBe("external-run")
+    expect(getActiveKey(actionMap, "x")?.command).toBe("external-run")
 
     mockInput.pressKey("x")
     expect(calls).toEqual(["external"])
 
     offResolver()
 
-    expect(getActiveKey(manager, "x")?.command).toBeUndefined()
+    expect(getActiveKey(actionMap, "x")?.command).toBeUndefined()
 
     mockInput.pressKey("x")
     expect(calls).toEqual(["external"])
   })
 
   test("supports typed binding fields through key input hooks", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
       },
     })
 
-    manager.onKeyInput(({ event, setData }) => {
+    actionMap.onKeyInput(({ event, setData }) => {
       if (event.name === "x") {
         setData("vim.mode", "normal")
       }
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "typed-field",
         run() {
@@ -1852,7 +1852,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", mode: "normal", cmd: "typed-field" }],
     })
@@ -1860,13 +1860,13 @@ describe("action map", () => {
     mockInput.pressKey("x")
 
     expect(calls).toEqual(["field"])
-    expect(manager.getData("vim.mode")).toBe("normal")
+    expect(actionMap.getData("vim.mode")).toBe("normal")
   })
 
   test("supports binding metadata attributes through typed fields", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       desc(value, ctx) {
         ctx.attr("desc", value)
       },
@@ -1875,19 +1875,19 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "save-file",
         run() {},
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "Save file", group: "File" }],
     })
 
-    const activeKey = getActiveKey(manager, "x", { includeBindings: true })
+    const activeKey = getActiveKey(actionMap, "x", { includeBindings: true })
     const activeBinding = activeKey?.bindings?.[0]
     expect(activeKey?.bindings).toHaveLength(1)
     expect(activeBinding?.attrs).toEqual({ desc: "Save file", group: "File" })
@@ -1898,17 +1898,17 @@ describe("action map", () => {
   })
 
   test("typed binding fields can emit both requirements and attributes", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const seen: string[] = []
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
         ctx.attr("mode", value)
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "record-mode",
         run(ctx) {
@@ -1917,16 +1917,16 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", mode: "normal", cmd: "record-mode" }],
     })
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
 
-    manager.setData("vim.mode", "normal")
+    actionMap.setData("vim.mode", "normal")
 
-    const activeKey = getActiveKey(manager, "x", { includeBindings: true })
+    const activeKey = getActiveKey(actionMap, "x", { includeBindings: true })
     expect(activeKey?.bindings?.[0]?.attrs).toEqual({ mode: "normal" })
 
     mockInput.pressKey("x")
@@ -1935,11 +1935,11 @@ describe("action map", () => {
   })
 
   test("typed binding fields can emit runtime matchers", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
     let enabled = false
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       active(value, ctx) {
         if (value !== true) {
           throw new Error('ActionMap binding field "active" must be true')
@@ -1949,7 +1949,7 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "runtime-binding",
         run() {
@@ -1958,16 +1958,16 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
     })
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
 
     enabled = true
 
-    expect(getActiveKeyNames(manager)).toEqual(["x"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["x"])
 
     mockInput.pressKey("x")
 
@@ -1975,14 +1975,14 @@ describe("action map", () => {
 
     enabled = false
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
   })
 
   test("includeMetadata re-evaluates unkeyed binding matchers on each read", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     let enabled = false
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       active(value, ctx) {
         if (value !== true) {
           throw new Error('ActionMap binding field "active" must be true')
@@ -1993,26 +1993,26 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([{ name: "runtime-binding", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "runtime-binding", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
     })
 
-    expect(getActiveKey(manager, "x", { includeMetadata: true })?.bindingAttrs).toBeUndefined()
-    expect(getActiveKey(manager, "x", { includeMetadata: true })?.commandAttrs).toBeUndefined()
+    expect(getActiveKey(actionMap, "x", { includeMetadata: true })?.bindingAttrs).toBeUndefined()
+    expect(getActiveKey(actionMap, "x", { includeMetadata: true })?.commandAttrs).toBeUndefined()
 
     enabled = true
 
-    expect(getActiveKey(manager, "x", { includeMetadata: true })?.bindingAttrs).toEqual({ label: "Runtime binding" })
-    expect(getActiveKey(manager, "x", { includeMetadata: true })?.commandAttrs).toBeUndefined()
+    expect(getActiveKey(actionMap, "x", { includeMetadata: true })?.bindingAttrs).toEqual({ label: "Runtime binding" })
+    expect(getActiveKey(actionMap, "x", { includeMetadata: true })?.commandAttrs).toBeUndefined()
   })
 
   test("typed binding field matchers clear pending sequences when they stop matching", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     let enabled = true
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       active(value, ctx) {
         if (value !== true) {
           throw new Error('ActionMap binding field "active" must be true')
@@ -2022,27 +2022,27 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([{ name: "delete-line", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", active: true, cmd: "delete-line" }],
     })
 
     mockInput.pressKey("d")
 
-    expect(manager.getPendingSequence()).toHaveLength(1)
+    expect(actionMap.getPendingSequence()).toHaveLength(1)
 
     enabled = false
 
-    expect(manager.getPendingSequence()).toEqual([])
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(actionMap.getPendingSequence()).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
   })
 
   test("treats thrown binding runtime matchers as non-matching", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       active(value, ctx) {
         if (value !== true) {
           throw new Error('ActionMap binding field "active" must be true')
@@ -2054,7 +2054,7 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "runtime-binding",
         run() {
@@ -2063,13 +2063,13 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
     })
 
-    expect(() => manager.getActiveKeys()).not.toThrow()
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(() => actionMap.getActiveKeys()).not.toThrow()
+    expect(getActiveKeyNames(actionMap)).toEqual([])
 
     mockInput.pressKey("x")
 
@@ -2077,12 +2077,12 @@ describe("action map", () => {
   })
 
   test("typed binding field matchers can use reactive matchers", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
     const enabled = createReactiveBoolean(false)
     let evaluations = 0
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       active(value, ctx) {
         if (value !== true) {
           throw new Error('ActionMap binding field "active" must be true')
@@ -2100,7 +2100,7 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "runtime-binding",
         run() {
@@ -2108,27 +2108,27 @@ describe("action map", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
     })
 
     // First read warms the cache.
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
     expect(evaluations).toBe(1)
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
     expect(evaluations).toBe(1)
 
     // Unrelated `setData` invalidation should not touch a purely reactive matcher.
-    manager.setData("unrelated", true)
+    actionMap.setData("unrelated", true)
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
     expect(evaluations).toBe(1)
 
     enabled.set(true)
 
-    expect(getActiveKeyNames(manager)).toEqual(["x"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["x"])
     expect(evaluations).toBe(2)
 
     mockInput.pressKey("x")
@@ -2137,26 +2137,26 @@ describe("action map", () => {
 
     enabled.set(false)
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
     expect(evaluations).toBe(3)
   })
 
   test("reactive matchers: subscribe at layer register, dispose at unregister", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const enabled = createReactiveBoolean(true)
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       active(_value, ctx) {
         ctx.match(enabled)
       },
     })
 
-    manager.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerCommands([{ name: "noop", run() {} }])
 
     expect(enabled.subscribeCalls).toBe(0)
     expect(enabled.subscriptions).toBe(0)
 
-    const off = manager.registerLayer({
+    const off = actionMap.registerLayer({
       scope: "global",
       active: true,
       bindings: [{ key: "x", cmd: "noop" }],
@@ -2172,18 +2172,18 @@ describe("action map", () => {
     expect(enabled.subscriptions).toBe(0)
   })
 
-  test("reactive matchers: dispose on manager destroy", () => {
-    const manager = getActionMap(renderer)
+  test("reactive matchers: dispose on action map destroy", () => {
+    const actionMap = getActionMap(renderer)
     const enabled = createReactiveBoolean(true)
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       active(_value, ctx) {
         ctx.match(enabled)
       },
     })
 
-    manager.registerCommands([{ name: "noop", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       active: true,
       bindings: [{ key: "x", cmd: "noop" }],
@@ -2191,21 +2191,21 @@ describe("action map", () => {
 
     expect(enabled.subscriptions).toBe(1)
 
-    manager.destroy()
+    actionMap.destroy()
 
     expect(enabled.disposeCalls).toBe(1)
     expect(enabled.subscriptions).toBe(0)
   })
 
   test("reactive matchers: only invalidate their own target, not other layers", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const firstEnabled = createReactiveBoolean(false)
     const secondEnabled = createReactiveBoolean(false)
 
     let firstEvals = 0
     let secondEvals = 0
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       first(_value, ctx) {
         ctx.match({
           get() {
@@ -2226,38 +2226,38 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([{ name: "noop", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       first: true,
       bindings: [{ key: "a", cmd: "noop" }],
     })
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       second: true,
       bindings: [{ key: "b", cmd: "noop" }],
     })
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
     expect(firstEvals).toBe(1)
     expect(secondEvals).toBe(1)
 
     firstEnabled.set(true)
-    expect(getActiveKeyNames(manager)).toEqual(["a"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["a"])
     expect(firstEvals).toBe(2)
     expect(secondEvals).toBe(1)
 
     secondEnabled.set(true)
-    expect(getActiveKeyNames(manager)).toEqual(["a", "b"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["a", "b"])
     expect(firstEvals).toBe(2)
     expect(secondEvals).toBe(2)
   })
 
   test("reactive matchers: errors in subscribe are routed to error channel and registration continues", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const errors: string[] = []
     const causes: unknown[] = []
-    manager.on("error", (event) => {
+    actionMap.on("error", (event) => {
       errors.push(event.message)
       causes.push(event.cause)
     })
@@ -2269,16 +2269,16 @@ describe("action map", () => {
       },
     }
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       active(_value, ctx) {
         ctx.match(badMatcher)
       },
     })
 
-    manager.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerCommands([{ name: "noop", run() {} }])
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         active: true,
         bindings: [{ key: "x", cmd: "noop" }],
@@ -2288,13 +2288,13 @@ describe("action map", () => {
     expect(errors).toHaveLength(1)
     expect(errors[0]).toBe("subscribe boom")
     expect(causes[0]).toBeInstanceOf(Error)
-    expect(getActiveKeyNames(manager)).toEqual(["x"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["x"])
   })
 
   test("reactive matchers: errors in dispose are routed to error channel", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const errors: string[] = []
-    manager.on("error", (event) => {
+    actionMap.on("error", (event) => {
       errors.push(event.message)
     })
 
@@ -2307,14 +2307,14 @@ describe("action map", () => {
       },
     }
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       active(_value, ctx) {
         ctx.match(badMatcher)
       },
     })
 
-    manager.registerCommands([{ name: "noop", run() {} }])
-    const off = manager.registerLayer({
+    actionMap.registerCommands([{ name: "noop", run() {} }])
+    const off = actionMap.registerLayer({
       scope: "global",
       active: true,
       bindings: [{ key: "x", cmd: "noop" }],
@@ -2326,9 +2326,9 @@ describe("action map", () => {
   })
 
   test("reactive matchers: errors in get are routed to error channel and evaluate to false", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const errors: { message: string; cause?: unknown }[] = []
-    manager.on("error", (event) => {
+    actionMap.on("error", (event) => {
       errors.push({ message: event.message, cause: event.cause })
     })
 
@@ -2340,28 +2340,28 @@ describe("action map", () => {
       subscribe: () => () => {},
     }
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       active(_value, ctx) {
         ctx.match(badMatcher)
       },
     })
 
-    manager.registerCommands([{ name: "noop", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       active: true,
       bindings: [{ key: "x", cmd: "noop" }],
     })
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
     expect(errors.some((e) => e.message.includes("Error evaluating runtime matcher") && e.cause === cause)).toBe(true)
   })
 
   test("reactive matchers: coexist with require()-based data dependencies on the same layer", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const enabled = createReactiveBoolean(false)
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
       },
@@ -2370,36 +2370,36 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([{ name: "noop", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       mode: "normal",
       active: true,
       bindings: [{ key: "x", cmd: "noop" }],
     })
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
 
-    manager.setData("vim.mode", "normal")
-    expect(getActiveKeyNames(manager)).toEqual([])
+    actionMap.setData("vim.mode", "normal")
+    expect(getActiveKeyNames(actionMap)).toEqual([])
 
-    manager.setData("vim.mode", undefined)
+    actionMap.setData("vim.mode", undefined)
     enabled.set(true)
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
 
-    manager.setData("vim.mode", "normal")
-    expect(getActiveKeyNames(manager)).toEqual(["x"])
+    actionMap.setData("vim.mode", "normal")
+    expect(getActiveKeyNames(actionMap)).toEqual(["x"])
 
     enabled.set(false)
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
   })
 
   test("reactive matchers: raw callback matchers still work (non-cacheable path)", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     let enabled = false
     let evaluations = 0
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       active(_value, ctx) {
         ctx.match(() => {
           evaluations += 1
@@ -2408,41 +2408,41 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([{ name: "noop", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       active: true,
       bindings: [{ key: "x", cmd: "noop" }],
     })
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
     expect(evaluations).toBe(1)
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
     expect(evaluations).toBe(2)
 
     enabled = true
-    expect(getActiveKeyNames(manager)).toEqual(["x"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["x"])
     expect(evaluations).toBe(3)
   })
 
   test("reactive matchers: rejects non-function non-reactive matcher values", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const errors: string[] = []
-    manager.on("error", (event) => {
+    actionMap.on("error", (event) => {
       errors.push(event.message)
     })
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       active(_value, ctx) {
         ctx.match(42 as unknown as () => boolean)
       },
     })
 
-    manager.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerCommands([{ name: "noop", run() {} }])
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         active: true,
         bindings: [{ key: "x", cmd: "noop" }],
@@ -2453,19 +2453,19 @@ describe("action map", () => {
   })
 
   test("reactive matchers on binding fields: re-subscribe after token-driven recompile", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const enabled = createReactiveBoolean(true)
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       active(_value, ctx) {
         ctx.match(enabled)
       },
     })
 
-    manager.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerCommands([{ name: "noop", run() {} }])
 
-    const offToken = manager.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
-    manager.registerLayer({
+    const offToken = actionMap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>a", active: true, cmd: "noop" }],
     })
@@ -2484,16 +2484,16 @@ describe("action map", () => {
   })
 
   test("supports typed layer fields for local scopes", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "local-mode",
         run() {
@@ -2505,7 +2505,7 @@ describe("action map", () => {
     const target = createFocusableBox("layer-field-target")
     renderer.root.add(target)
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       target,
       mode: "normal",
       bindings: [{ key: "x", cmd: "local-mode" }],
@@ -2513,25 +2513,25 @@ describe("action map", () => {
 
     target.focus()
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
 
     mockInput.pressKey("x")
     expect(calls).toEqual([])
 
-    manager.setData("vim.mode", "normal")
+    actionMap.setData("vim.mode", "normal")
 
-    expect(getActiveKeyNames(manager)).toEqual(["x"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["x"])
 
     mockInput.pressKey("x")
     expect(calls).toEqual(["local"])
   })
 
   test("typed layer fields can emit runtime matchers", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
     let enabled = false
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       active(value, ctx) {
         if (value !== true) {
           throw new Error('ActionMap layer field "active" must be true')
@@ -2541,7 +2541,7 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "runtime-layer",
         run() {
@@ -2550,17 +2550,17 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       active: true,
       bindings: [{ key: "x", cmd: "runtime-layer" }],
     })
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
 
     enabled = true
 
-    expect(getActiveKeyNames(manager)).toEqual(["x"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["x"])
 
     mockInput.pressKey("x")
 
@@ -2568,14 +2568,14 @@ describe("action map", () => {
 
     enabled = false
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
   })
 
   test("typed layer field matchers clear pending sequences when they stop matching", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     let enabled = true
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       active(value, ctx) {
         if (value !== true) {
           throw new Error('ActionMap layer field "active" must be true')
@@ -2585,8 +2585,8 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([{ name: "delete-line", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       active: true,
       bindings: [{ key: "dd", cmd: "delete-line" }],
@@ -2594,19 +2594,19 @@ describe("action map", () => {
 
     mockInput.pressKey("d")
 
-    expect(manager.getPendingSequence()).toHaveLength(1)
+    expect(actionMap.getPendingSequence()).toHaveLength(1)
 
     enabled = false
 
-    expect(manager.getPendingSequence()).toEqual([])
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(actionMap.getPendingSequence()).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
   })
 
   test("typed layer field matchers clear pending sequences when reactive matchers flip off", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const enabled = createReactiveBoolean(true)
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       active(value, ctx) {
         if (value !== true) {
           throw new Error('ActionMap layer field "active" must be true')
@@ -2616,8 +2616,8 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([{ name: "delete-line", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       active: true,
       bindings: [{ key: "dd", cmd: "delete-line" }],
@@ -2625,30 +2625,30 @@ describe("action map", () => {
 
     mockInput.pressKey("d")
 
-    expect(manager.getPendingSequence()).toHaveLength(1)
+    expect(actionMap.getPendingSequence()).toHaveLength(1)
 
     enabled.set(false)
 
-    expect(manager.getPendingSequence()).toEqual([])
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(actionMap.getPendingSequence()).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
   })
 
   test("layer and binding requirements compose", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
       },
     })
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       state(value, ctx) {
         ctx.require("vim.state", value)
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "composed",
         run() {
@@ -2657,32 +2657,32 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       mode: "normal",
       bindings: [{ key: "x", state: "idle", cmd: "composed" }],
     })
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
 
-    manager.setData("vim.mode", "normal")
-    expect(getActiveKeyNames(manager)).toEqual([])
+    actionMap.setData("vim.mode", "normal")
+    expect(getActiveKeyNames(actionMap)).toEqual([])
 
-    manager.setData("vim.state", "idle")
-    expect(getActiveKeyNames(manager)).toEqual(["x"])
+    actionMap.setData("vim.state", "idle")
+    expect(getActiveKeyNames(actionMap)).toEqual(["x"])
 
     mockInput.pressKey("x")
     expect(calls).toEqual(["hit"])
 
-    manager.setData("vim.mode", "visual")
-    expect(getActiveKeyNames(manager)).toEqual([])
+    actionMap.setData("vim.mode", "visual")
+    expect(getActiveKeyNames(actionMap)).toEqual([])
   })
 
   test("supports command metadata attributes in active keys and command contexts", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const seen: Record<string, unknown>[] = []
 
-    manager.registerCommandFields({
+    actionMap.registerCommandFields({
       desc(value, ctx) {
         ctx.attr("desc", value)
       },
@@ -2694,7 +2694,7 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "save-file",
         desc: "Save the current file",
@@ -2706,7 +2706,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "save-file" }],
     })
@@ -2717,7 +2717,7 @@ describe("action map", () => {
       category: "File",
     }
 
-    const activeKey = getActiveKey(manager, "x", { includeBindings: true, includeMetadata: true })
+    const activeKey = getActiveKey(actionMap, "x", { includeBindings: true, includeMetadata: true })
     expect(activeKey?.bindings?.[0]?.command).toBe("save-file")
     expect(activeKey?.bindings?.[0]?.commandAttrs).toEqual(attrs)
     expect(activeKey?.command).toBe("save-file")
@@ -2729,15 +2729,15 @@ describe("action map", () => {
   })
 
   test("getCommands searches names by default and returns raw fields plus compiled attrs", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerCommandFields({
+    actionMap.registerCommandFields({
       title(value, ctx) {
         ctx.attr("label", value)
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "save-current",
         namespace: "excommands",
@@ -2760,15 +2760,15 @@ describe("action map", () => {
       },
     ])
 
-    expect(manager.getCommands({ search: "save" }).map((command) => command.name)).toEqual(["save-current"])
-    expect(manager.getCommands({ search: "write" })).toEqual([])
-    expect(manager.getCommands({ search: "write", searchIn: ["title"] }).map((command) => command.name)).toEqual([
+    expect(actionMap.getCommands({ search: "save" }).map((command) => command.name)).toEqual(["save-current"])
+    expect(actionMap.getCommands({ search: "write" })).toEqual([])
+    expect(actionMap.getCommands({ search: "write", searchIn: ["title"] }).map((command) => command.name)).toEqual([
       "save-current",
     ])
-    expect(manager.getCommands({ search: "write", searchIn: ["label"] }).map((command) => command.name)).toEqual([
+    expect(actionMap.getCommands({ search: "write", searchIn: ["label"] }).map((command) => command.name)).toEqual([
       "save-current",
     ])
-    expect(getCommand(manager, "save-current")).toEqual({
+    expect(getCommand(actionMap, "save-current")).toEqual({
       name: "save-current",
       fields: {
         namespace: "excommands",
@@ -2783,15 +2783,15 @@ describe("action map", () => {
   })
 
   test("getCommands supports namespace and filter queries across raw fields and attrs", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerCommandFields({
+    actionMap.registerCommandFields({
       title(value, ctx) {
         ctx.attr("label", value)
       },
     })
 
-    const offCommands = manager.registerCommands([
+    const offCommands = actionMap.registerCommands([
       {
         name: "save-current",
         namespace: "excommands",
@@ -2822,28 +2822,28 @@ describe("action map", () => {
       },
     ])
 
-    expect(manager.getCommands({ namespace: "excommands" }).map((command) => command.name)).toEqual([
+    expect(actionMap.getCommands({ namespace: "excommands" }).map((command) => command.name)).toEqual([
       "save-current",
       "session-reset",
     ])
-    expect(manager.getCommands({ namespace: ["palette", "missing"] }).map((command) => command.name)).toEqual([
+    expect(actionMap.getCommands({ namespace: ["palette", "missing"] }).map((command) => command.name)).toEqual([
       "palette-help",
     ])
     expect(
-      manager
+      actionMap
         .getCommands({ namespace: "excommands", search: "reset", searchIn: ["title"] })
         .map((command) => command.name),
     ).toEqual(["session-reset"])
-    expect(manager.getCommands({ filter: { namespace: "excommands" } }).map((command) => command.name)).toEqual([
+    expect(actionMap.getCommands({ filter: { namespace: "excommands" } }).map((command) => command.name)).toEqual([
       "save-current",
       "session-reset",
     ])
-    expect(manager.getCommands({ filter: { tags: "file" } }).map((command) => command.name)).toEqual(["save-current"])
-    expect(manager.getCommands({ filter: { label: "Reset Counters" } }).map((command) => command.name)).toEqual([
+    expect(actionMap.getCommands({ filter: { tags: "file" } }).map((command) => command.name)).toEqual(["save-current"])
+    expect(actionMap.getCommands({ filter: { label: "Reset Counters" } }).map((command) => command.name)).toEqual([
       "session-reset",
     ])
     expect(
-      manager
+      actionMap
         .getCommands({
           filter: {
             usage(value, command) {
@@ -2854,7 +2854,7 @@ describe("action map", () => {
         .map((command) => command.name),
     ).toEqual(["save-current"])
     expect(
-      manager
+      actionMap
         .getCommands({
           namespace: "excommands",
           filter: {
@@ -2866,19 +2866,19 @@ describe("action map", () => {
         .map((command) => command.name),
     ).toEqual(["save-current"])
     expect(
-      manager.getCommands({ filter: (command) => command.name === "palette-help" }).map((command) => command.name),
+      actionMap.getCommands({ filter: (command) => command.name === "palette-help" }).map((command) => command.name),
     ).toEqual(["palette-help"])
 
     offCommands()
 
-    expect(manager.getCommands()).toEqual([])
+    expect(actionMap.getCommands()).toEqual([])
   })
 
   test("getCommands treats thrown filter predicates as errors and returns no matches", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       { name: "save-current", usage: ":write <file>", run() {} },
       { name: "palette-help", usage: ":help", run() {} },
     ])
@@ -2886,7 +2886,7 @@ describe("action map", () => {
     let queryResult: ReturnType<ActionMap["getCommands"]> = []
 
     expect(() => {
-      queryResult = manager.getCommands({
+      queryResult = actionMap.getCommands({
         filter(command) {
           throw new Error(`query ${command.name}`)
         },
@@ -2899,7 +2899,7 @@ describe("action map", () => {
     errors.length = 0
 
     expect(() => {
-      queryResult = manager.getCommands({
+      queryResult = actionMap.getCommands({
         filter: {
           usage() {
             throw new Error("usage boom")
@@ -2913,9 +2913,9 @@ describe("action map", () => {
   })
 
   test("getCommands returns immutable metadata records across repeated reads", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "save-current",
         tags: ["file", "write"],
@@ -2923,7 +2923,7 @@ describe("action map", () => {
       },
     ])
 
-    const first = getCommand(manager, "save-current")
+    const first = getCommand(actionMap, "save-current")
     expect(first).toBeDefined()
     expect(Object.isFrozen(first!.fields)).toBe(true)
     expect(Object.isFrozen(first!.fields.tags as object)).toBe(true)
@@ -2932,7 +2932,7 @@ describe("action map", () => {
       ;(first!.fields.tags as string[]).push("mutated")
     }).toThrow()
 
-    const second = getCommand(manager, "save-current")
+    const second = getCommand(actionMap, "save-current")
     expect(second).toBe(first)
     expect(second).toEqual({
       name: "save-current",
@@ -2943,7 +2943,7 @@ describe("action map", () => {
   })
 
   test("getCommands clones plain metadata deeply but preserves opaque values by reference", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const opaque = new Map([["recent", 1]])
     const helper = () => "ok"
     const payload = {
@@ -2953,7 +2953,7 @@ describe("action map", () => {
       helper,
     }
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "save-current",
         payload,
@@ -2964,7 +2964,7 @@ describe("action map", () => {
     payload.nested.title = "Mutated"
     ;(payload.tags[1] as { kind: string }).kind = "mutated"
 
-    const command = getCommand(manager, "save-current")
+    const command = getCommand(actionMap, "save-current")
     const storedPayload = command?.fields.payload as {
       nested: { title: string }
       tags: [string, { kind: string }]
@@ -2988,9 +2988,9 @@ describe("action map", () => {
   })
 
   test("keeps active key projections isolated across repeated reads", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       desc(value, ctx) {
         ctx.attr("desc", value)
       },
@@ -2998,7 +2998,7 @@ describe("action map", () => {
         ctx.attr("group", value)
       },
     })
-    manager.registerCommandFields({
+    actionMap.registerCommandFields({
       desc(value, ctx) {
         ctx.attr("desc", value)
       },
@@ -3010,7 +3010,7 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "save-file",
         desc: "Save the current file",
@@ -3020,16 +3020,16 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
     })
 
-    const plain = getActiveKey(manager, "x")
-    const metadataOnly = getActiveKey(manager, "x", { includeMetadata: true })
-    const withBindings = getActiveKey(manager, "x", { includeBindings: true })
-    const withBindingsAndMetadata = getActiveKey(manager, "x", { includeBindings: true, includeMetadata: true })
-    const plainAgain = getActiveKey(manager, "x")
+    const plain = getActiveKey(actionMap, "x")
+    const metadataOnly = getActiveKey(actionMap, "x", { includeMetadata: true })
+    const withBindings = getActiveKey(actionMap, "x", { includeBindings: true })
+    const withBindingsAndMetadata = getActiveKey(actionMap, "x", { includeBindings: true, includeMetadata: true })
+    const plainAgain = getActiveKey(actionMap, "x")
 
     const commandAttrs = {
       desc: "Save the current file",
@@ -3072,10 +3072,10 @@ describe("action map", () => {
   })
 
   test("supports multi-key sequences and reports active continuation keys", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "delete-line",
         run() {
@@ -3084,62 +3084,62 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
-    expect(getActiveKeyNames(manager)).toEqual(["d"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["d"])
 
     mockInput.pressKey("d")
 
-    expect(manager.getPendingSequence()).toEqual([{ name: "d", ctrl: false, shift: false, meta: false, super: false }])
-    expect(manager.getPendingSequenceParts()).toEqual([
+    expect(actionMap.getPendingSequence()).toEqual([{ name: "d", ctrl: false, shift: false, meta: false, super: false }])
+    expect(actionMap.getPendingSequenceParts()).toEqual([
       {
         stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
         display: "d",
         matchKey: "d:0:0:0:0:0",
       },
     ])
-    expect(getActiveKeyNames(manager)).toEqual(["d"])
-    expect(getActiveKey(manager, "d")?.command).toBe("delete-line")
-    expect(getActiveKey(manager, "d")?.display).toBe("d")
+    expect(getActiveKeyNames(actionMap)).toEqual(["d"])
+    expect(getActiveKey(actionMap, "d")?.command).toBe("delete-line")
+    expect(getActiveKey(actionMap, "d")?.display).toBe("d")
 
     mockInput.pressKey("d")
 
     expect(calls).toEqual(["delete-line"])
-    expect(manager.getPendingSequence()).toEqual([])
+    expect(actionMap.getPendingSequence()).toEqual([])
   })
 
   test("hasPendingSequence reflects pending lifecycle", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerCommands([{ name: "delete-line", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
-    expect(manager.hasPendingSequence()).toBe(false)
+    expect(actionMap.hasPendingSequence()).toBe(false)
 
     mockInput.pressKey("d")
-    expect(manager.hasPendingSequence()).toBe(true)
+    expect(actionMap.hasPendingSequence()).toBe(true)
 
-    manager.popPendingSequence()
-    expect(manager.hasPendingSequence()).toBe(false)
+    actionMap.popPendingSequence()
+    expect(actionMap.hasPendingSequence()).toBe(false)
 
     mockInput.pressKey("d")
-    expect(manager.hasPendingSequence()).toBe(true)
+    expect(actionMap.hasPendingSequence()).toBe(true)
 
-    manager.clearPendingSequence()
-    expect(manager.hasPendingSequence()).toBe(false)
+    actionMap.clearPendingSequence()
+    expect(actionMap.hasPendingSequence()).toBe(false)
   })
 
   test("onKeyInput can be gated by hasPendingSequence", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "delete-line",
         run() {
@@ -3147,13 +3147,13 @@ describe("action map", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
-    const off = manager.onKeyInput(({ event }) => {
-      if (!manager.hasPendingSequence()) {
+    const off = actionMap.onKeyInput(({ event }) => {
+      if (!actionMap.hasPendingSequence()) {
         return
       }
 
@@ -3177,110 +3177,110 @@ describe("action map", () => {
   })
 
   test("notifies pending sequence changes synchronously", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const changes: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "delete-ca",
         run() {},
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
-    manager.hook("pendingSequence", (sequence) => {
+    actionMap.hook("pendingSequence", (sequence) => {
       changes.push(sequence.map((stroke) => stroke.name).join(""))
     })
 
     mockInput.pressKey("d")
     mockInput.pressKey("c")
-    manager.popPendingSequence()
-    manager.clearPendingSequence()
+    actionMap.popPendingSequence()
+    actionMap.clearPendingSequence()
 
     expect(changes).toEqual(["d", "dc", "d", ""])
   })
 
   test("notifies state changes with the current pending sequence and active keys", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const snapshots: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "delete-ca",
         run() {},
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
-    manager.hook("state", () => {
-      const pending = stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
-      const active = getActiveKeyNames(manager).join(",") || "<none>"
+    actionMap.hook("state", () => {
+      const pending = stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
+      const active = getActiveKeyNames(actionMap).join(",") || "<none>"
       snapshots.push(`${pending}:${active}`)
     })
 
     mockInput.pressKey("d")
     mockInput.pressKey("c")
-    manager.popPendingSequence()
-    manager.clearPendingSequence()
+    actionMap.popPendingSequence()
+    actionMap.clearPendingSequence()
 
     expect(snapshots).toEqual(["d:c", "dc:a", "d:c", "<root>:d"])
   })
 
   test("coalesces state changes when runtime data clears a pending sequence", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const snapshots: string[] = []
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
       },
     })
 
-    manager.registerCommands([{ name: "delete-line", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       mode: "normal",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
-    manager.setData("vim.mode", "normal")
+    actionMap.setData("vim.mode", "normal")
     mockInput.pressKey("d")
 
-    manager.hook("state", () => {
-      const pending = stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
-      const active = getActiveKeyNames(manager).join(",") || "<none>"
+    actionMap.hook("state", () => {
+      const pending = stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
+      const active = getActiveKeyNames(actionMap).join(",") || "<none>"
       snapshots.push(`${pending}:${active}`)
     })
 
-    manager.setData("vim.mode", "visual")
+    actionMap.setData("vim.mode", "visual")
 
     expect(snapshots).toEqual(["<root>:<none>"])
-    expect(manager.getPendingSequence()).toEqual([])
+    expect(actionMap.getPendingSequence()).toEqual([])
   })
 
   test("notifies state changes when focus changes active layers and direct blur clears focus", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const target = createFocusableBox("state-target")
     const snapshots: string[] = []
 
     renderer.root.add(target)
 
-    manager.registerCommands([{ name: "local", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "local", run() {} }])
+    actionMap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "local" }],
     })
 
-    manager.hook("state", () => {
-      snapshots.push(getActiveKeyNames(manager).join(",") || "<none>")
+    actionMap.hook("state", () => {
+      snapshots.push(getActiveKeyNames(actionMap).join(",") || "<none>")
     })
 
     target.focus()
@@ -3290,14 +3290,14 @@ describe("action map", () => {
   })
 
   test("coalesces state changes when blur clears a pending sequence", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const target = createFocusableBox("pending-target")
     const snapshots: string[] = []
 
     renderer.root.add(target)
 
-    manager.registerCommands([{ name: "delete-line", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({
       target,
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
@@ -3305,20 +3305,20 @@ describe("action map", () => {
     target.focus()
     mockInput.pressKey("d")
 
-    manager.hook("state", () => {
-      const pending = stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
-      const active = getActiveKeyNames(manager).join(",") || "<none>"
+    actionMap.hook("state", () => {
+      const pending = stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
+      const active = getActiveKeyNames(actionMap).join(",") || "<none>"
       snapshots.push(`${pending}:${active}`)
     })
 
     target.blur()
 
     expect(snapshots).toEqual(["<root>:<none>"])
-    expect(manager.getPendingSequence()).toEqual([])
+    expect(actionMap.getPendingSequence()).toEqual([])
   })
 
   test("clears global pending sequences when focus changes to another renderable", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
     const first = createFocusableBox("global-pending-first")
@@ -3326,7 +3326,7 @@ describe("action map", () => {
     renderer.root.add(first)
     renderer.root.add(second)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "global-delete",
         run() {
@@ -3341,11 +3341,11 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", cmd: "global-delete" }],
     })
-    manager.registerLayer({
+    actionMap.registerLayer({
       target: second,
       bindings: [{ key: "d", cmd: "local-delete" }],
     })
@@ -3353,11 +3353,11 @@ describe("action map", () => {
     first.focus()
     mockInput.pressKey("d")
 
-    expect(manager.getPendingSequence()).toHaveLength(1)
+    expect(actionMap.getPendingSequence()).toHaveLength(1)
 
     second.focus()
 
-    expect(manager.getPendingSequence()).toEqual([])
+    expect(actionMap.getPendingSequence()).toEqual([])
 
     mockInput.pressKey("d")
 
@@ -3365,13 +3365,13 @@ describe("action map", () => {
   })
 
   test("clears global pending sequences when direct blur clears focus", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const target = createFocusableBox("global-pending-blur")
 
     renderer.root.add(target)
 
-    manager.registerCommands([{ name: "global-delete", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "global-delete", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", cmd: "global-delete" }],
     })
@@ -3379,28 +3379,28 @@ describe("action map", () => {
     target.focus()
     mockInput.pressKey("d")
 
-    expect(manager.getPendingSequence()).toHaveLength(1)
+    expect(actionMap.getPendingSequence()).toHaveLength(1)
 
     target.blur()
 
-    expect(manager.getPendingSequence()).toEqual([])
+    expect(actionMap.getPendingSequence()).toEqual([])
   })
 
   test("can unsubscribe state change listeners", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const target = createFocusableBox("unsubscribe-target")
     const snapshots: string[] = []
 
     renderer.root.add(target)
 
-    manager.registerCommands([{ name: "local", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "local", run() {} }])
+    actionMap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "local" }],
     })
 
-    const off = manager.hook("state", () => {
-      snapshots.push(getActiveKeyNames(manager).join(",") || "<none>")
+    const off = actionMap.hook("state", () => {
+      snapshots.push(getActiveKeyNames(actionMap).join(",") || "<none>")
     })
 
     off()
@@ -3410,27 +3410,27 @@ describe("action map", () => {
   })
 
   test("uses a stable state change listener snapshot when listeners unsubscribe mid-notification", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const target = createFocusableBox("state-snapshot-target")
     const calls: string[] = []
 
     renderer.root.add(target)
 
-    manager.registerCommands([{ name: "local", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "local", run() {} }])
+    actionMap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "local" }],
     })
 
     let offSecond!: () => void
 
-    manager.hook("state", () => {
-      calls.push(`first:${getActiveKeyNames(manager).join(",") || "<none>"}`)
+    actionMap.hook("state", () => {
+      calls.push(`first:${getActiveKeyNames(actionMap).join(",") || "<none>"}`)
       offSecond()
     })
 
-    offSecond = manager.hook("state", () => {
-      calls.push(`second:${getActiveKeyNames(manager).join(",") || "<none>"}`)
+    offSecond = actionMap.hook("state", () => {
+      calls.push(`second:${getActiveKeyNames(actionMap).join(",") || "<none>"}`)
     })
 
     target.focus()
@@ -3440,15 +3440,15 @@ describe("action map", () => {
   })
 
   test("supports token aliases inside longer sequences", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerToken({
+    actionMap.registerToken({
       name: "<leader>",
       key: { name: "x", ctrl: true },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "go-definition",
         run() {
@@ -3457,29 +3457,29 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>gd", cmd: "go-definition" }],
     })
 
     mockInput.pressKey("x", { ctrl: true })
 
-    expect(getActiveKeyNames(manager)).toEqual(["g"])
-    expect(getActiveKeyDisplay(manager, "g")?.command).toBeUndefined()
-    expect(manager.getPendingSequenceParts()).toEqual([
+    expect(getActiveKeyNames(actionMap)).toEqual(["g"])
+    expect(getActiveKeyDisplay(actionMap, "g")?.command).toBeUndefined()
+    expect(actionMap.getPendingSequenceParts()).toEqual([
       {
         stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false },
         display: "<leader>",
         matchKey: "x:1:0:0:0:0",
       },
     ])
-    expect(getActiveKey(manager, "g")?.command).toBeUndefined()
+    expect(getActiveKey(actionMap, "g")?.command).toBeUndefined()
 
     mockInput.pressKey("g")
 
-    expect(getActiveKeyNames(manager)).toEqual(["d"])
-    expect(stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true })).toBe("<leader>g")
-    expect(getActiveKey(manager, "d")?.command).toBe("go-definition")
+    expect(getActiveKeyNames(actionMap)).toEqual(["d"])
+    expect(stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true })).toBe("<leader>g")
+    expect(getActiveKey(actionMap, "d")?.command).toBe("go-definition")
 
     mockInput.pressKey("d")
 
@@ -3487,19 +3487,19 @@ describe("action map", () => {
   })
 
   test("uses preserved display for unambiguous active token prefixes", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerToken({
+    actionMap.registerToken({
       name: "<leader>",
       key: { name: "x", ctrl: true },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       { name: "save", run() {} },
       { name: "help", run() {} },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "<leader>s", cmd: "save" },
@@ -3507,15 +3507,15 @@ describe("action map", () => {
       ],
     })
 
-    expect(getActiveKeyDisplay(manager, "<leader>")?.command).toBeUndefined()
-    expect(stringifyKeyStroke(getActiveKeyDisplay(manager, "<leader>")!, { preferDisplay: true })).toBe("<leader>")
+    expect(getActiveKeyDisplay(actionMap, "<leader>")?.command).toBeUndefined()
+    expect(stringifyKeyStroke(getActiveKeyDisplay(actionMap, "<leader>")!, { preferDisplay: true })).toBe("<leader>")
   })
 
   test("supports branching sequences", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "delete-a",
         run() {
@@ -3542,7 +3542,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "da", cmd: "delete-a" },
@@ -3553,24 +3553,24 @@ describe("action map", () => {
     })
 
     mockInput.pressKey("d")
-    expect(getActiveKeyNames(manager)).toEqual(["a", "b", "c"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["a", "b", "c"])
 
     mockInput.pressKey("c")
-    expect(getActiveKeyNames(manager)).toEqual(["a", "b"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["a", "b"])
 
     mockInput.pressKey("b")
     expect(calls).toEqual(["dcb"])
-    expect(manager.getPendingSequence()).toEqual([])
+    expect(actionMap.getPendingSequence()).toEqual([])
   })
 
   test("keeps pending sequences local to the layer that captured them", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
     const target = createFocusableBox("sequence-target")
     renderer.root.add(target)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "local-delete",
         run() {
@@ -3585,12 +3585,12 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "da", cmd: "global-delete" }],
     })
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       target,
       bindings: [{ key: "dd", cmd: "local-delete" }],
     })
@@ -3598,7 +3598,7 @@ describe("action map", () => {
     target.focus()
     mockInput.pressKey("d")
 
-    expect(getActiveKeyNames(manager)).toEqual(["d"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["d"])
 
     mockInput.pressKey("d")
 
@@ -3606,10 +3606,10 @@ describe("action map", () => {
   })
 
   test("supports addon-style backspace editing for pending sequences", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "delete-ca",
         run() {
@@ -3618,17 +3618,17 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
-    manager.onKeyInput(({ event, consume }) => {
+    actionMap.onKeyInput(({ event, consume }) => {
       if (event.name !== "backspace") {
         return
       }
 
-      if (!manager.popPendingSequence()) {
+      if (!actionMap.popPendingSequence()) {
         return
       }
 
@@ -3638,15 +3638,15 @@ describe("action map", () => {
     mockInput.pressKey("d")
     mockInput.pressKey("c")
 
-    expect(manager.getPendingSequence()).toEqual([
+    expect(actionMap.getPendingSequence()).toEqual([
       { name: "d", ctrl: false, shift: false, meta: false, super: false },
       { name: "c", ctrl: false, shift: false, meta: false, super: false },
     ])
 
     mockInput.pressBackspace()
 
-    expect(manager.getPendingSequence()).toEqual([{ name: "d", ctrl: false, shift: false, meta: false, super: false }])
-    expect(getActiveKeyNames(manager)).toEqual(["c"])
+    expect(actionMap.getPendingSequence()).toEqual([{ name: "d", ctrl: false, shift: false, meta: false, super: false }])
+    expect(getActiveKeyNames(actionMap)).toEqual(["c"])
 
     mockInput.pressKey("c")
     mockInput.pressKey("a")
@@ -3655,38 +3655,38 @@ describe("action map", () => {
   })
 
   test("clears pending sequences on invalid continuation", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerCommands([{ name: "delete-line", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
     mockInput.pressKey("d")
-    expect(manager.getPendingSequence()).toHaveLength(1)
+    expect(actionMap.getPendingSequence()).toHaveLength(1)
 
     mockInput.pressKey("x")
 
-    expect(manager.getPendingSequence()).toEqual([])
-    expect(getActiveKeyNames(manager)).toEqual(["d"])
+    expect(actionMap.getPendingSequence()).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual(["d"])
   })
 
   test("getActiveKeys respects runtime requirements", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       { name: "normal-delete", run() {} },
       { name: "visual-delete", run() {} },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "dd", mode: "normal", cmd: "normal-delete" },
@@ -3694,20 +3694,20 @@ describe("action map", () => {
       ],
     })
 
-    expect(getActiveKeyNames(manager)).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual([])
 
-    manager.setData("vim.mode", "normal")
-    expect(getActiveKeyNames(manager)).toEqual(["d"])
+    actionMap.setData("vim.mode", "normal")
+    expect(getActiveKeyNames(actionMap)).toEqual(["d"])
 
-    manager.setData("vim.mode", "visual")
-    expect(getActiveKeyNames(manager)).toEqual(["v"])
+    actionMap.setData("vim.mode", "visual")
+    expect(getActiveKeyNames(actionMap)).toEqual(["v"])
   })
 
   test("skips bindings with conflicting requirements from typed fields", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
       },
@@ -3717,21 +3717,21 @@ describe("action map", () => {
     })
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "x", mode: "normal", state: "visual", cmd: "noop" }],
       })
     }).not.toThrow()
 
     expect(errors).toEqual(['Conflicting action map requirement for "vim.mode" from field state'])
-    expect(getActiveKey(manager, "x")).toBeUndefined()
+    expect(getActiveKey(actionMap, "x")).toBeUndefined()
   })
 
   test("skips layers with conflicting requirements from typed layer fields", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
       },
@@ -3741,7 +3741,7 @@ describe("action map", () => {
     })
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         mode: "normal",
         state: "visual",
@@ -3750,14 +3750,14 @@ describe("action map", () => {
     }).not.toThrow()
 
     expect(errors).toEqual(['Conflicting action map requirement for "vim.mode" from field state'])
-    expect(getActiveKey(manager, "x")).toBeUndefined()
+    expect(getActiveKey(actionMap, "x")).toBeUndefined()
   })
 
   test("skips bindings with conflicting attributes from typed binding fields", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       desc(value, ctx) {
         ctx.attr("label", value)
       },
@@ -3767,21 +3767,21 @@ describe("action map", () => {
     })
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "x", desc: "Delete line", title: "Delete", cmd: "noop" }],
       })
     }).not.toThrow()
 
     expect(errors).toEqual(['Conflicting action map attribute for "label" from field title'])
-    expect(getActiveKey(manager, "x")).toBeUndefined()
+    expect(getActiveKey(actionMap, "x")).toBeUndefined()
   })
 
   test("ignores unknown binding fields", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "noop",
         run() {
@@ -3791,13 +3791,13 @@ describe("action map", () => {
     ])
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "x", mode: "normal", cmd: "noop" }],
       })
     }).not.toThrow()
 
-    expect(getActiveKey(manager, "x")).toBeDefined()
+    expect(getActiveKey(actionMap, "x")).toBeDefined()
 
     mockInput.pressKey("x")
 
@@ -3805,10 +3805,10 @@ describe("action map", () => {
   })
 
   test("ignores unknown layer fields", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "noop",
         run() {
@@ -3818,14 +3818,14 @@ describe("action map", () => {
     ])
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         mode: "normal",
         bindings: [{ key: "x", cmd: "noop" }],
       })
     }).not.toThrow()
 
-    expect(getActiveKey(manager, "x")).toBeDefined()
+    expect(getActiveKey(actionMap, "x")).toBeDefined()
 
     mockInput.pressKey("x")
 
@@ -3833,11 +3833,11 @@ describe("action map", () => {
   })
 
   test("stores raw command fields without requiring command field compilers", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
     expect(() => {
-      manager.registerCommands([
+      actionMap.registerCommands([
         {
           name: "save-file",
           desc: "Save the current file",
@@ -3850,12 +3850,12 @@ describe("action map", () => {
       ])
     }).not.toThrow()
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "save-file" }],
     })
 
-    expect(getCommand(manager, "save-file")).toEqual({
+    expect(getCommand(actionMap, "save-file")).toEqual({
       name: "save-file",
       fields: {
         desc: "Save the current file",
@@ -3864,7 +3864,7 @@ describe("action map", () => {
       },
     })
 
-    expect(getActiveKey(manager, "x")).toBeDefined()
+    expect(getActiveKey(actionMap, "x")).toBeDefined()
 
     mockInput.pressKey("x")
 
@@ -3872,10 +3872,10 @@ describe("action map", () => {
   })
 
   test("emits warnings only for unknown binding and layer fields", () => {
-    const manager = getActionMap(renderer)
-    const { warnings } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { warnings } = captureDiagnostics(actionMap)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "save-file",
         desc: "Save the current file",
@@ -3888,7 +3888,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       mode: "normal",
       bindings: [
@@ -3904,11 +3904,11 @@ describe("action map", () => {
   })
 
   test("emits unknown token warnings", () => {
-    const manager = getActionMap(renderer)
-    const { warnings } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { warnings } = captureDiagnostics(actionMap)
 
-    manager.registerCommands([{ name: "noop", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "<leader>x", cmd: "noop" },
@@ -3920,10 +3920,10 @@ describe("action map", () => {
   })
 
   test("emits unresolved string command warnings", () => {
-    const manager = getActionMap(renderer)
-    const { warnings } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { warnings } = captureDiagnostics(actionMap)
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "missing-command" }],
     })
@@ -3932,13 +3932,13 @@ describe("action map", () => {
   })
 
   test("notifies unresolved command listeners with command, binding, scope, and target context", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const target = createFocusableBox("unresolved-target")
     const calls: Array<{ command: string; binding: string; scope: string; targetId?: string }> = []
 
     renderer.root.add(target)
 
-    manager.hook("unresolvedCommand", (ctx) => {
+    actionMap.hook("unresolvedCommand", (ctx) => {
       calls.push({
         command: ctx.command,
         binding: stringifyKeySequence(ctx.binding.sequence, { preferDisplay: true }),
@@ -3947,7 +3947,7 @@ describe("action map", () => {
       })
     })
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "missing-command" }],
     })
@@ -3963,10 +3963,10 @@ describe("action map", () => {
   })
 
   test("emits runtime matcher failures as errors", () => {
-    const manager = getActionMap(renderer)
-    const { warnings, errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { warnings, errors } = captureDiagnostics(actionMap)
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       active(value, ctx) {
         if (value !== true) {
           throw new Error('ActionMap binding field "active" must be true')
@@ -3978,44 +3978,44 @@ describe("action map", () => {
       },
     })
 
-    manager.registerCommands([{ name: "runtime-binding", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "runtime-binding", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
     })
 
-    expect(() => manager.getActiveKeys()).not.toThrow()
+    expect(() => actionMap.getActiveKeys()).not.toThrow()
     expect(errors.some((message) => message.includes("Error evaluating runtime matcher from field active:"))).toBe(true)
     expect(warnings).toEqual([])
   })
 
   test("ignores thrown warning and error listeners while notifying remaining listeners", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const warnings: string[] = []
     const errors: string[] = []
 
-    manager.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerCommands([{ name: "noop", run() {} }])
 
-    manager.on("warning", () => {
+    actionMap.on("warning", () => {
       throw new Error("warning listener boom")
     })
-    manager.on("warning", (event) => {
+    actionMap.on("warning", (event) => {
       warnings.push(event.message)
     })
-    manager.on("error", () => {
+    actionMap.on("error", () => {
       throw new Error("error listener boom")
     })
-    manager.on("error", (event) => {
+    actionMap.on("error", (event) => {
       errors.push(event.message)
     })
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         mode: "normal",
         bindings: [{ key: "x", cmd: "noop" }],
       })
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "y", cmd: "   " }],
       })
@@ -4026,7 +4026,7 @@ describe("action map", () => {
   })
 
   test("falls back to console.warn when no warning listener is registered", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const originalWarn = console.warn
     const warnings: unknown[][] = []
     console.warn = (...args: unknown[]) => {
@@ -4034,7 +4034,7 @@ describe("action map", () => {
     }
 
     try {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         mode: "normal",
         bindings: [],
@@ -4047,7 +4047,7 @@ describe("action map", () => {
   })
 
   test("falls back to console.error when no error listener is registered", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const originalError = console.error
     const errors: unknown[][] = []
     console.error = (...args: unknown[]) => {
@@ -4056,7 +4056,7 @@ describe("action map", () => {
 
     try {
       // Use a no-cause error path so console.error only receives the message.
-      manager.registerCommandFields({
+      actionMap.registerCommandFields({
         name() {},
       })
     } finally {
@@ -4067,7 +4067,7 @@ describe("action map", () => {
   })
 
   test("falls back to console.error with cause when no error listener is registered", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const cause = new Error("filter boom")
     const originalError = console.error
     const errors: unknown[][] = []
@@ -4075,10 +4075,10 @@ describe("action map", () => {
       errors.push(args)
     }
 
-    manager.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerCommands([{ name: "noop", run() {} }])
 
     try {
-      manager.getCommands({
+      actionMap.getCommands({
         filter: () => {
           throw cause
         },
@@ -4091,14 +4091,14 @@ describe("action map", () => {
   })
 
   test("does not call console.warn or console.error when a listener is registered", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const warnings: string[] = []
     const errors: string[] = []
 
-    manager.on("warning", (event) => {
+    actionMap.on("warning", (event) => {
       warnings.push(event.message)
     })
-    manager.on("error", (event) => {
+    actionMap.on("error", (event) => {
       errors.push(event.message)
     })
 
@@ -4114,7 +4114,7 @@ describe("action map", () => {
     }
 
     try {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         mode: "normal",
         bindings: [{ key: "y", cmd: "   " }],
@@ -4131,11 +4131,11 @@ describe("action map", () => {
   })
 
   test("ignores reserved command field registrations", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
     expect(() => {
-      manager.registerCommandFields({
+      actionMap.registerCommandFields({
         name() {},
       })
     }).not.toThrow()
@@ -4144,11 +4144,11 @@ describe("action map", () => {
   })
 
   test("ignores reserved layer field registrations", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
     expect(() => {
-      manager.registerLayerFields({
+      actionMap.registerLayerFields({
         scope() {},
       })
     }).not.toThrow()
@@ -4157,15 +4157,15 @@ describe("action map", () => {
   })
 
   test("ignores reserved and duplicate binding field registrations", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       active() {},
     })
 
     expect(() => {
-      manager.registerBindingFields({
+      actionMap.registerBindingFields({
         key() {},
         active() {},
       })
@@ -4178,10 +4178,10 @@ describe("action map", () => {
   })
 
   test("skips commands with conflicting attributes from typed command fields", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.registerCommandFields({
+    actionMap.registerCommandFields({
       desc(value, ctx) {
         ctx.attr("label", value)
       },
@@ -4191,7 +4191,7 @@ describe("action map", () => {
     })
 
     expect(() => {
-      manager.registerCommands([
+      actionMap.registerCommands([
         {
           name: "save-file",
           desc: "Save",
@@ -4202,20 +4202,20 @@ describe("action map", () => {
     }).not.toThrow()
 
     expect(errors).toEqual(['Conflicting action map attribute for "label" from field title'])
-    expect(getCommand(manager, "save-file")).toBeUndefined()
+    expect(getCommand(actionMap, "save-file")).toBeUndefined()
   })
 
   test("keeps earlier bindings when a later binding is both an exact key and a prefix", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       { name: "one", run() {} },
       { name: "two", run() {} },
     ])
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [
           { key: "d", cmd: "one" },
@@ -4227,20 +4227,20 @@ describe("action map", () => {
     expect(errors).toEqual([
       "ActionMap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
     ])
-    expect(getActiveKey(manager, "d")?.command).toBe("one")
+    expect(getActiveKey(actionMap, "d")?.command).toBe("one")
   })
 
   test("allows a non-dispatch binding to label a prefix", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       group(value, ctx) {
         ctx.attr("group", value)
       },
     })
 
-    manager.registerCommands([{ name: "delete-line", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "d", group: "Delete" },
@@ -4248,7 +4248,7 @@ describe("action map", () => {
       ],
     })
 
-    const activeKey = getActiveKey(manager, "d", { includeBindings: true, includeMetadata: true })
+    const activeKey = getActiveKey(actionMap, "d", { includeBindings: true, includeMetadata: true })
 
     expect(activeKey?.command).toBeUndefined()
     expect(activeKey?.bindingAttrs).toEqual({ group: "Delete" })
@@ -4256,11 +4256,11 @@ describe("action map", () => {
   })
 
   test("supports raw input hooks and stop semantics", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const rawCalls: string[] = []
     const keyCalls: string[] = []
 
-    manager.onRawInput(({ sequence, stop }) => {
+    actionMap.onRawInput(({ sequence, stop }) => {
       rawCalls.push(sequence)
       stop()
     })
@@ -4281,10 +4281,10 @@ describe("action map", () => {
     renderer = testSetup.renderer
     mockInput = testSetup.mockInput
 
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const events: string[] = []
 
-    manager.onKeyInput(
+    actionMap.onKeyInput(
       ({ event }) => {
         events.push(`${event.name}:${event.eventType}`)
       },
@@ -4302,10 +4302,10 @@ describe("action map", () => {
     renderer = testSetup.renderer
     mockInput = testSetup.mockInput
 
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "release-command",
         run() {
@@ -4320,7 +4320,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "a", cmd: "release-command", event: "release" },
@@ -4328,7 +4328,7 @@ describe("action map", () => {
       ],
     })
 
-    expect(getActiveKeyNames(manager)).toEqual(["b"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["b"])
 
     mockInput.pressKey("a")
     expect(calls).toEqual([])
@@ -4341,27 +4341,27 @@ describe("action map", () => {
   })
 
   test("skips release bindings with multiple strokes", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerCommands([{ name: "noop", run() {} }])
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "dd", cmd: "noop", event: "release" }],
       })
     }).not.toThrow()
 
     expect(errors).toEqual(["ActionMap release bindings only support a single key stroke"])
-    expect(getActiveKey(manager, "d")).toBeUndefined()
+    expect(getActiveKey(actionMap, "d")).toBeUndefined()
   })
 
   test("ignores destroyed target layers and lets lower layers continue", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "local",
         run() {
@@ -4379,12 +4379,12 @@ describe("action map", () => {
     const target = createFocusableBox("destroy-target")
     renderer.root.add(target)
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "local" }],
     })
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "global" }],
     })
@@ -4396,22 +4396,22 @@ describe("action map", () => {
   })
 
   test("passes target and runtime data to commands", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const seen: Array<{ target: string; command: string; mode: string }> = []
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
       },
     })
 
-    manager.onKeyInput(({ event, setData }) => {
+    actionMap.onKeyInput(({ event, setData }) => {
       if (event.name === "x") {
         setData("vim.mode", "normal")
       }
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "record",
         run(ctx) {
@@ -4429,7 +4429,7 @@ describe("action map", () => {
     parent.add(child)
     renderer.root.add(parent)
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       target: parent,
       bindings: [{ key: "x", mode: "normal", cmd: "record" }],
     })
@@ -4441,10 +4441,10 @@ describe("action map", () => {
   })
 
   test("passes fresh runtime data snapshots to commands after data changes", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const seen: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "record-mode",
         run(ctx) {
@@ -4453,27 +4453,27 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "record-mode" }],
     })
 
-    manager.setData("vim.mode", "normal")
+    actionMap.setData("vim.mode", "normal")
     mockInput.pressKey("x")
 
-    manager.setData("vim.mode", "visual")
+    actionMap.setData("vim.mode", "visual")
     mockInput.pressKey("x")
 
     expect(seen).toEqual(["normal", "visual"])
   })
 
   test("orders key hooks by priority, exposes getData, and cleans them up", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.setData("vim.mode", "normal")
+    actionMap.setData("vim.mode", "normal")
 
-    const offLow = manager.onKeyInput(
+    const offLow = actionMap.onKeyInput(
       ({ event, getData }) => {
         if (event.name !== "x") {
           return
@@ -4484,7 +4484,7 @@ describe("action map", () => {
       { priority: 1 },
     )
 
-    manager.onKeyInput(
+    actionMap.onKeyInput(
       ({ event }) => {
         if (event.name === "x") {
           calls.push("high:first")
@@ -4493,7 +4493,7 @@ describe("action map", () => {
       { priority: 10 },
     )
 
-    manager.onKeyInput(
+    actionMap.onKeyInput(
       ({ event }) => {
         if (event.name === "x") {
           calls.push("high:second")
@@ -4515,12 +4515,12 @@ describe("action map", () => {
   })
 
   test("uses a stable key hook snapshot when hooks unsubscribe mid-dispatch", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
     let offSecond!: () => void
 
-    manager.onKeyInput(
+    actionMap.onKeyInput(
       ({ event }) => {
         if (event.name !== "x") {
           return
@@ -4532,7 +4532,7 @@ describe("action map", () => {
       { priority: 3 },
     )
 
-    offSecond = manager.onKeyInput(
+    offSecond = actionMap.onKeyInput(
       ({ event }) => {
         if (event.name === "x") {
           calls.push("second")
@@ -4541,7 +4541,7 @@ describe("action map", () => {
       { priority: 2 },
     )
 
-    manager.onKeyInput(
+    actionMap.onKeyInput(
       ({ event }) => {
         if (event.name === "x") {
           calls.push("third")
@@ -4559,24 +4559,24 @@ describe("action map", () => {
   })
 
   test("orders raw hooks by priority and cleans them up", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    const offLow = manager.onRawInput(
+    const offLow = actionMap.onRawInput(
       ({ sequence }) => {
         calls.push(`low:${sequence}`)
       },
       { priority: 1 },
     )
 
-    manager.onRawInput(
+    actionMap.onRawInput(
       ({ sequence }) => {
         calls.push(`high:first:${sequence}`)
       },
       { priority: 10 },
     )
 
-    manager.onRawInput(
+    actionMap.onRawInput(
       ({ sequence }) => {
         calls.push(`high:second:${sequence}`)
       },
@@ -4596,10 +4596,10 @@ describe("action map", () => {
   })
 
   test("prefers higher-priority layers and newer layers within the same scope", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "global-low",
         run() {
@@ -4626,21 +4626,21 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       priority: 1,
       bindings: [{ key: "x", cmd: "global-low" }],
     })
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       priority: 2,
       bindings: [{ key: "x", cmd: "global-high" }],
     })
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "y", cmd: "older" }],
     })
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "y", cmd: "newer" }],
     })
@@ -4652,7 +4652,7 @@ describe("action map", () => {
   })
 
   test("lets commands decline handling so lower layers can continue", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
     let renderableCount = 0
     let laterGlobalCount = 0
@@ -4667,7 +4667,7 @@ describe("action map", () => {
       laterGlobalCount += 1
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "local-decline",
         run() {
@@ -4683,11 +4683,11 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "local-decline" }],
     })
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "global-handle" }],
     })
@@ -4701,7 +4701,7 @@ describe("action map", () => {
   })
 
   test("consumes async command bindings immediately", async () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
     let laterGlobalCount = 0
     let renderableCount = 0
@@ -4716,7 +4716,7 @@ describe("action map", () => {
       laterGlobalCount += 1
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "async-command",
         async run() {
@@ -4726,7 +4726,7 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "async-command" }],
     })
@@ -4743,112 +4743,112 @@ describe("action map", () => {
   })
 
   test("clears pending sequences when a layer is disposed", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerCommands([{ name: "delete-line", run() {} }])
 
-    const offLayer = manager.registerLayer({
+    const offLayer = actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
     mockInput.pressKey("d")
-    expect(manager.getPendingSequence()).toHaveLength(1)
+    expect(actionMap.getPendingSequence()).toHaveLength(1)
 
     offLayer()
 
-    expect(manager.getPendingSequence()).toEqual([])
+    expect(actionMap.getPendingSequence()).toEqual([])
   })
 
   test("clears pending sequences when layer requirements stop matching", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerLayerFields({
+    actionMap.registerLayerFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
       },
     })
 
-    manager.registerCommands([{ name: "delete-line", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       mode: "normal",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
-    manager.setData("vim.mode", "normal")
+    actionMap.setData("vim.mode", "normal")
     mockInput.pressKey("d")
-    expect(manager.getPendingSequence()).toHaveLength(1)
+    expect(actionMap.getPendingSequence()).toHaveLength(1)
 
-    manager.setData("vim.mode", "visual")
+    actionMap.setData("vim.mode", "visual")
 
-    expect(manager.getPendingSequence()).toEqual([])
+    expect(actionMap.getPendingSequence()).toEqual([])
   })
 
   test("can unsubscribe pending sequence listeners", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const changes: string[] = []
 
-    manager.registerCommands([{ name: "delete-ca", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "delete-ca", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
-    const off = manager.hook("pendingSequence", (sequence) => {
+    const off = actionMap.hook("pendingSequence", (sequence) => {
       changes.push(sequence.map((stroke) => stroke.name).join(""))
     })
 
     mockInput.pressKey("d")
     off()
     mockInput.pressKey("c")
-    manager.clearPendingSequence()
+    actionMap.clearPendingSequence()
 
     expect(changes).toEqual(["d"])
   })
 
   test("uses a stable pending sequence listener snapshot when listeners unsubscribe mid-notification", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([{ name: "delete-ca", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "delete-ca", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
     let offSecond!: () => void
 
-    manager.hook("pendingSequence", (sequence) => {
+    actionMap.hook("pendingSequence", (sequence) => {
       calls.push(`first:${sequence.map((stroke) => stroke.name).join("")}`)
       offSecond()
     })
 
-    offSecond = manager.hook("pendingSequence", (sequence) => {
+    offSecond = actionMap.hook("pendingSequence", (sequence) => {
       calls.push(`second:${sequence.map((stroke) => stroke.name).join("")}`)
     })
 
     mockInput.pressKey("d")
-    manager.clearPendingSequence()
+    actionMap.clearPendingSequence()
 
     expect(calls).toEqual(["first:d", "second:d", "first:"])
   })
 
   test("emits pending sequence listener failures and continues notifying remaining listeners", () => {
     const changes: string[] = []
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.registerCommands([{ name: "delete-ca", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "delete-ca", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
-    manager.hook("pendingSequence", () => {
+    actionMap.hook("pendingSequence", () => {
       throw new Error("boom")
     })
-    manager.hook("pendingSequence", (sequence) => {
+    actionMap.hook("pendingSequence", (sequence) => {
       changes.push(sequence.map((stroke) => stroke.name).join(""))
     })
 
@@ -4859,10 +4859,10 @@ describe("action map", () => {
   })
 
   test("recompiles tokenized layers when tokens are registered and disposed", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "leader-action",
         run() {
@@ -4871,47 +4871,47 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })
 
-    expect(getActiveKeyNames(manager)).toEqual(["a"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["a"])
 
     mockInput.pressKey("a")
     expect(calls).toEqual(["leader"])
 
-    const offToken = manager.registerToken({
+    const offToken = actionMap.registerToken({
       name: "<leader>",
       key: { name: "x", ctrl: true },
     })
 
-    expect(getActiveKeyNames(manager)).toEqual(["x"])
-    expect(getActiveKeyDisplay(manager, "<leader>")?.command).toBeUndefined()
+    expect(getActiveKeyNames(actionMap)).toEqual(["x"])
+    expect(getActiveKeyDisplay(actionMap, "<leader>")?.command).toBeUndefined()
 
     mockInput.pressKey("a")
     expect(calls).toEqual(["leader"])
 
     mockInput.pressKey("x", { ctrl: true })
-    expect(stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true })).toBe("<leader>")
-    expect(getActiveKeyNames(manager)).toEqual(["a"])
+    expect(stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true })).toBe("<leader>")
+    expect(getActiveKeyNames(actionMap)).toEqual(["a"])
 
     mockInput.pressKey("a")
     expect(calls).toEqual(["leader", "leader"])
 
     offToken()
 
-    expect(getActiveKeyNames(manager)).toEqual(["a"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["a"])
 
     mockInput.pressKey("a")
     expect(calls).toEqual(["leader", "leader", "leader"])
   })
 
   test("keeps token-only bindings inactive until the token is registered", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "leader-only",
         run() {
@@ -4920,19 +4920,19 @@ describe("action map", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>", cmd: "leader-only" }],
     })
 
-    expect(manager.getActiveKeys()).toEqual([])
+    expect(actionMap.getActiveKeys()).toEqual([])
 
-    manager.registerToken({
+    actionMap.registerToken({
       name: "<leader>",
       key: { name: "x", ctrl: true },
     })
 
-    expect(getActiveKeyDisplay(manager, "<leader>")?.command).toBe("leader-only")
+    expect(getActiveKeyDisplay(actionMap, "<leader>")?.command).toBe("leader-only")
 
     mockInput.pressKey("x", { ctrl: true })
 
@@ -4940,37 +4940,37 @@ describe("action map", () => {
   })
 
   test("clears pending tokenized sequences when token registration recompiles their layer", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerCommands([{ name: "leader-action", run() {} }])
-    manager.registerLayer({
+    actionMap.registerCommands([{ name: "leader-action", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>ab", cmd: "leader-action" }],
     })
 
     mockInput.pressKey("a")
 
-    expect(manager.getPendingSequence()).toEqual([{ name: "a", ctrl: false, shift: false, meta: false, super: false }])
+    expect(actionMap.getPendingSequence()).toEqual([{ name: "a", ctrl: false, shift: false, meta: false, super: false }])
 
-    manager.registerToken({
+    actionMap.registerToken({
       name: "<leader>",
       key: { name: "x", ctrl: true },
     })
 
-    expect(manager.getPendingSequence()).toEqual([])
-    expect(getActiveKeyNames(manager)).toEqual(["x"])
+    expect(actionMap.getPendingSequence()).toEqual([])
+    expect(getActiveKeyNames(actionMap)).toEqual(["x"])
   })
 
   test("skips conflicting tokenized bindings when token registration creates a prefix conflict", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       { name: "plain", run() {} },
       { name: "tokenized", run() {} },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "a", cmd: "plain" },
@@ -4978,10 +4978,10 @@ describe("action map", () => {
       ],
     })
 
-    expect(getActiveKeyNames(manager)).toEqual(["a", "b"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["a", "b"])
 
     expect(() => {
-      manager.registerToken({
+      actionMap.registerToken({
         name: "<leader>",
         key: "a",
       })
@@ -4990,15 +4990,15 @@ describe("action map", () => {
     expect(errors).toEqual([
       "ActionMap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
     ])
-    expect(getActiveKeyNames(manager)).toEqual(["a"])
+    expect(getActiveKeyNames(actionMap)).toEqual(["a"])
   })
 
   test("can dispose layer, binding, and command field registrations", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    manager.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerCommands([{ name: "noop", run() {} }])
 
-    const offLayerFields = manager.registerLayerFields({
+    const offLayerFields = actionMap.registerLayerFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
       },
@@ -5006,16 +5006,16 @@ describe("action map", () => {
     offLayerFields()
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         mode: "normal",
         bindings: [{ key: "x", cmd: "noop" }],
       })
     }).not.toThrow()
 
-    expect(getActiveKeyNames(manager)).toContain("x")
+    expect(getActiveKeyNames(actionMap)).toContain("x")
 
-    const offBindingFields = manager.registerBindingFields({
+    const offBindingFields = actionMap.registerBindingFields({
       mode(value, ctx) {
         ctx.require("vim.mode", value)
       },
@@ -5023,15 +5023,15 @@ describe("action map", () => {
     offBindingFields()
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "y", mode: "normal", cmd: "noop" }],
       })
     }).not.toThrow()
 
-    expect(getActiveKeyNames(manager)).toContain("y")
+    expect(getActiveKeyNames(actionMap)).toContain("y")
 
-    const offCommandFields = manager.registerCommandFields({
+    const offCommandFields = actionMap.registerCommandFields({
       desc(value, ctx) {
         ctx.attr("desc", value)
       },
@@ -5039,7 +5039,7 @@ describe("action map", () => {
     offCommandFields()
 
     expect(() => {
-      manager.registerCommands([
+      actionMap.registerCommands([
         {
           name: "noop-with-desc",
           desc: "No operation",
@@ -5048,44 +5048,44 @@ describe("action map", () => {
       ])
     }).not.toThrow()
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "z", cmd: "noop-with-desc" }],
     })
 
-    expect(getActiveKeyNames(manager)).toContain("z")
+    expect(getActiveKeyNames(actionMap)).toContain("z")
   })
 
   test("getActiveKeys follows dispatch order and fallthrough across layers", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const target = createFocusableBox("dispatch-active-target")
 
     renderer.root.add(target)
 
-    manager.registerBindingFields({
+    actionMap.registerBindingFields({
       desc(value, ctx) {
         ctx.attr("desc", value)
       },
     })
-    manager.registerCommandFields({
+    actionMap.registerCommandFields({
       category(value, ctx) {
         ctx.attr("category", value)
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       { name: "save", category: "File", run() {} },
       { name: "help", category: "Help", run() {} },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "x", cmd: "save", desc: "Global x" },
         { key: "y", cmd: "help", desc: "Global y" },
       ],
     })
-    manager.registerLayer({
+    actionMap.registerLayer({
       target,
       bindings: [
         { key: "x", cmd: "help", desc: "Local x" },
@@ -5095,13 +5095,13 @@ describe("action map", () => {
 
     target.focus()
 
-    const activeX = getActiveKey(manager, "x", { includeBindings: true, includeMetadata: true })
+    const activeX = getActiveKey(actionMap, "x", { includeBindings: true, includeMetadata: true })
 
     expect(activeX?.command).toBe("help")
     expect(activeX?.bindings?.map((binding) => binding.command)).toEqual(["help"])
     expect(activeX?.bindingAttrs).toEqual({ desc: "Local x" })
 
-    const activeY = getActiveKey(manager, "y", { includeBindings: true, includeMetadata: true })
+    const activeY = getActiveKey(actionMap, "y", { includeBindings: true, includeMetadata: true })
 
     expect(activeY?.command).toBe("save")
     expect(activeY?.bindings?.map((binding) => binding.command)).toEqual(["save", "help"])
@@ -5109,33 +5109,33 @@ describe("action map", () => {
   })
 
   test("getActiveKeys uses the first matching prefix layer before lower exact layers", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const target = createFocusableBox("prefix-dispatch-target")
 
     renderer.root.add(target)
 
-    manager.registerToken({
+    actionMap.registerToken({
       name: "<leader>",
       key: { name: "x", ctrl: true },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       { name: "plain", run() {} },
       { name: "leader", run() {} },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "ctrl+x", cmd: "plain" }],
     })
-    manager.registerLayer({
+    actionMap.registerLayer({
       target,
       bindings: [{ key: "<leader>a", cmd: "leader" }],
     })
 
     target.focus()
 
-    const activeKey = manager
+    const activeKey = actionMap
       .getActiveKeys()
       .find((candidate) => candidate.stroke.name === "x" && candidate.stroke.ctrl)
 
@@ -5144,19 +5144,19 @@ describe("action map", () => {
   })
 
   test("validates command names and command inputs", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
     expect(() => {
-      manager.registerCommands([{ name: "", run() {} }])
+      actionMap.registerCommands([{ name: "", run() {} }])
     }).not.toThrow()
 
     expect(() => {
-      manager.registerCommands([{ name: "bad name", run() {} }])
+      actionMap.registerCommands([{ name: "bad name", run() {} }])
     }).not.toThrow()
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "x", cmd: "   " }],
       })
@@ -5167,17 +5167,17 @@ describe("action map", () => {
       'Invalid action map command name "bad name": command names cannot contain whitespace',
       "Invalid action map command: command cannot be empty",
     ])
-    expect(manager.getCommands()).toEqual([])
-    expect(getActiveKey(manager, "x")).toBeUndefined()
-    expect(manager.runCommand("   ")).toEqual({ ok: false, reason: "invalid-args" })
+    expect(actionMap.getCommands()).toEqual([])
+    expect(getActiveKey(actionMap, "x")).toBeUndefined()
+    expect(actionMap.runCommand("   ")).toEqual({ ok: false, reason: "invalid-args" })
   })
 
   test("requires registered token keys to resolve to a single key stroke", () => {
-    const manager = getActionMap(renderer)
-    const { errors } = captureDiagnostics(manager)
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
 
     expect(() => {
-      manager.registerToken({ name: "<leader>", key: "dd" })
+      actionMap.registerToken({ name: "<leader>", key: "dd" })
     }).not.toThrow()
 
     expect(errors).toEqual(['Invalid key "dd": expected a single key stroke'])

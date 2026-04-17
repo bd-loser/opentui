@@ -18,11 +18,11 @@ describe("aliases field addon", () => {
   })
 
   test("adds canonical bindings from already-parsed alias strokes", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    registerAliasesField(manager)
-    manager.registerCommands([
+    registerAliasesField(actionMap)
+    actionMap.registerCommands([
       {
         name: "submit",
         run() {
@@ -30,7 +30,7 @@ describe("aliases field addon", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       aliases: { myenter: "return" },
       bindings: [{ key: { name: "myenter" }, cmd: "submit" }],
@@ -38,17 +38,17 @@ describe("aliases field addon", () => {
 
     mockInput.pressEnter()
 
-    const activeKey = manager.getActiveKeys().find((candidate) => candidate.stroke.name === "return")
+    const activeKey = actionMap.getActiveKeys().find((candidate) => candidate.stroke.name === "return")
     expect(activeKey).toBeDefined()
     expect(calls).toEqual(["submit"])
   })
 
   test("supports enter-style aliases for object key bindings", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    registerAliasesField(manager)
-    manager.registerCommands([
+    registerAliasesField(actionMap)
+    actionMap.registerCommands([
       {
         name: "submit",
         run() {
@@ -56,7 +56,7 @@ describe("aliases field addon", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       aliases: { enter: "return" },
       bindings: [{ key: { name: "enter" }, cmd: "submit" }],
@@ -68,28 +68,28 @@ describe("aliases field addon", () => {
   })
 
   test("aliases add bindings instead of replacing the original binding", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    registerAliasesField(manager)
-    manager.registerCommands([{ name: "submit", run() {} }])
-    manager.registerLayer({
+    registerAliasesField(actionMap)
+    actionMap.registerCommands([{ name: "submit", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       aliases: { enter: "return" },
       bindings: [{ key: { name: "enter" }, cmd: "submit" }],
     })
 
-    const names = manager.getActiveKeys().map((candidate) => candidate.stroke.name)
+    const names = actionMap.getActiveKeys().map((candidate) => candidate.stroke.name)
 
     expect(names).toContain("enter")
     expect(names).toContain("return")
   })
 
   test("aliases stay local to the layer that declared them", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    registerAliasesField(manager)
-    manager.registerCommands([
+    registerAliasesField(actionMap)
+    actionMap.registerCommands([
       {
         name: "aliased",
         run() {
@@ -103,12 +103,12 @@ describe("aliases field addon", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       aliases: { myenter: "return" },
       bindings: [{ key: { name: "myenter" }, cmd: "aliased" }],
     })
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: { name: "myenter" }, cmd: "plain", preventDefault: false }],
     })
@@ -116,17 +116,17 @@ describe("aliases field addon", () => {
     mockInput.pressEnter()
 
     expect(calls).toEqual(["aliased"])
-    expect(manager.getPendingSequenceParts()).toEqual([])
+    expect(actionMap.getPendingSequenceParts()).toEqual([])
   })
 
   test("can be disposed to stop alias expansion for subsequent layers", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    const offAliases = registerAliasesField(manager)
+    const offAliases = registerAliasesField(actionMap)
     offAliases()
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "submit",
         run() {
@@ -134,7 +134,7 @@ describe("aliases field addon", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       aliases: { enter: "return" },
       bindings: [{ key: { name: "enter" }, cmd: "submit" }],
@@ -143,21 +143,21 @@ describe("aliases field addon", () => {
     mockInput.pressEnter()
 
     expect(calls).toEqual([])
-    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "enter")).toBe(true)
-    expect(manager.getActiveKeys().some((candidate) => candidate.stroke.name === "return")).toBe(false)
+    expect(actionMap.getActiveKeys().some((candidate) => candidate.stroke.name === "enter")).toBe(true)
+    expect(actionMap.getActiveKeys().some((candidate) => candidate.stroke.name === "return")).toBe(false)
   })
 
   test("keeps the first preserved alias label when canonical and alias labels collide", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
 
-    registerAliasesField(manager)
+    registerAliasesField(actionMap)
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       { name: "submit-enter", run() {} },
       { name: "submit-return", run() {} },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       aliases: { enter: "return" },
       bindings: [
@@ -166,7 +166,7 @@ describe("aliases field addon", () => {
       ],
     })
 
-    const activeEnter = manager.getActiveKeys().find((candidate) => candidate.stroke.name === "return")
+    const activeEnter = actionMap.getActiveKeys().find((candidate) => candidate.stroke.name === "return")
     expect(activeEnter?.display).toBe("enter")
     expect(stringifyKeyStroke(activeEnter!, { preferDisplay: true })).toBe("enter")
   })

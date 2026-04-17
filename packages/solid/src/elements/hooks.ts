@@ -178,12 +178,12 @@ export const useActionMap = (): ActionMap => {
 
 // Use the batched `state` hook for derived reads. Pending-sequence changes
 // already flow through `state`, so subscribing to both would duplicate work.
-function useActionMapStateVersion(manager: ActionMap): Accessor<number> {
+function useActionMapStateVersion(actionMap: ActionMap): Accessor<number> {
   const [version, setVersion] = createSignal(0)
   let dispose: (() => void) | undefined
 
   onMount(() => {
-    dispose = manager.hook("state", () => {
+    dispose = actionMap.hook("state", () => {
       setVersion((value) => value + 1)
     })
 
@@ -198,22 +198,22 @@ function useActionMapStateVersion(manager: ActionMap): Accessor<number> {
 }
 
 export const useActiveKeys = (options?: ActionMapActiveKeyOptions): Accessor<readonly ActionMapActiveKey[]> => {
-  const manager = useActionMap()
-  const version = useActionMapStateVersion(manager)
+  const actionMap = useActionMap()
+  const version = useActionMapStateVersion(actionMap)
 
   return createMemo(() => {
     version()
-    return manager.getActiveKeys(options)
+    return actionMap.getActiveKeys(options)
   })
 }
 
 export const usePendingSequenceParts = (): Accessor<readonly ParsedKeyPart[]> => {
-  const manager = useActionMap()
-  const version = useActionMapStateVersion(manager)
+  const actionMap = useActionMap()
+  const version = useActionMapStateVersion(actionMap)
 
   return createMemo(() => {
     version()
-    return manager.getPendingSequenceParts()
+    return actionMap.getPendingSequenceParts()
   })
 }
 
@@ -226,7 +226,7 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
 export function useBindings<TRenderable extends Renderable = Renderable>(
   layer: UseBindingsLayer<TRenderable>,
 ): BindingsRef<TRenderable> {
-  const manager = useActionMap()
+  const actionMap = useActionMap()
   let dispose: (() => void) | undefined
   let mounted = false
   let registered = false
@@ -266,7 +266,7 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
       }
     }
 
-    dispose = manager.registerLayer(resolvedLayer)
+    dispose = actionMap.registerLayer(resolvedLayer)
     registered = true
     registeredScope = resolvedScope
   }

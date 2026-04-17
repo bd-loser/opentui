@@ -16,8 +16,8 @@ export interface ExCommand {
   [key: string]: unknown
 }
 
-function normalizeExCommandName(manager: ActionMap, name: string): string {
-  const normalized = manager.normalizeCommandName(name)
+function normalizeExCommandName(actionMap: ActionMap, name: string): string {
+  const normalized = actionMap.normalizeCommandName(name)
   if (normalized.startsWith(":")) {
     return normalized
   }
@@ -73,7 +73,7 @@ function validateCommandArgs(command: ExCommand, args: string[]): boolean {
   return true
 }
 
-export function registerExCommands(manager: ActionMap, commands: ExCommand[]): () => void {
+export function registerExCommands(actionMap: ActionMap, commands: ExCommand[]): () => void {
   const registrations: ActionMapCommandDefinition[] = []
   const commandMap = new Map<string, ExCommand>()
 
@@ -87,7 +87,7 @@ export function registerExCommands(manager: ActionMap, commands: ExCommand[]): (
     }
 
     for (const name of names) {
-      const normalizedName = normalizeExCommandName(manager, name)
+      const normalizedName = normalizeExCommandName(actionMap, name)
       commandMap.set(normalizedName, command)
 
       registrations.push({
@@ -113,14 +113,14 @@ export function registerExCommands(manager: ActionMap, commands: ExCommand[]): (
     }
   }
 
-  const offCommands = manager.registerCommands(registrations)
-  const offResolver = manager.registerCommandResolver((input, ctx) => {
+  const offCommands = actionMap.registerCommands(registrations)
+  const offResolver = actionMap.registerCommandResolver((input, ctx) => {
     if (!input.startsWith(":")) {
       return undefined
     }
 
     const parsed = parseCommandInput(input)
-    const normalizedName = normalizeExCommandName(manager, parsed.name)
+    const normalizedName = normalizeExCommandName(actionMap, parsed.name)
     const command = commandMap.get(normalizedName)
     if (!command) {
       return undefined

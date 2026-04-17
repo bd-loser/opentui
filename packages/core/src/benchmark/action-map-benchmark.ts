@@ -31,7 +31,7 @@ interface BenchmarkArgs {
 interface ScenarioResources {
   renderer: TestRenderer
   mockInput: MockInput
-  manager: ActionMap
+  actionMap: ActionMap
 }
 
 interface ScenarioInstance {
@@ -220,9 +220,9 @@ function createBracketTokenParser(): ActionMapBindingParser {
   }
 }
 
-function registerGlobalLayers(manager: ActionMap, count: number, cmd = "noop"): void {
+function registerGlobalLayers(actionMap: ActionMap, count: number, cmd = "noop"): void {
   for (let index = 0; index < count; index += 1) {
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       priority: index % 3,
       bindings: [{ key: createKey(index), cmd }],
@@ -231,13 +231,13 @@ function registerGlobalLayers(manager: ActionMap, count: number, cmd = "noop"): 
 }
 
 function registerTargetLayer(
-  manager: ActionMap,
+  actionMap: ActionMap,
   target: BoxRenderable,
   index: number,
   key = createKey(index),
   cmd = "noop",
 ): void {
-  manager.registerLayer({
+  actionMap.registerLayer({
     target,
     scope: index % 2 === 0 ? "focus-within" : "focus",
     priority: index % 4,
@@ -245,8 +245,8 @@ function registerTargetLayer(
   })
 }
 
-function registerModeBindingFields(manager: ActionMap): void {
-  manager.registerBindingFields({
+function registerModeBindingFields(actionMap: ActionMap): void {
+  actionMap.registerBindingFields({
     mode(value, ctx) {
       ctx.require("vim.mode", value)
     },
@@ -256,8 +256,8 @@ function registerModeBindingFields(manager: ActionMap): void {
   })
 }
 
-function registerModeLayerFields(manager: ActionMap): void {
-  manager.registerLayerFields({
+function registerModeLayerFields(actionMap: ActionMap): void {
+  actionMap.registerLayerFields({
     mode(value, ctx) {
       ctx.require("vim.mode", value)
     },
@@ -280,16 +280,16 @@ function normalizeFlagKey(value: unknown, source: string): string {
   return trimmed
 }
 
-function registerNamedBindingFields(manager: ActionMap): void {
-  manager.registerBindingFields({
+function registerNamedBindingFields(actionMap: ActionMap): void {
+  actionMap.registerBindingFields({
     activeWhen(value, ctx) {
       ctx.require(normalizeFlagKey(value, "binding field activeWhen"), true)
     },
   })
 }
 
-function registerNamedLayerFields(manager: ActionMap): void {
-  manager.registerLayerFields({
+function registerNamedLayerFields(actionMap: ActionMap): void {
+  actionMap.registerLayerFields({
     activeWhen(value, ctx) {
       ctx.require(normalizeFlagKey(value, "layer field activeWhen"), true)
     },
@@ -355,8 +355,8 @@ function createFlagMatcher(store: FlagStore, key: string): ActionMapReactiveMatc
   }
 }
 
-function registerExternalBindingFields(manager: ActionMap, store: FlagStore): void {
-  manager.registerBindingFields({
+function registerExternalBindingFields(actionMap: ActionMap, store: FlagStore): void {
+  actionMap.registerBindingFields({
     activeExternally(value, ctx) {
       const key = normalizeFlagKey(value, "binding field activeExternally")
       ctx.match(createFlagMatcher(store, key))
@@ -364,22 +364,22 @@ function registerExternalBindingFields(manager: ActionMap, store: FlagStore): vo
   })
 }
 
-function registerStateChangeNoopListener(manager: ActionMap): () => void {
+function registerStateChangeNoopListener(actionMap: ActionMap): () => void {
   let events = 0
 
-  return manager.hook("state", () => {
+  return actionMap.hook("state", () => {
     events += 1
   })
 }
 
-function registerStateChangeReadListeners(manager: ActionMap): () => void {
+function registerStateChangeReadListeners(actionMap: ActionMap): () => void {
   let sink = 0
 
-  const offActiveKeys = manager.hook("state", () => {
-    sink += manager.getActiveKeys().length
+  const offActiveKeys = actionMap.hook("state", () => {
+    sink += actionMap.getActiveKeys().length
   })
-  const offPendingSequence = manager.hook("state", () => {
-    sink += manager.getPendingSequenceParts().length
+  const offPendingSequence = actionMap.hook("state", () => {
+    sink += actionMap.getPendingSequenceParts().length
   })
 
   return () => {
@@ -389,14 +389,14 @@ function registerStateChangeReadListeners(manager: ActionMap): () => void {
   }
 }
 
-function registerStateChangeMetadataListeners(manager: ActionMap): () => void {
+function registerStateChangeMetadataListeners(actionMap: ActionMap): () => void {
   let sink = 0
 
-  const offActiveKeys = manager.hook("state", () => {
-    sink += manager.getActiveKeys({ includeMetadata: true }).length
+  const offActiveKeys = actionMap.hook("state", () => {
+    sink += actionMap.getActiveKeys({ includeMetadata: true }).length
   })
-  const offPendingSequence = manager.hook("state", () => {
-    sink += manager.getPendingSequenceParts().length
+  const offPendingSequence = actionMap.hook("state", () => {
+    sink += actionMap.getPendingSequenceParts().length
   })
 
   return () => {
@@ -406,14 +406,14 @@ function registerStateChangeMetadataListeners(manager: ActionMap): () => void {
   }
 }
 
-function registerStateChangeBindingListeners(manager: ActionMap): () => void {
+function registerStateChangeBindingListeners(actionMap: ActionMap): () => void {
   let sink = 0
 
-  const offActiveKeys = manager.hook("state", () => {
-    sink += manager.getActiveKeys({ includeBindings: true }).length
+  const offActiveKeys = actionMap.hook("state", () => {
+    sink += actionMap.getActiveKeys({ includeBindings: true }).length
   })
-  const offPendingSequence = manager.hook("state", () => {
-    sink += manager.getPendingSequenceParts().length
+  const offPendingSequence = actionMap.hook("state", () => {
+    sink += actionMap.getPendingSequenceParts().length
   })
 
   return () => {
@@ -423,27 +423,27 @@ function registerStateChangeBindingListeners(manager: ActionMap): () => void {
   }
 }
 
-function readActiveKeysRepeatedly(manager: ActionMap, count: number): void {
+function readActiveKeysRepeatedly(actionMap: ActionMap, count: number): void {
   for (let index = 0; index < count; index += 1) {
-    manager.getActiveKeys()
+    actionMap.getActiveKeys()
   }
 }
 
-function readActiveKeysWithMetadataRepeatedly(manager: ActionMap, count: number): void {
+function readActiveKeysWithMetadataRepeatedly(actionMap: ActionMap, count: number): void {
   for (let index = 0; index < count; index += 1) {
-    manager.getActiveKeys({ includeMetadata: true })
+    actionMap.getActiveKeys({ includeMetadata: true })
   }
 }
 
-function readActiveKeysWithBindingsRepeatedly(manager: ActionMap, count: number): void {
+function readActiveKeysWithBindingsRepeatedly(actionMap: ActionMap, count: number): void {
   for (let index = 0; index < count; index += 1) {
-    manager.getActiveKeys({ includeBindings: true })
+    actionMap.getActiveKeys({ includeBindings: true })
   }
 }
 
-function readPendingSequencePartsRepeatedly(manager: ActionMap, count: number): void {
+function readPendingSequencePartsRepeatedly(actionMap: ActionMap, count: number): void {
   for (let index = 0; index < count; index += 1) {
-    manager.getPendingSequenceParts()
+    actionMap.getPendingSequenceParts()
   }
 }
 
@@ -458,17 +458,17 @@ function setupStateChangeFocusChurn(resources: ScenarioResources): {
   resources.renderer.root.add(second)
 
   for (let index = 0; index < 8; index += 1) {
-    registerTargetLayer(resources.manager, first, index, createKey(index + 1))
-    registerTargetLayer(resources.manager, second, index + 100, createKey(index + 11))
+    registerTargetLayer(resources.actionMap, first, index, createKey(index + 1))
+    registerTargetLayer(resources.actionMap, second, index + 100, createKey(index + 11))
   }
 
-  registerGlobalLayers(resources.manager, 120)
+  registerGlobalLayers(resources.actionMap, 120)
 
   return { first, second }
 }
 
 function setupMetadataFocusTree(resources: ScenarioResources): BoxRenderable[] {
-  registerMetadataFields(resources.manager)
+  registerMetadataFields(resources.actionMap)
 
   const commands = Array.from({ length: 36 + 300 + 150 }, (_, index) => ({
     name: `metadata-command-${index}`,
@@ -477,7 +477,7 @@ function setupMetadataFocusTree(resources: ScenarioResources): BoxRenderable[] {
     run() {},
   }))
 
-  resources.manager.registerCommands(commands)
+  resources.actionMap.registerCommands(commands)
 
   const focusChain = createFocusTree(resources, 6)
   let commandIndex = 0
@@ -489,7 +489,7 @@ function setupMetadataFocusTree(resources: ScenarioResources): BoxRenderable[] {
     }
 
     for (let layerIndex = 0; layerIndex < 6; layerIndex += 1) {
-      resources.manager.registerLayer({
+      resources.actionMap.registerLayer({
         target,
         scope: index % 2 === 0 ? "focus-within" : "focus",
         priority: layerIndex % 4,
@@ -510,7 +510,7 @@ function setupMetadataFocusTree(resources: ScenarioResources): BoxRenderable[] {
   for (let index = 0; index < 300; index += 1) {
     const sibling = createFocusableBox(resources.renderer, `metadata-sibling-${index}`)
     resources.renderer.root.add(sibling)
-    resources.manager.registerLayer({
+    resources.actionMap.registerLayer({
       target: sibling,
       scope: index % 2 === 0 ? "focus-within" : "focus",
       priority: index % 4,
@@ -527,7 +527,7 @@ function setupMetadataFocusTree(resources: ScenarioResources): BoxRenderable[] {
   }
 
   for (let index = 0; index < 150; index += 1) {
-    resources.manager.registerLayer({
+    resources.actionMap.registerLayer({
       scope: "global",
       priority: index % 3,
       bindings: [
@@ -547,8 +547,8 @@ function setupMetadataFocusTree(resources: ScenarioResources): BoxRenderable[] {
 
 async function createScenarioResources(): Promise<ScenarioResources> {
   const testSetup = await createTestRenderer({ width: 80, height: 24 })
-  const manager = getActionMap(testSetup.renderer)
-  manager.registerCommands([
+  const actionMap = getActionMap(testSetup.renderer)
+  actionMap.registerCommands([
     {
       name: "noop",
       run() {},
@@ -558,7 +558,7 @@ async function createScenarioResources(): Promise<ScenarioResources> {
   return {
     renderer: testSetup.renderer,
     mockInput: testSetup.mockInput,
-    manager,
+    actionMap,
   }
 }
 
@@ -583,12 +583,12 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated layer registration using the default binding parser",
     async setup() {
       const resources = await createScenarioResources()
-      resources.manager.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
+      resources.actionMap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
 
       return {
         resources,
         runIteration() {
-          const off = resources.manager.registerLayer({
+          const off = resources.actionMap.registerLayer({
             scope: "global",
             bindings: [{ key: "g<leader>d", cmd: "noop" }],
           })
@@ -605,16 +605,16 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated layer registration with many no-op parsers ahead of default",
     async setup() {
       const resources = await createScenarioResources()
-      resources.manager.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
+      resources.actionMap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
 
       for (let index = 0; index < 32; index += 1) {
-        resources.manager.prependBindingParser(noopBindingParser)
+        resources.actionMap.prependBindingParser(noopBindingParser)
       }
 
       return {
         resources,
         runIteration() {
-          const off = resources.manager.registerLayer({
+          const off = resources.actionMap.registerLayer({
             scope: "global",
             bindings: [{ key: "g<leader>d", cmd: "noop" }],
           })
@@ -632,15 +632,15 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
 
-      resources.manager.clearBindingParsers()
-      resources.manager.appendBindingParser(createBracketTokenParser())
-      resources.manager.appendBindingParser(defaultBindingParser)
-      resources.manager.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
+      resources.actionMap.clearBindingParsers()
+      resources.actionMap.appendBindingParser(createBracketTokenParser())
+      resources.actionMap.appendBindingParser(defaultBindingParser)
+      resources.actionMap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
 
       return {
         resources,
         runIteration() {
-          const off = resources.manager.registerLayer({
+          const off = resources.actionMap.registerLayer({
             scope: "global",
             bindings: [{ key: "g[leader]d", cmd: "noop" }],
           })
@@ -658,7 +658,7 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
 
-      resources.manager.registerCommandFields({
+      resources.actionMap.registerCommandFields({
         desc(value, ctx) {
           ctx.attr("desc", value)
         },
@@ -673,7 +673,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          const off = resources.manager.registerCommands([
+          const off = resources.actionMap.registerCommands([
             {
               name: "bench-command",
               namespace: "bench",
@@ -700,13 +700,13 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
 
-      resources.manager.registerCommandFields({
+      resources.actionMap.registerCommandFields({
         title(value, ctx) {
           ctx.attr("label", value)
         },
       })
 
-      resources.manager.registerCommands(
+      resources.actionMap.registerCommands(
         Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           namespace: index % 2 === 0 ? "bench" : "other",
@@ -720,7 +720,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.manager.getCommands({
+          resources.actionMap.getCommands({
             search: "write",
             searchIn: ["name", "title", "usage", "label"],
             filter: {
@@ -741,13 +741,13 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
 
-      resources.manager.registerCommandFields({
+      resources.actionMap.registerCommandFields({
         title(value, ctx) {
           ctx.attr("label", value)
         },
       })
 
-      resources.manager.registerCommands(
+      resources.actionMap.registerCommands(
         Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           namespace: index % 2 === 0 ? "bench" : "other",
@@ -761,7 +761,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.manager.getCommands({
+          resources.actionMap.getCommands({
             namespace: "bench",
             filter: {
               tags: "file",
@@ -780,13 +780,13 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
 
-      resources.manager.registerCommandFields({
+      resources.actionMap.registerCommandFields({
         title(value, ctx) {
           ctx.attr("label", value)
         },
       })
 
-      resources.manager.registerCommands(
+      resources.actionMap.registerCommands(
         Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           namespace: index % 2 === 0 ? "bench" : "other",
@@ -800,7 +800,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.manager.getCommands({
+          resources.actionMap.getCommands({
             search: "write",
             searchIn: ["name", "title", "usage", "label"],
             filter(command) {
@@ -824,7 +824,7 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
 
-      resources.manager.registerCommands([
+      resources.actionMap.registerCommands([
         {
           name: "bench-run-command",
           title: "Bench Run Command",
@@ -836,7 +836,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.manager.runCommand("bench-run-command")
+          resources.actionMap.runCommand("bench-run-command")
         },
         cleanup() {
           resources.renderer.destroy()
@@ -850,7 +850,7 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
 
-      resources.manager.registerCommands([
+      resources.actionMap.registerCommands([
         {
           name: "bench-run-command",
           title: "Bench Run Command",
@@ -862,7 +862,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.manager.runCommand("bench-run-command", { includeCommand: true })
+          resources.actionMap.runCommand("bench-run-command", { includeCommand: true })
         },
         cleanup() {
           resources.renderer.destroy()
@@ -875,12 +875,12 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated getActiveKeys with many global layers",
     async setup() {
       const resources = await createScenarioResources()
-      registerGlobalLayers(resources.manager, 400)
+      registerGlobalLayers(resources.actionMap, 400)
 
       return {
         resources,
         runIteration() {
-          resources.manager.getActiveKeys()
+          resources.actionMap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -902,22 +902,22 @@ const scenarios: BenchmarkScenario[] = [
         }
 
         for (let layerIndex = 0; layerIndex < 6; layerIndex += 1) {
-          registerTargetLayer(resources.manager, target, index * 10 + layerIndex)
+          registerTargetLayer(resources.actionMap, target, index * 10 + layerIndex)
         }
       }
 
       for (let index = 0; index < 300; index += 1) {
         const sibling = createFocusableBox(resources.renderer, `sibling-${index}`)
         resources.renderer.root.add(sibling)
-        registerTargetLayer(resources.manager, sibling, index + 1000)
+        registerTargetLayer(resources.actionMap, sibling, index + 1000)
       }
 
-      registerGlobalLayers(resources.manager, 150)
+      registerGlobalLayers(resources.actionMap, 150)
 
       return {
         resources,
         runIteration() {
-          resources.manager.getActiveKeys()
+          resources.actionMap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -939,22 +939,22 @@ const scenarios: BenchmarkScenario[] = [
         }
 
         for (let layerIndex = 0; layerIndex < 6; layerIndex += 1) {
-          registerTargetLayer(resources.manager, target, index * 10 + layerIndex)
+          registerTargetLayer(resources.actionMap, target, index * 10 + layerIndex)
         }
       }
 
       for (let index = 0; index < 300; index += 1) {
         const sibling = createFocusableBox(resources.renderer, `repeat-sibling-${index}`)
         resources.renderer.root.add(sibling)
-        registerTargetLayer(resources.manager, sibling, index + 3000)
+        registerTargetLayer(resources.actionMap, sibling, index + 3000)
       }
 
-      registerGlobalLayers(resources.manager, 150)
+      registerGlobalLayers(resources.actionMap, 150)
 
       return {
         resources,
         runIteration() {
-          readActiveKeysRepeatedly(resources.manager, 5)
+          readActiveKeysRepeatedly(resources.actionMap, 5)
         },
         cleanup() {
           resources.renderer.destroy()
@@ -972,7 +972,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          readActiveKeysWithBindingsRepeatedly(resources.manager, 5)
+          readActiveKeysWithBindingsRepeatedly(resources.actionMap, 5)
         },
         cleanup() {
           resources.renderer.destroy()
@@ -990,7 +990,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          readActiveKeysWithMetadataRepeatedly(resources.manager, 5)
+          readActiveKeysWithMetadataRepeatedly(resources.actionMap, 5)
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1012,7 +1012,7 @@ const scenarios: BenchmarkScenario[] = [
         }
 
         for (let layerIndex = 0; layerIndex < 6; layerIndex += 1) {
-          registerTargetLayer(resources.manager, target, index * 10 + layerIndex, createKey(layerIndex + 1))
+          registerTargetLayer(resources.actionMap, target, index * 10 + layerIndex, createKey(layerIndex + 1))
         }
       }
 
@@ -1021,7 +1021,7 @@ const scenarios: BenchmarkScenario[] = [
         throw new Error("Expected a focused target for dispatch benchmark")
       }
 
-      resources.manager.registerLayer({
+      resources.actionMap.registerLayer({
         target: focusedTarget,
         bindings: [{ key: "x", cmd: "noop" }],
       })
@@ -1029,10 +1029,10 @@ const scenarios: BenchmarkScenario[] = [
       for (let index = 0; index < 300; index += 1) {
         const sibling = createFocusableBox(resources.renderer, `dispatch-sibling-${index}`)
         resources.renderer.root.add(sibling)
-        registerTargetLayer(resources.manager, sibling, index + 2000)
+        registerTargetLayer(resources.actionMap, sibling, index + 2000)
       }
 
-      registerGlobalLayers(resources.manager, 150)
+      registerGlobalLayers(resources.actionMap, 150)
 
       return {
         resources,
@@ -1059,12 +1059,12 @@ const scenarios: BenchmarkScenario[] = [
         }
 
         for (let layerIndex = 0; layerIndex < 5; layerIndex += 1) {
-          registerTargetLayer(resources.manager, target, index * 10 + layerIndex, createKey(layerIndex + 1))
+          registerTargetLayer(resources.actionMap, target, index * 10 + layerIndex, createKey(layerIndex + 1))
         }
       }
 
-      registerGlobalLayers(resources.manager, 120)
-      resources.manager.registerLayer({
+      registerGlobalLayers(resources.actionMap, 120)
+      resources.actionMap.registerLayer({
         scope: "global",
         bindings: [
           { key: "ga", cmd: "noop" },
@@ -1079,7 +1079,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.manager.getActiveKeys()
+          resources.actionMap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1101,12 +1101,12 @@ const scenarios: BenchmarkScenario[] = [
         }
 
         for (let layerIndex = 0; layerIndex < 5; layerIndex += 1) {
-          registerTargetLayer(resources.manager, target, index * 10 + layerIndex, createKey(layerIndex + 1))
+          registerTargetLayer(resources.actionMap, target, index * 10 + layerIndex, createKey(layerIndex + 1))
         }
       }
 
-      registerGlobalLayers(resources.manager, 120)
-      resources.manager.registerLayer({
+      registerGlobalLayers(resources.actionMap, 120)
+      resources.actionMap.registerLayer({
         scope: "global",
         bindings: [
           { key: "ga", cmd: "noop" },
@@ -1121,7 +1121,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          readPendingSequencePartsRepeatedly(resources.manager, 5)
+          readPendingSequencePartsRepeatedly(resources.actionMap, 5)
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1136,13 +1136,13 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       for (let index = 0; index < 320; index += 1) {
-        resources.manager.registerLayer({
+        resources.actionMap.registerLayer({
           scope: "global",
           bindings: [{ key: `<leader>${createKey(index)}`, cmd: "noop" }],
         })
       }
 
-      resources.manager.registerToken({
+      resources.actionMap.registerToken({
         name: "<leader>",
         key: { name: "x", ctrl: true },
       })
@@ -1151,7 +1151,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.manager.getActiveKeys()
+          resources.actionMap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1164,12 +1164,12 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated getActiveKeys with many runtime-gated bindings",
     async setup() {
       const resources = await createScenarioResources()
-      registerModeBindingFields(resources.manager)
-      resources.manager.setData("vim.mode", "normal")
-      resources.manager.setData("vim.state", "idle")
+      registerModeBindingFields(resources.actionMap)
+      resources.actionMap.setData("vim.mode", "normal")
+      resources.actionMap.setData("vim.state", "idle")
 
       for (let index = 0; index < 320; index += 1) {
-        resources.manager.registerLayer({
+        resources.actionMap.registerLayer({
           scope: "global",
           bindings: [
             {
@@ -1191,7 +1191,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.manager.getActiveKeys()
+          resources.actionMap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1204,12 +1204,12 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated getActiveKeys with many runtime-gated layers",
     async setup() {
       const resources = await createScenarioResources()
-      registerModeLayerFields(resources.manager)
-      resources.manager.setData("vim.mode", "normal")
-      resources.manager.setData("vim.state", "idle")
+      registerModeLayerFields(resources.actionMap)
+      resources.actionMap.setData("vim.mode", "normal")
+      resources.actionMap.setData("vim.state", "idle")
 
       for (let index = 0; index < 320; index += 1) {
-        resources.manager.registerLayer({
+        resources.actionMap.registerLayer({
           scope: "global",
           mode: index % 2 === 0 ? "normal" : "visual",
           state: index % 3 === 0 ? "idle" : "busy",
@@ -1223,7 +1223,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.manager.getActiveKeys()
+          resources.actionMap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1238,11 +1238,11 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
       const enabledStates: boolean[] = []
 
-      registerEnabledField(resources.manager)
+      registerEnabledField(resources.actionMap)
 
       for (let index = 0; index < 320; index += 1) {
         enabledStates.push(index % 3 !== 0)
-        resources.manager.registerLayer({
+        resources.actionMap.registerLayer({
           scope: "global",
           enabled: () => enabledStates[index] ?? false,
           bindings: [
@@ -1255,7 +1255,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.manager.getActiveKeys()
+          resources.actionMap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1268,11 +1268,11 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated setData and getActiveKeys with per-binding dependency keys",
     async setup() {
       const resources = await createScenarioResources()
-      registerNamedBindingFields(resources.manager)
+      registerNamedBindingFields(resources.actionMap)
 
       for (let index = 0; index < 320; index += 1) {
-        resources.manager.setData(createFlagKey(index), true)
-        resources.manager.registerLayer({
+        resources.actionMap.setData(createFlagKey(index), true)
+        resources.actionMap.registerLayer({
           scope: "global",
           bindings: [
             {
@@ -1291,8 +1291,8 @@ const scenarios: BenchmarkScenario[] = [
         runIteration() {
           const key = createFlagKey(iteration % 320)
           const nextValue = iteration % 2 === 0
-          resources.manager.setData(key, nextValue)
-          resources.manager.getActiveKeys()
+          resources.actionMap.setData(key, nextValue)
+          resources.actionMap.getActiveKeys()
           iteration += 1
         },
         cleanup() {
@@ -1306,11 +1306,11 @@ const scenarios: BenchmarkScenario[] = [
     description: "Repeated setData and getActiveKeys with per-layer dependency keys",
     async setup() {
       const resources = await createScenarioResources()
-      registerNamedLayerFields(resources.manager)
+      registerNamedLayerFields(resources.actionMap)
 
       for (let index = 0; index < 320; index += 1) {
-        resources.manager.setData(createFlagKey(index), true)
-        resources.manager.registerLayer({
+        resources.actionMap.setData(createFlagKey(index), true)
+        resources.actionMap.registerLayer({
           scope: "global",
           activeWhen: createFlagKey(index),
           bindings: [{ key: createKey(index), cmd: "noop" }],
@@ -1324,8 +1324,8 @@ const scenarios: BenchmarkScenario[] = [
         runIteration() {
           const key = createFlagKey(iteration % 320)
           const nextValue = iteration % 2 === 0
-          resources.manager.setData(key, nextValue)
-          resources.manager.getActiveKeys()
+          resources.actionMap.setData(key, nextValue)
+          resources.actionMap.getActiveKeys()
           iteration += 1
         },
         cleanup() {
@@ -1340,7 +1340,7 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
       const { first, second } = setupStateChangeFocusChurn(resources)
-      const offStateChange = registerStateChangeNoopListener(resources.manager)
+      const offStateChange = registerStateChangeNoopListener(resources.actionMap)
       let focusFirst = false
 
       first.focus()
@@ -1369,7 +1369,7 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
       const { first, second } = setupStateChangeFocusChurn(resources)
-      const offStateChange = registerStateChangeReadListeners(resources.manager)
+      const offStateChange = registerStateChangeReadListeners(resources.actionMap)
       let focusFirst = false
 
       first.focus()
@@ -1398,7 +1398,7 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
       const focusChain = setupMetadataFocusTree(resources)
-      const offStateChange = registerStateChangeMetadataListeners(resources.manager)
+      const offStateChange = registerStateChangeMetadataListeners(resources.actionMap)
       const first = focusChain[0]
       const second = focusChain[1]
       let focusFirst = false
@@ -1433,7 +1433,7 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
       const focusChain = setupMetadataFocusTree(resources)
-      const offStateChange = registerStateChangeBindingListeners(resources.manager)
+      const offStateChange = registerStateChangeBindingListeners(resources.actionMap)
       const first = focusChain[0]
       const second = focusChain[1]
       let focusFirst = false
@@ -1481,7 +1481,7 @@ const scenarios: BenchmarkScenario[] = [
             second.focus()
           }
 
-          readActiveKeysRepeatedly(resources.manager, 5)
+          readActiveKeysRepeatedly(resources.actionMap, 5)
           focusFirst = !focusFirst
         },
         cleanup() {
@@ -1496,10 +1496,10 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
       const target = createFocusableBox(resources.renderer, "state-pending-target")
-      const offStateChange = registerStateChangeReadListeners(resources.manager)
+      const offStateChange = registerStateChangeReadListeners(resources.actionMap)
 
       resources.renderer.root.add(target)
-      resources.manager.registerLayer({
+      resources.actionMap.registerLayer({
         target,
         bindings: [{ key: "dd", cmd: "noop" }],
       })
@@ -1524,14 +1524,14 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
       const store = createFlagStore()
-      const offStateChange = registerStateChangeReadListeners(resources.manager)
+      const offStateChange = registerStateChangeReadListeners(resources.actionMap)
 
-      registerExternalBindingFields(resources.manager, store)
+      registerExternalBindingFields(resources.actionMap, store)
 
       for (let index = 0; index < 320; index += 1) {
         const key = createFlagKey(index)
         store.flags[key] = true
-        resources.manager.registerLayer({
+        resources.actionMap.registerLayer({
           scope: "global",
           bindings: [
             {
@@ -1566,7 +1566,7 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       for (let index = 0; index < 160; index += 1) {
-        resources.manager.registerLayer({
+        resources.actionMap.registerLayer({
           scope: "global",
           bindings: [
             { key: "ga", cmd: "noop" },
@@ -1580,7 +1580,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          resources.manager.getActiveKeys()
+          resources.actionMap.getActiveKeys()
         },
         cleanup() {
           resources.renderer.destroy()
@@ -1595,7 +1595,7 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       for (let index = 0; index < 80; index += 1) {
-        resources.manager.onKeyInput(
+        resources.actionMap.onKeyInput(
           ({ event }) => {
             if (event.name === "z") {
               return
@@ -1622,7 +1622,7 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
 
-      resources.manager.registerCommands([
+      resources.actionMap.registerCommands([
         {
           name: "consume-data",
           run(ctx) {
@@ -1634,10 +1634,10 @@ const scenarios: BenchmarkScenario[] = [
       ])
 
       for (let index = 0; index < 20; index += 1) {
-        resources.manager.setData(`field-${index}`, `value-${index}`)
+        resources.actionMap.setData(`field-${index}`, `value-${index}`)
       }
 
-      resources.manager.registerLayer({
+      resources.actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "x", cmd: "consume-data" }],
       })

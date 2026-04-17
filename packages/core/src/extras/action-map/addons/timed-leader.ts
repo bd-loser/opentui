@@ -7,8 +7,8 @@ export interface TimedLeaderOptions extends LeaderOptions {
   onDisarm?: () => void
 }
 
-export function registerTimedLeader(manager: ActionMap, options: TimedLeaderOptions): () => void {
-  const matchesTrigger = manager.createKeyMatcher(options.trigger)
+export function registerTimedLeader(actionMap: ActionMap, options: TimedLeaderOptions): () => void {
+  const matchesTrigger = actionMap.createKeyMatcher(options.trigger)
   const timeoutMs = options.timeoutMs ?? 1500
 
   let armed = false
@@ -26,7 +26,7 @@ export function registerTimedLeader(manager: ActionMap, options: TimedLeaderOpti
   const scheduleTimeout = (): void => {
     clearTimer()
     timeout = setTimeout(() => {
-      manager.clearPendingSequence()
+      actionMap.clearPendingSequence()
     }, timeoutMs)
   }
 
@@ -51,11 +51,11 @@ export function registerTimedLeader(manager: ActionMap, options: TimedLeaderOpti
     options.onDisarm?.()
   }
 
-  const offLeader = registerLeader(manager, options)
-  const offPendingSequenceChange = manager.hook("pendingSequence", (sequence) => {
+  const offLeader = registerLeader(actionMap, options)
+  const offPendingSequenceChange = actionMap.hook("pendingSequence", (sequence) => {
     syncArmedState(sequence)
   })
-  syncArmedState(manager.getPendingSequence())
+  syncArmedState(actionMap.getPendingSequence())
 
   const dispose = (): void => {
     clearTimer()

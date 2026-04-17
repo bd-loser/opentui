@@ -68,40 +68,40 @@ export const useActionMap = (): ActionMap => {
 
 // Use the batched `state` hook for derived reads. Pending-sequence changes
 // already flow through `state`, so subscribing to both would duplicate work.
-function useActionMapStateVersion(manager: ActionMap): number {
+function useActionMapStateVersion(actionMap: ActionMap): number {
   const [version, bumpVersion] = useReducer((value: number) => value + 1, 0)
 
   useLayoutEffect(() => {
-    const dispose = manager.hook("state", () => {
+    const dispose = actionMap.hook("state", () => {
       bumpVersion()
     })
 
     return () => {
       dispose()
     }
-  }, [manager])
+  }, [actionMap])
 
   return version
 }
 
 export const useActiveKeys = (options?: ActionMapActiveKeyOptions): readonly ActionMapActiveKey[] => {
-  const manager = useActionMap()
-  const version = useActionMapStateVersion(manager)
+  const actionMap = useActionMap()
+  const version = useActionMapStateVersion(actionMap)
 
   return useMemo(() => {
     void version
-    return manager.getActiveKeys(options)
-  }, [manager, options, version])
+    return actionMap.getActiveKeys(options)
+  }, [actionMap, options, version])
 }
 
 export const usePendingSequenceParts = (): readonly ParsedKeyPart[] => {
-  const manager = useActionMap()
-  const version = useActionMapStateVersion(manager)
+  const actionMap = useActionMap()
+  const version = useActionMapStateVersion(actionMap)
 
   return useMemo(() => {
     void version
-    return manager.getPendingSequenceParts()
-  }, [manager, version])
+    return actionMap.getPendingSequenceParts()
+  }, [actionMap, version])
 }
 
 export function useBindings<TRenderable extends Renderable = Renderable>(
@@ -113,7 +113,7 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
 export function useBindings<TRenderable extends Renderable = Renderable>(
   layer: UseBindingsLayer<TRenderable>,
 ): BindingsRef<TRenderable> {
-  const manager = useActionMap()
+  const actionMap = useActionMap()
   const layerRef = useRef(layer)
   const refTargetRef = useRef<TRenderable | undefined>(undefined)
   const disposeRef = useRef<(() => void) | undefined>(undefined)
@@ -162,10 +162,10 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
             target: resolvedTarget!,
           }
 
-    disposeRef.current = manager.registerLayer(resolvedLayer)
+    disposeRef.current = actionMap.registerLayer(resolvedLayer)
     registeredScopeRef.current = resolvedScope
     registeredTargetRef.current = resolvedScope === "global" ? undefined : resolvedTarget
-  }, [manager])
+  }, [actionMap])
 
   const ref = useCallback<BindingsRef<TRenderable>>((value) => {
     refTargetRef.current = value ?? undefined

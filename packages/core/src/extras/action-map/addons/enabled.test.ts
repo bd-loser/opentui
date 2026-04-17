@@ -25,10 +25,10 @@ describe("enabled addon", () => {
   })
 
   test("ignores enabled layer fields until the addon is registered", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "noop",
         run() {
@@ -38,7 +38,7 @@ describe("enabled addon", () => {
     ])
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         enabled: false,
         bindings: [{ key: "x", cmd: "noop" }],
@@ -53,12 +53,12 @@ describe("enabled addon", () => {
   })
 
   test("registers boolean and predicate enabled values", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
     let enabled = false
 
-    registerEnabledField(manager)
-    manager.registerCommands([
+    registerEnabledField(actionMap)
+    actionMap.registerCommands([
       {
         name: "always-off",
         run() {
@@ -73,12 +73,12 @@ describe("enabled addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       enabled: false,
       bindings: [{ key: "x", cmd: "always-off" }],
     })
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       enabled: () => enabled,
       bindings: [{ key: "y", cmd: "dynamic" }],
@@ -101,7 +101,7 @@ describe("enabled addon", () => {
   })
 
   test("supports reactive enabled matchers and unsubscribes on layer unregister", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     let current = false
     const listeners = new Set<() => void>()
     let evaluations = 0
@@ -133,9 +133,9 @@ describe("enabled addon", () => {
       }
     }
 
-    registerEnabledField(manager)
-    manager.registerCommands([{ name: "dynamic", run() {} }])
-    const off = manager.registerLayer({
+    registerEnabledField(actionMap)
+    actionMap.registerCommands([{ name: "dynamic", run() {} }])
+    const off = actionMap.registerLayer({
       scope: "global",
       enabled: enabledMatcher,
       bindings: [{ key: "y", cmd: "dynamic" }],
@@ -166,12 +166,12 @@ describe("enabled addon", () => {
   })
 
   test("clears pending sequences when enabled stops matching", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     let enabled = true
 
-    registerEnabledField(manager)
-    manager.registerCommands([{ name: "delete-line", run() {} }])
-    manager.registerLayer({
+    registerEnabledField(actionMap)
+    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({
       scope: "global",
       enabled: () => enabled,
       bindings: [{ key: "dd", cmd: "delete-line" }],
@@ -179,25 +179,25 @@ describe("enabled addon", () => {
 
     mockInput.pressKey("d")
 
-    expect(manager.getPendingSequence()).toHaveLength(1)
+    expect(actionMap.getPendingSequence()).toHaveLength(1)
 
     enabled = false
 
-    expect(manager.getPendingSequence()).toEqual([])
+    expect(actionMap.getPendingSequence()).toEqual([])
     expect(getActiveKeyNames()).toEqual([])
   })
 
   test("rejects invalid enabled values and can be disposed", () => {
-    const manager = getActionMap(renderer)
-    const offEnabled = registerEnabledField(manager)
+    const actionMap = getActionMap(renderer)
+    const offEnabled = registerEnabledField(actionMap)
     const calls: string[] = []
     const errors: string[] = []
 
-    manager.on("error", (event) => {
+    actionMap.on("error", (event) => {
       errors.push(event.message)
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "noop",
         run() {
@@ -207,7 +207,7 @@ describe("enabled addon", () => {
     ])
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         enabled: "yes",
         bindings: [{ key: "x", cmd: "noop" }],
@@ -220,7 +220,7 @@ describe("enabled addon", () => {
     offEnabled()
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         enabled: true,
         bindings: [{ key: "x", cmd: "noop" }],
@@ -235,11 +235,11 @@ describe("enabled addon", () => {
   })
 
   test("treats thrown enabled predicates as disabled", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    registerEnabledField(manager)
-    manager.registerCommands([
+    registerEnabledField(actionMap)
+    actionMap.registerCommands([
       {
         name: "noop",
         run() {
@@ -247,7 +247,7 @@ describe("enabled addon", () => {
         },
       },
     ])
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       enabled: () => {
         throw new Error("boom")
@@ -255,7 +255,7 @@ describe("enabled addon", () => {
       bindings: [{ key: "x", cmd: "noop" }],
     })
 
-    expect(() => manager.getActiveKeys()).not.toThrow()
+    expect(() => actionMap.getActiveKeys()).not.toThrow()
     expect(getActiveKeyNames()).toEqual([])
 
     mockInput.pressKey("x")

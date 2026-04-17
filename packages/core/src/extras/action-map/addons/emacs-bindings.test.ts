@@ -18,11 +18,11 @@ describe("emacs bindings addon", () => {
   })
 
   test("supports emacs-style multi-stroke definitions when the addon is registered", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    registerEmacsBindings(manager)
-    manager.registerCommands([
+    registerEmacsBindings(actionMap)
+    actionMap.registerCommands([
       {
         name: "save-buffer",
         run() {
@@ -31,56 +31,56 @@ describe("emacs bindings addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "ctrl+x ctrl+s", cmd: "save-buffer" }],
     })
 
     mockInput.pressKey("x", { ctrl: true })
-    expect(stringifyKeySequence(manager.getPendingSequenceParts(), { preferDisplay: true })).toBe("ctrl+x")
+    expect(stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true })).toBe("ctrl+x")
 
     mockInput.pressKey("s", { ctrl: true })
     expect(calls).toEqual(["save"])
   })
 
   test("keeps emacs syntax unavailable until the addon is registered", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const errors: string[] = []
 
-    manager.on("error", (event) => {
+    actionMap.on("error", (event) => {
       errors.push(event.message)
     })
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "ctrl+x ctrl+s", cmd() {} }],
       })
     }).not.toThrow()
 
     expect(errors).toEqual(['Invalid key "ctrl+x ctrl+s": multiple key names are not supported'])
-    expect(manager.getActiveKeys()).toEqual([])
+    expect(actionMap.getActiveKeys()).toEqual([])
   })
 
   test("can be disposed to restore default parsing behavior", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const errors: string[] = []
 
-    const offEmacsBindings = registerEmacsBindings(manager)
+    const offEmacsBindings = registerEmacsBindings(actionMap)
     offEmacsBindings()
 
-    manager.on("error", (event) => {
+    actionMap.on("error", (event) => {
       errors.push(event.message)
     })
 
     expect(() => {
-      manager.registerLayer({
+      actionMap.registerLayer({
         scope: "global",
         bindings: [{ key: "ctrl+x ctrl+s", cmd() {} }],
       })
     }).not.toThrow()
 
     expect(errors).toEqual(['Invalid key "ctrl+x ctrl+s": multiple key names are not supported'])
-    expect(manager.getActiveKeys()).toEqual([])
+    expect(actionMap.getActiveKeys()).toEqual([])
   })
 })

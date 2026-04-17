@@ -18,10 +18,10 @@ describe("leader addon", () => {
   })
 
   test("registers leader as a plain token alias", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "leader-action",
         run() {
@@ -36,11 +36,11 @@ describe("leader addon", () => {
       },
     ])
 
-    registerLeader(manager, {
+    registerLeader(actionMap, {
       trigger: { name: "x", ctrl: true },
     })
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "<leader>a", cmd: "leader-action" },
@@ -59,10 +59,10 @@ describe("leader addon", () => {
   })
 
   test("recompiles bindings that were registered before leader exists", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "leader-action",
         run() {
@@ -71,7 +71,7 @@ describe("leader addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })
@@ -80,7 +80,7 @@ describe("leader addon", () => {
 
     expect(calls).toEqual(["leader"])
 
-    registerLeader(manager, {
+    registerLeader(actionMap, {
       trigger: { name: "x", ctrl: true },
     })
 
@@ -95,10 +95,10 @@ describe("leader addon", () => {
   })
 
   test("can be disposed to remove the leader token mapping", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "leader-only",
         run() {
@@ -107,11 +107,11 @@ describe("leader addon", () => {
       },
     ])
 
-    const offLeader = registerLeader(manager, {
+    const offLeader = registerLeader(actionMap, {
       trigger: { name: "x", ctrl: true },
     })
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>", cmd: "leader-only" }],
     })

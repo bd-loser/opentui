@@ -18,10 +18,10 @@ describe("escape clears pending sequence addon", () => {
   })
 
   test("clears pending sequence on escape and only intercepts escape while pending", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "delete-line",
         run() {
@@ -36,7 +36,7 @@ describe("escape clears pending sequence addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "dd", cmd: "delete-line" },
@@ -44,16 +44,16 @@ describe("escape clears pending sequence addon", () => {
       ],
     })
 
-    registerEscapeClearsPendingSequence(manager)
+    registerEscapeClearsPendingSequence(actionMap)
 
     mockInput.pressKey("d")
-    expect(manager.hasPendingSequence()).toBe(true)
-    expect(manager.getPendingSequence()).toEqual([{ name: "d", ctrl: false, shift: false, meta: false, super: false }])
+    expect(actionMap.hasPendingSequence()).toBe(true)
+    expect(actionMap.getPendingSequence()).toEqual([{ name: "d", ctrl: false, shift: false, meta: false, super: false }])
 
     mockInput.pressEscape()
 
-    expect(manager.hasPendingSequence()).toBe(false)
-    expect(manager.getPendingSequence()).toEqual([])
+    expect(actionMap.hasPendingSequence()).toBe(false)
+    expect(actionMap.getPendingSequence()).toEqual([])
     expect(calls).toEqual([])
 
     mockInput.pressEscape()
@@ -62,10 +62,10 @@ describe("escape clears pending sequence addon", () => {
   })
 
   test("can clear pending sequence without consuming escape", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "delete-line",
         run() {
@@ -80,7 +80,7 @@ describe("escape clears pending sequence addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "dd", cmd: "delete-line" },
@@ -88,22 +88,22 @@ describe("escape clears pending sequence addon", () => {
       ],
     })
 
-    registerEscapeClearsPendingSequence(manager, { preventDefault: false })
+    registerEscapeClearsPendingSequence(actionMap, { preventDefault: false })
 
     mockInput.pressKey("d")
-    expect(manager.hasPendingSequence()).toBe(true)
+    expect(actionMap.hasPendingSequence()).toBe(true)
     mockInput.pressEscape()
 
-    expect(manager.hasPendingSequence()).toBe(false)
-    expect(manager.getPendingSequence()).toEqual([])
+    expect(actionMap.hasPendingSequence()).toBe(false)
+    expect(actionMap.getPendingSequence()).toEqual([])
     expect(calls).toEqual(["escape"])
   })
 
   test("can be disposed to stop pending escape forwarding behavior", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "delete-line",
         run() {
@@ -118,7 +118,7 @@ describe("escape clears pending sequence addon", () => {
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [
         { key: "dd", cmd: "delete-line" },
@@ -126,7 +126,7 @@ describe("escape clears pending sequence addon", () => {
       ],
     })
 
-    const offEscapeAddon = registerEscapeClearsPendingSequence(manager, { preventDefault: false })
+    const offEscapeAddon = registerEscapeClearsPendingSequence(actionMap, { preventDefault: false })
 
     mockInput.pressKey("d")
     mockInput.pressEscape()
@@ -136,7 +136,7 @@ describe("escape clears pending sequence addon", () => {
     offEscapeAddon()
     mockInput.pressEscape()
 
-    expect(manager.hasPendingSequence()).toBe(false)
+    expect(actionMap.hasPendingSequence()).toBe(false)
     expect(calls).toEqual(["escape"])
   })
 })

@@ -19,10 +19,10 @@ describe("timed leader addon", () => {
   })
 
   test("supports leader extensions", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "leader-action",
         run() {
@@ -31,11 +31,11 @@ describe("timed leader addon", () => {
       },
     ])
 
-    registerTimedLeader(manager, {
+    registerTimedLeader(actionMap, {
       trigger: { name: "x", ctrl: true },
     })
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })
@@ -47,10 +47,10 @@ describe("timed leader addon", () => {
   })
 
   test("supports hyper leader triggers", () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "leader-action",
         run() {
@@ -59,11 +59,11 @@ describe("timed leader addon", () => {
       },
     ])
 
-    registerTimedLeader(manager, {
+    registerTimedLeader(actionMap, {
       trigger: { name: "x", hyper: true },
     })
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })
@@ -75,11 +75,11 @@ describe("timed leader addon", () => {
   })
 
   test("disarms after its timeout", async () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const calls: string[] = []
     const states: string[] = []
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "leader-action",
         run() {
@@ -88,7 +88,7 @@ describe("timed leader addon", () => {
       },
     ])
 
-    registerTimedLeader(manager, {
+    registerTimedLeader(actionMap, {
       trigger: { name: "x", ctrl: true },
       timeoutMs: 5,
       onArm() {
@@ -99,7 +99,7 @@ describe("timed leader addon", () => {
       },
     })
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })
@@ -113,10 +113,10 @@ describe("timed leader addon", () => {
   })
 
   test("disarms when disposed while armed", async () => {
-    const manager = getActionMap(renderer)
+    const actionMap = getActionMap(renderer)
     const states: string[] = []
 
-    const off = registerTimedLeader(manager, {
+    const off = registerTimedLeader(actionMap, {
       trigger: { name: "x", ctrl: true },
       timeoutMs: 5,
       onArm() {
@@ -127,14 +127,14 @@ describe("timed leader addon", () => {
       },
     })
 
-    manager.registerCommands([
+    actionMap.registerCommands([
       {
         name: "leader-action",
         run() {},
       },
     ])
 
-    manager.registerLayer({
+    actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })

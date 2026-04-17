@@ -230,6 +230,18 @@ pub fn queryTerminalSend(self: *Terminal, tty: anytype) !void {
     self.checkEnvironmentOverrides();
     self.graphics_query_pending = !self.skip_graphics_query;
     self.capability_queries_pending = false;
+    self.theme_queries_pending = false;
+
+    try self.setColorSchemeUpdates(tty, true);
+    try tty.writeAll(ansi.ANSI.colorSchemeRequest);
+
+    if (self.in_tmux) {
+        try tty.writeAll(ansi.ANSI.oscThemeQueriesTmux);
+    } else {
+        try tty.writeAll(ansi.ANSI.oscThemeQueries);
+        self.theme_queries_pending = true;
+    }
+    self.state.theme_queries_sent = true;
 
     // Send xtversion first (doesn't need DCS wrapping - used for tmux detection)
     try tty.writeAll(ansi.ANSI.xtversion ++

@@ -31,7 +31,6 @@ import type {
   ActionMapCommandFieldCompiler,
   ActionMapCommandHandler,
   ActionMapCommandQuery,
-  ActionMapCommandQueryValue,
   ActionMapCommandRecord,
   ActionMapRunCommandOptions,
   ActionMapRunCommandResult,
@@ -78,6 +77,7 @@ import {
   stringifyKeySequence,
   stringifyKeyStroke,
 } from "./utils.js"
+import { queryRegisteredCommands } from "./command-query.js"
 import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./default-parser.js"
 import { Emitter, OrderedEmitter, RegistrationList, type EmitterListener } from "./emitter.js"
 
@@ -91,7 +91,6 @@ const RESERVED_LAYER_FIELDS = new Set(["target", "scope", "priority", "bindings"
 const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
 const EMPTY_COMPILE_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
-const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) {
@@ -705,55 +704,14 @@ export class ActionMap {
       return []
     }
 
-    const namespace = query?.namespace
-    const normalizedSearch = query?.search?.trim().toLowerCase() ?? ""
-    const searchKeys = query?.searchIn && query.searchIn.length > 0 ? query.searchIn : DEFAULT_COMMAND_SEARCH_FIELDS
-    const filter = query?.filter
-    let filterEntries: readonly [string, ActionMapCommandQueryValue][] | undefined
-    let filterPredicate: ((command: ActionMapCommandRecord) => boolean) | undefined
-
-    if (typeof filter === "function") {
-      filterPredicate = filter
-    } else if (filter) {
-      filterEntries = Object.entries(filter)
-    }
-
-    const results: ActionMapCommandRecord[] = []
-
-    for (const command of this.commands.values()) {
-      if (!this.commandMatchesNamespace(command, namespace)) {
-        continue
-      }
-
-      if (!this.commandMatchesSearch(command, normalizedSearch, searchKeys)) {
-        continue
-      }
-
-      if (!this.commandMatchesFilters(command, filterEntries)) {
-        continue
-      }
-
-      const record = this.getCommandRecord(command)
-
-      if (filterPredicate) {
-        let matches = false
-
-        try {
-          matches = filterPredicate(record)
-        } catch (error) {
-          this.emitError("[ActionMap] Error in command query filter:", error)
-          continue
-        }
-
-        if (!matches) {
-          continue
-        }
-      }
-
-      results.push(record)
-    }
-
-    return results
+    return queryRegisteredCommands({
+      commands: this.commands.values(),
+      query,
+      getCommandRecord: (command) => this.getCommandRecord(command),
+      onFilterError: (error) => {
+        this.emitError("[ActionMap] Error in command query filter:", error)
+      },
+    })
   }
 
   public runCommand(cmd: string, options?: ActionMapRunCommandOptions): ActionMapRunCommandResult {
@@ -1852,215 +1810,6 @@ export class ActionMap {
 
     command.record = record
     return record
-  }
-
-  private commandMatchesSearch(command: RegisteredCommand, search: string, searchKeys: readonly string[]): boolean {
-    if (!search) {
-      return true
-    }
-
-    for (const key of searchKeys) {
-      if (this.commandKeyMatchesSearch(command, key, search)) {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  private commandMatchesNamespace(
-    command: RegisteredCommand,
-    namespace: string | readonly string[] | undefined,
-  ): boolean {
-    if (namespace === undefined) {
-      return true
-    }
-
-    if (!Object.prototype.hasOwnProperty.call(command.fields, "namespace")) {
-      return false
-    }
-
-    return this.commandValueMatchesFilter(command.fields.namespace, namespace)
-  }
-
-  private commandMatchesFilters(
-    command: RegisteredCommand,
-    filters: readonly [string, ActionMapCommandQueryValue][] | undefined,
-  ): boolean {
-    if (!filters) {
-      return true
-    }
-
-    for (const [key, matcher] of filters) {
-      if (!this.commandKeyMatchesQuery(command, key, matcher)) {
-        return false
-      }
-    }
-
-    return true
-  }
-
-  private commandKeyMatchesSearch(command: RegisteredCommand, key: string, search: string): boolean {
-    if (key === "name") {
-      if (this.commandValueMatchesSearch(command.name, search)) {
-        return true
-      }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(command.fields, key)) {
-      if (this.commandValueMatchesSearch(command.fields[key], search)) {
-        return true
-      }
-    }
-
-    if (command.attrs && Object.prototype.hasOwnProperty.call(command.attrs, key)) {
-      if (this.commandValueMatchesSearch(command.attrs[key], search)) {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  private commandKeyMatchesQuery(command: RegisteredCommand, key: string, matcher: ActionMapCommandQueryValue): boolean {
-    if (typeof matcher === "function") {
-      let record: ActionMapCommandRecord | undefined
-      const getRecord = () => {
-        if (!record) {
-          record = this.getCommandRecord(command)
-        }
-
-        return record
-      }
-      let foundValue = false
-
-      if (key === "name") {
-        foundValue = true
-        try {
-          if (matcher(command.name, getRecord())) {
-            return true
-          }
-        } catch (error) {
-          this.emitError("[ActionMap] Error in command query filter:", error)
-          return false
-        }
-      }
-
-      if (Object.prototype.hasOwnProperty.call(command.fields, key)) {
-        foundValue = true
-
-        try {
-          if (matcher(command.fields[key], getRecord())) {
-            return true
-          }
-        } catch (error) {
-          this.emitError("[ActionMap] Error in command query filter:", error)
-          return false
-        }
-      }
-
-      if (command.attrs && Object.prototype.hasOwnProperty.call(command.attrs, key)) {
-        foundValue = true
-
-        try {
-          if (matcher(command.attrs[key], getRecord())) {
-            return true
-          }
-        } catch (error) {
-          this.emitError("[ActionMap] Error in command query filter:", error)
-          return false
-        }
-      }
-
-      if (!foundValue) {
-        try {
-          return matcher(undefined, getRecord())
-        } catch (error) {
-          this.emitError("[ActionMap] Error in command query filter:", error)
-          return false
-        }
-      }
-
-      return false
-    }
-
-    return this.commandKeyMatchesExact(command, key, matcher)
-  }
-
-  private commandKeyMatchesExact(
-    command: RegisteredCommand,
-    key: string,
-    matcher: unknown | readonly unknown[],
-  ): boolean {
-    if (key === "name") {
-      if (this.commandValueMatchesFilter(command.name, matcher)) {
-        return true
-      }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(command.fields, key)) {
-      if (this.commandValueMatchesFilter(command.fields[key], matcher)) {
-        return true
-      }
-    }
-
-    if (command.attrs && Object.prototype.hasOwnProperty.call(command.attrs, key)) {
-      if (this.commandValueMatchesFilter(command.attrs[key], matcher)) {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  private commandValueMatchesFilter(value: unknown, matcher: unknown | readonly unknown[]): boolean {
-    if (Array.isArray(matcher)) {
-      for (const expected of matcher) {
-        if (this.commandValueMatchesExact(value, expected)) {
-          return true
-        }
-      }
-
-      return false
-    }
-
-    return this.commandValueMatchesExact(value, matcher)
-  }
-
-  private commandValueMatchesExact(value: unknown, expected: unknown): boolean {
-    if (Array.isArray(value)) {
-      for (const entry of value) {
-        if (this.commandValueMatchesExact(entry, expected)) {
-          return true
-        }
-      }
-
-      return false
-    }
-
-    return Object.is(value, expected)
-  }
-
-  private commandValueMatchesSearch(value: unknown, search: string): boolean {
-    if (Array.isArray(value)) {
-      for (const entry of value) {
-        if (this.commandValueMatchesSearch(entry, search)) {
-          return true
-        }
-      }
-
-      return false
-    }
-
-    if (typeof value === "string") {
-      return value.toLowerCase().includes(search)
-    }
-
-    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
-      return String(value).toLowerCase().includes(search)
-    }
-
-    return false
   }
 
   private getBindingSyntax(): ActionMapBindingSyntax {

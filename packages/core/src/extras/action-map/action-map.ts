@@ -39,7 +39,7 @@ import { ActionMapLayers, RESERVED_LAYER_FIELDS } from "./action-map-layers.js"
 import { ActionMapNotifier } from "./action-map-notify.js"
 import { ActionMapRuntime } from "./action-map-runtime.js"
 import { createActionMapState, resetActionMapState } from "./action-map-state.js"
-import { RESERVED_COMMAND_FIELDS } from "./command-registry.js"
+import { RESERVED_COMMAND_FIELDS } from "./action-map-commands.js"
 import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./default-parser.js"
 import { Emitter, type EmitterListener } from "./emitter.js"
 

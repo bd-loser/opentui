@@ -76,7 +76,7 @@ export class CompilerService {
   }
 
   public parseTokenKey(key: KeyLike): ParsedKeyPart {
-    return parseSingleKeyPartWithParsers(key, this.state.config.bindingParsers.snapshot(), {
+    return parseSingleKeyPartWithParsers(key, this.state.config.bindingParsers.values(), {
       tokens: this.state.config.tokens,
       layer: EMPTY_COMPILE_FIELDS,
       parseObjectKey: (value) => this.parseObjectKeyPart(value),
@@ -94,8 +94,8 @@ export class CompilerService {
     const root = createSequenceNode(null, null, null)
     const compiledBindings: CompiledBinding[] = []
     let hasTokenBindings = false
-    const bindingExpanders = this.state.config.bindingExpanders.snapshot()
-    const bindingParsers = this.state.config.bindingParsers.snapshot()
+    const bindingExpanders = this.state.config.bindingExpanders.values()
+    const bindingParsers = this.state.config.bindingParsers.values()
     const bindingFieldCompilers = this.state.config.bindingFields
     const warnUnknownField = this.options.warnUnknownField
     const warnUnknownToken = this.options.warnUnknownToken
@@ -299,7 +299,7 @@ export class CompilerService {
     bindingParsers: readonly ActionMapBindingParser[],
     compileFields?: Readonly<Record<string, unknown>>,
   ): ActionMapParsedBindingInput[] {
-    const bindingCompilers = this.state.config.bindingCompilers.snapshot()
+    const bindingCompilers = this.state.config.bindingCompilers.values()
 
     if (bindingCompilers.length === 0) {
       return [

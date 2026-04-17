@@ -545,7 +545,7 @@ export class ActionMap {
       return NOOP
     }
 
-    return this.state.config.keyHooks.hook(fn, {
+    return this.state.config.keyHooks.register(fn, {
       priority: options?.priority ?? 0,
       release: options?.release ?? false,
     })
@@ -556,7 +556,7 @@ export class ActionMap {
       return NOOP
     }
 
-    return this.state.config.rawHooks.hook(fn, {
+    return this.state.config.rawHooks.register(fn, {
       priority: options?.priority ?? 0,
     })
   }

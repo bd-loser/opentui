@@ -7,6 +7,7 @@ export {
 } from "./lib/default-parser.js"
 export { namedSingleStrokeKeyNames, namedSingleStrokeKeys } from "./lib/named-keys.js"
 export { stringifyKeySequence, stringifyKeyStroke } from "./lib/utils.js"
+export * as addons from "./addons/index.js"
 export type {
   KeyLike,
   ActionMapActiveBinding,
@@ -75,30 +76,3 @@ export type {
   ParsedKeyStroke,
   KeyStroke,
 } from "./types.js"
-export { registerBaseLayoutFallback } from "./addons/base-layout.js"
-export { registerAliasesField } from "./addons/aliases.js"
-export { registerCommaBindings } from "./addons/comma-bindings.js"
-export { registerEscapeClearsPendingSequence } from "./addons/escape-clears-pending-sequence.js"
-export { registerEnabledField } from "./addons/enabled.js"
-export { registerEmacsBindings } from "./addons/emacs-bindings.js"
-export { registerExCommands } from "./addons/ex-commands.js"
-export {
-  createTextareaBindings,
-  registerEditBufferCommands,
-  registerManagedTextareaLayer,
-  registerTextareaMappingSuspension,
-} from "./addons/edit-buffer-bindings.js"
-export { registerLeader } from "./addons/leader.js"
-export { registerMetadataFields } from "./addons/metadata.js"
-export { registerTimedLeader } from "./addons/timed-leader.js"
-export type { ActionMapEnabled } from "./addons/enabled.js"
-export type { ActionMapAliases } from "./addons/aliases.js"
-export type {
-  EditBufferCommandName,
-  EditBufferCommandOptions,
-  ManagedTextareaLayer,
-} from "./addons/edit-buffer-bindings.js"
-export type { EscapeClearsPendingSequenceOptions } from "./addons/escape-clears-pending-sequence.js"
-export type { ExCommand } from "./addons/ex-commands.js"
-export type { LeaderOptions } from "./addons/leader.js"
-export type { TimedLeaderOptions } from "./addons/timed-leader.js"

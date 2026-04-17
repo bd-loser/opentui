@@ -4,10 +4,9 @@ import path from "node:path"
 import { BoxRenderable } from "../renderables/Box.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../testing.js"
 import {
+  addons,
   defaultBindingParser,
   getActionMap,
-  registerEnabledField,
-  registerMetadataFields,
   type ActionMapBindingParser,
   type ActionMap,
   type ActionMapReactiveMatcher,
@@ -468,7 +467,7 @@ function setupStateChangeFocusChurn(resources: ScenarioResources): {
 }
 
 function setupMetadataFocusTree(resources: ScenarioResources): BoxRenderable[] {
-  registerMetadataFields(resources.actionMap)
+  addons.registerMetadataFields(resources.actionMap)
 
   const commands = Array.from({ length: 36 + 300 + 150 }, (_, index) => ({
     name: `metadata-command-${index}`,
@@ -1238,7 +1237,7 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
       const enabledStates: boolean[] = []
 
-      registerEnabledField(resources.actionMap)
+      addons.registerEnabledField(resources.actionMap)
 
       for (let index = 0; index < 320; index += 1) {
         enabledStates.push(index % 3 !== 0)

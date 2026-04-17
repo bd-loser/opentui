@@ -2470,7 +2470,7 @@ export class ActionMap {
     const matchKeys = this.resolveEventMatchKeys(event)
 
     layerLoop: for (const layer of activeLayers) {
-      if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
+      if (hasLayerConditions && !this.hasNoConditions(layer) && !this.matchesConditions(layer)) {
         continue
       }
 
@@ -2538,7 +2538,7 @@ export class ActionMap {
     const hasLayerConditions = this.layersWithConditions > 0
 
     layerLoop: for (const layer of activeLayers) {
-      if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
+      if (hasLayerConditions && !this.hasNoConditions(layer) && !this.matchesConditions(layer)) {
         continue
       }
 
@@ -2673,7 +2673,7 @@ export class ActionMap {
         continue
       }
 
-      if (!this.matchesBindingConditions(binding)) {
+      if (!this.matchesConditions(binding)) {
         continue
       }
 
@@ -2732,7 +2732,7 @@ export class ActionMap {
     const matches: CompiledBinding[] = []
 
     for (const binding of bindings) {
-      if (this.matchesBindingConditions(binding) && this.isVisibleBinding(binding)) {
+      if (this.matchesConditions(binding) && this.isVisibleBinding(binding)) {
         matches.push(binding)
       }
     }
@@ -2742,7 +2742,7 @@ export class ActionMap {
 
   private hasMatchingBindings(bindings: readonly CompiledBinding[]): boolean {
     for (const binding of bindings) {
-      if (this.matchesBindingConditions(binding) && this.isVisibleBinding(binding)) {
+      if (this.matchesConditions(binding) && this.isVisibleBinding(binding)) {
         return true
       }
     }
@@ -2825,7 +2825,7 @@ export class ActionMap {
     const hasLayerConditions = this.layersWithConditions > 0
 
     for (const layer of activeLayers) {
-      if (hasLayerConditions && !this.layerHasNoConditions(layer) && !this.matchesLayerConditions(layer)) {
+      if (hasLayerConditions && !this.hasNoConditions(layer) && !this.matchesConditions(layer)) {
         continue
       }
 
@@ -2954,7 +2954,7 @@ export class ActionMap {
     let commandBinding: CompiledBinding | undefined
 
     for (const binding of bindings) {
-      if (!this.matchesBindingConditions(binding) || !this.isVisibleBinding(binding)) {
+      if (!this.matchesConditions(binding) || !this.isVisibleBinding(binding)) {
         continue
       }
 
@@ -3066,7 +3066,7 @@ export class ActionMap {
     let handled = false
 
     for (const binding of bindings) {
-      if (!this.matchesBindingConditions(binding)) {
+      if (!this.matchesConditions(binding)) {
         continue
       }
 
@@ -3312,24 +3312,12 @@ export class ActionMap {
     return matched
   }
 
-  private matchesBindingConditions(binding: CompiledBinding): boolean {
-    return this.matchesConditions(binding)
-  }
-
-  private matchesLayerConditions(layer: RegisteredLayer): boolean {
-    return this.matchesConditions(layer)
-  }
-
-  private layerHasNoConditions(layer: RegisteredLayer): boolean {
-    return this.hasNoConditions(layer)
-  }
-
   private layerMatchesRuntimeState(layer: RegisteredLayer): boolean {
-    if (this.layersWithConditions === 0 || this.layerHasNoConditions(layer)) {
+    if (this.layersWithConditions === 0 || this.hasNoConditions(layer)) {
       return true
     }
 
-    return this.matchesLayerConditions(layer)
+    return this.matchesConditions(layer)
   }
 
   private setPendingSequence(next: PendingSequenceState | null): void {

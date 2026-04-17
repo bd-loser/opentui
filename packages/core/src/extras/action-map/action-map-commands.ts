@@ -1,6 +1,8 @@
 import type { ActionMap } from "./action-map.js"
+import type { Emitter } from "./emitter.js"
 import type {
   ActionMapBindingCommand,
+  ActionMapHooks,
   ActionMapCommandContext,
   ActionMapCommandDefinition,
   ActionMapCommandHandler,
@@ -21,7 +23,7 @@ import type { ActionMapState } from "./action-map-state.js"
 import type { ActionMapNotifier } from "./action-map-notify.js"
 import type { ActionMapRuntime } from "./action-map-runtime.js"
 import { KeyEvent } from "../../lib/KeyHandler.js"
-import { isPromiseLike, normalizeBindingCommand } from "./utils.js"
+import { isPromiseLike, normalizeBindingCommand, snapshotParsedBindingInput, stringifyKeySequence } from "./utils.js"
 
 interface ResolvedCommandLookup {
   resolved?: ActionMapResolvedBindingCommand
@@ -30,8 +32,6 @@ interface ResolvedCommandLookup {
 
 interface ActionMapCommandsOptions {
   actionMap: ActionMap
-  ensureValidPendingSequence: () => void
-  handleUnresolvedCommand: (command: string, binding: CompiledBinding) => void
 }
 
 function createSyntheticCommandEvent(): KeyEvent {
@@ -53,7 +53,11 @@ export class ActionMapCommands {
   constructor(
     private readonly state: ActionMapState,
     private readonly notify: ActionMapNotifier,
-    private readonly runtime: Pick<ActionMapRuntime, "getFocusedRenderable">,
+    private readonly runtime: Pick<
+      ActionMapRuntime,
+      "getFocusedRenderable" | "getReadonlyData" | "ensureValidPendingSequence"
+    >,
+    private readonly hooks: Pick<Emitter<ActionMapHooks>, "has" | "emit">,
     private readonly options: ActionMapCommandsOptions,
   ) {}
 
@@ -117,7 +121,7 @@ export class ActionMapCommands {
       event,
       focused: options?.focused ?? this.runtime.getFocusedRenderable(),
       target: options?.target ?? null,
-      data: this.notify.getReadonlyData(),
+      data: this.runtime.getReadonlyData(),
     }
 
     let result: ActionMapCommandResult
@@ -152,6 +156,50 @@ export class ActionMapCommands {
     }
 
     return resolved.record ? { ok: true, command: resolved.record } : { ok: true }
+  }
+
+  public runBinding(
+    layer: { target?: ActionMapCommandContext["target"] },
+    binding: CompiledBinding,
+    event: KeyEvent,
+    focused: ActionMapCommandContext["focused"],
+  ): boolean {
+    const run = binding.run
+    if (!run) {
+      return false
+    }
+
+    const context: ActionMapCommandContext = {
+      actionMap: this.options.actionMap,
+      event,
+      focused,
+      target: layer.target ?? null,
+      data: this.runtime.getReadonlyData(),
+    }
+
+    let result: ActionMapCommandResult
+    try {
+      result = run(context)
+    } catch (error) {
+      this.notify.emitError(`[ActionMap] Error running command ${describeBindingCommand(binding)}:`, error)
+      applyBindingEventEffects(binding, event)
+      return true
+    }
+
+    if (isPromiseLike(result)) {
+      result.catch((error) => {
+        this.notify.emitError(`[ActionMap] Async error in command ${describeBindingCommand(binding)}:`, error)
+      })
+      applyBindingEventEffects(binding, event)
+      return true
+    }
+
+    if (result === false) {
+      return false
+    }
+
+    applyBindingEventEffects(binding, event)
+    return true
   }
 
   public registerCommandResolver(resolver: ActionMapCommandResolver): () => void {
@@ -232,7 +280,7 @@ export class ActionMapCommands {
     }
 
     this.state.commands.commandMetadataVersion += 1
-    this.options.ensureValidPendingSequence()
+    this.runtime.ensureValidPendingSequence()
   }
 
   public resolveCompiledBindingCommand(binding: CompiledBinding): void {
@@ -254,7 +302,7 @@ export class ActionMapCommands {
     if (!this.state.config.commandResolvers.has()) {
       const registered = this.state.commands.commands.get(command)
       if (!registered) {
-        this.options.handleUnresolvedCommand(command, binding)
+        this.handleUnresolvedCommand(command, binding)
         return
       }
 
@@ -268,7 +316,7 @@ export class ActionMapCommands {
     const resolved = lookup.resolved
     if (!resolved) {
       if (!lookup.hadError) {
-        this.options.handleUnresolvedCommand(command, binding)
+        this.handleUnresolvedCommand(command, binding)
       }
 
       return
@@ -390,4 +438,46 @@ export class ActionMapCommands {
     command.runner = runner
     return runner
   }
+
+  private handleUnresolvedCommand(command: string, binding: CompiledBinding): void {
+    const sequence = stringifyKeySequence(binding.sourceBinding.sequence, { preferDisplay: true })
+    const warningKey = `unresolved:${binding.sourceLayerOrder}:${binding.sourceBindingIndex}:${command}:${sequence}`
+
+    this.notify.warnOnce(
+      warningKey,
+      `[ActionMap] Unresolved command "${command}" for binding "${sequence}" in ${binding.sourceScope} layer`,
+    )
+
+    if (!this.hooks.has("unresolvedCommand")) {
+      return
+    }
+
+    this.hooks.emit("unresolvedCommand", {
+      command,
+      binding: snapshotParsedBindingInput(binding.sourceBinding),
+      scope: binding.sourceScope,
+      target: binding.sourceTarget,
+    })
+  }
+}
+
+function describeBindingCommand(binding: CompiledBinding): string {
+  if (typeof binding.command === "string") {
+    return `"${binding.command}"`
+  }
+
+  if (typeof binding.command === "function") {
+    return "<function>"
+  }
+
+  return "<none>"
+}
+
+function applyBindingEventEffects(binding: CompiledBinding, event: KeyEvent): void {
+  if (!binding.preventDefault) {
+    return
+  }
+
+  event.preventDefault()
+  event.stopPropagation()
 }

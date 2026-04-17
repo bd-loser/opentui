@@ -1,35 +1,36 @@
 import { KeyEvent } from "../../lib/KeyHandler.js"
-import type { ActionMap } from "./action-map.js"
+import type { Renderable } from "../../Renderable.js"
+import type { ActionMapCommands } from "./action-map-commands.js"
 import type { ActionMapConditions } from "./action-map-conditions.js"
-import type { ActionMapLayers } from "./action-map-layers.js"
 import type { ActionMapNotifier } from "./action-map-notify.js"
-import type { ActionMapProjections } from "./action-map-projections.js"
 import type { ActionMapRuntime } from "./action-map-runtime.js"
 import type { ActionMapState } from "./action-map-state.js"
 import type {
-  ActionMapCommandContext,
-  ActionMapCommandResult,
   ActionMapEventMatchResolver,
   ActionMapKeyInputContext,
   ActionMapRawInputContext,
   CompiledBinding,
   PendingSequenceState,
   RegisteredLayer,
-  RuntimeMatchable,
   SequenceNode,
 } from "./types.js"
-import { isPromiseLike } from "./utils.js"
 
 export class ActionMapDispatch {
   constructor(
     private readonly state: ActionMapState,
     private readonly notify: ActionMapNotifier,
-    private readonly actionMap: ActionMap,
-    private readonly runtime: Pick<ActionMapRuntime, "getFocusedRenderable">,
-    private readonly layers: Pick<ActionMapLayers, "getActiveLayers">,
-    private readonly projections: Pick<ActionMapProjections, "ensureValidPendingSequence" | "nodeHasReachableBindings">,
+    private readonly runtime: Pick<
+      ActionMapRuntime,
+      | "getFocusedRenderable"
+      | "getActiveLayers"
+      | "ensureValidPendingSequence"
+      | "nodeHasReachableBindings"
+      | "setPendingSequence"
+      | "setData"
+      | "getData"
+    >,
     private readonly conditions: Pick<ActionMapConditions, "matchesConditions" | "hasNoConditions">,
-    private readonly setData: (name: string, value: unknown) => void,
+    private readonly commands: Pick<ActionMapCommands, "runBinding">,
   ) {}
 
   public handleRawSequence(sequence: string): boolean {
@@ -74,10 +75,10 @@ export class ActionMapDispatch {
     const context: ActionMapKeyInputContext = {
       event,
       setData: (name, value) => {
-        this.setData(name, value)
+        this.runtime.setData(name, value)
       },
       getData: (name) => {
-        return this.state.runtime.data[name]
+        return this.runtime.getData(name)
       },
       consume: (options) => {
         const shouldPreventDefault = options?.preventDefault ?? true
@@ -119,7 +120,7 @@ export class ActionMapDispatch {
 
   private dispatchReleaseLayers(event: KeyEvent): void {
     const focused = this.runtime.getFocusedRenderable()
-    const activeLayers = this.layers.getActiveLayers(focused)
+    const activeLayers = this.runtime.getActiveLayers(focused)
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
     const matchKeys = this.resolveEventMatchKeys(event)
 
@@ -145,7 +146,7 @@ export class ActionMapDispatch {
 
   private dispatchLayers(event: KeyEvent): void {
     const focused = this.runtime.getFocusedRenderable()
-    const pending = this.projections.ensureValidPendingSequence()
+    const pending = this.runtime.ensureValidPendingSequence()
     const matchKeys = this.resolveEventMatchKeys(event)
 
     if (pending) {
@@ -153,7 +154,7 @@ export class ActionMapDispatch {
       return
     }
 
-    const activeLayers = this.layers.getActiveLayers(focused)
+    const activeLayers = this.runtime.getActiveLayers(focused)
     this.dispatchFromRoot(activeLayers, matchKeys, event, focused)
   }
 
@@ -165,12 +166,12 @@ export class ActionMapDispatch {
   ): void {
     const nextNode = this.getReachableChild(pending.node, matchKeys)
     if (!nextNode) {
-      this.notify.setPendingSequence(null)
+      this.runtime.setPendingSequence(null)
       return
     }
 
     if (nextNode.children.size > 0) {
-      this.notify.setPendingSequence({
+      this.runtime.setPendingSequence({
         layer: pending.layer,
         node: nextNode,
       })
@@ -180,7 +181,7 @@ export class ActionMapDispatch {
     }
 
     this.runBindings(pending.layer, nextNode.bindings, event, focused)
-    this.notify.setPendingSequence(null)
+    this.runtime.setPendingSequence(null)
   }
 
   private dispatchFromRoot(
@@ -202,7 +203,7 @@ export class ActionMapDispatch {
       }
 
       if (nextNode.children.size > 0) {
-        this.notify.setPendingSequence({
+        this.runtime.setPendingSequence({
           layer,
           node: nextNode,
         })
@@ -292,7 +293,7 @@ export class ActionMapDispatch {
         continue
       }
 
-      const bindingHandled = this.runBinding(layer, binding, event, focused)
+      const bindingHandled = this.commands.runBinding(layer, binding, event, focused)
       if (!bindingHandled) {
         continue
       }
@@ -309,7 +310,7 @@ export class ActionMapDispatch {
   private getReachableChild(node: SequenceNode, matchKeys: readonly string[]): SequenceNode | undefined {
     for (const strokeKey of matchKeys) {
       const child = node.children.get(strokeKey)
-      if (!child || !this.projections.nodeHasReachableBindings(child)) {
+      if (!child || !this.runtime.nodeHasReachableBindings(child)) {
         continue
       }
 
@@ -332,7 +333,7 @@ export class ActionMapDispatch {
         continue
       }
 
-      const bindingHandled = this.runBinding(layer, binding, event, focused)
+      const bindingHandled = this.commands.runBinding(layer, binding, event, focused)
       if (!bindingHandled) {
         continue
       }
@@ -344,50 +345,6 @@ export class ActionMapDispatch {
     }
 
     return { handled, stop: false }
-  }
-
-  private runBinding(
-    layer: RegisteredLayer,
-    binding: CompiledBinding,
-    event: KeyEvent,
-    focused: Renderable | null,
-  ): boolean {
-    const run = binding.run
-    if (!run) {
-      return false
-    }
-
-    const context: ActionMapCommandContext = {
-      actionMap: this.actionMap,
-      event,
-      focused,
-      target: layer.target ?? null,
-      data: this.notify.getReadonlyData(),
-    }
-
-    let result: ActionMapCommandResult
-    try {
-      result = run(context)
-    } catch (error) {
-      this.notify.emitError(`[ActionMap] Error running command ${describeBindingCommand(binding)}:`, error)
-      applyBindingEventEffects(binding, event)
-      return true
-    }
-
-    if (isPromiseLike(result)) {
-      result.catch((error) => {
-        this.notify.emitError(`[ActionMap] Async error in command ${describeBindingCommand(binding)}:`, error)
-      })
-      applyBindingEventEffects(binding, event)
-      return true
-    }
-
-    if (result === false) {
-      return false
-    }
-
-    applyBindingEventEffects(binding, event)
-    return true
   }
 }
 
@@ -435,25 +392,4 @@ function resolveSingleEventMatchKeys(
   }
 
   return keys
-}
-
-function describeBindingCommand(binding: CompiledBinding): string {
-  if (typeof binding.command === "string") {
-    return `"${binding.command}"`
-  }
-
-  if (typeof binding.command === "function") {
-    return "<function>"
-  }
-
-  return "<none>"
-}
-
-function applyBindingEventEffects(binding: CompiledBinding, event: KeyEvent): void {
-  if (!binding.preventDefault) {
-    return
-  }
-
-  event.preventDefault()
-  event.stopPropagation()
 }

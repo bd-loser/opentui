@@ -110,7 +110,7 @@ describe("aliases field addon", () => {
     })
     manager.registerLayer({
       scope: "global",
-      bindings: [{ key: { name: "myenter" }, cmd: "plain", consume: false }],
+      bindings: [{ key: { name: "myenter" }, cmd: "plain", preventDefault: false }],
     })
 
     mockInput.pressEnter()

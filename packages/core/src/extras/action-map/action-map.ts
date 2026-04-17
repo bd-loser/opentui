@@ -42,7 +42,7 @@ import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver }
 import { Emitter, type EmitterListener } from "./lib/emitter.js"
 import { NotificationService } from "./services/notify.js"
 import { RuntimeService } from "./services/runtime.js"
-import { createActionMapState, resetActionMapState } from "./services/state.js"
+import { createActionMapState } from "./services/state.js"
 
 const actionMapsByRenderer = new WeakMap<CliRenderer, ActionMap>()
 const NOOP = (): void => {}
@@ -108,6 +108,7 @@ export class ActionMap {
   public readonly renderer: CliRenderer
 
   private readonly state = createActionMapState()
+  private cleanedUp = false
   // Reuse `Emitter`, but keep its `onError` hook as a no-op so throwing error
   // listeners cannot re-enter `emitError` and loop forever.
   private events = new Emitter<ActionMapEvents>(() => {})
@@ -126,6 +127,10 @@ export class ActionMap {
   private readonly focusedRenderableListener: (focused: Renderable | null) => void
 
   constructor(renderer: CliRenderer) {
+    if (renderer.isDestroyed) {
+      throw new Error("Cannot create an action map for a destroyed renderer")
+    }
+
     this.renderer = renderer
     this.hooks = new Emitter<ActionMapHooks>((name, error) => {
       this.notify.reportHookError(name, error)
@@ -178,16 +183,17 @@ export class ActionMap {
     this.renderer.keyInput.prependListener("keyrelease", this.keyreleaseListener)
     this.renderer.prependInputHandler(this.rawListener)
     this.renderer.on(CliRenderEvents.FOCUSED_RENDERABLE, this.focusedRenderableListener)
+    this.renderer.once(CliRenderEvents.DESTROY, () => {
+      this.cleanup()
+    })
   }
 
-  public get isDestroyed(): boolean {
-    return this.state.core.destroyed
-  }
-
-  public destroy(): void {
-    if (this.state.core.destroyed) {
+  private cleanup(): void {
+    if (this.cleanedUp) {
       return
     }
+
+    this.cleanedUp = true
 
     this.setPendingSequence(null)
 
@@ -203,10 +209,6 @@ export class ActionMap {
       layer.bucket = undefined
     }
 
-    this.hooks.clear()
-    resetActionMapState(this.state, { destroyed: true })
-    this.events.clear()
-
     this.renderer.keyInput.off("keypress", this.keypressListener)
     this.renderer.keyInput.off("keyrelease", this.keyreleaseListener)
     this.renderer.removeInputHandler(this.rawListener)
@@ -214,26 +216,14 @@ export class ActionMap {
   }
 
   public setData(name: string, value: unknown): void {
-    if (this.state.core.destroyed) {
-      return
-    }
-
     this.runtime.setData(name, value)
   }
 
   public getData(name: string): unknown {
-    if (this.state.core.destroyed) {
-      return undefined
-    }
-
     return this.runtime.getData(name)
   }
 
   public hasPendingSequence(): boolean {
-    if (this.state.core.destroyed) {
-      return false
-    }
-
     return this.runtime.ensureValidPendingSequence() !== undefined
   }
 
@@ -246,10 +236,6 @@ export class ActionMap {
   }
 
   public createKeyMatcher(key: KeyLike): (input: ActionMapStringifiableKey | null | undefined) => boolean {
-    if (this.state.core.destroyed) {
-      return () => false
-    }
-
     const matchKey = this.compiler.parseTokenKey(key).matchKey
 
     return (input) => {
@@ -262,18 +248,10 @@ export class ActionMap {
   }
 
   public clearPendingSequence(): void {
-    if (this.state.core.destroyed) {
-      return
-    }
-
     this.setPendingSequence(null)
   }
 
   public popPendingSequence(): boolean {
-    if (this.state.core.destroyed) {
-      return false
-    }
-
     const pending = this.runtime.ensureValidPendingSequence()
     if (!pending) {
       return false
@@ -317,18 +295,10 @@ export class ActionMap {
     name: TName,
     fn: ActionMapHookListener<ActionMapHooks[TName]>,
   ): () => void {
-    if (this.state.core.destroyed) {
-      return NOOP
-    }
-
     return this.hooks.hook(name, fn)
   }
 
   public on<TName extends keyof ActionMapEvents>(name: TName, fn: EmitterListener<ActionMapEvents[TName]>): this {
-    if (this.state.core.destroyed) {
-      return this
-    }
-
     this.events.hook(name, fn)
     return this
   }
@@ -343,10 +313,6 @@ export class ActionMap {
   }
 
   public registerLayerFields(fields: Record<string, ActionMapLayerFieldCompiler>): () => void {
-    if (this.state.core.destroyed) {
-      return NOOP
-    }
-
     return registerFieldCompilers(fields, {
       kind: "layer",
       reservedFields: RESERVED_LAYER_FIELDS,
@@ -358,58 +324,30 @@ export class ActionMap {
   }
 
   public registerBindingCompiler(compiler: ActionMapBindingCompiler): () => void {
-    if (this.state.core.destroyed) {
-      return NOOP
-    }
-
     return this.state.config.bindingCompilers.append(compiler)
   }
 
   public prependBindingParser(parser: ActionMapBindingParser): () => void {
-    if (this.state.core.destroyed) {
-      return NOOP
-    }
-
     return this.state.config.bindingParsers.prepend(parser)
   }
 
   public appendBindingParser(parser: ActionMapBindingParser): () => void {
-    if (this.state.core.destroyed) {
-      return NOOP
-    }
-
     return this.state.config.bindingParsers.append(parser)
   }
 
   public clearBindingParsers(): void {
-    if (this.state.core.destroyed) {
-      return
-    }
-
     this.state.config.bindingParsers.clear()
   }
 
   public setBindingSyntax(syntax: ActionMapBindingSyntax): void {
-    if (this.state.core.destroyed) {
-      return
-    }
-
     this.state.config.bindingSyntax = syntax
   }
 
   public clearBindingSyntax(): void {
-    if (this.state.core.destroyed) {
-      return
-    }
-
     this.state.config.bindingSyntax = undefined
   }
 
   public registerToken(token: ActionMapToken): () => void {
-    if (this.state.core.destroyed) {
-      return NOOP
-    }
-
     let normalizedToken: string
 
     try {
@@ -464,34 +402,18 @@ export class ActionMap {
   }
 
   public prependBindingExpander(expander: ActionMapBindingExpander): () => void {
-    if (this.state.core.destroyed) {
-      return NOOP
-    }
-
     return this.state.config.bindingExpanders.prepend(expander)
   }
 
   public appendBindingExpander(expander: ActionMapBindingExpander): () => void {
-    if (this.state.core.destroyed) {
-      return NOOP
-    }
-
     return this.state.config.bindingExpanders.append(expander)
   }
 
   public clearBindingExpanders(): void {
-    if (this.state.core.destroyed) {
-      return
-    }
-
     this.state.config.bindingExpanders.clear()
   }
 
   public registerBindingFields(fields: Record<string, ActionMapBindingFieldCompiler>): () => void {
-    if (this.state.core.destroyed) {
-      return NOOP
-    }
-
     return registerFieldCompilers(fields, {
       kind: "binding",
       reservedFields: RESERVED_BINDING_FIELDS,
@@ -503,10 +425,6 @@ export class ActionMap {
   }
 
   public registerCommandFields(fields: Record<string, ActionMapCommandFieldCompiler>): () => void {
-    if (this.state.core.destroyed) {
-      return NOOP
-    }
-
     return registerFieldCompilers(fields, {
       kind: "command",
       reservedFields: RESERVED_COMMAND_FIELDS,
@@ -522,18 +440,10 @@ export class ActionMap {
   }
 
   public registerEventMatchResolver(resolver: ActionMapEventMatchResolver): () => void {
-    if (this.state.core.destroyed) {
-      return NOOP
-    }
-
     return this.state.config.eventMatchResolvers.append(resolver)
   }
 
   public clearEventMatchResolvers(): void {
-    if (this.state.core.destroyed) {
-      return
-    }
-
     this.state.config.eventMatchResolvers.clear()
   }
 
@@ -541,10 +451,6 @@ export class ActionMap {
     fn: (ctx: ActionMapKeyInputContext) => void,
     options?: { priority?: number; release?: boolean },
   ): () => void {
-    if (this.state.core.destroyed) {
-      return NOOP
-    }
-
     return this.state.config.keyHooks.register(fn, {
       priority: options?.priority ?? 0,
       release: options?.release ?? false,
@@ -552,10 +458,6 @@ export class ActionMap {
   }
 
   public onRawInput(fn: (ctx: ActionMapRawInputContext) => void, options?: { priority?: number }): () => void {
-    if (this.state.core.destroyed) {
-      return NOOP
-    }
-
     return this.state.config.rawHooks.register(fn, {
       priority: options?.priority ?? 0,
     })
@@ -609,20 +511,19 @@ export class ActionMap {
 }
 
 export function getActionMap(renderer: CliRenderer): ActionMap {
+  if (renderer.isDestroyed) {
+    throw new Error("Cannot create an action map for a destroyed renderer")
+  }
+
   const existing = actionMapsByRenderer.get(renderer)
   if (existing) {
-    if (existing.isDestroyed) {
-      actionMapsByRenderer.delete(renderer)
-    } else {
-      return existing
-    }
+    return existing
   }
 
   const actionMap = new ActionMap(renderer)
   actionMapsByRenderer.set(renderer, actionMap)
 
-  renderer.once("destroy", () => {
-    actionMap.destroy()
+  renderer.once(CliRenderEvents.DESTROY, () => {
     actionMapsByRenderer.delete(renderer)
   })
 

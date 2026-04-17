@@ -1,5 +1,5 @@
 import type { ActionMap } from "../types.js"
-import { buildBindingKey, normalizeKeyStroke } from "../utils.js"
+import { buildBindingKey, normalizeKeyStroke } from "../lib/utils.js"
 
 function getBaseLayoutKeyName(baseCode: number | undefined): string | undefined {
   if (baseCode === undefined || baseCode < 32 || baseCode === 127) {

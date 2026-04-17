@@ -1,4 +1,4 @@
-import type { KeyEvent } from "../../lib/KeyHandler.js"
+import type { KeyEvent } from "../../../lib/KeyHandler.js"
 import type {
   ActionMapAttributes,
   ActionMapBindingCommand,
@@ -12,7 +12,7 @@ import type {
   ParsedKeyPart,
   ParsedKeyStroke,
   SequenceNode,
-} from "./types.js"
+} from "../types.js"
 
 export interface SnapshotDataValueOptions {
   deep?: boolean

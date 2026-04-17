@@ -4,9 +4,9 @@ export {
   defaultBindingSyntax,
   defaultEventMatchResolver,
   parseKeySequenceLike,
-} from "./default-parser.js"
-export { namedSingleStrokeKeyNames, namedSingleStrokeKeys } from "./named-keys.js"
-export { stringifyKeySequence, stringifyKeyStroke } from "./utils.js"
+} from "./lib/default-parser.js"
+export { namedSingleStrokeKeyNames, namedSingleStrokeKeys } from "./lib/named-keys.js"
+export { stringifyKeySequence, stringifyKeyStroke } from "./lib/utils.js"
 export type {
   KeyLike,
   ActionMapActiveBinding,

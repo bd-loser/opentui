@@ -19,8 +19,8 @@ import type {
   RegisteredLayer,
   SequenceNode,
 } from "./types.js"
-import type { Emitter } from "./emitter.js"
-import { createParsedKeyPart, snapshotStroke, stringifyKeyStroke } from "./utils.js"
+import type { Emitter } from "./lib/emitter.js"
+import { createParsedKeyPart, snapshotStroke, stringifyKeyStroke } from "./lib/utils.js"
 
 export class ActionMapRuntime {
   constructor(

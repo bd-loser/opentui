@@ -21,7 +21,7 @@ import {
   snapshotBindingInputs,
   snapshotDataValue,
   sortByPriorityAndOrder,
-} from "./utils.js"
+} from "./lib/utils.js"
 
 const NOOP = (): void => {}
 

@@ -1,6 +1,6 @@
 import type { ActionMapEvents, ActionMapHookName, ActionMapHooks } from "./types.js"
 import type { ActionMapState } from "./action-map-state.js"
-import { Emitter } from "./emitter.js"
+import { Emitter } from "./lib/emitter.js"
 
 export class ActionMapNotifier {
   constructor(

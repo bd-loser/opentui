@@ -1,5 +1,4 @@
 import type { ActionMap } from "./action-map.js"
-import type { Emitter } from "./emitter.js"
 import type {
   ActionMapAttributes,
   ActionMapBindingCommand,
@@ -25,6 +24,7 @@ import type { ActionMapState } from "./action-map-state.js"
 import type { ActionMapNotifier } from "./action-map-notify.js"
 import type { ActionMapRuntime } from "./action-map-runtime.js"
 import { KeyEvent } from "../../lib/KeyHandler.js"
+import type { Emitter } from "./lib/emitter.js"
 import {
   getErrorMessage,
   isPromiseLike,
@@ -34,7 +34,7 @@ import {
   snapshotDataValue,
   snapshotParsedBindingInput,
   stringifyKeySequence,
-} from "./utils.js"
+} from "./lib/utils.js"
 
 const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const
 const SNAPSHOT_COMMAND_METADATA_OPTIONS = Object.freeze({ deep: true, preserveNonPlainObjects: true })

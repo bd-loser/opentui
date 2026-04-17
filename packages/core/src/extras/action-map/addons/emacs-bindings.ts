@@ -1,5 +1,5 @@
 import type { ActionMapBindingParser, ActionMap, ParsedKeyPart } from "../types.js"
-import { createParsedKeyPart, normalizeKeyName } from "../utils.js"
+import { createParsedKeyPart, normalizeKeyName } from "../lib/utils.js"
 
 function parseEmacsStroke(input: string, sequence: string): ParsedKeyPart {
   const parts = input.split("+")

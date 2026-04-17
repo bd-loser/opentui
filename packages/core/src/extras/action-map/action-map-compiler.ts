@@ -36,7 +36,7 @@ import {
   normalizeBindingCommand,
   snapshotAttributes,
   snapshotParsedBindingInput,
-} from "./utils.js"
+} from "./lib/utils.js"
 
 const EMPTY_COMPILE_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 const EMPTY_REQUIRES: readonly [name: string, value: unknown][] = []

@@ -1,4 +1,4 @@
-import { createParsedKeyPart, normalizeKeyName } from "../utils.js"
+import { createParsedKeyPart, normalizeKeyName } from "../lib/utils.js"
 import type { ActionMap } from "../types.js"
 
 export type ActionMapAliases = Record<string, string>

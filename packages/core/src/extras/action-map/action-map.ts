@@ -30,18 +30,18 @@ import type {
   ParsedKeyStroke,
   PendingSequenceState,
 } from "./types.js"
-import { getErrorMessage } from "./utils.js"
+import { getErrorMessage } from "./lib/utils.js"
 import { ActionMapCommands } from "./action-map-commands.js"
 import { ActionMapCompiler, RESERVED_BINDING_FIELDS } from "./action-map-compiler.js"
 import { ActionMapConditions } from "./action-map-conditions.js"
 import { ActionMapDispatch } from "./action-map-dispatch.js"
 import { ActionMapLayers, RESERVED_LAYER_FIELDS } from "./action-map-layers.js"
+import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./lib/default-parser.js"
+import { Emitter, type EmitterListener } from "./lib/emitter.js"
 import { ActionMapNotifier } from "./action-map-notify.js"
 import { ActionMapRuntime } from "./action-map-runtime.js"
 import { createActionMapState, resetActionMapState } from "./action-map-state.js"
 import { RESERVED_COMMAND_FIELDS } from "./action-map-commands.js"
-import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./default-parser.js"
-import { Emitter, type EmitterListener } from "./emitter.js"
 
 const actionMapsByRenderer = new WeakMap<CliRenderer, ActionMap>()
 const NOOP = (): void => {}

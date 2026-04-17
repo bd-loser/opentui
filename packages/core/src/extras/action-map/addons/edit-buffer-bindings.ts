@@ -11,7 +11,7 @@ import type {
   ActionMapLayer,
   ActionMap,
 } from "../types.js"
-import { snapshotBindingInputs } from "../utils.js"
+import { snapshotBindingInputs } from "../lib/utils.js"
 
 const editBufferCommandNames = [
   "move-left",

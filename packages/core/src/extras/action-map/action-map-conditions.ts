@@ -1,7 +1,7 @@
 import type { ActionMapNotifier } from "./action-map-notify.js"
 import type { ActionMapState } from "./action-map-state.js"
 import type { ActionMapReactiveMatcher, RegisteredLayer, RuntimeMatchable, RuntimeMatcher } from "./types.js"
-import { getErrorMessage } from "./utils.js"
+import { getErrorMessage } from "./lib/utils.js"
 
 function isReactiveMatcher(value: unknown): value is ActionMapReactiveMatcher {
   if (!value || typeof value !== "object") {

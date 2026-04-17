@@ -7,7 +7,7 @@ import type {
   ParsedKeyPart,
   ParsedKeyToken,
   ParsedKeyStroke,
-} from "./types.js"
+} from "../types.js"
 import {
   buildBindingKey,
   createParsedKeyPart,

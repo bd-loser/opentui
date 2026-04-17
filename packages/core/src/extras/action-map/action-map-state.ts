@@ -22,7 +22,7 @@ import type {
   RegisteredLayerBucket,
   RuntimeMatchable,
 } from "./types.js"
-import { OrderedEmitter, RegistrationList } from "./emitter.js"
+import { OrderedEmitter, RegistrationList } from "./lib/emitter.js"
 
 const EMPTY_DATA: Readonly<ActionMapEventData> = Object.freeze({})
 

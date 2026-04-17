@@ -5,7 +5,7 @@ import type {
   ActionMap,
   ActionMapParsedCommand,
 } from "../types.js"
-import { normalizeCommandName } from "../utils.js"
+import { normalizeCommandName } from "../lib/utils.js"
 
 const EMPTY_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 

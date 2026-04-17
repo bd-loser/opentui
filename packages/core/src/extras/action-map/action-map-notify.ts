@@ -1,24 +1,12 @@
-import type {
-  ActionMapEventData,
-  ActionMapEvents,
-  ActionMapHookName,
-  ActionMapHooks,
-  ParsedKeyStroke,
-  PendingSequenceState,
-} from "./types.js"
+import type { ActionMapEvents, ActionMapHookName, ActionMapHooks } from "./types.js"
 import type { ActionMapState } from "./action-map-state.js"
 import { Emitter } from "./emitter.js"
-
-interface ActionMapNotifierOptions {
-  getPendingSequenceStrokes: (pending: PendingSequenceState | null) => readonly ParsedKeyStroke[]
-}
 
 export class ActionMapNotifier {
   constructor(
     private readonly state: ActionMapState,
     private readonly events: Emitter<ActionMapEvents>,
     private readonly hooks: Emitter<ActionMapHooks>,
-    private readonly options: ActionMapNotifierOptions,
   ) {}
 
   public runWithStateChangeBatch<T>(fn: () => T): T {
@@ -83,27 +71,6 @@ export class ActionMapNotifier {
     this.emitError("[ActionMap] Error in unresolved command hook:", error)
   }
 
-  public setPendingSequence(next: PendingSequenceState | null): void {
-    if (isSamePendingSequence(this.state.runtime.pendingSequence, next)) {
-      return
-    }
-
-    this.state.runtime.pendingSequence = next
-    invalidateDerivedStateCaches(this.state)
-    this.notifyPendingSequenceChange()
-    this.queueStateChange()
-  }
-
-  public getReadonlyData(): Readonly<ActionMapEventData> {
-    if (this.state.runtime.readonlyDataVersion === this.state.runtime.dataVersion) {
-      return this.state.runtime.readonlyData
-    }
-
-    this.state.runtime.readonlyData = Object.freeze({ ...this.state.runtime.data })
-    this.state.runtime.readonlyDataVersion = this.state.runtime.dataVersion
-    return this.state.runtime.readonlyData
-  }
-
   public warnOnce(key: string, message: string): void {
     if (this.state.notify.usedWarningKeys.has(key)) {
       return
@@ -133,33 +100,4 @@ export class ActionMapNotifier {
       this.state.notify.flushingStateChange = false
     }
   }
-
-  private notifyPendingSequenceChange(): void {
-    if (!this.hooks.has("pendingSequence")) {
-      return
-    }
-
-    this.hooks.emit("pendingSequence", this.options.getPendingSequenceStrokes(this.state.runtime.pendingSequence))
-  }
-}
-
-function invalidateDerivedStateCaches(state: ActionMapState): void {
-  state.projections.pendingSequenceCacheVersion = -1
-  state.projections.pendingSequencePartsCacheVersion = -1
-  state.projections.activeKeysPlainCacheVersion = -1
-  state.projections.activeKeysBindingsCacheVersion = -1
-  state.projections.activeKeysMetadataCacheVersion = -1
-  state.projections.activeKeysBindingsAndMetadataCacheVersion = -1
-}
-
-function isSamePendingSequence(current: PendingSequenceState | null, next: PendingSequenceState | null): boolean {
-  if (current === next) {
-    return true
-  }
-
-  if (!current || !next) {
-    return false
-  }
-
-  return current.layer === next.layer && current.node === next.node
 }

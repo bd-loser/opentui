@@ -1,6 +1,7 @@
 import { RenderableEvents, type Renderable } from "../../Renderable.js"
 import type { ActionMapCompiler } from "./action-map-compiler.js"
 import type { ActionMapConditions } from "./action-map-conditions.js"
+import type { ActionMapRuntime } from "./action-map-runtime.js"
 import type {
   ActionMapBindingInput,
   ActionMapEventData,
@@ -44,6 +45,7 @@ export class ActionMapLayers {
     private readonly state: ActionMapState,
     private readonly notify: ActionMapNotifier,
     private readonly conditions: ActionMapConditions,
+    private readonly runtime: Pick<ActionMapRuntime, "setPendingSequence">,
     private readonly options: ActionMapLayersOptions,
   ) {}
 
@@ -181,7 +183,7 @@ export class ActionMapLayers {
       }
 
       if (shouldClearPending) {
-        this.notify.setPendingSequence(null)
+        this.runtime.setPendingSequence(null)
       }
 
       if (nextCompilations.size > 0) {
@@ -403,7 +405,7 @@ export class ActionMapLayers {
       layer.offTargetDestroy = undefined
 
       if (this.state.runtime.pendingSequence?.layer === layer) {
-        this.notify.setPendingSequence(null)
+        this.runtime.setPendingSequence(null)
       }
 
       this.notify.queueStateChange()

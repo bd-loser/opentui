@@ -22,6 +22,14 @@ import type {
 import type { Emitter } from "../lib/emitter.js"
 import { createParsedKeyPart, snapshotStroke, stringifyKeyStroke } from "../lib/utils.js"
 
+function getLiveRenderer(renderer: CliRenderer): CliRenderer {
+  if (renderer.isDestroyed) {
+    throw new Error("Cannot use an action map after its renderer was destroyed")
+  }
+
+  return renderer
+}
+
 export class RuntimeService {
   constructor(
     private readonly state: ActionMapState,
@@ -32,7 +40,7 @@ export class RuntimeService {
   ) {}
 
   public getFocusedRenderable(): Renderable | null {
-    const focused = this.renderer.currentFocusedRenderable
+    const focused = getLiveRenderer(this.renderer).currentFocusedRenderable
     if (!focused) {
       return null
     }
@@ -129,10 +137,6 @@ export class RuntimeService {
   }
 
   public getPendingSequence(): readonly ParsedKeyStroke[] {
-    if (this.state.core.destroyed) {
-      return []
-    }
-
     const projections = this.state.runtime
     const derivedStateVersion = this.state.notify.derivedStateVersion
 
@@ -154,10 +158,6 @@ export class RuntimeService {
   }
 
   public getPendingSequenceParts(): readonly ParsedKeyPart[] {
-    if (this.state.core.destroyed) {
-      return []
-    }
-
     const projections = this.state.runtime
     const derivedStateVersion = this.state.notify.derivedStateVersion
 
@@ -179,10 +179,6 @@ export class RuntimeService {
   }
 
   public getActiveKeys(options?: ActionMapActiveKeyOptions): readonly ActionMapActiveKey[] {
-    if (this.state.core.destroyed) {
-      return []
-    }
-
     const projections = this.state.runtime
     const derivedStateVersion = this.state.notify.derivedStateVersion
     const includeBindings = options?.includeBindings === true

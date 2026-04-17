@@ -96,10 +96,6 @@ export class CommandService {
   ) {}
 
   public getCommands(query?: ActionMapCommandQuery): readonly ActionMapCommandRecord[] {
-    if (this.state.core.destroyed) {
-      return []
-    }
-
     return queryRegisteredCommands({
       commands: this.state.commands.commands.values(),
       query,
@@ -115,10 +111,6 @@ export class CommandService {
   }
 
   public runCommand(cmd: string, options?: ActionMapRunCommandOptions): ActionMapRunCommandResult {
-    if (this.state.core.destroyed) {
-      return { ok: false, reason: "error" }
-    }
-
     let normalized: ActionMapBindingCommand | undefined
 
     try {
@@ -241,10 +233,6 @@ export class CommandService {
   }
 
   public registerCommandResolver(resolver: ActionMapCommandResolver): () => void {
-    if (this.state.core.destroyed) {
-      return () => {}
-    }
-
     return this.notify.runWithStateChangeBatch(() => {
       this.state.config.commandResolvers.append(resolver)
       this.refreshBindingCommandResolution()
@@ -264,10 +252,6 @@ export class CommandService {
   }
 
   public registerCommands(commands: ActionMapCommandDefinition[]): () => void {
-    if (this.state.core.destroyed) {
-      return () => {}
-    }
-
     return this.notify.runWithStateChangeBatch(() => {
       const normalizedCommands = normalizeRegisteredCommands({
         commands,

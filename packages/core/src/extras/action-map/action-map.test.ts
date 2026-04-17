@@ -144,59 +144,39 @@ describe("action map", () => {
     expect(first).toBe(second)
   })
 
-  test("creates a fresh action map after manual destroy", () => {
-    const first = getActionMap(renderer)
-    first.destroy()
+  test("throws when requesting an action map for a destroyed renderer", () => {
+    getActionMap(renderer)
+    renderer.destroy()
 
-    const second = getActionMap(renderer)
-    expect(second).not.toBe(first)
+    expect(() => getActionMap(renderer)).toThrow("Cannot create an action map for a destroyed renderer")
   })
 
-  test("returns safe defaults after destroy", () => {
+  test("keeps non-renderer state and throws on renderer-backed reads after renderer destroy", () => {
     const actionMap = getActionMap(renderer)
 
+    actionMap.setData("mode", "normal")
     actionMap.registerCommands([{ name: "noop", run() {} }])
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "noop" }],
     })
 
-    actionMap.destroy()
+    renderer.destroy()
 
-    expect(actionMap.getData("mode")).toBeUndefined()
-    expect(actionMap.hasPendingSequence()).toBe(false)
-    expect(actionMap.getPendingSequence()).toEqual([])
-    expect(actionMap.getPendingSequenceParts()).toEqual([])
-    expect(actionMap.getActiveKeys()).toEqual([])
-    expect(actionMap.getCommands()).toEqual([])
-    expect(actionMap.popPendingSequence()).toBe(false)
-    expect(actionMap.runCommand("noop")).toEqual({ ok: false, reason: "error" })
+    expect(actionMap.getData("mode")).toBe("normal")
+    expect(actionMap.getCommands().map((command) => command.name)).toEqual(["noop"])
+    expect(
+      actionMap.createKeyMatcher("x")({
+        name: "x",
+        ctrl: false,
+        shift: false,
+        meta: false,
+        super: false,
+        hyper: false,
+      }),
+    ).toBe(true)
 
-    expect(() => {
-      actionMap.setData("mode", "normal")
-      actionMap.clearPendingSequence()
-      actionMap.setBindingSyntax(defaultBindingSyntax)
-      actionMap.clearBindingSyntax()
-      actionMap.clearBindingParsers()
-      actionMap.clearBindingExpanders()
-      actionMap.clearEventMatchResolvers()
-      actionMap.hook("state", () => {})()
-      actionMap.registerLayer({ scope: "global", bindings: [{ key: "y", cmd: "noop" }] })()
-      actionMap.registerToken({ name: "<leader>", key: { name: "x" } })()
-      actionMap.registerCommands([{ name: "other", run() {} }])()
-      actionMap.registerLayerFields({ mode() {} })()
-      actionMap.registerBindingFields({ active() {} })()
-      actionMap.registerCommandFields({ title() {} })()
-      actionMap.registerBindingCompiler(() => {})()
-      actionMap.prependBindingParser(() => undefined)()
-      actionMap.appendBindingParser(() => undefined)()
-      actionMap.prependBindingExpander(() => undefined)()
-      actionMap.appendBindingExpander(() => undefined)()
-      actionMap.registerCommandResolver(() => undefined)()
-      actionMap.registerEventMatchResolver(() => undefined)()
-      actionMap.onKeyInput(() => {})()
-      actionMap.onRawInput(() => {})()
-    }).not.toThrow()
+    expect(() => actionMap.getActiveKeys()).toThrow("Cannot use an action map after its renderer was destroyed")
   })
 
   test("defaults targetless layers to global scope", () => {
@@ -2172,7 +2152,7 @@ describe("action map", () => {
     expect(enabled.subscriptions).toBe(0)
   })
 
-  test("reactive matchers: dispose on action map destroy", () => {
+  test("reactive matchers: dispose on renderer destroy", () => {
     const actionMap = getActionMap(renderer)
     const enabled = createReactiveBoolean(true)
 
@@ -2191,7 +2171,7 @@ describe("action map", () => {
 
     expect(enabled.subscriptions).toBe(1)
 
-    actionMap.destroy()
+    renderer.destroy()
 
     expect(enabled.disposeCalls).toBe(1)
     expect(enabled.subscriptions).toBe(0)

@@ -36,10 +36,6 @@ export class DispatchService {
   }
 
   public handleRawSequence(sequence: string): boolean {
-    if (this.state.core.destroyed) {
-      return false
-    }
-
     const hooks = this.state.config.rawHooks.entries()
     if (hooks.length === 0) {
       return false
@@ -69,10 +65,6 @@ export class DispatchService {
   }
 
   public handleKeyEvent(event: KeyEvent, release: boolean): void {
-    if (this.state.core.destroyed) {
-      return
-    }
-
     const hooks = this.state.config.keyHooks.entries()
     const context: ActionMapKeyInputContext = {
       event,

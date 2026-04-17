@@ -1,6 +1,5 @@
 import type { Renderable } from "../../Renderable.js"
 import type { KeyEvent } from "../../lib/KeyHandler.js"
-import type { CliRenderer } from "../../renderer.js"
 import type { ActionMap } from "./action-map.js"
 
 export type ActionMapEventData = Record<string, unknown>
@@ -89,7 +88,6 @@ export type ActionMapRunCommandResult =
 
 export interface ActionMapCommandContext {
   actionMap: ActionMap
-  renderer: CliRenderer
   event: KeyEvent
   focused: Renderable | null
   target: Renderable | null

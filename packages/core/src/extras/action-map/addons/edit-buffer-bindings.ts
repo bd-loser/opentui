@@ -272,7 +272,7 @@ export function registerTextareaMappingSuspension(manager: ActionMap): () => voi
 }
 
 function withFocusedEditor(ctx: ActionMapCommandContext, run: (editor: EditBufferRenderable) => boolean): boolean {
-  const editor = ctx.renderer.currentFocusedEditor
+  const editor = ctx.actionMap.renderer.currentFocusedEditor
   if (!editor || editor.isDestroyed) {
     return false
   }

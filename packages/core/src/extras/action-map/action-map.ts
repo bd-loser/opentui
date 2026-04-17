@@ -798,7 +798,6 @@ export class ActionMap {
     const event = options?.event ?? createSyntheticCommandEvent()
     const context: ActionMapCommandContext = {
       actionMap: this,
-      renderer: this.renderer,
       event,
       focused: options?.focused ?? this.getFocusedRenderable(),
       target: options?.target ?? null,
@@ -3097,7 +3096,6 @@ export class ActionMap {
 
     const context: ActionMapCommandContext = {
       actionMap: this,
-      renderer: this.renderer,
       event,
       focused,
       target: layer.target ?? null,

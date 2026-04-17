@@ -1,7 +1,10 @@
 import { KeyEvent } from "../../lib/KeyHandler.js"
-import type { Renderable } from "../../Renderable.js"
 import type { ActionMap } from "./action-map.js"
+import type { ActionMapConditions } from "./action-map-conditions.js"
+import type { ActionMapLayers } from "./action-map-layers.js"
 import type { ActionMapNotifier } from "./action-map-notify.js"
+import type { ActionMapProjections } from "./action-map-projections.js"
+import type { ActionMapRuntime } from "./action-map-runtime.js"
 import type { ActionMapState } from "./action-map-state.js"
 import type {
   ActionMapCommandContext,
@@ -17,24 +20,16 @@ import type {
 } from "./types.js"
 import { isPromiseLike } from "./utils.js"
 
-interface ActionMapDispatchOptions {
-  actionMap: ActionMap
-  getFocusedRenderable: () => Renderable | null
-  getActiveLayers: (focused: Renderable | null) => RegisteredLayer[]
-  ensureValidPendingSequence: () => PendingSequenceState | undefined
-  setPendingSequence: (next: PendingSequenceState | null) => void
-  getReadonlyData: () => Readonly<Record<string, unknown>>
-  setData: (name: string, value: unknown) => void
-  matchesConditions: (target: RuntimeMatchable) => boolean
-  hasNoConditions: (target: RuntimeMatchable) => boolean
-  nodeHasReachableBindings: (node: SequenceNode) => boolean
-}
-
 export class ActionMapDispatch {
   constructor(
     private readonly state: ActionMapState,
     private readonly notify: ActionMapNotifier,
-    private readonly options: ActionMapDispatchOptions,
+    private readonly actionMap: ActionMap,
+    private readonly runtime: Pick<ActionMapRuntime, "getFocusedRenderable">,
+    private readonly layers: Pick<ActionMapLayers, "getActiveLayers">,
+    private readonly projections: Pick<ActionMapProjections, "ensureValidPendingSequence" | "nodeHasReachableBindings">,
+    private readonly conditions: Pick<ActionMapConditions, "matchesConditions" | "hasNoConditions">,
+    private readonly setData: (name: string, value: unknown) => void,
   ) {}
 
   public handleRawSequence(sequence: string): boolean {
@@ -79,7 +74,7 @@ export class ActionMapDispatch {
     const context: ActionMapKeyInputContext = {
       event,
       setData: (name, value) => {
-        this.options.setData(name, value)
+        this.setData(name, value)
       },
       getData: (name) => {
         return this.state.runtime.data[name]
@@ -123,13 +118,13 @@ export class ActionMapDispatch {
   }
 
   private dispatchReleaseLayers(event: KeyEvent): void {
-    const focused = this.options.getFocusedRenderable()
-    const activeLayers = this.options.getActiveLayers(focused)
+    const focused = this.runtime.getFocusedRenderable()
+    const activeLayers = this.layers.getActiveLayers(focused)
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
     const matchKeys = this.resolveEventMatchKeys(event)
 
     layerLoop: for (const layer of activeLayers) {
-      if (hasLayerConditions && !this.options.hasNoConditions(layer) && !this.options.matchesConditions(layer)) {
+      if (hasLayerConditions && !this.conditions.hasNoConditions(layer) && !this.conditions.matchesConditions(layer)) {
         continue
       }
 
@@ -149,8 +144,8 @@ export class ActionMapDispatch {
   }
 
   private dispatchLayers(event: KeyEvent): void {
-    const focused = this.options.getFocusedRenderable()
-    const pending = this.options.ensureValidPendingSequence()
+    const focused = this.runtime.getFocusedRenderable()
+    const pending = this.projections.ensureValidPendingSequence()
     const matchKeys = this.resolveEventMatchKeys(event)
 
     if (pending) {
@@ -158,7 +153,7 @@ export class ActionMapDispatch {
       return
     }
 
-    const activeLayers = this.options.getActiveLayers(focused)
+    const activeLayers = this.layers.getActiveLayers(focused)
     this.dispatchFromRoot(activeLayers, matchKeys, event, focused)
   }
 
@@ -170,12 +165,12 @@ export class ActionMapDispatch {
   ): void {
     const nextNode = this.getReachableChild(pending.node, matchKeys)
     if (!nextNode) {
-      this.options.setPendingSequence(null)
+      this.notify.setPendingSequence(null)
       return
     }
 
     if (nextNode.children.size > 0) {
-      this.options.setPendingSequence({
+      this.notify.setPendingSequence({
         layer: pending.layer,
         node: nextNode,
       })
@@ -185,7 +180,7 @@ export class ActionMapDispatch {
     }
 
     this.runBindings(pending.layer, nextNode.bindings, event, focused)
-    this.options.setPendingSequence(null)
+    this.notify.setPendingSequence(null)
   }
 
   private dispatchFromRoot(
@@ -197,7 +192,7 @@ export class ActionMapDispatch {
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
 
     layerLoop: for (const layer of activeLayers) {
-      if (hasLayerConditions && !this.options.hasNoConditions(layer) && !this.options.matchesConditions(layer)) {
+      if (hasLayerConditions && !this.conditions.hasNoConditions(layer) && !this.conditions.matchesConditions(layer)) {
         continue
       }
 
@@ -207,7 +202,7 @@ export class ActionMapDispatch {
       }
 
       if (nextNode.children.size > 0) {
-        this.options.setPendingSequence({
+        this.notify.setPendingSequence({
           layer,
           node: nextNode,
         })
@@ -293,7 +288,7 @@ export class ActionMapDispatch {
         continue
       }
 
-      if (!this.options.matchesConditions(binding)) {
+      if (!this.conditions.matchesConditions(binding)) {
         continue
       }
 
@@ -314,7 +309,7 @@ export class ActionMapDispatch {
   private getReachableChild(node: SequenceNode, matchKeys: readonly string[]): SequenceNode | undefined {
     for (const strokeKey of matchKeys) {
       const child = node.children.get(strokeKey)
-      if (!child || !this.options.nodeHasReachableBindings(child)) {
+      if (!child || !this.projections.nodeHasReachableBindings(child)) {
         continue
       }
 
@@ -333,7 +328,7 @@ export class ActionMapDispatch {
     let handled = false
 
     for (const binding of bindings) {
-      if (!this.options.matchesConditions(binding)) {
+      if (!this.conditions.matchesConditions(binding)) {
         continue
       }
 
@@ -363,11 +358,11 @@ export class ActionMapDispatch {
     }
 
     const context: ActionMapCommandContext = {
-      actionMap: this.options.actionMap,
+      actionMap: this.actionMap,
       event,
       focused,
       target: layer.target ?? null,
-      data: this.options.getReadonlyData(),
+      data: this.notify.getReadonlyData(),
     }
 
     let result: ActionMapCommandResult

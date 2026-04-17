@@ -1,15 +1,15 @@
 import { RenderableEvents, type Renderable } from "../../Renderable.js"
 import type { ActionMapCompiler } from "./action-map-compiler.js"
+import type { ActionMapConditions } from "./action-map-conditions.js"
 import type {
+  ActionMapBindingInput,
   ActionMapEventData,
   ActionMapLayer,
-  ActionMapReactiveMatcher,
   ActionMapScope,
   ParsedKeyToken,
   PendingSequenceState,
   RegisteredLayer,
   RegisteredLayerBucket,
-  RuntimeMatchable,
   RuntimeMatcher,
 } from "./types.js"
 import type { ActionMapState } from "./action-map-state.js"
@@ -36,17 +36,14 @@ interface CompileLayerRuntimeStateResult {
 
 interface ActionMapLayersOptions {
   compiler: Pick<ActionMapCompiler, "compileBindings">
-  registerRuntimeMatchable: (target: RuntimeMatchable) => void
-  unregisterRuntimeMatchable: (target: RuntimeMatchable) => void
-  setPendingSequence: (next: PendingSequenceState | null) => void
   warnUnknownField: (kind: "binding" | "layer", fieldName: string) => void
-  buildRuntimeMatcher: (matcher: (() => boolean) | ActionMapReactiveMatcher, source: string) => RuntimeMatcher
 }
 
 export class ActionMapLayers {
   constructor(
     private readonly state: ActionMapState,
     private readonly notify: ActionMapNotifier,
+    private readonly conditions: ActionMapConditions,
     private readonly options: ActionMapLayersOptions,
   ) {}
 
@@ -116,9 +113,9 @@ export class ActionMapLayers {
       if (registeredLayer.requires.length > 0 || registeredLayer.matchers.length > 0) {
         this.state.layers.layersWithConditions += 1
       }
-      this.options.registerRuntimeMatchable(registeredLayer)
+      this.conditions.registerRuntimeMatchable(registeredLayer)
       for (const binding of registeredLayer.compiledBindings) {
-        this.options.registerRuntimeMatchable(binding)
+        this.conditions.registerRuntimeMatchable(binding)
       }
       this.indexLayer(registeredLayer)
 
@@ -168,14 +165,14 @@ export class ActionMapLayers {
       let shouldClearPending = false
       for (const [layer, compilation] of nextCompilations) {
         for (const binding of layer.compiledBindings) {
-          this.options.unregisterRuntimeMatchable(binding)
+          this.conditions.unregisterRuntimeMatchable(binding)
         }
 
         layer.root = compilation.root
         layer.compiledBindings = compilation.bindings
 
         for (const binding of layer.compiledBindings) {
-          this.options.registerRuntimeMatchable(binding)
+          this.conditions.registerRuntimeMatchable(binding)
         }
 
         if (this.state.runtime.pendingSequence?.layer === layer) {
@@ -184,7 +181,7 @@ export class ActionMapLayers {
       }
 
       if (shouldClearPending) {
-        this.options.setPendingSequence(null)
+        this.notify.setPendingSequence(null)
       }
 
       if (nextCompilations.size > 0) {
@@ -246,6 +243,20 @@ export class ActionMapLayers {
     return false
   }
 
+  public layerCanCacheActiveKeys(layer: RegisteredLayer): boolean {
+    return !layer.hasUnkeyedMatchers && !layer.hasUnkeyedBindings
+  }
+
+  public activeLayersCanCacheActiveKeys(activeLayers: readonly RegisteredLayer[]): boolean {
+    for (const layer of activeLayers) {
+      if (!this.layerCanCacheActiveKeys(layer)) {
+        return false
+      }
+    }
+
+    return true
+  }
+
   private normalizeScope(layer: ActionMapLayer): ActionMapScope {
     if (layer.scope) {
       if (layer.scope !== "global" && !layer.target) {
@@ -292,7 +303,7 @@ export class ActionMapLayers {
           conditionKeys.add(name)
         },
         match: (matcher) => {
-          const runtimeMatcher = this.options.buildRuntimeMatcher(matcher, `field ${fieldName}`)
+          const runtimeMatcher = this.conditions.buildRuntimeMatcher(matcher, `field ${fieldName}`)
           if (!runtimeMatcher.cacheable) {
             hasUnkeyedMatchers = true
           }
@@ -382,9 +393,9 @@ export class ActionMapLayers {
         this.state.layers.layersWithConditions -= 1
       }
 
-      this.options.unregisterRuntimeMatchable(layer)
+      this.conditions.unregisterRuntimeMatchable(layer)
       for (const binding of layer.compiledBindings) {
-        this.options.unregisterRuntimeMatchable(binding)
+        this.conditions.unregisterRuntimeMatchable(binding)
       }
 
       this.removeLayerFromIndex(layer)
@@ -392,7 +403,7 @@ export class ActionMapLayers {
       layer.offTargetDestroy = undefined
 
       if (this.state.runtime.pendingSequence?.layer === layer) {
-        this.options.setPendingSequence(null)
+        this.notify.setPendingSequence(null)
       }
 
       this.notify.queueStateChange()

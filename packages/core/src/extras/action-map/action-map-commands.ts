@@ -19,6 +19,7 @@ import { queryRegisteredCommands } from "./command-query.js"
 import { getRegisteredCommandRecord, normalizeRegisteredCommands } from "./command-registry.js"
 import type { ActionMapState } from "./action-map-state.js"
 import type { ActionMapNotifier } from "./action-map-notify.js"
+import type { ActionMapRuntime } from "./action-map-runtime.js"
 import { KeyEvent } from "../../lib/KeyHandler.js"
 import { isPromiseLike, normalizeBindingCommand } from "./utils.js"
 
@@ -29,8 +30,6 @@ interface ResolvedCommandLookup {
 
 interface ActionMapCommandsOptions {
   actionMap: ActionMap
-  getFocusedRenderable: () => ActionMapCommandContext["focused"]
-  getReadonlyData: () => ActionMapCommandContext["data"]
   ensureValidPendingSequence: () => void
   handleUnresolvedCommand: (command: string, binding: CompiledBinding) => void
 }
@@ -54,6 +53,7 @@ export class ActionMapCommands {
   constructor(
     private readonly state: ActionMapState,
     private readonly notify: ActionMapNotifier,
+    private readonly runtime: Pick<ActionMapRuntime, "getFocusedRenderable">,
     private readonly options: ActionMapCommandsOptions,
   ) {}
 
@@ -115,9 +115,9 @@ export class ActionMapCommands {
     const context: ActionMapCommandContext = {
       actionMap: this.options.actionMap,
       event,
-      focused: options?.focused ?? this.options.getFocusedRenderable(),
+      focused: options?.focused ?? this.runtime.getFocusedRenderable(),
       target: options?.target ?? null,
-      data: this.options.getReadonlyData(),
+      data: this.notify.getReadonlyData(),
     }
 
     let result: ActionMapCommandResult

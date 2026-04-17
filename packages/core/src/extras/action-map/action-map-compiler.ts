@@ -1,5 +1,6 @@
 import type { Renderable } from "../../Renderable.js"
 import type { ActionMapCommands } from "./action-map-commands.js"
+import type { ActionMapConditions } from "./action-map-conditions.js"
 import type { ActionMapState } from "./action-map-state.js"
 import type { ActionMapNotifier } from "./action-map-notify.js"
 import type {
@@ -50,7 +51,6 @@ export interface ActionMapCompilerOptions {
   reservedBindingFields: ReadonlySet<string>
   warnUnknownField: (kind: "binding" | "layer", fieldName: string) => void
   warnUnknownToken: (token: string, sequence: string) => void
-  buildRuntimeMatcher: (matcher: (() => boolean) | ActionMapReactiveMatcher, source: string) => RuntimeMatcher
 }
 
 export class ActionMapCompiler {
@@ -58,6 +58,7 @@ export class ActionMapCompiler {
     private readonly state: ActionMapState,
     private readonly notify: ActionMapNotifier,
     private readonly commands: Pick<ActionMapCommands, "resolveCompiledBindingCommand">,
+    private readonly conditions: ActionMapConditions,
     private readonly options: ActionMapCompilerOptions,
   ) {}
 
@@ -95,7 +96,7 @@ export class ActionMapCompiler {
     const reservedBindingFields = this.options.reservedBindingFields
     const warnUnknownField = this.options.warnUnknownField
     const warnUnknownToken = this.options.warnUnknownToken
-    const buildRuntimeMatcher = this.options.buildRuntimeMatcher
+    const conditions = this.conditions
     const commands = this.commands
 
     for (const [bindingIndex, binding] of bindings.entries()) {
@@ -176,7 +177,7 @@ export class ActionMapCompiler {
                   mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
                 },
                 match: (matcher) => {
-                  const runtimeMatcher = buildRuntimeMatcher(matcher, `field ${fieldName}`)
+                  const runtimeMatcher = conditions.buildRuntimeMatcher(matcher, `field ${fieldName}`)
                   if (!runtimeMatcher.cacheable) {
                     hasUnkeyedMatchers = true
                   }

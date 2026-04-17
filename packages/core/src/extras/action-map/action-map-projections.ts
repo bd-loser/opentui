@@ -1,4 +1,7 @@
-import type { Renderable } from "../../Renderable.js"
+import type { ActionMapConditions } from "./action-map-conditions.js"
+import type { ActionMapLayers } from "./action-map-layers.js"
+import type { ActionMapNotifier } from "./action-map-notify.js"
+import type { ActionMapRuntime } from "./action-map-runtime.js"
 import type { ActionMapState } from "./action-map-state.js"
 import type {
   ActiveKeySelection,
@@ -17,20 +20,19 @@ import type {
 } from "./types.js"
 import { createParsedKeyPart, snapshotStroke, stringifyKeyStroke } from "./utils.js"
 
-interface ActionMapProjectionsOptions {
-  getFocusedRenderable: () => Renderable | null
-  ensureValidPendingSequence: () => PendingSequenceState | undefined
-  getActiveLayers: (focused: Renderable | null) => RegisteredLayer[]
-  layerCanCacheActiveKeys: (layer: RegisteredLayer) => boolean
-  activeLayersCanCacheActiveKeys: (activeLayers: readonly RegisteredLayer[]) => boolean
-  matchesConditions: (target: RuntimeMatchable) => boolean
-  hasNoConditions: (target: RuntimeMatchable) => boolean
-}
-
 export class ActionMapProjections {
   constructor(
     private readonly state: ActionMapState,
-    private readonly options: ActionMapProjectionsOptions,
+    private readonly notify: ActionMapNotifier,
+    private readonly runtime: Pick<ActionMapRuntime, "getFocusedRenderable">,
+    private readonly layers: Pick<
+      ActionMapLayers,
+      "getActiveLayers" | "isLayerActiveForFocused" | "layerCanCacheActiveKeys" | "activeLayersCanCacheActiveKeys"
+    >,
+    private readonly conditions: Pick<
+      ActionMapConditions,
+      "matchesConditions" | "hasNoConditions" | "layerMatchesRuntimeState"
+    >,
   ) {}
 
   public getPendingSequence(): readonly ParsedKeyStroke[] {
@@ -45,8 +47,8 @@ export class ActionMapProjections {
       return projections.pendingSequenceCache
     }
 
-    const pending = this.options.ensureValidPendingSequence()
-    const canUseCache = !pending || this.options.layerCanCacheActiveKeys(pending.layer)
+    const pending = this.ensureValidPendingSequence()
+    const canUseCache = !pending || this.layers.layerCanCacheActiveKeys(pending.layer)
 
     const sequence = pending ? this.collectSequenceStrokesFromNode(pending.node) : []
 
@@ -70,8 +72,8 @@ export class ActionMapProjections {
       return projections.pendingSequencePartsCache
     }
 
-    const pending = this.options.ensureValidPendingSequence()
-    const canUseCache = !pending || this.options.layerCanCacheActiveKeys(pending.layer)
+    const pending = this.ensureValidPendingSequence()
+    const canUseCache = !pending || this.layers.layerCanCacheActiveKeys(pending.layer)
 
     const parts = pending ? this.collectSequencePartsFromNode(pending.node) : []
 
@@ -109,16 +111,16 @@ export class ActionMapProjections {
       return projections.activeKeysPlainCache
     }
 
-    const focused = this.options.getFocusedRenderable()
-    const pending = this.options.ensureValidPendingSequence()
+    const focused = this.runtime.getFocusedRenderable()
+    const pending = this.ensureValidPendingSequence()
     let activeLayers: RegisteredLayer[] = []
     if (!pending) {
-      activeLayers = this.options.getActiveLayers(focused)
+      activeLayers = this.layers.getActiveLayers(focused)
     }
 
     const canUseCache = pending
-      ? this.options.layerCanCacheActiveKeys(pending.layer)
-      : this.options.activeLayersCanCacheActiveKeys(activeLayers)
+      ? this.layers.layerCanCacheActiveKeys(pending.layer)
+      : this.layers.activeLayersCanCacheActiveKeys(activeLayers)
 
     const activeKeys = pending
       ? this.collectActiveKeysFromChildren(pending.node.children, includeBindings, includeMetadata)
@@ -155,6 +157,34 @@ export class ActionMapProjections {
     return this.collectSequencePartsFromNode(node).map((part) => snapshotStroke(part.stroke))
   }
 
+  public ensureValidPendingSequence(): PendingSequenceState | undefined {
+    if (!this.state.runtime.pendingSequence) {
+      return undefined
+    }
+
+    const focused = this.runtime.getFocusedRenderable()
+
+    if (
+      !this.state.layers.layers.has(this.state.runtime.pendingSequence.layer) ||
+      !this.layers.isLayerActiveForFocused(this.state.runtime.pendingSequence.layer, focused)
+    ) {
+      this.notify.setPendingSequence(null)
+      return undefined
+    }
+
+    if (!this.conditions.layerMatchesRuntimeState(this.state.runtime.pendingSequence.layer)) {
+      this.notify.setPendingSequence(null)
+      return undefined
+    }
+
+    if (!this.nodeHasReachableBindings(this.state.runtime.pendingSequence.node)) {
+      this.notify.setPendingSequence(null)
+      return undefined
+    }
+
+    return this.state.runtime.pendingSequence
+  }
+
   private collectSequencePartsFromNode(node: SequenceNode): ParsedKeyPart[] {
     const nodes: SequenceNode[] = []
     let current: SequenceNode | null = node
@@ -172,11 +202,11 @@ export class ActionMapProjections {
   }
 
   private getMatchingBindings(bindings: readonly CompiledBinding[]): CompiledBinding[] {
-    const matchesConditions = this.options.matchesConditions
+    const conditions = this.conditions
     const matches: CompiledBinding[] = []
 
     for (const binding of bindings) {
-      if (matchesConditions(binding) && this.isVisibleBinding(binding)) {
+      if (conditions.matchesConditions(binding) && this.isVisibleBinding(binding)) {
         matches.push(binding)
       }
     }
@@ -185,10 +215,10 @@ export class ActionMapProjections {
   }
 
   private hasMatchingBindings(bindings: readonly CompiledBinding[]): boolean {
-    const matchesConditions = this.options.matchesConditions
+    const conditions = this.conditions
 
     for (const binding of bindings) {
-      if (matchesConditions(binding) && this.isVisibleBinding(binding)) {
+      if (conditions.matchesConditions(binding) && this.isVisibleBinding(binding)) {
         return true
       }
     }
@@ -266,14 +296,13 @@ export class ActionMapProjections {
     includeBindings: boolean,
     includeMetadata: boolean,
   ): readonly ActionMapActiveKey[] {
-    const hasNoConditions = this.options.hasNoConditions
-    const matchesConditions = this.options.matchesConditions
+    const conditions = this.conditions
     const activeKeys = new Map<string, ActiveKeyState>()
     const stopped = new Set<string>()
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
 
     for (const layer of activeLayers) {
-      if (hasLayerConditions && !hasNoConditions(layer) && !matchesConditions(layer)) {
+      if (hasLayerConditions && !conditions.hasNoConditions(layer) && !conditions.matchesConditions(layer)) {
         continue
       }
 
@@ -398,12 +427,12 @@ export class ActionMapProjections {
   private selectActiveBindings(
     bindings: readonly CompiledBinding[],
   ): { bindings: readonly CompiledBinding[]; commandBinding?: CompiledBinding; stop: boolean } | undefined {
-    const matchesConditions = this.options.matchesConditions
+    const conditions = this.conditions
     const selected: CompiledBinding[] = []
     let commandBinding: CompiledBinding | undefined
 
     for (const binding of bindings) {
-      if (!matchesConditions(binding) || !this.isVisibleBinding(binding)) {
+      if (!conditions.matchesConditions(binding) || !this.isVisibleBinding(binding)) {
         continue
       }
 

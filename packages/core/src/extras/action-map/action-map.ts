@@ -27,7 +27,6 @@ import type {
   ActionMapLayer,
   ActionMapLayerFieldCompiler,
   ActionMapRawInputContext,
-  ActionMapReactiveMatcher,
   ActionMapEventMatchResolver,
   ActionMapToken,
   ActionMapUnresolvedCommandContext,
@@ -38,16 +37,17 @@ import type {
   RegisteredCommand,
   RegisteredLayer,
   RuntimeMatchable,
-  RuntimeMatcher,
   SequenceNode,
 } from "./types.js"
 import { getErrorMessage, snapshotParsedBindingInput, stringifyKeySequence } from "./utils.js"
 import { ActionMapCommands } from "./action-map-commands.js"
 import { ActionMapCompiler } from "./action-map-compiler.js"
+import { ActionMapConditions } from "./action-map-conditions.js"
 import { ActionMapDispatch } from "./action-map-dispatch.js"
 import { ActionMapLayers, RESERVED_LAYER_FIELDS } from "./action-map-layers.js"
 import { ActionMapNotifier } from "./action-map-notify.js"
 import { ActionMapProjections } from "./action-map-projections.js"
+import { ActionMapRuntime } from "./action-map-runtime.js"
 import { createActionMapState, resetActionMapState } from "./action-map-state.js"
 import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./default-parser.js"
 import { Emitter, type EmitterListener } from "./emitter.js"
@@ -59,36 +59,6 @@ export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "event", "preventD
 
 const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
 
-function isReactiveMatcher(value: unknown): value is ActionMapReactiveMatcher {
-  if (!value || typeof value !== "object") {
-    return false
-  }
-
-  const candidate = value as { get?: unknown; subscribe?: unknown }
-  return typeof candidate.get === "function" && typeof candidate.subscribe === "function"
-}
-
-function buildRuntimeMatcher(matcher: (() => boolean) | ActionMapReactiveMatcher, source: string): RuntimeMatcher {
-  if (typeof matcher === "function") {
-    return {
-      source,
-      match: matcher,
-      cacheable: false,
-    }
-  }
-
-  if (isReactiveMatcher(matcher)) {
-    return {
-      source,
-      match: () => matcher.get(),
-      cacheable: true,
-      subscribe: (onChange) => matcher.subscribe(onChange),
-    }
-  }
-
-  throw new Error(`ActionMap ${source} expected a function or a reactive matcher`)
-}
-
 export class ActionMap {
   public readonly renderer: CliRenderer
 
@@ -98,6 +68,8 @@ export class ActionMap {
   private events = new Emitter<ActionMapEvents>(() => {})
   private hooks: Emitter<ActionMapHooks>
   private readonly notify: ActionMapNotifier
+  private readonly runtime: ActionMapRuntime
+  private readonly conditions: ActionMapConditions
   private readonly commands: ActionMapCommands
   private readonly compiler: ActionMapCompiler
   private readonly dispatch: ActionMapDispatch
@@ -114,24 +86,15 @@ export class ActionMap {
     this.hooks = new Emitter<ActionMapHooks>((name, error) => {
       this.notify.reportHookError(name, error)
     })
-    this.projections = new ActionMapProjections(this.state, {
-      getFocusedRenderable: () => this.getFocusedRenderable(),
-      ensureValidPendingSequence: () => this.ensureValidPendingSequence(),
-      getActiveLayers: (focused) => this.getActiveLayers(focused),
-      layerCanCacheActiveKeys: (layer) => this.layerCanCacheActiveKeys(layer),
-      activeLayersCanCacheActiveKeys: (activeLayers) => this.activeLayersCanCacheActiveKeys(activeLayers),
-      matchesConditions: (target) => this.matchesConditions(target),
-      hasNoConditions: (target) => this.hasNoConditions(target),
-    })
+    this.runtime = new ActionMapRuntime(this.state, this.renderer)
     this.notify = new ActionMapNotifier(this.state, this.events, this.hooks, {
       getPendingSequenceStrokes: (pending) => {
         return pending ? this.projections.collectSequenceStrokesFromNode(pending.node) : []
       },
     })
-    this.commands = new ActionMapCommands(this.state, this.notify, {
+    this.conditions = new ActionMapConditions(this.state, this.notify)
+    this.commands = new ActionMapCommands(this.state, this.notify, this.runtime, {
       actionMap: this,
-      getFocusedRenderable: () => this.getFocusedRenderable(),
-      getReadonlyData: () => this.getReadonlyData(),
       ensureValidPendingSequence: () => {
         this.ensureValidPendingSequence()
       },
@@ -139,7 +102,7 @@ export class ActionMap {
         this.handleUnresolvedCommand(command, binding)
       },
     })
-    this.compiler = new ActionMapCompiler(this.state, this.notify, this.commands, {
+    this.compiler = new ActionMapCompiler(this.state, this.notify, this.commands, this.conditions, {
       reservedBindingFields: RESERVED_BINDING_FIELDS,
       warnUnknownField: (kind, fieldName) => {
         this.warnUnknownField(kind, fieldName)
@@ -147,40 +110,24 @@ export class ActionMap {
       warnUnknownToken: (token, sequence) => {
         this.warnUnknownToken(token, sequence)
       },
-      buildRuntimeMatcher: (matcher, source) => {
-        return buildRuntimeMatcher(matcher, source)
-      },
     })
-    this.layers = new ActionMapLayers(this.state, this.notify, {
+    this.layers = new ActionMapLayers(this.state, this.notify, this.conditions, {
       compiler: this.compiler,
-      registerRuntimeMatchable: (target) => {
-        this.registerRuntimeMatchable(target)
-      },
-      unregisterRuntimeMatchable: (target) => {
-        this.unregisterRuntimeMatchable(target)
-      },
-      setPendingSequence: (next) => {
-        this.setPendingSequence(next)
-      },
       warnUnknownField: (kind, fieldName) => {
         this.warnUnknownField(kind, fieldName)
       },
-      buildRuntimeMatcher: (matcher, source) => {
-        return buildRuntimeMatcher(matcher, source)
-      },
     })
-    this.dispatch = new ActionMapDispatch(this.state, this.notify, {
-      actionMap: this,
-      getFocusedRenderable: () => this.getFocusedRenderable(),
-      getActiveLayers: (focused) => this.getActiveLayers(focused),
-      ensureValidPendingSequence: () => this.ensureValidPendingSequence(),
-      setPendingSequence: (next) => this.setPendingSequence(next),
-      getReadonlyData: () => this.getReadonlyData(),
-      setData: (name, value) => this.setData(name, value),
-      matchesConditions: (target) => this.matchesConditions(target),
-      hasNoConditions: (target) => this.hasNoConditions(target),
-      nodeHasReachableBindings: (node) => this.nodeHasReachableBindings(node),
-    })
+    this.projections = new ActionMapProjections(this.state, this.notify, this.runtime, this.layers, this.conditions)
+    this.dispatch = new ActionMapDispatch(
+      this.state,
+      this.notify,
+      this,
+      this.runtime,
+      this.layers,
+      this.projections,
+      this.conditions,
+      (name, value) => this.setData(name, value),
+    )
     this.state.config.bindingSyntax = defaultBindingSyntax
     this.state.config.bindingParsers.append(defaultBindingParser)
     this.state.config.eventMatchResolvers.append(defaultEventMatchResolver)
@@ -216,9 +163,9 @@ export class ActionMap {
 
     for (const layer of this.state.layers.layers) {
       // Drop matcher subscriptions before clearing layer state.
-      this.unregisterRuntimeMatchable(layer)
+      this.conditions.unregisterRuntimeMatchable(layer)
       for (const binding of layer.compiledBindings) {
-        this.unregisterRuntimeMatchable(binding)
+        this.conditions.unregisterRuntimeMatchable(binding)
       }
 
       layer.offTargetDestroy?.()
@@ -249,8 +196,8 @@ export class ActionMap {
 
         delete this.state.runtime.data[name]
         this.state.runtime.dataVersion += 1
-        this.invalidateRuntimeConditionKey(name)
-        this.ensureValidPendingSequence()
+        this.conditions.invalidateRuntimeConditionKey(name)
+        this.projections.ensureValidPendingSequence()
         this.queueStateChange()
         return
       }
@@ -261,8 +208,8 @@ export class ActionMap {
 
       this.state.runtime.data[name] = value
       this.state.runtime.dataVersion += 1
-      this.invalidateRuntimeConditionKey(name)
-      this.ensureValidPendingSequence()
+      this.conditions.invalidateRuntimeConditionKey(name)
+      this.projections.ensureValidPendingSequence()
       this.queueStateChange()
     })
   }
@@ -272,7 +219,7 @@ export class ActionMap {
       return undefined
     }
 
-    return this.state.runtime.data[name]
+    return this.runtime.getData(name)
   }
 
   public hasPendingSequence(): boolean {
@@ -280,7 +227,7 @@ export class ActionMap {
       return false
     }
 
-    return this.ensureValidPendingSequence() !== undefined
+    return this.projections.ensureValidPendingSequence() !== undefined
   }
 
   public getPendingSequence(): readonly ParsedKeyStroke[] {
@@ -304,7 +251,7 @@ export class ActionMap {
       return false
     }
 
-    const pending = this.ensureValidPendingSequence()
+    const pending = this.projections.ensureValidPendingSequence()
     if (!pending) {
       return false
     }
@@ -702,168 +649,16 @@ export class ActionMap {
     return this.projections.nodeHasReachableBindings(node)
   }
 
-  private matchRequirements(requires: readonly [name: string, value: unknown][]): boolean {
-    if (requires.length === 0) {
-      return true
-    }
-
-    for (const [name, value] of requires) {
-      if (!Object.is(this.state.runtime.data[name], value)) {
-        return false
-      }
-    }
-
-    return true
-  }
-
   private hasNoConditions(target: RuntimeMatchable): boolean {
-    return target.requires.length === 0 && target.matchers.length === 0
-  }
-
-  private registerRuntimeMatchable(target: RuntimeMatchable): void {
-    // Reactive matchers invalidate only their own target. If subscription
-    // setup fails, keep the matcher registered but lose automatic invalidation.
-    for (const matcher of target.matchers) {
-      if (!matcher.subscribe) {
-        continue
-      }
-
-      try {
-        matcher.dispose = matcher.subscribe(() => {
-          target.matchCacheDirty = true
-          this.queueStateChange()
-        })
-      } catch (error) {
-        this.emitError(getErrorMessage(error, `Failed to subscribe to reactive matcher from ${matcher.source}`), error)
-      }
-    }
-
-    if (target.conditionKeys.length > 0) {
-      for (const key of target.conditionKeys) {
-        const dependents = this.state.conditions.runtimeKeyDependents.get(key)
-        if (dependents) {
-          dependents.add(target)
-          continue
-        }
-
-        this.state.conditions.runtimeKeyDependents.set(key, new Set([target]))
-      }
-    }
-
-    if (!target.hasUnkeyedMatchers) {
-      target.matchCacheDirty = true
-    }
-  }
-
-  private unregisterRuntimeMatchable(target: RuntimeMatchable): void {
-    for (const matcher of target.matchers) {
-      if (!matcher.dispose) {
-        continue
-      }
-
-      try {
-        matcher.dispose()
-      } catch (error) {
-        this.emitError(getErrorMessage(error, `Failed to dispose reactive matcher from ${matcher.source}`), error)
-      }
-
-      matcher.dispose = undefined
-    }
-
-    if (target.conditionKeys.length === 0) {
-      return
-    }
-
-    for (const key of target.conditionKeys) {
-      const dependents = this.state.conditions.runtimeKeyDependents.get(key)
-      if (!dependents) {
-        continue
-      }
-
-      dependents.delete(target)
-      if (dependents.size === 0) {
-        this.state.conditions.runtimeKeyDependents.delete(key)
-      }
-    }
-  }
-
-  private invalidateRuntimeConditionKey(name: string): void {
-    const dependents = this.state.conditions.runtimeKeyDependents.get(name)
-    if (!dependents) {
-      return
-    }
-
-    for (const target of dependents) {
-      target.matchCacheDirty = true
-    }
-  }
-
-  private hasFreshConditionCache(target: RuntimeMatchable): boolean {
-    // Raw callbacks are never cacheable because nothing can invalidate them.
-    if (target.hasUnkeyedMatchers) {
-      return false
-    }
-
-    return target.matchCacheDirty !== true && target.matchCache !== undefined
-  }
-
-  private updateConditionCache(target: RuntimeMatchable, matched: boolean): void {
-    if (target.hasUnkeyedMatchers) {
-      return
-    }
-
-    target.matchCacheDirty = false
-    target.matchCache = matched
-  }
-
-  private matchesRuntimeMatcher(matcher: RuntimeMatcher): boolean {
-    try {
-      return matcher.match()
-    } catch (error) {
-      this.emitError(`[ActionMap] Error evaluating runtime matcher from ${matcher.source}:`, error)
-      return false
-    }
-  }
-
-  private matchesRuntimeMatchers(target: RuntimeMatchable): boolean {
-    if (target.matchers.length === 0) {
-      return true
-    }
-
-    if (target.matchers.length === 1) {
-      const [matcher] = target.matchers
-      return matcher ? this.matchesRuntimeMatcher(matcher) : true
-    }
-
-    for (const matcher of target.matchers) {
-      if (!this.matchesRuntimeMatcher(matcher)) {
-        return false
-      }
-    }
-
-    return true
+    return this.conditions.hasNoConditions(target)
   }
 
   private matchesConditions(target: RuntimeMatchable): boolean {
-    if (this.hasNoConditions(target)) {
-      return true
-    }
-
-    if (this.hasFreshConditionCache(target)) {
-      return target.matchCache === true
-    }
-
-    const matched = this.matchRequirements(target.requires) && this.matchesRuntimeMatchers(target)
-    this.updateConditionCache(target, matched)
-    return matched
+    return this.conditions.matchesConditions(target)
   }
 
   private layerMatchesRuntimeState(layer: RegisteredLayer): boolean {
-    if (this.state.layers.layersWithConditions === 0 || this.hasNoConditions(layer)) {
-      return true
-    }
-
-    return this.matchesConditions(layer)
+    return this.conditions.layerMatchesRuntimeState(layer)
   }
 
   private setPendingSequence(next: PendingSequenceState | null): void {
@@ -871,34 +666,15 @@ export class ActionMap {
   }
 
   private getFocusedRenderable(): Renderable | null {
-    const focused = this.renderer.currentFocusedRenderable
-    if (!focused) {
-      return null
-    }
-
-    if (focused.isDestroyed) {
-      return null
-    }
-
-    if (!focused.focused) {
-      return null
-    }
-
-    return focused
+    return this.runtime.getFocusedRenderable()
   }
 
   private layerCanCacheActiveKeys(layer: RegisteredLayer): boolean {
-    return !layer.hasUnkeyedMatchers && !layer.hasUnkeyedBindings
+    return this.layers.layerCanCacheActiveKeys(layer)
   }
 
   private activeLayersCanCacheActiveKeys(activeLayers: readonly RegisteredLayer[]): boolean {
-    for (const layer of activeLayers) {
-      if (!this.layerCanCacheActiveKeys(layer)) {
-        return false
-      }
-    }
-
-    return true
+    return this.layers.activeLayersCanCacheActiveKeys(activeLayers)
   }
 
   private getActiveLayers(focused: Renderable | null): RegisteredLayer[] {
@@ -949,31 +725,7 @@ export class ActionMap {
   }
 
   private ensureValidPendingSequence(): PendingSequenceState | undefined {
-    if (!this.state.runtime.pendingSequence) {
-      return undefined
-    }
-
-    const focused = this.getFocusedRenderable()
-
-    if (
-      !this.state.layers.layers.has(this.state.runtime.pendingSequence.layer) ||
-      !this.isLayerActiveForFocused(this.state.runtime.pendingSequence.layer, focused)
-    ) {
-      this.setPendingSequence(null)
-      return undefined
-    }
-
-    if (!this.layerMatchesRuntimeState(this.state.runtime.pendingSequence.layer)) {
-      this.setPendingSequence(null)
-      return undefined
-    }
-
-    if (!this.nodeHasReachableBindings(this.state.runtime.pendingSequence.node)) {
-      this.setPendingSequence(null)
-      return undefined
-    }
-
-    return this.state.runtime.pendingSequence
+    return this.projections.ensureValidPendingSequence()
   }
 }
 

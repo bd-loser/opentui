@@ -1,7 +1,7 @@
 import { RenderableEvents, type Renderable } from "../../../Renderable.js"
-import type { ActionMapCompiler } from "./compiler.js"
-import type { ActionMapConditions } from "./conditions.js"
-import type { ActionMapRuntime } from "./runtime.js"
+import type { CompilerService } from "./compiler.js"
+import type { ConditionService } from "./conditions.js"
+import type { RuntimeService } from "./runtime.js"
 import type {
   ActionMapBindingInput,
   ActionMapEventData,
@@ -14,7 +14,7 @@ import type {
   RuntimeMatcher,
 } from "../types.js"
 import type { ActionMapState } from "./state.js"
-import type { ActionMapNotifier } from "./notify.js"
+import type { NotificationService } from "./notify.js"
 import {
   getErrorMessage,
   mergeRequirement,
@@ -36,16 +36,16 @@ interface CompileLayerRuntimeStateResult {
 }
 
 interface ActionMapLayersOptions {
-  compiler: ActionMapCompiler
+  compiler: CompilerService
   warnUnknownField: (kind: "binding" | "layer", fieldName: string) => void
 }
 
-export class ActionMapLayers {
+export class LayerService {
   constructor(
     private readonly state: ActionMapState,
-    private readonly notify: ActionMapNotifier,
-    private readonly conditions: ActionMapConditions,
-    private readonly runtime: ActionMapRuntime,
+    private readonly notify: NotificationService,
+    private readonly conditions: ConditionService,
+    private readonly runtime: RuntimeService,
     private readonly options: ActionMapLayersOptions,
   ) {}
 

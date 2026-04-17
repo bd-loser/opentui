@@ -21,8 +21,8 @@ import type {
   RegisteredCommand,
 } from "../types.js"
 import type { ActionMapState } from "./state.js"
-import type { ActionMapNotifier } from "./notify.js"
-import type { ActionMapRuntime } from "./runtime.js"
+import type { NotificationService } from "./notify.js"
+import type { RuntimeService } from "./runtime.js"
 import { KeyEvent } from "../../../lib/KeyHandler.js"
 import type { Emitter } from "../lib/emitter.js"
 import {
@@ -86,11 +86,11 @@ function createSyntheticCommandEvent(): KeyEvent {
   })
 }
 
-export class ActionMapCommands {
+export class CommandService {
   constructor(
     private readonly state: ActionMapState,
-    private readonly notify: ActionMapNotifier,
-    private readonly runtime: ActionMapRuntime,
+    private readonly notify: NotificationService,
+    private readonly runtime: RuntimeService,
     private readonly hooks: Emitter<ActionMapHooks>,
     private readonly options: ActionMapCommandsOptions,
   ) {}

@@ -1,7 +1,7 @@
 import type { Renderable } from "../../../Renderable.js"
 import type { CliRenderer } from "../../../renderer.js"
-import type { ActionMapConditions } from "./conditions.js"
-import type { ActionMapNotifier } from "./notify.js"
+import type { ConditionService } from "./conditions.js"
+import type { NotificationService } from "./notify.js"
 import type { ActionMapState } from "./state.js"
 import type {
   ActiveKeySelection,
@@ -22,13 +22,13 @@ import type {
 import type { Emitter } from "../lib/emitter.js"
 import { createParsedKeyPart, snapshotStroke, stringifyKeyStroke } from "../lib/utils.js"
 
-export class ActionMapRuntime {
+export class RuntimeService {
   constructor(
     private readonly state: ActionMapState,
     private readonly renderer: CliRenderer,
     private readonly hooks: Emitter<ActionMapHooks>,
-    private readonly notify: ActionMapNotifier,
-    private readonly conditions: ActionMapConditions,
+    private readonly notify: NotificationService,
+    private readonly conditions: ConditionService,
   ) {}
 
   public getFocusedRenderable(): Renderable | null {

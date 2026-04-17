@@ -2,7 +2,7 @@ import type { ActionMapEvents, ActionMapHookName, ActionMapHooks } from "../type
 import type { ActionMapState } from "./state.js"
 import { Emitter } from "../lib/emitter.js"
 
-export class ActionMapNotifier {
+export class NotificationService {
   constructor(
     private readonly state: ActionMapState,
     private readonly events: Emitter<ActionMapEvents>,

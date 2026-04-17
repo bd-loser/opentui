@@ -33,15 +33,15 @@ import type {
   PendingSequenceState,
 } from "./types.js"
 import { buildBindingKey, getErrorMessage } from "./lib/utils.js"
-import { ActionMapCommands, RESERVED_COMMAND_FIELDS } from "./services/commands.js"
-import { ActionMapCompiler, RESERVED_BINDING_FIELDS } from "./services/compiler.js"
-import { ActionMapConditions } from "./services/conditions.js"
-import { ActionMapDispatch } from "./services/dispatch.js"
-import { ActionMapLayers, RESERVED_LAYER_FIELDS } from "./services/layers.js"
+import { CommandService, RESERVED_COMMAND_FIELDS } from "./services/commands.js"
+import { CompilerService, RESERVED_BINDING_FIELDS } from "./services/compiler.js"
+import { ConditionService } from "./services/conditions.js"
+import { DispatchService } from "./services/dispatch.js"
+import { LayerService, RESERVED_LAYER_FIELDS } from "./services/layers.js"
 import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./lib/default-parser.js"
 import { Emitter, type EmitterListener } from "./lib/emitter.js"
-import { ActionMapNotifier } from "./services/notify.js"
-import { ActionMapRuntime } from "./services/runtime.js"
+import { NotificationService } from "./services/notify.js"
+import { RuntimeService } from "./services/runtime.js"
 import { createActionMapState, resetActionMapState } from "./services/state.js"
 
 const actionMapsByRenderer = new WeakMap<CliRenderer, ActionMap>()
@@ -112,13 +112,13 @@ export class ActionMap {
   // listeners cannot re-enter `emitError` and loop forever.
   private events = new Emitter<ActionMapEvents>(() => {})
   private hooks: Emitter<ActionMapHooks>
-  private readonly notify: ActionMapNotifier
-  private readonly runtime: ActionMapRuntime
-  private readonly conditions: ActionMapConditions
-  private readonly commands: ActionMapCommands
-  private readonly compiler: ActionMapCompiler
-  private readonly dispatch: ActionMapDispatch
-  private readonly layers: ActionMapLayers
+  private readonly notify: NotificationService
+  private readonly runtime: RuntimeService
+  private readonly conditions: ConditionService
+  private readonly commands: CommandService
+  private readonly compiler: CompilerService
+  private readonly dispatch: DispatchService
+  private readonly layers: LayerService
 
   private readonly keypressListener: (event: KeyEvent) => void
   private readonly keyreleaseListener: (event: KeyEvent) => void
@@ -130,13 +130,13 @@ export class ActionMap {
     this.hooks = new Emitter<ActionMapHooks>((name, error) => {
       this.notify.reportHookError(name, error)
     })
-    this.notify = new ActionMapNotifier(this.state, this.events, this.hooks)
-    this.conditions = new ActionMapConditions(this.state, this.notify)
-    this.runtime = new ActionMapRuntime(this.state, this.renderer, this.hooks, this.notify, this.conditions)
-    this.commands = new ActionMapCommands(this.state, this.notify, this.runtime, this.hooks, {
+    this.notify = new NotificationService(this.state, this.events, this.hooks)
+    this.conditions = new ConditionService(this.state, this.notify)
+    this.runtime = new RuntimeService(this.state, this.renderer, this.hooks, this.notify, this.conditions)
+    this.commands = new CommandService(this.state, this.notify, this.runtime, this.hooks, {
       actionMap: this,
     })
-    this.compiler = new ActionMapCompiler(this.state, this.notify, this.commands, this.conditions, {
+    this.compiler = new CompilerService(this.state, this.notify, this.commands, this.conditions, {
       warnUnknownField: (kind, fieldName) => {
         this.warnUnknownField(kind, fieldName)
       },
@@ -144,13 +144,13 @@ export class ActionMap {
         this.warnUnknownToken(token, sequence)
       },
     })
-    this.layers = new ActionMapLayers(this.state, this.notify, this.conditions, this.runtime, {
+    this.layers = new LayerService(this.state, this.notify, this.conditions, this.runtime, {
       compiler: this.compiler,
       warnUnknownField: (kind, fieldName) => {
         this.warnUnknownField(kind, fieldName)
       },
     })
-    this.dispatch = new ActionMapDispatch(
+    this.dispatch = new DispatchService(
       this.state,
       this.notify,
       this.runtime,

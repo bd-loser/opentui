@@ -654,10 +654,7 @@ function getRegisteredCommandRecord(command: RegisteredCommand): CommandRecord {
     record = Object.freeze({
       name: command.name,
       fields,
-      attrs: snapshotDataValue(
-        command.attrs,
-        SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS,
-      ) as Readonly<Attributes>,
+      attrs: snapshotDataValue(command.attrs, SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS) as Readonly<Attributes>,
     })
   } else {
     record = Object.freeze({

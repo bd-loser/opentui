@@ -26,10 +26,7 @@ export interface EventMatchResolverContext {
   matchKey(key: KeyLike): string
 }
 
-export type EventMatchResolver = (
-  event: KeyEvent,
-  ctx: EventMatchResolverContext,
-) => readonly string[] | undefined
+export type EventMatchResolver = (event: KeyEvent, ctx: EventMatchResolverContext) => readonly string[] | undefined
 
 export interface ParsedKeyToken {
   stroke: ParsedKeyStroke
@@ -65,10 +62,7 @@ export interface CommandRecord {
   attrs?: Readonly<Attributes>
 }
 
-export type CommandQueryValue =
-  | unknown
-  | readonly unknown[]
-  | ((value: unknown, command: CommandRecord) => boolean)
+export type CommandQueryValue = unknown | readonly unknown[] | ((value: unknown, command: CommandRecord) => boolean)
 
 export type CommandFilter = Readonly<Record<string, CommandQueryValue>> | ((command: CommandRecord) => boolean)
 
@@ -181,10 +175,7 @@ export interface ResolvedBindingCommand {
   rejectedResult?: Extract<RunCommandResult, { ok: false }>
 }
 
-export type CommandResolver = (
-  command: string,
-  ctx: CommandResolverContext,
-) => ResolvedBindingCommand | undefined
+export type CommandResolver = (command: string, ctx: CommandResolverContext) => ResolvedBindingCommand | undefined
 
 /**
  * Input to `registerCommands(...)`. Extra fields stay on `fields` and can be
@@ -299,10 +290,7 @@ export interface BindingTransformerContext {
   skipOriginal(): void
 }
 
-export type BindingTransformer = (
-  binding: ParsedBindingInput,
-  ctx: BindingTransformerContext,
-) => void
+export type BindingTransformer = (binding: ParsedBindingInput, ctx: BindingTransformerContext) => void
 
 export interface CommandFieldContext {
   attr(name: string, value: unknown): void

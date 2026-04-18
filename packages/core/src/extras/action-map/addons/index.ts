@@ -19,10 +19,6 @@ export type { Aliases } from "./aliases.js"
 export type { EscapeClearsPendingSequenceOptions } from "./escape-clears-pending-sequence.js"
 export type { Enabled } from "./enabled.js"
 export type { ExCommand } from "./ex-commands.js"
-export type {
-  EditBufferCommandName,
-  EditBufferCommandOptions,
-  ManagedTextareaLayer,
-} from "./edit-buffer-bindings.js"
+export type { EditBufferCommandName, EditBufferCommandOptions, ManagedTextareaLayer } from "./edit-buffer-bindings.js"
 export type { LeaderOptions } from "./leader.js"
 export type { TimedLeaderOptions } from "./timed-leader.js"

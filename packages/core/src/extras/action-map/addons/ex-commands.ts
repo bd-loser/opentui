@@ -1,10 +1,4 @@
-import type {
-  CommandDefinition,
-  CommandContext,
-  CommandRecord,
-  ActionMap,
-  ParsedCommand,
-} from "../types.js"
+import type { CommandDefinition, CommandContext, CommandRecord, ActionMap, ParsedCommand } from "../types.js"
 
 const EMPTY_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 

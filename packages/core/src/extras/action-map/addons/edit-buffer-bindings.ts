@@ -3,14 +3,7 @@ import { CliRenderEvents } from "../../../renderer.js"
 import { InputRenderable } from "../../../renderables/Input.js"
 import { TextareaRenderable, defaultTextareaKeyBindings, type TextareaAction } from "../../../renderables/Textarea.js"
 import type { EditBufferRenderable } from "../../../renderables/EditBufferRenderable.js"
-import type {
-  BindingInput,
-  Bindings,
-  CommandDefinition,
-  CommandContext,
-  Layer,
-  ActionMap,
-} from "../types.js"
+import type { BindingInput, Bindings, CommandDefinition, CommandContext, Layer, ActionMap } from "../types.js"
 import { snapshotBindingInputs } from "../lib/utils.js"
 
 const editBufferCommandNames = [
@@ -149,9 +142,7 @@ function setTextareaSuspend(editor: TextareaRenderable, suspended: boolean): voi
   editor.traits = nextTraits
 }
 
-function createDefaultTextareaBindings(
-  descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): BindingInput[] {
+function createDefaultTextareaBindings(descriptions: Readonly<Record<EditBufferCommandName, string>>): BindingInput[] {
   return defaultTextareaKeyBindings.map((binding) => ({
     key: keyBindingToString(binding),
     cmd: binding.action,
@@ -309,9 +300,7 @@ function createEditBufferCommand(
   }
 }
 
-function createEditBufferCommands(
-  descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): CommandDefinition[] {
+function createEditBufferCommands(descriptions: Readonly<Record<EditBufferCommandName, string>>): CommandDefinition[] {
   return [
     createEditBufferCommand("move-left", (editor) => editor.moveCursorLeft(), descriptions),
     createEditBufferCommand("move-right", (editor) => editor.moveCursorRight(), descriptions),

@@ -292,10 +292,7 @@ export class ActionMap {
     return this.commands.runCommand(cmd, options)
   }
 
-  public hook<TName extends HookName>(
-    name: TName,
-    fn: HookListener<Hooks[TName]>,
-  ): () => void {
+  public hook<TName extends HookName>(name: TName, fn: HookListener<Hooks[TName]>): () => void {
     return this.hooks.hook(name, fn)
   }
 

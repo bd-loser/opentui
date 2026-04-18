@@ -173,9 +173,7 @@ export function snapshotParsedBindingInput(binding: ParsedBindingInput): ParsedB
   }
 }
 
-export function normalizeBindingCommand(
-  command: BindingCommand | undefined,
-): BindingCommand | undefined {
+export function normalizeBindingCommand(command: BindingCommand | undefined): BindingCommand | undefined {
   if (command === undefined || typeof command === "function") {
     return command
   }
@@ -250,10 +248,7 @@ export function stringifyKeyStroke(input: StringifiableKey, options?: StringifyO
   return stringifyCanonicalStroke(input)
 }
 
-export function stringifyKeySequence(
-  input: readonly StringifiableKey[],
-  options?: StringifyOptions,
-): string {
+export function stringifyKeySequence(input: readonly StringifiableKey[], options?: StringifyOptions): string {
   return input.map((part) => stringifyKeyStroke(part, options)).join("")
 }
 

@@ -570,12 +570,12 @@ describe("action map", () => {
     })
 
     mockInput.pressKey("x")
-    expect(stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true })).toBe("g")
+    expect(stringifyKeySequence(actionMap.getPendingSequence(), { preferDisplay: true })).toBe("g")
 
     mockInput.pressKey("a")
 
     expect(calls).toEqual(["delete-line"])
-    expect(actionMap.getPendingSequenceParts()).toEqual([])
+    expect(actionMap.getPendingSequence()).toEqual([])
   })
 
   test("supports custom binding parsers ahead of the default parser", () => {
@@ -3319,9 +3319,6 @@ describe("action map", () => {
     mockInput.pressKey("d")
 
     expect(actionMap.getPendingSequence()).toEqual([
-      { name: "d", ctrl: false, shift: false, meta: false, super: false },
-    ])
-    expect(actionMap.getPendingSequenceParts()).toEqual([
       {
         stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
         display: "d",
@@ -3420,7 +3417,7 @@ describe("action map", () => {
     })
 
     actionMap.on("pendingSequence", (sequence) => {
-      changes.push(sequence.map((stroke) => stroke.name).join(""))
+      changes.push(stringifyKeySequence(sequence, { preferDisplay: true }))
     })
 
     mockInput.pressKey("d")
@@ -3448,7 +3445,7 @@ describe("action map", () => {
     })
 
     actionMap.on("state", () => {
-      const pending = stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
+      const pending = stringifyKeySequence(actionMap.getPendingSequence(), { preferDisplay: true }) || "<root>"
       const active = getActiveKeyNames(actionMap).join(",") || "<none>"
       snapshots.push(`${pending}:${active}`)
     })
@@ -3482,7 +3479,7 @@ describe("action map", () => {
     mockInput.pressKey("d")
 
     actionMap.on("state", () => {
-      const pending = stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
+      const pending = stringifyKeySequence(actionMap.getPendingSequence(), { preferDisplay: true }) || "<root>"
       const active = getActiveKeyNames(actionMap).join(",") || "<none>"
       snapshots.push(`${pending}:${active}`)
     })
@@ -3533,7 +3530,7 @@ describe("action map", () => {
     mockInput.pressKey("d")
 
     actionMap.on("state", () => {
-      const pending = stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
+      const pending = stringifyKeySequence(actionMap.getPendingSequence(), { preferDisplay: true }) || "<root>"
       const active = getActiveKeyNames(actionMap).join(",") || "<none>"
       snapshots.push(`${pending}:${active}`)
     })
@@ -3693,7 +3690,7 @@ describe("action map", () => {
 
     expect(getActiveKeyNames(actionMap)).toEqual(["g"])
     expect(getActiveKeyDisplay(actionMap, "g")?.command).toBeUndefined()
-    expect(actionMap.getPendingSequenceParts()).toEqual([
+    expect(actionMap.getPendingSequence()).toEqual([
       {
         stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false },
         display: "<leader>",
@@ -3705,7 +3702,7 @@ describe("action map", () => {
     mockInput.pressKey("g")
 
     expect(getActiveKeyNames(actionMap)).toEqual(["d"])
-    expect(stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true })).toBe("<leader>g")
+    expect(stringifyKeySequence(actionMap.getPendingSequence(), { preferDisplay: true })).toBe("<leader>g")
     expect(getActiveKey(actionMap, "d")?.command).toBe("go-definition")
 
     mockInput.pressKey("d")
@@ -3866,14 +3863,14 @@ describe("action map", () => {
     mockInput.pressKey("c")
 
     expect(actionMap.getPendingSequence()).toEqual([
-      { name: "d", ctrl: false, shift: false, meta: false, super: false },
-      { name: "c", ctrl: false, shift: false, meta: false, super: false },
+      { stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false }, display: "d", matchKey: "d:0:0:0:0:0" },
+      { stroke: { name: "c", ctrl: false, shift: false, meta: false, super: false }, display: "c", matchKey: "c:0:0:0:0:0" },
     ])
 
     mockInput.pressBackspace()
 
     expect(actionMap.getPendingSequence()).toEqual([
-      { name: "d", ctrl: false, shift: false, meta: false, super: false },
+      { stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false }, display: "d", matchKey: "d:0:0:0:0:0" },
     ])
     expect(getActiveKeyNames(actionMap)).toEqual(["c"])
 
@@ -5069,7 +5066,7 @@ describe("action map", () => {
     })
 
     const off = actionMap.on("pendingSequence", (sequence) => {
-      changes.push(sequence.map((stroke) => stroke.name).join(""))
+      changes.push(stringifyKeySequence(sequence, { preferDisplay: true }))
     })
 
     mockInput.pressKey("d")
@@ -5093,12 +5090,12 @@ describe("action map", () => {
     let offSecond!: () => void
 
     actionMap.on("pendingSequence", (sequence) => {
-      calls.push(`first:${sequence.map((stroke) => stroke.name).join("")}`)
+      calls.push(`first:${stringifyKeySequence(sequence, { preferDisplay: true })}`)
       offSecond()
     })
 
     offSecond = actionMap.on("pendingSequence", (sequence) => {
-      calls.push(`second:${sequence.map((stroke) => stroke.name).join("")}`)
+      calls.push(`second:${stringifyKeySequence(sequence, { preferDisplay: true })}`)
     })
 
     mockInput.pressKey("d")
@@ -5122,7 +5119,7 @@ describe("action map", () => {
       throw new Error("boom")
     })
     actionMap.on("pendingSequence", (sequence) => {
-      changes.push(sequence.map((stroke) => stroke.name).join(""))
+      changes.push(stringifyKeySequence(sequence, { preferDisplay: true }))
     })
 
     mockInput.pressKey("d")
@@ -5166,7 +5163,7 @@ describe("action map", () => {
     expect(calls).toEqual(["leader"])
 
     mockInput.pressKey("x", { ctrl: true })
-    expect(stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true })).toBe("<leader>")
+    expect(stringifyKeySequence(actionMap.getPendingSequence(), { preferDisplay: true })).toBe("<leader>")
     expect(getActiveKeyNames(actionMap)).toEqual(["a"])
 
     mockInput.pressKey("a")
@@ -5224,7 +5221,7 @@ describe("action map", () => {
     mockInput.pressKey("a")
 
     expect(actionMap.getPendingSequence()).toEqual([
-      { name: "a", ctrl: false, shift: false, meta: false, super: false },
+      { stroke: { name: "a", ctrl: false, shift: false, meta: false, super: false }, display: "a", matchKey: "a:0:0:0:0:0" },
     ])
 
     actionMap.registerToken({

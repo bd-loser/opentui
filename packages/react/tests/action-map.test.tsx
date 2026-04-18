@@ -9,7 +9,7 @@ import {
   useActionMap,
   useActiveKeys,
   useBindings,
-  usePendingSequenceParts,
+  usePendingSequence,
 } from "../src/index.js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
@@ -197,10 +197,10 @@ describe("React action map hooks", () => {
     expect(testSetup.captureCharFrame()).toContain("Active: <none>")
   })
 
-  test("usePendingSequenceParts updates without manual subscriptions", async () => {
+  test("usePendingSequence updates without manual subscriptions", async () => {
     function App() {
       const manager = useActionMap()
-      const pendingSequenceParts = usePendingSequenceParts()
+      const pendingSequence = usePendingSequence()
 
       useEffect(() => {
         return manager.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
@@ -217,7 +217,7 @@ describe("React action map hooks", () => {
       useBindings(layer)
 
       return (
-        <text>{`Pending: ${stringifyKeySequence(pendingSequenceParts, { preferDisplay: true }) || "<root>"}`}</text>
+        <text>{`Pending: ${stringifyKeySequence(pendingSequence, { preferDisplay: true }) || "<root>"}`}</text>
       )
     }
 

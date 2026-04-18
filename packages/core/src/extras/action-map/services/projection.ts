@@ -129,7 +129,7 @@ export class ProjectionService {
     return this.state.projection.pendingSequence ?? undefined
   }
 
-  public getPendingSequence(): readonly ParsedKeyStroke[] {
+  public getPendingSequence(): readonly ParsedKeyPart[] {
     const projections = this.state.projection
     const derivedStateVersion = this.state.notify.derivedStateVersion
 
@@ -139,7 +139,7 @@ export class ProjectionService {
 
     const pending = this.ensureValidPendingSequence()
     const canUseCache = !pending || this.layerCanCacheActiveKeys(pending.layer)
-    const sequence = pending ? this.collectSequenceStrokesFromNode(pending.node) : []
+    const sequence = pending ? this.collectSequencePartsFromNode(pending.node) : []
 
     if (canUseCache) {
       projections.pendingSequenceCacheVersion = derivedStateVersion
@@ -147,26 +147,6 @@ export class ProjectionService {
     }
 
     return sequence
-  }
-
-  public getPendingSequenceParts(): readonly ParsedKeyPart[] {
-    const projections = this.state.projection
-    const derivedStateVersion = this.state.notify.derivedStateVersion
-
-    if (projections.pendingSequencePartsCacheVersion === derivedStateVersion) {
-      return projections.pendingSequencePartsCache
-    }
-
-    const pending = this.ensureValidPendingSequence()
-    const canUseCache = !pending || this.layerCanCacheActiveKeys(pending.layer)
-    const parts = pending ? this.collectSequencePartsFromNode(pending.node) : []
-
-    if (canUseCache) {
-      projections.pendingSequencePartsCacheVersion = derivedStateVersion
-      projections.pendingSequencePartsCache = parts
-    }
-
-    return parts
   }
 
   public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey[] {
@@ -958,7 +938,6 @@ export class ProjectionService {
 
   private invalidateCaches(): void {
     this.state.projection.pendingSequenceCacheVersion = -1
-    this.state.projection.pendingSequencePartsCacheVersion = -1
     this.state.projection.activeKeysPlainCacheVersion = -1
     this.state.projection.activeKeysBindingsCacheVersion = -1
     this.state.projection.activeKeysMetadataCacheVersion = -1
@@ -972,7 +951,7 @@ export class ProjectionService {
 
     this.hooks.emit(
       "pendingSequence",
-      this.state.projection.pendingSequence ? this.collectSequenceStrokesFromNode(this.state.projection.pendingSequence.node) : [],
+      this.state.projection.pendingSequence ? this.collectSequencePartsFromNode(this.state.projection.pendingSequence.node) : [],
     )
   }
 }

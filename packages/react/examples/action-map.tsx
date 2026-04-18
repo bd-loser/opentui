@@ -20,7 +20,7 @@ import {
   useActiveKeys,
   useBindings,
   useActionMap,
-  usePendingSequenceParts,
+  usePendingSequence,
   useRenderer,
 } from "@opentui/react"
 import {
@@ -789,7 +789,7 @@ export const App = () => {
   useBindings(commandPromptLayer)
 
   const activeKeys = useActiveKeys({ includeMetadata: true })
-  const pendingSequenceParts = usePendingSequenceParts()
+  const pendingSequence = usePendingSequence()
 
   const focusedEditorIndex = useMemo(() => {
     void statusVersion
@@ -859,8 +859,8 @@ export const App = () => {
   }, [activeKeys])
 
   const whichKeyPrefix = useMemo(() => {
-    return stringifyKeySequence(pendingSequenceParts, { preferDisplay: true }) || "<root>"
-  }, [pendingSequenceParts])
+    return stringifyKeySequence(pendingSequence, { preferDisplay: true }) || "<root>"
+  }, [pendingSequence])
 
   const commandPromptUsage = useMemo(() => {
     if (!selectedCommandPromptSuggestion) {

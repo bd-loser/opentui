@@ -36,8 +36,6 @@ export const SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS = Object.freeze({
   preserveNonPlainObjects: true,
 } satisfies SnapshotDataValueOptions)
 
-export const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
-
 export const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 
 export function normalizeKeyName(name: string): string {

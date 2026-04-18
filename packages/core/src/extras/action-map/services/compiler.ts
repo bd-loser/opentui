@@ -27,6 +27,7 @@ import type {
   RuntimeMatcher,
   SequenceNode,
 } from "../types.js"
+import { RESERVED_BINDING_FIELDS } from "../schema.js"
 import {
   createParsedKeyPart,
   createSequenceNode,
@@ -42,8 +43,6 @@ const EMPTY_COMPILE_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({}
 const EMPTY_REQUIRES: readonly [name: string, value: unknown][] = []
 const EMPTY_MATCHERS: readonly RuntimeMatcher[] = []
 const EMPTY_CONDITION_KEYS: readonly string[] = []
-
-export const RESERVED_BINDING_FIELDS = new Set(["key", "cmd", "event", "preventDefault", "fallthrough"])
 
 interface ParsedBindingSequenceResult {
   parts: ParsedKeyPart[]

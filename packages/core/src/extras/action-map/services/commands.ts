@@ -2,6 +2,7 @@ import type { Renderable } from "../../../Renderable.js"
 import { KeyEvent } from "../../../lib/KeyHandler.js"
 import type { ActionMap } from "../action-map.js"
 import type { Emitter } from "../lib/emitter.js"
+import { RESERVED_COMMAND_FIELDS } from "../schema.js"
 import {
   EMPTY_COMMAND_FIELDS,
   getErrorMessage,
@@ -9,7 +10,6 @@ import {
   mergeAttribute,
   normalizeBindingCommand,
   normalizeCommandName,
-  RESERVED_COMMAND_FIELDS,
   SNAPSHOT_COMMAND_METADATA_OPTIONS,
   snapshotDataValue,
   snapshotParsedBindingInput,

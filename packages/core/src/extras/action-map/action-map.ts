@@ -32,12 +32,13 @@ import type {
   ParsedKeyToken,
   ParsedKeyStroke,
 } from "./types.js"
-import { buildBindingKey, getErrorMessage, RESERVED_COMMAND_FIELDS } from "./lib/utils.js"
+import { buildBindingKey, getErrorMessage } from "./lib/utils.js"
+import { RESERVED_BINDING_FIELDS, RESERVED_COMMAND_FIELDS, RESERVED_LAYER_FIELDS } from "./schema.js"
 import { CommandService } from "./services/commands.js"
-import { CompilerService, RESERVED_BINDING_FIELDS } from "./services/compiler.js"
+import { CompilerService } from "./services/compiler.js"
 import { ConditionService } from "./services/conditions.js"
 import { DispatchService } from "./services/dispatch.js"
-import { LayerService, RESERVED_LAYER_FIELDS } from "./services/layers.js"
+import { LayerService } from "./services/layers.js"
 import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./lib/default-parser.js"
 import { Emitter, type EmitterListener } from "./lib/emitter.js"
 import { NotificationService } from "./services/notify.js"

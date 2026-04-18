@@ -32,8 +32,8 @@ import type {
   ParsedKeyToken,
   ParsedKeyStroke,
 } from "./types.js"
-import { buildBindingKey, getErrorMessage } from "./lib/utils.js"
-import { CommandService, RESERVED_COMMAND_FIELDS } from "./services/commands.js"
+import { buildBindingKey, getErrorMessage, RESERVED_COMMAND_FIELDS } from "./lib/utils.js"
+import { CommandService } from "./services/commands.js"
 import { CompilerService, RESERVED_BINDING_FIELDS } from "./services/compiler.js"
 import { ConditionService } from "./services/conditions.js"
 import { DispatchService } from "./services/dispatch.js"

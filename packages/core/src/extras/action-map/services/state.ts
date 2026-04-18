@@ -17,7 +17,6 @@ import type {
   ParsedKeyStroke,
   ParsedKeyToken,
   PendingSequenceState,
-  RegisteredCommand,
   RegisteredLayer,
   RegisteredLayerBucket,
   RuntimeMatchable,
@@ -50,12 +49,12 @@ export interface LayersState {
   globalLayers: RegisteredLayer[]
   targetLayers: WeakMap<Renderable, RegisteredLayerBucket>
   layersWithConditions: number
-  layersWithLocalCommands: number
+  layersWithCommands: number
 }
 
 export interface CommandsState {
-  commands: Map<string, RegisteredCommand>
   commandMetadataVersion: number
+  registeredNames: Map<string, number>
 }
 
 export interface ConditionsState {
@@ -124,11 +123,11 @@ export function createActionMapState(): State {
       globalLayers: [],
       targetLayers: new WeakMap<Renderable, RegisteredLayerBucket>(),
       layersWithConditions: 0,
-      layersWithLocalCommands: 0,
+      layersWithCommands: 0,
     },
     commands: {
-      commands: new Map<string, RegisteredCommand>(),
       commandMetadataVersion: 0,
+      registeredNames: new Map<string, number>(),
     },
     conditions: {
       runtimeKeyDependents: new Map<string, Set<RuntimeMatchable>>(),

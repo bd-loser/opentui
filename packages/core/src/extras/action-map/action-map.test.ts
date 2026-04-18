@@ -248,7 +248,7 @@ describe("action map", () => {
     )
   })
 
-  test("runCommand and key-triggered commands share resolver precedence", () => {
+  test("active layered commands take precedence over command resolvers", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
@@ -280,7 +280,7 @@ describe("action map", () => {
 
     mockInput.pressKey("x")
     expect(actionMap.runCommand("shared-command")).toEqual({ ok: true })
-    expect(calls).toEqual(["resolver", "resolver"])
+    expect(calls).toEqual(["registered", "registered"])
   })
 
   test("layer commands resolve bindings, shadow globals, and expose local metadata", () => {
@@ -1948,18 +1948,27 @@ describe("action map", () => {
     expect(calls).toEqual(["shorthand"])
   })
 
-  test("ignores duplicate command names when registering commands", () => {
+  test("allows duplicate command names across layers and dedupes reachable commands by name", () => {
     const actionMap = getActionMap(renderer)
     const { errors } = captureDiagnostics(actionMap)
+    const calls: string[] = []
 
-    actionMap.registerCommands([{ name: "dup", run() {} }])
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [{ name: "dup", run: () => calls.push("first") }],
+    })
 
-    expect(() => {
-      actionMap.registerCommands([{ name: "dup", run() {} }])
-    }).not.toThrow()
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [{ name: "dup", run: () => calls.push("second") }],
+    })
 
-    expect(errors).toEqual(['ActionMap command "dup" is already registered'])
+    expect(errors).toEqual([])
     expect(actionMap.getCommands().map((command) => command.name)).toEqual(["dup"])
+    expect(actionMap.getCommands({ visibility: "active" }).map((command) => command.name)).toEqual(["dup", "dup"])
+    expect(actionMap.getCommands({ visibility: "registered" }).map((command) => command.name)).toEqual(["dup", "dup"])
+    expect(actionMap.runCommand("dup")).toEqual({ ok: true })
+    expect(calls).toEqual(["second"])
   })
 
   test("can dispose command resolvers and refresh existing bindings", () => {
@@ -3043,6 +3052,51 @@ describe("action map", () => {
     offCommands()
 
     expect(actionMap.getCommands()).toEqual([])
+  })
+
+  test("getCommands defaults to reachable commands and supports active and registered visibility", () => {
+    const actionMap = getActionMap(renderer)
+
+    const target = createFocusableBox("command-visibility-target")
+    renderer.root.add(target)
+
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        { name: "save", title: "Global Save", run() {} },
+        { name: "quit", title: "Quit", run() {} },
+      ],
+    })
+    actionMap.registerLayer({
+      target,
+      commands: [{ name: "save", title: "Local Save", run() {} }],
+    })
+
+    expect(actionMap.getCommands().map((command) => command.name)).toEqual(["save", "quit"])
+    expect(actionMap.getCommands().map((command) => command.fields.title)).toEqual(["Global Save", "Quit"])
+    expect(actionMap.getCommands({ visibility: "active" }).map((command) => command.fields.title)).toEqual([
+      "Global Save",
+      "Quit",
+    ])
+    expect(actionMap.getCommands({ visibility: "registered" }).map((command) => command.fields.title)).toEqual([
+      "Global Save",
+      "Quit",
+      "Local Save",
+    ])
+
+    target.focus()
+
+    expect(actionMap.getCommands().map((command) => command.fields.title)).toEqual(["Local Save", "Quit"])
+    expect(actionMap.getCommands({ visibility: "active" }).map((command) => command.fields.title)).toEqual([
+      "Local Save",
+      "Global Save",
+      "Quit",
+    ])
+    expect(actionMap.getCommands({ visibility: "registered" }).map((command) => command.fields.title)).toEqual([
+      "Global Save",
+      "Quit",
+      "Local Save",
+    ])
   })
 
   test("getCommands treats thrown filter predicates as errors and returns no matches", () => {

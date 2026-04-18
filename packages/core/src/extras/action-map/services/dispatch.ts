@@ -119,6 +119,10 @@ export class DispatchService {
     const matchKeys = this.resolveEventMatchKeys(event)
 
     layerLoop: for (const layer of activeLayers) {
+      if (layer.compiledBindings.length === 0) {
+        continue
+      }
+
       if (hasLayerConditions && !this.conditions.hasNoConditions(layer) && !this.conditions.matchesConditions(layer)) {
         continue
       }
@@ -158,7 +162,7 @@ export class DispatchService {
     event: KeyEvent,
     focused: Renderable | null,
   ): void {
-    const nextNode = this.getReachableChild(pending.node, matchKeys)
+    const nextNode = this.getReachableChild(pending.node, matchKeys, focused)
     if (!nextNode) {
       this.runtime.setPendingSequence(null)
       return
@@ -187,11 +191,15 @@ export class DispatchService {
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
 
     layerLoop: for (const layer of activeLayers) {
+      if (layer.root.children.size === 0) {
+        continue
+      }
+
       if (hasLayerConditions && !this.conditions.hasNoConditions(layer) && !this.conditions.matchesConditions(layer)) {
         continue
       }
 
-      const nextNode = this.getReachableChild(layer.root, matchKeys)
+      const nextNode = this.getReachableChild(layer.root, matchKeys, focused)
       if (!nextNode) {
         continue
       }
@@ -301,10 +309,14 @@ export class DispatchService {
     return { handled, stop: false }
   }
 
-  private getReachableChild(node: SequenceNode, matchKeys: readonly string[]): SequenceNode | undefined {
+  private getReachableChild(
+    node: SequenceNode,
+    matchKeys: readonly string[],
+    focused: Renderable | null,
+  ): SequenceNode | undefined {
     for (const strokeKey of matchKeys) {
       const child = node.children.get(strokeKey)
-      if (!child || !this.runtime.nodeHasReachableBindings(child)) {
+      if (!child || !this.runtime.nodeHasReachableBindings(child, focused)) {
         continue
       }
 

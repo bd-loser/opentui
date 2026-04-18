@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { Renderable } from "@opentui/core"
-import { registerEnabledField, stringifyKeySequence } from "@opentui/core/extras"
+import { addons, stringifyKeySequence } from "@opentui/core/extras"
 import { Show, createEffect, createSignal, onCleanup } from "solid-js"
 import {
   reactiveMatcherFromSignal,
@@ -262,7 +262,7 @@ describe("solid action map hooks", () => {
       const [enabled, setEnabledSignal] = createSignal(false)
       setEnabled = setEnabledSignal
 
-      const offEnabled = registerEnabledField(manager)
+      const offEnabled = addons.registerEnabledField(manager)
       const offCommands = manager.registerLayer({ scope: "global", commands: [
         {
           name: "reactive",
@@ -353,7 +353,7 @@ describe("solid action map hooks", () => {
       ] })
       onCleanup(offCommands)
 
-      registerEnabledField(manager)
+      addons.registerEnabledField(manager)
 
       const [enabled, setter] = createSignal(false)
       setEnabled = setter
@@ -410,7 +410,7 @@ describe("solid action map hooks", () => {
       unmount = () => setMounted(false)
 
       const manager = useActionMap()
-      registerEnabledField(manager)
+      addons.registerEnabledField(manager)
       const offCommands = manager.registerLayer({ scope: "global", commands: [{ name: "probe", run() {} }] })
       onCleanup(offCommands)
 
@@ -448,7 +448,7 @@ describe("solid action map hooks", () => {
       ] })
       onCleanup(offCommands)
 
-      registerEnabledField(manager)
+      addons.registerEnabledField(manager)
 
       const [mode, setter] = createSignal<"normal" | "visual">("visual")
       setMode = setter

@@ -15,7 +15,8 @@ export function registerEscapeClearsPendingSequence(
 ): () => void {
   const shouldPreventDefault = options?.preventDefault ?? true
 
-  return actionMap.onKeyInput(
+  return actionMap.intercept(
+    "key",
     ({ event, consume }) => {
       if (event.name !== "escape") {
         return

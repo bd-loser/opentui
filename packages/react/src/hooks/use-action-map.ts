@@ -66,13 +66,13 @@ export const useActionMap = (): ActionMap => {
   return useMemo(() => getActionMap(renderer), [renderer])
 }
 
-// Use the batched `state` hook for derived reads. Pending-sequence changes
+// Use the batched `state` event for derived reads. Pending-sequence changes
 // already flow through `state`, so subscribing to both would duplicate work.
 function useActionMapStateVersion(actionMap: ActionMap): number {
   const [version, bumpVersion] = useReducer((value: number) => value + 1, 0)
 
   useLayoutEffect(() => {
-    const dispose = actionMap.hook("state", () => {
+    const dispose = actionMap.on("state", () => {
       bumpVersion()
     })
 

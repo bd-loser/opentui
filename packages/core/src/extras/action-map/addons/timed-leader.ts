@@ -52,7 +52,7 @@ export function registerTimedLeader(actionMap: ActionMap, options: TimedLeaderOp
   }
 
   const offLeader = registerLeader(actionMap, options)
-  const offPendingSequenceChange = actionMap.hook("pendingSequence", (sequence) => {
+  const offPendingSequenceChange = actionMap.on("pendingSequence", (sequence) => {
     syncArmedState(sequence)
   })
   syncArmedState(actionMap.getPendingSequence())

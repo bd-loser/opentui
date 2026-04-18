@@ -2,10 +2,12 @@ import type { Events, HookName, Hooks } from "../types.js"
 import type { State } from "./state.js"
 import { Emitter } from "../lib/emitter.js"
 
+type DiagnosticEvents = Pick<Events, "warning" | "error">
+
 export class NotificationService {
   constructor(
     private readonly state: State,
-    private readonly events: Emitter<Events>,
+    private readonly events: Emitter<DiagnosticEvents>,
     private readonly hooks: Emitter<Hooks>,
   ) {}
 
@@ -57,18 +59,18 @@ export class NotificationService {
     this.events.emit("error", cause === undefined ? { message } : { message, cause })
   }
 
-  public reportHookError(name: HookName, error: unknown): void {
+  public reportListenerError(name: HookName, error: unknown): void {
     if (name === "state") {
-      this.emitError("[ActionMap] Error in state change hook:", error)
+      this.emitError("[ActionMap] Error in state listener:", error)
       return
     }
 
     if (name === "pendingSequence") {
-      this.emitError("[ActionMap] Error in pending sequence hook:", error)
+      this.emitError("[ActionMap] Error in pending sequence listener:", error)
       return
     }
 
-    this.emitError("[ActionMap] Error in unresolved command hook:", error)
+    this.emitError("[ActionMap] Error in unresolved command listener:", error)
   }
 
   public warnOnce(key: string, message: string): void {

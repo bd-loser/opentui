@@ -9,20 +9,21 @@ import type {
   BindingSyntax,
   BindingFieldCompiler,
   BindingTransformer,
-  HookListener,
-  HookName,
-  Hooks,
   Events,
+  Hooks,
   CommandDefinition,
   CommandFieldCompiler,
   CommandQuery,
   CommandRecord,
+  Listener,
   RunCommandOptions,
   RunCommandResult,
   CommandResolver,
+  KeyInterceptOptions,
   KeyInputContext,
   Layer,
   LayerFieldCompiler,
+  RawInterceptOptions,
   RawInputContext,
   EventMatchResolver,
   StringifiableKey,
@@ -47,6 +48,8 @@ import { createActionMapState } from "./services/state.js"
 
 const actionMapsByRenderer = new WeakMap<CliRenderer, ActionMap>()
 const NOOP = (): void => {}
+
+type DiagnosticEvents = Pick<Events, "warning" | "error">
 
 type FieldKind = "layer" | "binding" | "command"
 
@@ -112,7 +115,7 @@ export class ActionMap {
   private cleanedUp = false
   // Reuse `Emitter`, but keep its `onError` hook as a no-op so throwing error
   // listeners cannot re-enter `emitError` and loop forever.
-  private events = new Emitter<Events>(() => {})
+  private events = new Emitter<DiagnosticEvents>(() => {})
   private hooks: Emitter<Hooks>
   private readonly notify: NotificationService
   private readonly runtime: RuntimeService
@@ -134,7 +137,7 @@ export class ActionMap {
 
     this.renderer = renderer
     this.hooks = new Emitter<Hooks>((name, error) => {
-      this.notify.reportHookError(name, error)
+      this.notify.reportListenerError(name, error)
     })
     this.notify = new NotificationService(this.state, this.events, this.hooks)
     this.conditions = new ConditionService(this.state, this.notify)
@@ -292,18 +295,49 @@ export class ActionMap {
     return this.commands.runCommand(cmd, options)
   }
 
-  public hook<TName extends HookName>(name: TName, fn: HookListener<Hooks[TName]>): () => void {
-    return this.hooks.hook(name, fn)
+  public on(name: "state", fn: Listener<Events["state"]>): () => void
+
+  public on(name: "pendingSequence", fn: Listener<Events["pendingSequence"]>): () => void
+
+  public on(name: "unresolvedCommand", fn: Listener<Events["unresolvedCommand"]>): () => void
+
+  public on(name: "warning", fn: Listener<Events["warning"]>): () => void
+
+  public on(name: "error", fn: Listener<Events["error"]>): () => void
+
+  public on(name: keyof Events, fn: (() => void) | ((value: Events[keyof Events]) => void)): () => void {
+    if (name === "warning") {
+      return this.events.hook(name, fn as EmitterListener<Events["warning"]>)
+    }
+
+    if (name === "error") {
+      return this.events.hook(name, fn as EmitterListener<Events["error"]>)
+    }
+
+    return this.hooks.hook(name, fn as Listener<Hooks[typeof name]>)
   }
 
-  public on<TName extends keyof Events>(name: TName, fn: EmitterListener<Events[TName]>): this {
-    this.events.hook(name, fn)
-    return this
-  }
+  public intercept(name: "key", fn: (ctx: KeyInputContext) => void, options?: KeyInterceptOptions): () => void
 
-  public off<TName extends keyof Events>(name: TName, fn: EmitterListener<Events[TName]>): this {
-    this.events.off(name, fn)
-    return this
+  public intercept(name: "raw", fn: (ctx: RawInputContext) => void, options?: RawInterceptOptions): () => void
+
+  public intercept(
+    name: "key" | "raw",
+    fn: ((ctx: KeyInputContext) => void) | ((ctx: RawInputContext) => void),
+    options?: KeyInterceptOptions | RawInterceptOptions,
+  ): () => void {
+    if (name === "key") {
+      const keyOptions = options as KeyInterceptOptions | undefined
+      return this.state.config.keyHooks.register(fn as (ctx: KeyInputContext) => void, {
+        priority: keyOptions?.priority ?? 0,
+        release: keyOptions?.release ?? false,
+      })
+    }
+
+    const rawOptions = options as RawInterceptOptions | undefined
+    return this.state.config.rawHooks.register(fn as (ctx: RawInputContext) => void, {
+      priority: rawOptions?.priority ?? 0,
+    })
   }
 
   public registerLayer(layer: Layer): () => void {
@@ -443,22 +477,6 @@ export class ActionMap {
 
   public clearEventMatchResolvers(): void {
     this.state.config.eventMatchResolvers.clear()
-  }
-
-  public onKeyInput(
-    fn: (ctx: KeyInputContext) => void,
-    options?: { priority?: number; release?: boolean },
-  ): () => void {
-    return this.state.config.keyHooks.register(fn, {
-      priority: options?.priority ?? 0,
-      release: options?.release ?? false,
-    })
-  }
-
-  public onRawInput(fn: (ctx: RawInputContext) => void, options?: { priority?: number }): () => void {
-    return this.state.config.rawHooks.register(fn, {
-      priority: options?.priority ?? 0,
-    })
   }
 
   public registerCommands(commands: CommandDefinition[]): () => void {

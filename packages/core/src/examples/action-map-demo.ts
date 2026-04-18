@@ -732,7 +732,7 @@ function renderStatus(renderer: CliRenderer): void {
   }
 
   if (whichKeyHeaderText && actionMap) {
-    const prefix = stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
+    const prefix = stringifyKeySequence(actionMap.getPendingSequence(), { preferDisplay: true }) || "<root>"
     whichKeyHeaderText.content = joinLines([
       styledLine([bold(fg(P.accent)("Which Key")), fg(P.textDim)(`  ${prefix}`)]),
     ])

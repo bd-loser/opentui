@@ -13,7 +13,7 @@ import {
   type ActionMapActiveKey,
   type ActionMapCommandRecord,
 } from "@opentui/core/extras"
-import { render, useActiveKeys, useBindings, useActionMap, usePendingSequenceParts, useRenderer } from "@opentui/solid"
+import { render, useActiveKeys, useBindings, useActionMap, usePendingSequence, useRenderer } from "@opentui/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
 
 const palette = {
@@ -371,7 +371,7 @@ export default function ActionMapDemo() {
   const offEnabled = addons.registerEnabledField(manager)
   const offMetadata = addons.registerMetadataFields(manager)
   const activeKeys = useActiveKeys({ includeMetadata: true })
-  const pendingSequenceParts = usePendingSequenceParts()
+  const pendingSequence = usePendingSequence()
 
   const bumpStatus = () => {
     setStatusVersion((value) => value + 1)
@@ -762,7 +762,7 @@ export default function ActionMapDemo() {
   })
 
   const whichKeyPrefix = createMemo(() => {
-    return stringifyKeySequence(pendingSequenceParts(), { preferDisplay: true }) || "<root>"
+    return stringifyKeySequence(pendingSequence(), { preferDisplay: true }) || "<root>"
   })
 
   const onCommandPromptKeyDown = (event: {

@@ -84,9 +84,7 @@ export interface CommandsState {
 export interface ProjectionState {
   pendingSequence: PendingSequenceState | null
   pendingSequenceCacheVersion: number
-  pendingSequenceCache: readonly ParsedKeyStroke[]
-  pendingSequencePartsCacheVersion: number
-  pendingSequencePartsCache: readonly ParsedKeyPart[]
+  pendingSequenceCache: readonly ParsedKeyPart[]
   activeCommandViewVersion: number
   activeCommandView?: ActiveCommandView
   registeredCommandsCacheVersion: number
@@ -164,8 +162,6 @@ export function createActionMapState(): State {
       pendingSequence: null,
       pendingSequenceCacheVersion: -1,
       pendingSequenceCache: [],
-      pendingSequencePartsCacheVersion: -1,
-      pendingSequencePartsCache: [],
       activeCommandViewVersion: -1,
       activeCommandView: undefined,
       registeredCommandsCacheVersion: -1,

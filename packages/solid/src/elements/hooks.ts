@@ -207,13 +207,13 @@ export const useActiveKeys = (options?: ActiveKeyOptions): Accessor<readonly Act
   })
 }
 
-export const usePendingSequenceParts = (): Accessor<readonly ParsedKeyPart[]> => {
+export const usePendingSequence = (): Accessor<readonly ParsedKeyPart[]> => {
   const actionMap = useActionMap()
   const version = useActionMapStateVersion(actionMap)
 
   return createMemo(() => {
     version()
-    return actionMap.getPendingSequenceParts()
+    return actionMap.getPendingSequence()
   })
 }
 

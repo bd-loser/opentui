@@ -912,6 +912,61 @@ function registerCommandLayers(renderer: CliRenderer): void {
     }),
   )
 
+  if (commandPromptInput) {
+    disposers.push(
+      actionMapInstance.registerLayer({
+        target: commandPromptInput,
+        enabled: () => commandPromptVisible,
+        commands: [
+          {
+            name: "ex-prompt-close",
+            run() {
+              closeCommandPrompt(renderer, "Closed ex prompt")
+            },
+          },
+          {
+            name: "ex-prompt-prev",
+            run() {
+              moveCommandPromptSelection(renderer, -1)
+            },
+          },
+          {
+            name: "ex-prompt-next",
+            run() {
+              moveCommandPromptSelection(renderer, 1)
+            },
+          },
+          {
+            name: "ex-prompt-complete",
+            run() {
+              applyCommandPromptSuggestion(renderer)
+            },
+          },
+          {
+            name: "ex-prompt-complete-prev",
+            run() {
+              applyCommandPromptSuggestion(renderer, -1)
+            },
+          },
+          {
+            name: "ex-prompt-submit",
+            run() {
+              executeCommandPrompt(renderer)
+            },
+          },
+        ],
+        bindings: [
+          { key: "escape", cmd: "ex-prompt-close", desc: "Close ex prompt" },
+          { key: "up", cmd: "ex-prompt-prev", desc: "Previous suggestion" },
+          { key: "down", cmd: "ex-prompt-next", desc: "Next suggestion" },
+          { key: "tab", cmd: "ex-prompt-complete", desc: "Complete suggestion" },
+          { key: "shift+tab", cmd: "ex-prompt-complete-prev", desc: "Previous completion" },
+          { key: "return", cmd: "ex-prompt-submit", desc: "Run ex command" },
+        ],
+      }),
+    )
+  }
+
   disposers.push(
     addons.registerManagedTextareaLayer(actionMapInstance, {
       scope: "global",
@@ -1307,46 +1362,6 @@ export function run(renderer: CliRenderer): void {
     commandPromptSelection = 0
     renderAll(renderer)
   })
-
-  commandPromptInput.onKeyDown = (event) => {
-    if (!commandPromptVisible) {
-      return
-    }
-
-    if (event.name === "escape") {
-      event.preventDefault()
-      event.stopPropagation()
-      closeCommandPrompt(renderer, "Closed ex prompt")
-      return
-    }
-
-    if (event.name === "up") {
-      event.preventDefault()
-      event.stopPropagation()
-      moveCommandPromptSelection(renderer, -1)
-      return
-    }
-
-    if (event.name === "down") {
-      event.preventDefault()
-      event.stopPropagation()
-      moveCommandPromptSelection(renderer, 1)
-      return
-    }
-
-    if (event.name === "tab") {
-      event.preventDefault()
-      event.stopPropagation()
-      applyCommandPromptSuggestion(renderer, event.shift ? -1 : undefined)
-      return
-    }
-
-    if (event.name === "return") {
-      event.preventDefault()
-      event.stopPropagation()
-      executeCommandPrompt(renderer)
-    }
-  }
 
   registerCommandLayers(renderer)
   addLog("Tab switches focus across panels and editors.")

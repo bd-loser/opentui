@@ -870,47 +870,67 @@ export const App = () => {
     return `Usage: ${selectedCommandPromptSuggestion.usage}  |  ${selectedCommandPromptSuggestion.desc}`
   }, [selectedCommandPromptSuggestion])
 
-  const onCommandPromptKeyDown = useCallback(
-    (event: { name: string; shift?: boolean; preventDefault: () => void; stopPropagation: () => void }) => {
-      if (!commandPromptVisibleRef.current) {
-        return
-      }
-
-      if (event.name === "escape") {
-        event.preventDefault()
-        event.stopPropagation()
-        closeCommandPrompt("Closed ex prompt")
-        return
-      }
-
-      if (event.name === "up") {
-        event.preventDefault()
-        event.stopPropagation()
-        moveCommandPromptSelection(-1)
-        return
-      }
-
-      if (event.name === "down") {
-        event.preventDefault()
-        event.stopPropagation()
-        moveCommandPromptSelection(1)
-        return
-      }
-
-      if (event.name === "tab") {
-        event.preventDefault()
-        event.stopPropagation()
-        applyCommandPromptSuggestion(event.shift ? -1 : undefined)
-        return
-      }
-
-      if (event.name === "return") {
-        event.preventDefault()
-        event.stopPropagation()
-        executeCommandPrompt()
-      }
-    },
+  const commandPromptBindingsLayer = useMemo(
+    () => ({
+      enabled: () => commandPromptVisibleRef.current,
+      commands: [
+        {
+          name: "ex-prompt-close",
+          run() {
+            closeCommandPrompt("Closed ex prompt")
+          },
+        },
+        {
+          name: "ex-prompt-prev",
+          run() {
+            moveCommandPromptSelection(-1)
+          },
+        },
+        {
+          name: "ex-prompt-next",
+          run() {
+            moveCommandPromptSelection(1)
+          },
+        },
+        {
+          name: "ex-prompt-complete",
+          run() {
+            applyCommandPromptSuggestion()
+          },
+        },
+        {
+          name: "ex-prompt-complete-prev",
+          run() {
+            applyCommandPromptSuggestion(-1)
+          },
+        },
+        {
+          name: "ex-prompt-submit",
+          run() {
+            executeCommandPrompt()
+          },
+        },
+      ],
+      bindings: [
+        { key: "escape", cmd: "ex-prompt-close", desc: "Close ex prompt" },
+        { key: "up", cmd: "ex-prompt-prev", desc: "Previous suggestion" },
+        { key: "down", cmd: "ex-prompt-next", desc: "Next suggestion" },
+        { key: "tab", cmd: "ex-prompt-complete", desc: "Complete suggestion" },
+        { key: "shift+tab", cmd: "ex-prompt-complete-prev", desc: "Previous completion" },
+        { key: "return", cmd: "ex-prompt-submit", desc: "Run ex command" },
+      ] satisfies ActionMapBindingInput[],
+    }),
     [applyCommandPromptSuggestion, closeCommandPrompt, executeCommandPrompt, moveCommandPromptSelection],
+  )
+
+  const commandPromptBindingsRef = useBindings<InputRenderable>(commandPromptBindingsLayer)
+
+  const commandPromptInputBindingRef = useCallback(
+    (value: InputRenderable | null) => {
+      commandInputRef.current = value
+      commandPromptBindingsRef(value)
+    },
+    [commandPromptBindingsRef],
   )
 
   useEffect(() => {
@@ -1191,7 +1211,7 @@ export const App = () => {
           </text>
           <input
             id="action-map-demo-ex-input"
-            ref={commandInputRef}
+            ref={commandPromptInputBindingRef}
             width="100%"
             value={commandPromptValue}
             placeholder=":write session.log"
@@ -1204,7 +1224,6 @@ export const App = () => {
               setCommandPromptValue(value)
               setCommandPromptSelection(0)
             }}
-            onKeyDown={onCommandPromptKeyDown}
           />
           <text
             id="action-map-demo-ex-prompt-usage"

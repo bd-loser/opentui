@@ -547,7 +547,7 @@ export const App = () => {
     }
   }, [manager])
 
-  const actions = useMemo<ActionMapCommandDefinition[]>(
+  const commands = useMemo<ActionMapCommandDefinition[]>(
     () => [
       {
         name: "focus-next",
@@ -594,8 +594,8 @@ export const App = () => {
   )
 
   useEffect(() => {
-    return manager.registerLayer({ scope: "global", commands: actions })
-  }, [actions, manager])
+    return manager.registerLayer({ scope: "global", commands })
+  }, [commands, manager])
 
   const exCommands = useMemo<DemoExCommand[]>(
     () => [

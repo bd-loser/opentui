@@ -477,7 +477,7 @@ export default function ActionMapDemo() {
     announce("Opened ex prompt")
   }
 
-  const offActions = manager.registerLayer({ scope: "global", commands: [
+  const offCommands = manager.registerLayer({ scope: "global", commands: [
     {
       name: "focus-next",
       title: "Next target",
@@ -835,7 +835,7 @@ export default function ActionMapDemo() {
     offManagedTextareas()
     offLeader()
     offEx()
-    offActions()
+    offCommands()
     offMetadata()
     offEnabled()
   })

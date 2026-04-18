@@ -754,7 +754,7 @@ function renderAll(renderer: CliRenderer): void {
   renderStatus(renderer)
 }
 
-function registerActionMap(renderer: CliRenderer): void {
+function registerCommandLayers(renderer: CliRenderer): void {
   const actionMapInstance = getActionMap(renderer)
   actionMap = actionMapInstance
 
@@ -1348,7 +1348,7 @@ export function run(renderer: CliRenderer): void {
     }
   }
 
-  registerActionMap(renderer)
+  registerCommandLayers(renderer)
   addLog("Tab switches focus across panels and editors.")
   addLog("ctrl+x arms the leader extension.")
   addLog(": opens the centered ex prompt.")

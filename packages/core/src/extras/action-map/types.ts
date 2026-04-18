@@ -330,7 +330,7 @@ export type Hooks = {
    * Synchronous pending-sequence updates, including clear. Payload is the
    * current sequence.
    */
-  pendingSequence: readonly ParsedKeyStroke[]
+  pendingSequence: readonly ParsedKeyPart[]
   /**
    * One-time diagnostic when a binding references a command name that is not
    * currently resolvable.

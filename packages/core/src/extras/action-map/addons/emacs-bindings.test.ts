@@ -37,7 +37,7 @@ describe("emacs bindings addon", () => {
     })
 
     mockInput.pressKey("x", { ctrl: true })
-    expect(stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true })).toBe("ctrl+x")
+    expect(stringifyKeySequence(actionMap.getPendingSequence(), { preferDisplay: true })).toBe("ctrl+x")
 
     mockInput.pressKey("s", { ctrl: true })
     expect(calls).toEqual(["save"])

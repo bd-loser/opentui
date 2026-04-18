@@ -278,7 +278,7 @@ function CounterPanel(props: {
   const incrementCommand = `${props.id}-up`
   const decrementCommand = `${props.id}-down`
 
-  const offCommands = manager.registerCommands([
+  const offCommands = manager.registerLayer({ scope: "global", commands: [
     {
       name: incrementCommand,
       title: `${props.label} +${props.step}`,
@@ -301,7 +301,7 @@ function CounterPanel(props: {
         props.announce(`${props.label} decreased to ${next}`)
       },
     },
-  ])
+  ] })
 
   const bindingsRef = useBindings({
     bindings: [
@@ -481,7 +481,7 @@ export default function ActionMapDemo() {
     announce("Opened ex prompt")
   }
 
-  const offActions = manager.registerCommands([
+  const offActions = manager.registerLayer({ scope: "global", commands: [
     {
       name: "focus-next",
       title: "Next target",
@@ -522,7 +522,7 @@ export default function ActionMapDemo() {
         openCommandPrompt()
       },
     },
-  ])
+  ] })
 
   const exCommands: DemoExCommand[] = [
     {

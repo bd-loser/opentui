@@ -19,7 +19,7 @@ describe("metadata addon", () => {
     const actionMap = getActionMap(renderer)
     registerMetadataFields(actionMap)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-file",
         desc: "Save file",
@@ -27,7 +27,7 @@ describe("metadata addon", () => {
         category: "File",
         run() {},
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -47,7 +47,7 @@ describe("metadata addon", () => {
     const actionMap = getActionMap(renderer)
     registerMetadataFields(actionMap)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-file",
         desc: "Save file",
@@ -55,7 +55,7 @@ describe("metadata addon", () => {
         category: "File",
         run() {},
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -76,7 +76,7 @@ describe("metadata addon", () => {
     const actionMap = getActionMap(renderer)
     registerMetadataFields(actionMap)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-file",
         desc: "Save file",
@@ -84,7 +84,7 @@ describe("metadata addon", () => {
         category: "File",
         run() {},
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -109,7 +109,7 @@ describe("metadata addon", () => {
     })
     registerMetadataFields(actionMap)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-file",
         desc: "  Save file  ",
@@ -117,7 +117,7 @@ describe("metadata addon", () => {
         category: " File ",
         run() {},
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -132,13 +132,13 @@ describe("metadata addon", () => {
     expect(activeKey?.bindings?.[0]?.commandAttrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
 
     expect(() => {
-      actionMap.registerCommands([
+      actionMap.registerLayer({ scope: "global", commands: [
         {
           name: "bad-command",
           desc: 123,
           run() {},
         },
-      ])
+      ] })
     }).not.toThrow()
 
     expect(() => {
@@ -162,7 +162,7 @@ describe("metadata addon", () => {
 
     offMetadata()
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-file",
         desc: "Save file",
@@ -170,7 +170,7 @@ describe("metadata addon", () => {
         category: "File",
         run() {},
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",

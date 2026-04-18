@@ -191,7 +191,7 @@ export class CommandService {
           actionMap: this.options.actionMap,
           event,
           focused,
-          target: options?.target ?? entry.layer?.target ?? null,
+          target: options?.target ?? entry.target ?? null,
           data,
         }
 
@@ -253,7 +253,7 @@ export class CommandService {
           actionMap: this.options.actionMap,
           event,
           focused,
-          target: entry.layer?.target ?? bindingLayer.target ?? null,
+          target: entry.target ?? bindingLayer.target ?? null,
           data,
         }
 
@@ -349,7 +349,7 @@ export class CommandService {
     const active = view.reachableByName.get(command)
     if (active) {
       return {
-        layer: active.layer,
+        target: active.layer.target,
         resolved: this.getResolvedRegisteredCommand(active.command, { includeRecord }),
       }
     }
@@ -399,10 +399,7 @@ export class CommandService {
     const activeChain = view.chainsByName.get(command)
     if (activeChain) {
       for (const entry of activeChain) {
-        resolved.push({
-          layer: entry.layer,
-          resolved: this.getResolvedRegisteredCommand(entry.command, { includeRecord }),
-        })
+        resolved.push({ target: entry.layer.target, resolved: this.getResolvedRegisteredCommand(entry.command, { includeRecord }) })
       }
     }
 

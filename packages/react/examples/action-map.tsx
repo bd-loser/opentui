@@ -328,7 +328,7 @@ function CounterPanel(props: {
   )
 
   useEffect(() => {
-    return manager.registerCommands(commands)
+    return manager.registerLayer({ scope: "global", commands: commands })
   }, [commands, manager])
 
   const layer = useMemo(
@@ -598,7 +598,7 @@ export const App = () => {
   )
 
   useEffect(() => {
-    return manager.registerCommands(actions)
+    return manager.registerLayer({ scope: "global", commands: actions })
   }, [actions, manager])
 
   const exCommands = useMemo<DemoExCommand[]>(

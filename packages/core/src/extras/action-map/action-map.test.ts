@@ -148,7 +148,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
 
     actionMap.setData("mode", "normal")
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "noop" }],
@@ -176,14 +176,14 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "global-default",
         run() {
           calls.push("global")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       bindings: [{ key: "x", cmd: "global-default" }],
@@ -218,14 +218,14 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-file",
         run() {
           calls.push("save-file")
         },
       },
-    ])
+    ] })
 
     expect(actionMap.runCommand("save-file")).toEqual({ ok: true })
     expect(actionMap.runCommand("save-file", { includeCommand: true })).toEqual({
@@ -252,14 +252,14 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "shared-command",
         run() {
           calls.push("registered")
         },
       },
-    ])
+    ] })
 
     actionMap.registerCommandResolver((command) => {
       if (command !== "shared-command") {
@@ -297,14 +297,14 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "submit",
         run() {
           calls.push("global")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       target,
@@ -387,14 +387,14 @@ describe("action map", () => {
 
     renderer.root.add(target)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "submit",
         run() {
           calls.push("global")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       target,
@@ -466,14 +466,14 @@ describe("action map", () => {
       bindings: [{ key: "x", cmd: "shared" }],
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "shared",
         run() {
           calls.push("global")
         },
       },
-    ])
+    ] })
 
     target.focus()
     mockInput.pressKey("x")
@@ -515,7 +515,7 @@ describe("action map", () => {
       return [getMatchKeyForEventName(event, "y")]
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "fallback",
         run() {
@@ -528,7 +528,7 @@ describe("action map", () => {
           calls.push("direct")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -555,14 +555,14 @@ describe("action map", () => {
       return [getMatchKeyForEventName(event, "g")]
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "delete-line",
         run() {
           calls.push("delete-line")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -609,14 +609,14 @@ describe("action map", () => {
     })
 
     actionMap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "leader-action",
         run() {
           calls.push("leader")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "[leader]d", cmd: "leader-action" }],
@@ -660,14 +660,14 @@ describe("action map", () => {
     })
 
     actionMap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "leader-only",
         run() {
           calls.push("leader")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "[leader]", cmd: "leader-only" }],
@@ -702,7 +702,7 @@ describe("action map", () => {
 
     actionMap.setBindingSyntax(defaultBindingSyntax)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "object",
         run() {
@@ -715,7 +715,7 @@ describe("action map", () => {
           calls.push("token")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: { name: "x" }, cmd: "object" }],
@@ -776,14 +776,14 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "case-token",
         run() {
           calls.push("case-token")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "[Leader]d", cmd: "case-token" }],
@@ -840,12 +840,12 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "case-token",
         run() {},
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "[Leader]d", cmd: "case-token" }],
@@ -865,14 +865,14 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "run",
         run() {
           calls.push("run")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "run" }],
@@ -906,14 +906,14 @@ describe("action map", () => {
       return [getMatchKeyForEventName(event, "y")]
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "fallback",
         run() {
           calls.push("fallback")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "y", cmd: "fallback" }],
@@ -957,14 +957,14 @@ describe("action map", () => {
       return ["custom:stroke"]
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "custom-match",
         run() {
           calls.push("custom")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "@", cmd: "custom-match" }],
@@ -991,14 +991,14 @@ describe("action map", () => {
         .filter(Boolean)
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "split-command",
         run() {
           calls.push("split")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -1035,14 +1035,14 @@ describe("action map", () => {
       return [input.replaceAll("~", "")]
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "prepend-append",
         run() {
           calls.push("hit")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -1094,14 +1094,14 @@ describe("action map", () => {
 
     actionMap.registerToken({ name: "<c-x>", key: { name: "x", ctrl: true } })
     actionMap.registerToken({ name: "<c-s>", key: { name: "s", ctrl: true } })
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-buffer",
         run() {
           calls.push("save")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -1151,7 +1151,7 @@ describe("action map", () => {
         .filter(Boolean)
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "comma-command",
         run() {
@@ -1164,7 +1164,7 @@ describe("action map", () => {
           calls.push("pipe")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -1198,7 +1198,7 @@ describe("action map", () => {
       ctx.skipOriginal()
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "blocked",
         run() {
@@ -1211,7 +1211,7 @@ describe("action map", () => {
           calls.push("active")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -1244,14 +1244,14 @@ describe("action map", () => {
       ctx.skipOriginal()
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "submit",
         run() {
           calls.push("submit")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -1318,14 +1318,14 @@ describe("action map", () => {
     })
 
     actionMap.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "submit",
         run() {
           calls.push("submit")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -1352,14 +1352,14 @@ describe("action map", () => {
       }
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "submit",
         run() {
           calls.push("submit")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "@", cmd: "submit" }],
@@ -1405,14 +1405,14 @@ describe("action map", () => {
       }
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "submit",
         run() {
           calls.push("submit")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "@", cmd: "submit" }],
@@ -1475,14 +1475,14 @@ describe("action map", () => {
       return [getMatchKeyForEventName(event, "y")]
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "release-action",
         run() {
           calls.push("release")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -1520,14 +1520,14 @@ describe("action map", () => {
       return [ctx.matchKey({ name: " RETURN " })]
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "submit",
         run() {
           calls.push("submit")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "return", cmd: "submit" }],
@@ -1591,14 +1591,14 @@ describe("action map", () => {
     })
 
     actionMap.registerToken({ name: "[Leader]", key: { name: "z" } })
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "leader-fallback",
         run() {
           calls.push("leader")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "[Leader]", cmd: "leader-fallback" }],
@@ -1613,7 +1613,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "plain",
         run() {
@@ -1626,7 +1626,7 @@ describe("action map", () => {
           calls.push("hyper")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -1651,7 +1651,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: Array<{ capsLock: boolean; numLock: boolean }> = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "inspect-locks",
         run({ event }) {
@@ -1661,7 +1661,7 @@ describe("action map", () => {
           })
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -1682,14 +1682,14 @@ describe("action map", () => {
     parent.add(child)
     renderer.root.add(parent)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "parent-action",
         run() {
           calls.push("parent")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       target: parent,
@@ -1711,14 +1711,14 @@ describe("action map", () => {
     parent.add(child)
     renderer.root.add(parent)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "focus-only",
         run() {
           calls.push("focus-only")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       target: parent,
@@ -1739,7 +1739,7 @@ describe("action map", () => {
     const target = createFocusableBox("target")
     renderer.root.add(target)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "global-action",
         run() {
@@ -1758,7 +1758,7 @@ describe("action map", () => {
           calls.push("fallthrough-local")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -1800,14 +1800,14 @@ describe("action map", () => {
       laterGlobalCount += 1
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "consume",
         run() {
           calls.push("action-map")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       target,
@@ -1831,7 +1831,7 @@ describe("action map", () => {
 
     function register(keyName: "a" | "b" | "c" | "d", preventDefault: boolean, fallthrough: boolean): void {
       const bucket = runs[keyName]!
-      actionMap.registerCommands([
+      actionMap.registerLayer({ scope: "global", commands: [
         {
           name: `primary-${keyName}`,
           run() {
@@ -1844,7 +1844,7 @@ describe("action map", () => {
             bucket.push("followup")
           },
         },
-      ])
+      ] })
       // Keep both bindings on the same `preventDefault` value so each case
       // varies only one axis.
       actionMap.registerLayer({
@@ -1901,14 +1901,14 @@ describe("action map", () => {
       laterGlobalCount += 1
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "passthrough",
         run() {
           calls.push("action-map")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       target,
@@ -1927,14 +1927,14 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "shorthand",
         run() {
           calls.push("shorthand")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -2023,14 +2023,14 @@ describe("action map", () => {
       }
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "typed-field",
         run() {
           calls.push("field")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -2055,12 +2055,12 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-file",
         run() {},
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -2088,14 +2088,14 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "record-mode",
         run(ctx) {
           seen.push(String(ctx.data["vim.mode"]))
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -2129,14 +2129,14 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "runtime-binding",
         run() {
           calls.push("binding")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -2173,7 +2173,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "runtime-binding", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "runtime-binding", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
@@ -2202,7 +2202,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", active: true, cmd: "delete-line" }],
@@ -2234,14 +2234,14 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "runtime-binding",
         run() {
           calls.push("binding")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -2280,14 +2280,14 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "runtime-binding",
         run() {
           calls.push("binding")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
@@ -2331,7 +2331,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
 
     expect(enabled.subscribeCalls).toBe(0)
     expect(enabled.subscriptions).toBe(0)
@@ -2362,7 +2362,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       active: true,
@@ -2406,7 +2406,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       first: true,
@@ -2455,7 +2455,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
 
     expect(() => {
       actionMap.registerLayer({
@@ -2493,7 +2493,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
     const off = actionMap.registerLayer({
       scope: "global",
       active: true,
@@ -2526,7 +2526,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       active: true,
@@ -2550,7 +2550,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       mode: "normal",
@@ -2588,7 +2588,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       active: true,
@@ -2619,7 +2619,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
 
     expect(() => {
       actionMap.registerLayer({
@@ -2642,7 +2642,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
 
     const offToken = actionMap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
     actionMap.registerLayer({
@@ -2673,14 +2673,14 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "local-mode",
         run() {
           calls.push("local")
         },
       },
-    ])
+    ] })
 
     const target = createFocusableBox("layer-field-target")
     renderer.root.add(target)
@@ -2721,14 +2721,14 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "runtime-layer",
         run() {
           calls.push("layer")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -2765,7 +2765,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       active: true,
@@ -2796,7 +2796,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       active: true,
@@ -2828,14 +2828,14 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "composed",
         run() {
           calls.push("hit")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -2874,7 +2874,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-file",
         desc: "Save the current file",
@@ -2884,7 +2884,7 @@ describe("action map", () => {
           seen.push({ ...(ctx.command?.attrs ?? {}) })
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -2917,7 +2917,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-current",
         namespace: "excommands",
@@ -2938,7 +2938,7 @@ describe("action map", () => {
         title: "Open Help",
         run() {},
       },
-    ])
+    ] })
 
     expect(actionMap.getCommands({ search: "save" }).map((command) => command.name)).toEqual(["save-current"])
     expect(actionMap.getCommands({ search: "write" })).toEqual([])
@@ -2971,7 +2971,7 @@ describe("action map", () => {
       },
     })
 
-    const offCommands = actionMap.registerCommands([
+    const offCommands = actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-current",
         namespace: "excommands",
@@ -3000,7 +3000,7 @@ describe("action map", () => {
         tags: ["help"],
         run() {},
       },
-    ])
+    ] })
 
     expect(actionMap.getCommands({ namespace: "excommands" }).map((command) => command.name)).toEqual([
       "save-current",
@@ -3103,10 +3103,10 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const { errors } = captureDiagnostics(actionMap)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       { name: "save-current", usage: ":write <file>", run() {} },
       { name: "palette-help", usage: ":help", run() {} },
-    ])
+    ] })
 
     let queryResult: ReturnType<ActionMap["getCommands"]> = []
 
@@ -3140,13 +3140,13 @@ describe("action map", () => {
   test("getCommands returns immutable metadata records across repeated reads", () => {
     const actionMap = getActionMap(renderer)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-current",
         tags: ["file", "write"],
         run() {},
       },
-    ])
+    ] })
 
     const first = getCommand(actionMap, "save-current")
     expect(first).toBeDefined()
@@ -3178,13 +3178,13 @@ describe("action map", () => {
       helper,
     }
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-current",
         payload,
         run() {},
       },
-    ])
+    ] })
 
     payload.nested.title = "Mutated"
     ;(payload.tags[1] as { kind: string }).kind = "mutated"
@@ -3235,7 +3235,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-file",
         desc: "Save the current file",
@@ -3243,7 +3243,7 @@ describe("action map", () => {
         category: "File",
         run() {},
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -3300,14 +3300,14 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "delete-line",
         run() {
           calls.push("delete-line")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -3341,7 +3341,7 @@ describe("action map", () => {
   test("hasPendingSequence reflects pending lifecycle", () => {
     const actionMap = getActionMap(renderer)
 
-    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
@@ -3366,14 +3366,14 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "delete-line",
         run() {
           calls.push("delete")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
@@ -3407,12 +3407,12 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const changes: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "delete-ca",
         run() {},
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -3435,12 +3435,12 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const snapshots: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "delete-ca",
         run() {},
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -3471,7 +3471,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       mode: "normal",
@@ -3500,7 +3500,7 @@ describe("action map", () => {
 
     renderer.root.add(target)
 
-    actionMap.registerCommands([{ name: "local", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "local", run() {} }] })
     actionMap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "local" }],
@@ -3523,7 +3523,7 @@ describe("action map", () => {
 
     renderer.root.add(target)
 
-    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
     actionMap.registerLayer({
       target,
       bindings: [{ key: "dd", cmd: "delete-line" }],
@@ -3553,7 +3553,7 @@ describe("action map", () => {
     renderer.root.add(first)
     renderer.root.add(second)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "global-delete",
         run() {
@@ -3566,7 +3566,7 @@ describe("action map", () => {
           calls.push("local")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -3597,7 +3597,7 @@ describe("action map", () => {
 
     renderer.root.add(target)
 
-    actionMap.registerCommands([{ name: "global-delete", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "global-delete", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", cmd: "global-delete" }],
@@ -3620,7 +3620,7 @@ describe("action map", () => {
 
     renderer.root.add(target)
 
-    actionMap.registerCommands([{ name: "local", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "local", run() {} }] })
     actionMap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "local" }],
@@ -3643,7 +3643,7 @@ describe("action map", () => {
 
     renderer.root.add(target)
 
-    actionMap.registerCommands([{ name: "local", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "local", run() {} }] })
     actionMap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "local" }],
@@ -3675,14 +3675,14 @@ describe("action map", () => {
       key: { name: "x", ctrl: true },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "go-definition",
         run() {
           calls.push("go-definition")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -3721,10 +3721,10 @@ describe("action map", () => {
       key: { name: "x", ctrl: true },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       { name: "save", run() {} },
       { name: "help", run() {} },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -3742,7 +3742,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "delete-a",
         run() {
@@ -3767,7 +3767,7 @@ describe("action map", () => {
           calls.push("dcb")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -3797,7 +3797,7 @@ describe("action map", () => {
     const target = createFocusableBox("sequence-target")
     renderer.root.add(target)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "local-delete",
         run() {
@@ -3810,7 +3810,7 @@ describe("action map", () => {
           calls.push("global")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -3836,14 +3836,14 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "delete-ca",
         run() {
           calls.push("delete-ca")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -3886,7 +3886,7 @@ describe("action map", () => {
   test("clears pending sequences on invalid continuation", () => {
     const actionMap = getActionMap(renderer)
 
-    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
@@ -3910,10 +3910,10 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       { name: "normal-delete", run() {} },
       { name: "visual-delete", run() {} },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -4010,14 +4010,14 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "noop",
         run() {
           calls.push("noop")
         },
       },
-    ])
+    ] })
 
     expect(() => {
       actionMap.registerLayer({
@@ -4037,14 +4037,14 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "noop",
         run() {
           calls.push("noop")
         },
       },
-    ])
+    ] })
 
     expect(() => {
       actionMap.registerLayer({
@@ -4066,7 +4066,7 @@ describe("action map", () => {
     const calls: string[] = []
 
     expect(() => {
-      actionMap.registerCommands([
+      actionMap.registerLayer({ scope: "global", commands: [
         {
           name: "save-file",
           desc: "Save the current file",
@@ -4076,7 +4076,7 @@ describe("action map", () => {
             calls.push("save-file")
           },
         },
-      ])
+      ] })
     }).not.toThrow()
 
     actionMap.registerLayer({
@@ -4104,7 +4104,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const { warnings } = captureDiagnostics(actionMap)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-file",
         desc: "Save the current file",
@@ -4115,7 +4115,7 @@ describe("action map", () => {
         desc: "Open the current file",
         run() {},
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -4136,7 +4136,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const { warnings } = captureDiagnostics(actionMap)
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [
@@ -4207,7 +4207,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "runtime-binding", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "runtime-binding", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
@@ -4223,7 +4223,7 @@ describe("action map", () => {
     const warnings: string[] = []
     const errors: string[] = []
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
 
     actionMap.on("warning", () => {
       throw new Error("warning listener boom")
@@ -4338,7 +4338,7 @@ describe("action map", () => {
       errors.push(args)
     }
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
 
     try {
       actionMap.getCommands({
@@ -4454,14 +4454,14 @@ describe("action map", () => {
     })
 
     expect(() => {
-      actionMap.registerCommands([
+      actionMap.registerLayer({ scope: "global", commands: [
         {
           name: "save-file",
           desc: "Save",
           title: "Write",
           run() {},
         },
-      ])
+      ] })
     }).not.toThrow()
 
     expect(errors).toEqual(['Conflicting action map attribute for "label" from field title'])
@@ -4472,10 +4472,10 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const { errors } = captureDiagnostics(actionMap)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       { name: "one", run() {} },
       { name: "two", run() {} },
-    ])
+    ] })
 
     expect(() => {
       actionMap.registerLayer({
@@ -4502,7 +4502,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [
@@ -4569,7 +4569,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "release-command",
         run() {
@@ -4582,7 +4582,7 @@ describe("action map", () => {
           calls.push("press")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -4608,7 +4608,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const { errors } = captureDiagnostics(actionMap)
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
 
     expect(() => {
       actionMap.registerLayer({
@@ -4625,7 +4625,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "local",
         run() {
@@ -4638,7 +4638,7 @@ describe("action map", () => {
           calls.push("global")
         },
       },
-    ])
+    ] })
 
     const target = createFocusableBox("destroy-target")
     renderer.root.add(target)
@@ -4675,7 +4675,7 @@ describe("action map", () => {
       }
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "record",
         run(ctx) {
@@ -4686,7 +4686,7 @@ describe("action map", () => {
           })
         },
       },
-    ])
+    ] })
 
     const parent = createFocusableBox("ctx-parent")
     const child = createFocusableBox("ctx-child")
@@ -4708,14 +4708,14 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const seen: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "record-mode",
         run(ctx) {
           seen.push(String(ctx.data["vim.mode"]))
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -4872,7 +4872,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "global-low",
         run() {
@@ -4897,7 +4897,7 @@ describe("action map", () => {
           calls.push("newer")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -4940,7 +4940,7 @@ describe("action map", () => {
       laterGlobalCount += 1
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "local-decline",
         run() {
@@ -4954,7 +4954,7 @@ describe("action map", () => {
           calls.push("global")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       target,
@@ -4989,7 +4989,7 @@ describe("action map", () => {
       laterGlobalCount += 1
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "async-command",
         async run() {
@@ -4997,7 +4997,7 @@ describe("action map", () => {
           calls.push("async")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       target,
@@ -5018,7 +5018,7 @@ describe("action map", () => {
   test("clears pending sequences when a layer is disposed", () => {
     const actionMap = getActionMap(renderer)
 
-    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
 
     const offLayer = actionMap.registerLayer({
       scope: "global",
@@ -5042,7 +5042,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       mode: "normal",
@@ -5062,7 +5062,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const changes: string[] = []
 
-    actionMap.registerCommands([{ name: "delete-ca", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "delete-ca", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
@@ -5084,7 +5084,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([{ name: "delete-ca", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "delete-ca", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
@@ -5112,7 +5112,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const { errors } = captureDiagnostics(actionMap)
 
-    actionMap.registerCommands([{ name: "delete-ca", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "delete-ca", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
@@ -5135,14 +5135,14 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "leader-action",
         run() {
           calls.push("leader")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -5184,14 +5184,14 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "leader-only",
         run() {
           calls.push("leader-only")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -5215,7 +5215,7 @@ describe("action map", () => {
   test("clears pending tokenized sequences when token registration recompiles their layer", () => {
     const actionMap = getActionMap(renderer)
 
-    actionMap.registerCommands([{ name: "leader-action", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "leader-action", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "<leader>ab", cmd: "leader-action" }],
@@ -5240,10 +5240,10 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const { errors } = captureDiagnostics(actionMap)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       { name: "plain", run() {} },
       { name: "tokenized", run() {} },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -5271,7 +5271,7 @@ describe("action map", () => {
   test("can dispose layer, binding, and command field registrations", () => {
     const actionMap = getActionMap(renderer)
 
-    actionMap.registerCommands([{ name: "noop", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
 
     const offLayerFields = actionMap.registerLayerFields({
       mode(value, ctx) {
@@ -5314,13 +5314,13 @@ describe("action map", () => {
     offCommandFields()
 
     expect(() => {
-      actionMap.registerCommands([
+      actionMap.registerLayer({ scope: "global", commands: [
         {
           name: "noop-with-desc",
           desc: "No operation",
           run() {},
         },
-      ])
+      ] })
     }).not.toThrow()
 
     actionMap.registerLayer({
@@ -5348,10 +5348,10 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       { name: "save", category: "File", run() {} },
       { name: "help", category: "Help", run() {} },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -5394,10 +5394,10 @@ describe("action map", () => {
       key: { name: "x", ctrl: true },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       { name: "plain", run() {} },
       { name: "leader", run() {} },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -5423,11 +5423,11 @@ describe("action map", () => {
     const { errors } = captureDiagnostics(actionMap)
 
     expect(() => {
-      actionMap.registerCommands([{ name: "", run() {} }])
+      actionMap.registerLayer({ scope: "global", commands: [{ name: "", run() {} }] })
     }).not.toThrow()
 
     expect(() => {
-      actionMap.registerCommands([{ name: "bad name", run() {} }])
+      actionMap.registerLayer({ scope: "global", commands: [{ name: "bad name", run() {} }] })
     }).not.toThrow()
 
     expect(() => {

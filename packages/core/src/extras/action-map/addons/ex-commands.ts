@@ -107,7 +107,7 @@ export function registerExCommands(actionMap: ActionMap, commands: ExCommand[]):
     }
   }
 
-  const offCommands = actionMap.registerCommands(registrations)
+  const offCommands = actionMap.registerLayer({ scope: "global", commands: registrations })
   const offResolver = actionMap.registerCommandResolver((input, ctx) => {
     if (!input.startsWith(":")) {
       return undefined

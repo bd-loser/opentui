@@ -58,14 +58,14 @@ describe("React action map hooks", () => {
       const manager = useActionMap()
 
       useEffect(() => {
-        return manager.registerCommands([
+        return manager.registerLayer({ scope: "global", commands: [
           {
             name: "global",
             run() {
               calls.push("global")
             },
           },
-        ])
+        ] })
       }, [manager])
 
       const layer = useMemo(
@@ -121,10 +121,10 @@ describe("React action map hooks", () => {
       const activeKeys = useActiveKeys()
 
       useEffect(() => {
-        return manager.registerCommands([
+        return manager.registerLayer({ scope: "global", commands: [
           { name: "first", run() {} },
           { name: "second", run() {} },
-        ])
+        ] })
       }, [manager])
 
       const firstLayer = useMemo(
@@ -203,7 +203,7 @@ describe("React action map hooks", () => {
       const pendingSequenceParts = usePendingSequenceParts()
 
       useEffect(() => {
-        return manager.registerCommands([{ name: "delete-line", run() {} }])
+        return manager.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
       }, [manager])
 
       const layer = useMemo(
@@ -253,14 +253,14 @@ describe("React action map hooks", () => {
       setActive = setActiveSignal
 
       useEffect(() => {
-        return manager.registerCommands([
+        return manager.registerLayer({ scope: "global", commands: [
           {
             name: "target",
             run() {
               calls.push("target")
             },
           },
-        ])
+        ] })
       }, [manager])
 
       const layer = useMemo(
@@ -311,14 +311,14 @@ describe("React action map hooks", () => {
       setActive = setActiveSignal
 
       useEffect(() => {
-        return manager.registerCommands([
+        return manager.registerLayer({ scope: "global", commands: [
           {
             name: "target",
             run() {
               calls.push("target")
             },
           },
-        ])
+        ] })
       }, [manager])
 
       const layer = useMemo(
@@ -392,14 +392,14 @@ describe("React action map hooks", () => {
 
       useEffect(() => {
         const offEnabled = registerEnabledField(manager)
-        const offCommands = manager.registerCommands([
+        const offCommands = manager.registerLayer({ scope: "global", commands: [
           {
             name: "reactive",
             run() {
               calls.push("reactive")
             },
           },
-        ])
+        ] })
 
         return () => {
           offCommands()
@@ -478,14 +478,14 @@ describe("React action map hooks", () => {
 
       useEffect(() => {
         const offEnabled = registerEnabledField(manager)
-        const offCommands = manager.registerCommands([
+        const offCommands = manager.registerLayer({ scope: "global", commands: [
           {
             name: "normal-only",
             run() {
               calls.push("normal")
             },
           },
-        ])
+        ] })
         return () => {
           offCommands()
           offEnabled()
@@ -555,7 +555,7 @@ describe("React action map hooks", () => {
       // Install these before the child's `useBindings` effect runs.
       useMemo(() => {
         registerEnabledField(manager)
-        manager.registerCommands([{ name: "probe", run() {} }])
+        manager.registerLayer({ scope: "global", commands: [{ name: "probe", run() {} }] })
       }, [manager])
 
       return <>{mounted ? <Child /> : null}</>

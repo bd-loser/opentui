@@ -22,14 +22,14 @@ describe("emacs bindings addon", () => {
     const calls: string[] = []
 
     registerEmacsBindings(actionMap)
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "save-buffer",
         run() {
           calls.push("save")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",

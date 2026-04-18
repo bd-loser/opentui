@@ -22,14 +22,14 @@ describe("aliases field addon", () => {
     const calls: string[] = []
 
     registerAliasesField(actionMap)
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "submit",
         run() {
           calls.push("submit")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       aliases: { myenter: "return" },
@@ -48,14 +48,14 @@ describe("aliases field addon", () => {
     const calls: string[] = []
 
     registerAliasesField(actionMap)
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "submit",
         run() {
           calls.push("submit")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       aliases: { enter: "return" },
@@ -71,7 +71,7 @@ describe("aliases field addon", () => {
     const actionMap = getActionMap(renderer)
 
     registerAliasesField(actionMap)
-    actionMap.registerCommands([{ name: "submit", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "submit", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       aliases: { enter: "return" },
@@ -89,7 +89,7 @@ describe("aliases field addon", () => {
     const calls: string[] = []
 
     registerAliasesField(actionMap)
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "aliased",
         run() {
@@ -102,7 +102,7 @@ describe("aliases field addon", () => {
           calls.push("plain")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       aliases: { myenter: "return" },
@@ -126,14 +126,14 @@ describe("aliases field addon", () => {
     const offAliases = registerAliasesField(actionMap)
     offAliases()
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "submit",
         run() {
           calls.push("submit")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       aliases: { enter: "return" },
@@ -152,10 +152,10 @@ describe("aliases field addon", () => {
 
     registerAliasesField(actionMap)
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       { name: "submit-enter", run() {} },
       { name: "submit-return", run() {} },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",

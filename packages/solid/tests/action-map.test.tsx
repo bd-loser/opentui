@@ -49,14 +49,14 @@ describe("solid action map hooks", () => {
 
     function GlobalBindings() {
       const manager = useActionMap()
-      const offCommands = manager.registerCommands([
+      const offCommands = manager.registerLayer({ scope: "global", commands: [
         {
           name: "global",
           run() {
             calls.push("global")
           },
         },
-      ])
+      ] })
 
       useBindings({
         scope: "global",
@@ -104,10 +104,10 @@ describe("solid action map hooks", () => {
     function App() {
       const manager = useActionMap()
       const activeKeys = useActiveKeys()
-      const offCommands = manager.registerCommands([
+      const offCommands = manager.registerLayer({ scope: "global", commands: [
         { name: "first", run() {} },
         { name: "second", run() {} },
-      ])
+      ] })
 
       const firstBindingsRef = useBindings({
         scope: "focus-within",
@@ -174,7 +174,7 @@ describe("solid action map hooks", () => {
     function App() {
       const manager = useActionMap()
       const pendingSequenceParts = usePendingSequenceParts()
-      const offCommands = manager.registerCommands([{ name: "delete-line", run() {} }])
+      const offCommands = manager.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
 
       useBindings({
         scope: "global",
@@ -215,14 +215,14 @@ describe("solid action map hooks", () => {
       const [active, setActiveSignal] = createSignal<"first" | "second">("first")
       setActive = setActiveSignal
 
-      const offCommands = manager.registerCommands([
+      const offCommands = manager.registerLayer({ scope: "global", commands: [
         {
           name: "target",
           run() {
             calls.push("target")
           },
         },
-      ])
+      ] })
 
       onCleanup(() => {
         offCommands()
@@ -263,14 +263,14 @@ describe("solid action map hooks", () => {
       setEnabled = setEnabledSignal
 
       const offEnabled = registerEnabledField(manager)
-      const offCommands = manager.registerCommands([
+      const offCommands = manager.registerLayer({ scope: "global", commands: [
         {
           name: "reactive",
           run() {
             calls.push("reactive")
           },
         },
-      ])
+      ] })
 
       useBindings({
         scope: "global",
@@ -343,14 +343,14 @@ describe("solid action map hooks", () => {
 
     function App() {
       const manager = useActionMap()
-      const offCommands = manager.registerCommands([
+      const offCommands = manager.registerLayer({ scope: "global", commands: [
         {
           name: "guarded",
           run() {
             calls.push("guarded")
           },
         },
-      ])
+      ] })
       onCleanup(offCommands)
 
       registerEnabledField(manager)
@@ -411,7 +411,7 @@ describe("solid action map hooks", () => {
 
       const manager = useActionMap()
       registerEnabledField(manager)
-      const offCommands = manager.registerCommands([{ name: "probe", run() {} }])
+      const offCommands = manager.registerLayer({ scope: "global", commands: [{ name: "probe", run() {} }] })
       onCleanup(offCommands)
 
       return <Show when={mounted()}>{() => <Child />}</Show>
@@ -438,14 +438,14 @@ describe("solid action map hooks", () => {
 
     function App() {
       const manager = useActionMap()
-      const offCommands = manager.registerCommands([
+      const offCommands = manager.registerLayer({ scope: "global", commands: [
         {
           name: "normal-only",
           run() {
             calls.push("normal")
           },
         },
-      ])
+      ] })
       onCleanup(offCommands)
 
       registerEnabledField(manager)

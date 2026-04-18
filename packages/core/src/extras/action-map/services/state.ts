@@ -17,8 +17,10 @@ import type {
   ParsedKeyStroke,
   ParsedKeyToken,
   PendingSequenceState,
+  RegisteredCommand,
   RegisteredLayer,
   RegisteredLayerBucket,
+  ResolvedBindingCommand,
   RuntimeMatchable,
 } from "../types.js"
 import { OrderedRegistry, PriorityRegistry } from "../lib/registry.js"
@@ -52,9 +54,36 @@ export interface LayersState {
   layersWithCommands: number
 }
 
+export interface LayerCommandEntry {
+  layer: RegisteredLayer
+  command: RegisteredCommand
+}
+
+export interface ResolvedCommandEntry {
+  layer?: RegisteredLayer
+  resolved: ResolvedBindingCommand
+}
+
+export interface ActiveCommandView {
+  entries: readonly LayerCommandEntry[]
+  reachable: readonly LayerCommandEntry[]
+  reachableByName: ReadonlyMap<string, LayerCommandEntry>
+  chainsByName: ReadonlyMap<string, readonly LayerCommandEntry[]>
+  resolvedWithoutRecordChains: Map<string, readonly ResolvedCommandEntry[]>
+  resolvedWithRecordChains: Map<string, readonly ResolvedCommandEntry[]>
+  fallbackWithoutRecord: Map<string, ResolvedBindingCommand | null>
+  fallbackWithRecord: Map<string, ResolvedBindingCommand | null>
+  fallbackWithoutRecordErrors: Set<string>
+  fallbackWithRecordErrors: Set<string>
+}
+
 export interface CommandsState {
   commandMetadataVersion: number
   registeredNames: Map<string, number>
+  activeCommandViewVersion: number
+  activeCommandView?: ActiveCommandView
+  registeredCommandsCacheVersion: number
+  registeredCommandsCache: readonly RegisteredCommand[]
 }
 
 export interface ConditionsState {
@@ -128,6 +157,10 @@ export function createActionMapState(): State {
     commands: {
       commandMetadataVersion: 0,
       registeredNames: new Map<string, number>(),
+      activeCommandViewVersion: -1,
+      activeCommandView: undefined,
+      registeredCommandsCacheVersion: -1,
+      registeredCommandsCache: [],
     },
     conditions: {
       runtimeKeyDependents: new Map<string, Set<RuntimeMatchable>>(),

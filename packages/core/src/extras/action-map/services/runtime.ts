@@ -34,7 +34,7 @@ function getLiveRenderer(renderer: CliRenderer): CliRenderer {
 }
 
 export class RuntimeService {
-  private commands: Pick<CommandService, "canResolveCommand" | "getCommandAttrs" | "createCommandProjection"> | undefined
+  private commands: CommandService | undefined
 
   constructor(
     private readonly state: State,
@@ -44,7 +44,7 @@ export class RuntimeService {
     private readonly conditions: ConditionService,
   ) {}
 
-  public connectCommands(commands: Pick<CommandService, "canResolveCommand" | "getCommandAttrs" | "createCommandProjection">): void {
+  public connectCommands(commands: CommandService): void {
     this.commands = commands
   }
 

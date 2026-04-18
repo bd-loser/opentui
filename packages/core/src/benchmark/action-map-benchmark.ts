@@ -378,7 +378,7 @@ function registerStateChangeReadListeners(actionMap: ActionMap): () => void {
     sink += actionMap.getActiveKeys().length
   })
   const offPendingSequence = actionMap.on("state", () => {
-    sink += actionMap.getPendingSequenceParts().length
+    sink += actionMap.getPendingSequence().length
   })
 
   return () => {
@@ -395,7 +395,7 @@ function registerStateChangeMetadataListeners(actionMap: ActionMap): () => void 
     sink += actionMap.getActiveKeys({ includeMetadata: true }).length
   })
   const offPendingSequence = actionMap.on("state", () => {
-    sink += actionMap.getPendingSequenceParts().length
+    sink += actionMap.getPendingSequence().length
   })
 
   return () => {
@@ -412,7 +412,7 @@ function registerStateChangeBindingListeners(actionMap: ActionMap): () => void {
     sink += actionMap.getActiveKeys({ includeBindings: true }).length
   })
   const offPendingSequence = actionMap.on("state", () => {
-    sink += actionMap.getPendingSequenceParts().length
+    sink += actionMap.getPendingSequence().length
   })
 
   return () => {
@@ -442,7 +442,7 @@ function readActiveKeysWithBindingsRepeatedly(actionMap: ActionMap, count: numbe
 
 function readPendingSequencePartsRepeatedly(actionMap: ActionMap, count: number): void {
   for (let index = 0; index < count; index += 1) {
-    actionMap.getPendingSequenceParts()
+    actionMap.getPendingSequence()
   }
 }
 

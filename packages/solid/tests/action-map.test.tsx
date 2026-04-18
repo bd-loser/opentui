@@ -8,7 +8,7 @@ import {
   useActionMap,
   useActiveKeys,
   useBindings,
-  usePendingSequenceParts,
+  usePendingSequence,
 } from "../index.js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
@@ -170,10 +170,10 @@ describe("solid action map hooks", () => {
     expect(testSetup.captureCharFrame()).toContain("Active: <none>")
   })
 
-  test("usePendingSequenceParts updates without manual subscriptions", async () => {
+  test("usePendingSequence updates without manual subscriptions", async () => {
     function App() {
       const manager = useActionMap()
-      const pendingSequenceParts = usePendingSequenceParts()
+      const pendingSequence = usePendingSequence()
       const offCommands = manager.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
 
       useBindings({
@@ -186,7 +186,7 @@ describe("solid action map hooks", () => {
       })
 
       return (
-        <text>{`Pending: ${stringifyKeySequence(pendingSequenceParts(), { preferDisplay: true }) || "<root>"}`}</text>
+        <text>{`Pending: ${stringifyKeySequence(pendingSequence(), { preferDisplay: true }) || "<root>"}`}</text>
       )
     }
 

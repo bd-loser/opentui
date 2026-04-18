@@ -30,7 +30,6 @@ import type {
   KeyLike,
   ParsedKeyPart,
   ParsedKeyToken,
-  ParsedKeyStroke,
 } from "./types.js"
 import { buildBindingKey, getErrorMessage } from "./lib/utils.js"
 import { RESERVED_BINDING_FIELDS, RESERVED_COMMAND_FIELDS, RESERVED_LAYER_FIELDS } from "./schema.js"
@@ -236,12 +235,8 @@ export class ActionMap {
     return this.projection.ensureValidPendingSequence() !== undefined
   }
 
-  public getPendingSequence(): readonly ParsedKeyStroke[] {
+  public getPendingSequence(): readonly ParsedKeyPart[] {
     return this.projection.getPendingSequence()
-  }
-
-  public getPendingSequenceParts(): readonly ParsedKeyPart[] {
-    return this.projection.getPendingSequenceParts()
   }
 
   public createKeyMatcher(key: KeyLike): (input: StringifiableKey | null | undefined) => boolean {

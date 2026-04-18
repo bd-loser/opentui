@@ -116,7 +116,7 @@ describe("aliases field addon", () => {
     mockInput.pressEnter()
 
     expect(calls).toEqual(["aliased"])
-    expect(actionMap.getPendingSequenceParts()).toEqual([])
+    expect(actionMap.getPendingSequence()).toEqual([])
   })
 
   test("can be disposed to stop alias expansion for subsequent layers", () => {

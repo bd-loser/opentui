@@ -94,13 +94,13 @@ export const useActiveKeys = (options?: ActiveKeyOptions): readonly ActiveKey[] 
   }, [actionMap, options, version])
 }
 
-export const usePendingSequenceParts = (): readonly ParsedKeyPart[] => {
+export const usePendingSequence = (): readonly ParsedKeyPart[] => {
   const actionMap = useActionMap()
   const version = useActionMapStateVersion(actionMap)
 
   return useMemo(() => {
     void version
-    return actionMap.getPendingSequenceParts()
+    return actionMap.getPendingSequence()
   }, [actionMap, version])
 }
 

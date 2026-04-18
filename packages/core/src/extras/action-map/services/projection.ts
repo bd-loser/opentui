@@ -1,7 +1,13 @@
 import type { Renderable } from "../../../Renderable.js"
 import type { CliRenderer } from "../../../renderer.js"
 import type { Emitter } from "../lib/emitter.js"
-import { createParsedKeyPart, snapshotStroke, stringifyKeyStroke } from "../lib/utils.js"
+import {
+  createParsedKeyPart,
+  getRegisteredCommandRecord,
+  resolveRegisteredCommand,
+  snapshotStroke,
+  stringifyKeyStroke,
+} from "../lib/utils.js"
 import type {
   ActiveBinding,
   ActiveKey,
@@ -25,7 +31,6 @@ import type {
 } from "../types.js"
 import type { ConditionService } from "./conditions.js"
 import type { NotificationService } from "./notify.js"
-import { getRegisteredCommandRecord, resolveRegisteredCommand } from "./command-records.js"
 import type { ActiveCommandView, LayerCommandEntry, ResolvedCommandEntry, State } from "./state.js"
 
 const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const

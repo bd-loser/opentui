@@ -7,11 +7,7 @@ import {
   type TextareaRenderable,
 } from "@opentui/core"
 import {
-  registerEnabledField,
-  registerExCommands,
-  registerManagedTextareaLayer,
-  registerMetadataFields,
-  registerTimedLeader,
+  addons,
   stringifyKeySequence,
   stringifyKeyStroke,
   type ActionMapActiveKey,
@@ -372,8 +368,8 @@ export default function ActionMapDemo() {
   const [logs, setLogs] = createSignal<string[]>([])
   const [statusVersion, setStatusVersion] = createSignal(0)
 
-  const offEnabled = registerEnabledField(manager)
-  const offMetadata = registerMetadataFields(manager)
+  const offEnabled = addons.registerEnabledField(manager)
+  const offMetadata = addons.registerMetadataFields(manager)
   const activeKeys = useActiveKeys({ includeMetadata: true })
   const pendingSequenceParts = usePendingSequenceParts()
 
@@ -553,7 +549,7 @@ export default function ActionMapDemo() {
     },
   ]
 
-  const offEx = registerExCommands(
+  const offEx = addons.registerExCommands(
     manager,
     exCommands.map(({ usage: _usage, ...command }) => {
       return command
@@ -647,7 +643,7 @@ export default function ActionMapDemo() {
     restoreCommandPromptFocus()
   }
 
-  const offLeader = registerTimedLeader(manager, {
+  const offLeader = addons.registerTimedLeader(manager, {
     trigger: { name: "x", ctrl: true },
     onArm() {
       setLeaderArmed(true)
@@ -658,7 +654,7 @@ export default function ActionMapDemo() {
     },
   })
 
-  const offManagedTextareas = registerManagedTextareaLayer(manager, {
+  const offManagedTextareas = addons.registerManagedTextareaLayer(manager, {
     scope: "global",
     enabled: () => !commandPromptVisible() && manager.renderer.currentFocusedEditor !== null,
     bindings: [

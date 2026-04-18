@@ -7,11 +7,7 @@ import {
   type TextareaRenderable,
 } from "@opentui/core"
 import {
-  registerEnabledField,
-  registerExCommands,
-  registerManagedTextareaLayer,
-  registerMetadataFields,
-  registerTimedLeader,
+  addons,
   stringifyKeySequence,
   stringifyKeyStroke,
   type ActionMapActiveKey,
@@ -542,8 +538,8 @@ export const App = () => {
   }, [announce, renderer])
 
   useEffect(() => {
-    const offEnabled = registerEnabledField(manager)
-    const offMetadata = registerMetadataFields(manager)
+    const offEnabled = addons.registerEnabledField(manager)
+    const offMetadata = addons.registerMetadataFields(manager)
 
     return () => {
       offMetadata()
@@ -638,7 +634,7 @@ export const App = () => {
   }, [exCommands])
 
   useEffect(() => {
-    return registerExCommands(manager, registeredExCommands)
+    return addons.registerExCommands(manager, registeredExCommands)
   }, [manager, registeredExCommands])
 
   const discoveredExCommands = useMemo(() => {
@@ -725,7 +721,7 @@ export const App = () => {
   }, [announce, closeCommandPrompt, manager, renderer, restoreCommandPromptFocus])
 
   useEffect(() => {
-    return registerTimedLeader(manager, {
+    return addons.registerTimedLeader(manager, {
       trigger: { name: "x", ctrl: true },
       onArm() {
         setLeaderArmed(true)
@@ -759,7 +755,7 @@ export const App = () => {
   )
 
   useEffect(() => {
-    return registerManagedTextareaLayer(manager, managedTextareaLayer)
+    return addons.registerManagedTextareaLayer(manager, managedTextareaLayer)
   }, [managedTextareaLayer, manager])
 
   const globalLayer = useMemo(

@@ -50,6 +50,7 @@ export interface LayersState {
   globalLayers: RegisteredLayer[]
   targetLayers: WeakMap<Renderable, RegisteredLayerBucket>
   layersWithConditions: number
+  layersWithLocalCommands: number
 }
 
 export interface CommandsState {
@@ -123,6 +124,7 @@ export function createActionMapState(): State {
       globalLayers: [],
       targetLayers: new WeakMap<Renderable, RegisteredLayerBucket>(),
       layersWithConditions: 0,
+      layersWithLocalCommands: 0,
     },
     commands: {
       commands: new Map<string, RegisteredCommand>(),

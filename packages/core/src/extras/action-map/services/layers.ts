@@ -1,15 +1,18 @@
 import { RenderableEvents, type Renderable } from "../../../Renderable.js"
 import type { CompilerService } from "./compiler.js"
+import type { CommandService } from "./commands.js"
 import type { ConditionService } from "./conditions.js"
 import type { RuntimeService } from "./runtime.js"
 import type {
   BindingInput,
+  CommandDefinition,
   CompiledBindingsResult,
   EventData,
   Layer,
   Scope,
   ParsedKeyToken,
   PendingSequenceState,
+  RegisteredCommand,
   RegisteredLayer,
   RegisteredLayerBucket,
   RuntimeMatcher,
@@ -26,7 +29,20 @@ import {
 
 const NOOP = (): void => {}
 
-export const RESERVED_LAYER_FIELDS = new Set(["target", "scope", "priority", "bindings"])
+export const RESERVED_LAYER_FIELDS = new Set(["target", "scope", "priority", "bindings", "commands"])
+
+function createCommandLookup(commands: readonly RegisteredCommand[]): ReadonlyMap<string, RegisteredCommand> | undefined {
+  if (commands.length === 0) {
+    return undefined
+  }
+
+  const lookup = new Map<string, RegisteredCommand>()
+  for (const command of commands) {
+    lookup.set(command.name, command)
+  }
+
+  return lookup
+}
 
 interface CompileLayerRuntimeStateResult {
   requires: readonly [name: string, value: unknown][]
@@ -38,6 +54,7 @@ interface CompileLayerRuntimeStateResult {
 
 interface LayersOptions {
   compiler: CompilerService
+  commands: CommandService
   warnUnknownField: (kind: "binding" | "layer", fieldName: string) => void
 }
 
@@ -65,10 +82,12 @@ export class LayerService {
       let conditionKeys: readonly string[]
       let hasUnkeyedMatchers: boolean
       let compileFields: Readonly<Record<string, unknown>> | undefined
+      let localCommands: ReadonlyMap<string, RegisteredCommand> | undefined
 
       try {
         scope = this.normalizeScope(layer)
-        bindingInputs = snapshotBindingInputs(layer.bindings)
+        bindingInputs = snapshotBindingInputs(layer.bindings ?? [])
+        localCommands = this.createLocalCommands(layer.commands)
         ;({ requires, matchers, conditionKeys, hasUnkeyedMatchers, compileFields } =
           this.compileLayerRuntimeState(layer))
       } catch (error) {
@@ -84,9 +103,10 @@ export class LayerService {
         target,
         order,
         compileFields,
+        localCommands,
       )
 
-      if (compiledBindings.bindings.length === 0 && !compiledBindings.hasTokenBindings) {
+      if (compiledBindings.bindings.length === 0 && !compiledBindings.hasTokenBindings && !localCommands) {
         return NOOP
       }
 
@@ -102,6 +122,7 @@ export class LayerService {
         matchCacheDirty: true,
         compileFields,
         bindingInputs,
+        localCommands,
         compiledBindings: compiledBindings.bindings,
         hasUnkeyedBindings: compiledBindings.bindings.some((binding) => binding.hasUnkeyedMatchers),
         hasTokenBindings: compiledBindings.hasTokenBindings,
@@ -109,6 +130,10 @@ export class LayerService {
       }
 
       this.state.layers.layers.add(registeredLayer)
+      if (registeredLayer.localCommands) {
+        this.state.layers.layersWithLocalCommands += 1
+      }
+
       if (registeredLayer.requires.length > 0 || registeredLayer.matchers.length > 0) {
         this.state.layers.layersWithConditions += 1
       }
@@ -155,6 +180,7 @@ export class LayerService {
             layer.target,
             layer.order,
             layer.compileFields,
+            layer.localCommands,
           ),
         )
       }
@@ -270,6 +296,17 @@ export class LayerService {
     }
 
     return "global"
+  }
+
+  private createLocalCommands(
+    commands: readonly CommandDefinition[] | undefined,
+  ): ReadonlyMap<string, RegisteredCommand> | undefined {
+    if (!commands || commands.length === 0) {
+      return undefined
+    }
+
+    const normalized = this.options.commands.normalizeCommands(commands)
+    return createCommandLookup(normalized)
   }
 
   private compileLayerRuntimeState(layer: Layer): CompileLayerRuntimeStateResult {
@@ -390,6 +427,10 @@ export class LayerService {
 
       if (layer.requires.length > 0 || layer.matchers.length > 0) {
         this.state.layers.layersWithConditions -= 1
+      }
+
+      if (layer.localCommands) {
+        this.state.layers.layersWithLocalCommands -= 1
       }
 
       this.conditions.unregisterRuntimeMatchable(layer)

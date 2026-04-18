@@ -16,6 +16,7 @@ import type {
   RegisteredLayerBucket,
   RuntimeMatcher,
 } from "../types.js"
+import { RESERVED_LAYER_FIELDS } from "../schema.js"
 import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
 import {
@@ -27,8 +28,6 @@ import {
 } from "../lib/utils.js"
 
 const NOOP = (): void => {}
-
-export const RESERVED_LAYER_FIELDS = new Set(["target", "scope", "priority", "bindings", "commands"])
 
 function createCommandLookup(commands: readonly RegisteredCommand[]): ReadonlyMap<string, RegisteredCommand> | undefined {
   if (commands.length === 0) {

@@ -462,6 +462,7 @@ export interface SequenceNode {
 export interface RegisteredLayer {
   order: number
   target?: Renderable
+  indexTarget: Renderable
   scope: Scope
   priority: number
   requires: readonly [name: string, value: unknown][]

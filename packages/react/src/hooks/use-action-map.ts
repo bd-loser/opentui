@@ -9,7 +9,7 @@ import {
   type ReactiveMatcher,
   type ParsedKeyPart,
 } from "@opentui/core/extras"
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, type DependencyList } from "react"
 import { useRenderer } from "./use-renderer.js"
 
 export type UseBindingsTarget<TRenderable extends Renderable = Renderable> =
@@ -105,15 +105,19 @@ export const usePendingSequence = (): readonly ParsedKeyPart[] => {
 }
 
 export function useBindings<TRenderable extends Renderable = Renderable>(
-  layer: UseGlobalBindingsLayer,
+  createLayer: () => UseGlobalBindingsLayer,
+  deps: DependencyList,
 ): BindingsRef<TRenderable>
 export function useBindings<TRenderable extends Renderable = Renderable>(
-  layer: UseTargetBindingsLayer<TRenderable>,
+  createLayer: () => UseTargetBindingsLayer<TRenderable>,
+  deps: DependencyList,
 ): BindingsRef<TRenderable>
 export function useBindings<TRenderable extends Renderable = Renderable>(
-  layer: UseBindingsLayer<TRenderable>,
+  createLayer: () => UseBindingsLayer<TRenderable>,
+  deps: DependencyList,
 ): BindingsRef<TRenderable> {
   const actionMap = useActionMap()
+  const layer = useMemo(createLayer, deps)
   const layerRef = useRef(layer)
   const refTargetRef = useRef<TRenderable | undefined>(undefined)
   const disposeRef = useRef<(() => void) | undefined>(undefined)

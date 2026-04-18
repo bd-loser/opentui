@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { Renderable } from "@opentui/core"
 import { act } from "react"
-import { registerEnabledField, stringifyKeySequence } from "@opentui/core/extras"
+import { addons, stringifyKeySequence } from "@opentui/core/extras"
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react"
 import { testRender } from "../src/test-utils.js"
 import {
@@ -391,7 +391,7 @@ describe("React action map hooks", () => {
       const manager = useActionMap()
 
       useEffect(() => {
-        const offEnabled = registerEnabledField(manager)
+        const offEnabled = addons.registerEnabledField(manager)
         const offCommands = manager.registerLayer({ scope: "global", commands: [
           {
             name: "reactive",
@@ -477,7 +477,7 @@ describe("React action map hooks", () => {
       const manager = useActionMap()
 
       useEffect(() => {
-        const offEnabled = registerEnabledField(manager)
+        const offEnabled = addons.registerEnabledField(manager)
         const offCommands = manager.registerLayer({ scope: "global", commands: [
           {
             name: "normal-only",
@@ -554,7 +554,7 @@ describe("React action map hooks", () => {
 
       // Install these before the child's `useBindings` effect runs.
       useMemo(() => {
-        registerEnabledField(manager)
+        addons.registerEnabledField(manager)
         manager.registerLayer({ scope: "global", commands: [{ name: "probe", run() {} }] })
       }, [manager])
 

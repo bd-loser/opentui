@@ -4157,6 +4157,32 @@ describe("action map", () => {
     expect(warnings).toEqual(['[ActionMap] Unresolved command "missing-command" for binding "x" in global layer'])
   })
 
+  test("warns when an exact binding has no command and no reachable continuations", () => {
+    const actionMap = getActionMap(renderer)
+    const { warnings } = captureDiagnostics(actionMap)
+
+    actionMap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x" }],
+    })
+
+    expect(warnings).toEqual([
+      '[ActionMap] Binding "x" in global layer has no command and no reachable continuations; it will never trigger',
+    ])
+  })
+
+  test("does not warn for metadata-only prefix bindings", () => {
+    const actionMap = getActionMap(renderer)
+    const { warnings } = captureDiagnostics(actionMap)
+
+    actionMap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "g" }, { key: "gd", cmd: () => {} }],
+    })
+
+    expect(warnings).toEqual([])
+  })
+
   test("notifies unresolved command listeners with command, binding, scope, and target context", () => {
     const actionMap = getActionMap(renderer)
     const target = createFocusableBox("unresolved-target")

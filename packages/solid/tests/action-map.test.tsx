@@ -97,6 +97,45 @@ describe("solid action map hooks", () => {
     expect(calls).toEqual(["global"])
   })
 
+  test("inline useBindings layer objects do not re-register on Solid reactive updates", async () => {
+    let setTick!: (value: number) => void
+    let registerCalls = 0
+
+    function App() {
+      const manager = useActionMap()
+      const [tick, setTickSignal] = createSignal(0)
+      setTick = setTickSignal
+
+      const offCommands = manager.registerLayer({ scope: "global", commands: [{ name: "probe", run() {} }] })
+      const original = manager.registerLayer.bind(manager)
+      manager.registerLayer = ((layer) => {
+        registerCalls += 1
+        return original(layer)
+      }) as typeof manager.registerLayer
+
+      useBindings({
+        scope: "global",
+        bindings: { x: "probe" },
+      })
+
+      onCleanup(() => {
+        manager.registerLayer = original
+        offCommands()
+      })
+
+      return <text>{tick()}</text>
+    }
+
+    testSetup = await testRender(() => <App />, { width: 20, height: 6 })
+
+    expect(registerCalls).toBe(1)
+
+    setTick(1)
+    await Bun.sleep(0)
+
+    expect(registerCalls).toBe(1)
+  })
+
   test("useActiveKeys updates on focus changes and direct blur", async () => {
     let firstTarget!: Renderable
     let secondTarget!: Renderable

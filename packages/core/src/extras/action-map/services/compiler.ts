@@ -16,6 +16,7 @@ import type {
   EventData,
   ParsedBindingInput,
   ReactiveMatcher,
+  RegisteredCommand,
   Scope,
   CompiledBinding,
   CompiledBindingsResult,
@@ -89,6 +90,7 @@ export class CompilerService {
     sourceTarget: Renderable | undefined,
     sourceLayerOrder: number,
     compileFields?: Readonly<Record<string, unknown>>,
+    localCommands?: ReadonlyMap<string, RegisteredCommand>,
   ): CompiledBindingsResult {
     const root = createSequenceNode(null, null, null)
     const compiledBindings: CompiledBinding[] = []
@@ -236,7 +238,7 @@ export class CompilerService {
               compiledBinding.attrs = attrs
             }
 
-            commands.resolveCompiledBindingCommand(compiledBinding)
+            commands.resolveCompiledBindingCommand(compiledBinding, localCommands)
 
             if (compiledSequence.length === 0) {
               continue

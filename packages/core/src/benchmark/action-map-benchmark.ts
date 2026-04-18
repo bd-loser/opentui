@@ -600,6 +600,34 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "compile_layer_default_parser_with_local_commands",
+    description: "Repeated layer registration with per-layer commands compiled on mount",
+    async setup() {
+      const resources = await createScenarioResources()
+      resources.actionMap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
+
+      return {
+        resources,
+        runIteration() {
+          const off = resources.actionMap.registerLayer({
+            scope: "global",
+            commands: [
+              {
+                name: "bench-local",
+                run() {},
+              },
+            ],
+            bindings: [{ key: "g<leader>d", cmd: "bench-local" }],
+          })
+          off()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "compile_layer_many_noop_parsers",
     description: "Repeated layer registration with many no-op parsers ahead of default",
     async setup() {

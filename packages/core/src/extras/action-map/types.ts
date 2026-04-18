@@ -130,7 +130,8 @@ export type Scope = "global" | "focus" | "focus-within"
 
 export interface LayerFields {
   priority?: number
-  bindings: Bindings
+  bindings?: Bindings
+  commands?: readonly CommandDefinition[]
   [key: string]: unknown
 }
 
@@ -471,6 +472,7 @@ export interface RegisteredLayer {
   matchCache?: boolean
   compileFields?: Readonly<Record<string, unknown>>
   bindingInputs: readonly BindingInput[]
+  localCommands?: ReadonlyMap<string, RegisteredCommand>
   compiledBindings: readonly CompiledBinding[]
   hasUnkeyedBindings: boolean
   hasTokenBindings: boolean

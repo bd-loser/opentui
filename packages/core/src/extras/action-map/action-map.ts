@@ -142,7 +142,7 @@ export class ActionMap {
     this.notify = new NotificationService(this.state, this.events, this.hooks)
     this.conditions = new ConditionService(this.state, this.notify)
     this.runtime = new RuntimeService(this.state, this.renderer, this.hooks, this.notify, this.conditions)
-    this.commands = new CommandService(this.state, this.notify, this.runtime, this.hooks, {
+    this.commands = new CommandService(this.state, this.notify, this.runtime, this.conditions, this.hooks, {
       actionMap: this,
     })
     this.compiler = new CompilerService(this.state, this.notify, this.commands, this.conditions, {
@@ -155,6 +155,7 @@ export class ActionMap {
     })
     this.layers = new LayerService(this.state, this.notify, this.conditions, this.runtime, {
       compiler: this.compiler,
+      commands: this.commands,
       warnUnknownField: (kind, fieldName) => {
         this.warnUnknownField(kind, fieldName)
       },

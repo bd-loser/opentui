@@ -770,7 +770,6 @@ export const App = () => {
         { key: "<leader>h", cmd: "toggle-help", desc: "Toggle help", group: "Leader" },
       ] satisfies ActionMapBindingInput[],
     }),
-    [],
   )
 
   useBindings(
@@ -779,7 +778,6 @@ export const App = () => {
       enabled: () => !commandPromptVisibleRef.current,
       bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }] satisfies ActionMapBindingInput[],
     }),
-    [],
   )
 
   const activeKeys = useActiveKeys({ includeMetadata: true })

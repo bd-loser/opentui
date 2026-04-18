@@ -73,7 +73,6 @@ describe("React action map hooks", () => {
           scope: "global" as const,
           bindings: { x: "global" },
         }),
-        [],
       )
 
       return <text>bindings</text>
@@ -140,7 +139,6 @@ describe("React action map hooks", () => {
           scope: "global" as const,
           bindings: { x: "probe" },
         }),
-        [],
       )
 
       return <text>{tick}</text>
@@ -180,14 +178,12 @@ describe("React action map hooks", () => {
           scope: "focus-within" as const,
           bindings: { x: "first" },
         }),
-        [],
       )
       const secondBindingsRef = useBindings(
         () => ({
           scope: "focus-within" as const,
           bindings: { y: "second" },
         }),
-        [],
       )
 
       return (
@@ -256,7 +252,6 @@ describe("React action map hooks", () => {
           scope: "global" as const,
           bindings: [{ key: "dd", cmd: "delete-line" }],
         }),
-        [],
       )
 
       return (
@@ -311,7 +306,6 @@ describe("React action map hooks", () => {
           scope: "focus-within" as const,
           bindings: [{ key: "x", cmd: "target" }],
         }),
-        [],
       )
 
       return (
@@ -367,7 +361,6 @@ describe("React action map hooks", () => {
           scope: "focus-within" as const,
           bindings: [{ key: "x", cmd: "target" }],
         }),
-        [],
       )
 
       return (
@@ -621,7 +614,6 @@ describe("React action map hooks", () => {
             scope: "focus-within",
             bindings: { x: "target" },
           }),
-          [],
         )
 
         return <text>bindings</text>
@@ -656,7 +648,6 @@ describe("React action map hooks", () => {
             target: () => undefined,
             bindings: { x: "target" },
           }),
-          [],
         )
 
         return <text>bindings</text>

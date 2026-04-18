@@ -327,7 +327,7 @@ function CounterPanel(props: {
     return manager.registerLayer({ scope: "global", commands: commands })
   }, [commands, manager])
 
-  const layer = useMemo(
+  const bindingsRef = useBindings(
     () => ({
       bindings: [
         { key: "j", cmd: incrementCommand, desc: `${props.label} +${props.step}` },
@@ -337,8 +337,6 @@ function CounterPanel(props: {
     }),
     [decrementCommand, incrementCommand, props.label, props.saveTarget, props.step],
   )
-
-  const bindingsRef = useBindings(layer)
   const combinedRef = useCallback(
     (value: Renderable | null) => {
       bindingsRef(value)
@@ -758,7 +756,7 @@ export const App = () => {
     return addons.registerManagedTextareaLayer(manager, managedTextareaLayer)
   }, [managedTextareaLayer, manager])
 
-  const globalLayer = useMemo(
+  useBindings(
     () => ({
       scope: "global" as const,
       enabled: () => !commandPromptVisibleRef.current,
@@ -775,9 +773,7 @@ export const App = () => {
     [],
   )
 
-  useBindings(globalLayer)
-
-  const commandPromptLayer = useMemo(
+  useBindings(
     () => ({
       scope: "global" as const,
       enabled: () => !commandPromptVisibleRef.current,
@@ -785,8 +781,6 @@ export const App = () => {
     }),
     [],
   )
-
-  useBindings(commandPromptLayer)
 
   const activeKeys = useActiveKeys({ includeMetadata: true })
   const pendingSequence = usePendingSequence()
@@ -870,7 +864,7 @@ export const App = () => {
     return `Usage: ${selectedCommandPromptSuggestion.usage}  |  ${selectedCommandPromptSuggestion.desc}`
   }, [selectedCommandPromptSuggestion])
 
-  const commandPromptBindingsLayer = useMemo(
+  const commandPromptBindingsRef = useBindings<InputRenderable>(
     () => ({
       enabled: () => commandPromptVisibleRef.current,
       commands: [
@@ -922,8 +916,6 @@ export const App = () => {
     }),
     [applyCommandPromptSuggestion, closeCommandPrompt, executeCommandPrompt, moveCommandPromptSelection],
   )
-
-  const commandPromptBindingsRef = useBindings<InputRenderable>(commandPromptBindingsLayer)
 
   const commandPromptInputBindingRef = useCallback(
     (value: InputRenderable | null) => {

@@ -68,15 +68,13 @@ describe("React action map hooks", () => {
         ] })
       }, [manager])
 
-      const layer = useMemo(
+      useBindings(
         () => ({
           scope: "global" as const,
           bindings: { x: "global" },
         }),
         [],
       )
-
-      useBindings(layer)
 
       return <text>bindings</text>
     }
@@ -127,23 +125,20 @@ describe("React action map hooks", () => {
         ] })
       }, [manager])
 
-      const firstLayer = useMemo(
+      const firstBindingsRef = useBindings(
         () => ({
           scope: "focus-within" as const,
           bindings: { x: "first" },
         }),
         [],
       )
-      const secondLayer = useMemo(
+      const secondBindingsRef = useBindings(
         () => ({
           scope: "focus-within" as const,
           bindings: { y: "second" },
         }),
         [],
       )
-
-      const firstBindingsRef = useBindings(firstLayer)
-      const secondBindingsRef = useBindings(secondLayer)
 
       return (
         <box width={24} height={8} flexDirection="column">
@@ -206,15 +201,13 @@ describe("React action map hooks", () => {
         return manager.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
       }, [manager])
 
-      const layer = useMemo(
+      useBindings(
         () => ({
           scope: "global" as const,
           bindings: [{ key: "dd", cmd: "delete-line" }],
         }),
         [],
       )
-
-      useBindings(layer)
 
       return (
         <text>{`Pending: ${stringifyKeySequence(pendingSequence, { preferDisplay: true }) || "<root>"}`}</text>
@@ -263,15 +256,13 @@ describe("React action map hooks", () => {
         ] })
       }, [manager])
 
-      const layer = useMemo(
+      const bindingsRef = useBindings(
         () => ({
           scope: "focus-within" as const,
           bindings: [{ key: "x", cmd: "target" }],
         }),
         [],
       )
-
-      const bindingsRef = useBindings(layer)
 
       return (
         <box width={20} height={6}>
@@ -321,15 +312,13 @@ describe("React action map hooks", () => {
         ] })
       }, [manager])
 
-      const layer = useMemo(
+      const bindingsRef = useBindings(
         () => ({
           scope: "focus-within" as const,
           bindings: [{ key: "x", cmd: "target" }],
         }),
         [],
       )
-
-      const bindingsRef = useBindings(layer)
 
       return (
         <box width={20} height={6}>
@@ -409,7 +398,7 @@ describe("React action map hooks", () => {
 
       const matcher = useMemo(() => reactiveMatcherFromStore(store.subscribe, store.getSnapshot), [])
 
-      const layer = useMemo(
+      useBindings(
         () => ({
           scope: "global" as const,
           enabled: matcher,
@@ -417,8 +406,6 @@ describe("React action map hooks", () => {
         }),
         [matcher],
       )
-
-      useBindings(layer)
 
       return <box width={20} height={6} />
     }
@@ -497,12 +484,10 @@ describe("React action map hooks", () => {
         [],
       )
 
-      const layer = useMemo(
+      useBindings(
         () => ({ scope: "global" as const, enabled: matcher, bindings: { x: "normal-only" } }),
         [matcher],
       )
-
-      useBindings(layer)
 
       return <box width={20} height={6} />
     }
@@ -542,7 +527,7 @@ describe("React action map hooks", () => {
 
     function Child() {
       const matcher = useMemo(() => reactiveMatcherFromStore(store.subscribe, store.getSnapshot), [])
-      useBindings({ scope: "global", enabled: matcher, bindings: { x: "probe" } })
+      useBindings(() => ({ scope: "global", enabled: matcher, bindings: { x: "probe" } }), [matcher])
       return <box width={10} height={2} />
     }
 
@@ -581,10 +566,13 @@ describe("React action map hooks", () => {
 
     try {
       function App() {
-        useBindings({
-          scope: "focus-within",
-          bindings: { x: "target" },
-        })
+        useBindings(
+          () => ({
+            scope: "focus-within",
+            bindings: { x: "target" },
+          }),
+          [],
+        )
 
         return <text>bindings</text>
       }
@@ -612,11 +600,14 @@ describe("React action map hooks", () => {
 
     try {
       function App() {
-        useBindings({
-          scope: "focus-within",
-          target: () => undefined,
-          bindings: { x: "target" },
-        })
+        useBindings(
+          () => ({
+            scope: "focus-within",
+            target: () => undefined,
+            bindings: { x: "target" },
+          }),
+          [],
+        )
 
         return <text>bindings</text>
       }

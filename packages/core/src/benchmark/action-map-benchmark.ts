@@ -7,9 +7,9 @@ import {
   addons,
   defaultBindingParser,
   getActionMap,
-  type ActionMapBindingParser,
+  type BindingParser,
   type ActionMap,
-  type ActionMapReactiveMatcher,
+  type ReactiveMatcher,
 } from "../extras/action-map/index.js"
 
 const DEFAULT_ITERATIONS = 20_000
@@ -189,9 +189,9 @@ function createKey(index: number): string {
   return KEY_POOL[index % KEY_POOL.length] ?? "x"
 }
 
-const noopBindingParser: ActionMapBindingParser = () => undefined
+const noopBindingParser: BindingParser = () => undefined
 
-function createBracketTokenParser(): ActionMapBindingParser {
+function createBracketTokenParser(): BindingParser {
   return ({ input, index, tokens }) => {
     if (input[index] !== "[") {
       return undefined
@@ -330,7 +330,7 @@ function createFlagStore(): FlagStore {
   }
 }
 
-function createFlagMatcher(store: FlagStore, key: string): ActionMapReactiveMatcher {
+function createFlagMatcher(store: FlagStore, key: string): ReactiveMatcher {
   return {
     get: () => store.flags[key] === true,
     subscribe(onChange) {

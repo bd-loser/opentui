@@ -3,17 +3,18 @@ import type { CompilerService } from "./compiler.js"
 import type { ConditionService } from "./conditions.js"
 import type { RuntimeService } from "./runtime.js"
 import type {
-  ActionMapBindingInput,
-  ActionMapEventData,
-  ActionMapLayer,
-  ActionMapScope,
+  BindingInput,
+  CompiledBindingsResult,
+  EventData,
+  Layer,
+  Scope,
   ParsedKeyToken,
   PendingSequenceState,
   RegisteredLayer,
   RegisteredLayerBucket,
   RuntimeMatcher,
 } from "../types.js"
-import type { ActionMapState } from "./state.js"
+import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
 import {
   getErrorMessage,
@@ -35,21 +36,21 @@ interface CompileLayerRuntimeStateResult {
   compileFields?: Readonly<Record<string, unknown>>
 }
 
-interface ActionMapLayersOptions {
+interface LayersOptions {
   compiler: CompilerService
   warnUnknownField: (kind: "binding" | "layer", fieldName: string) => void
 }
 
 export class LayerService {
   constructor(
-    private readonly state: ActionMapState,
+    private readonly state: State,
     private readonly notify: NotificationService,
     private readonly conditions: ConditionService,
     private readonly runtime: RuntimeService,
-    private readonly options: ActionMapLayersOptions,
+    private readonly options: LayersOptions,
   ) {}
 
-  public registerLayer(layer: ActionMapLayer): () => void {
+  public registerLayer(layer: Layer): () => void {
     return this.notify.runWithStateChangeBatch(() => {
       const target = layer.target
       if (target && target.isDestroyed) {
@@ -57,8 +58,8 @@ export class LayerService {
         return NOOP
       }
 
-      let scope: ActionMapScope
-      let bindingInputs: ActionMapBindingInput[]
+      let scope: Scope
+      let bindingInputs: BindingInput[]
       let requires: readonly [name: string, value: unknown][]
       let matchers: readonly RuntimeMatcher[]
       let conditionKeys: readonly string[]
@@ -255,7 +256,7 @@ export class LayerService {
     return true
   }
 
-  private normalizeScope(layer: ActionMapLayer): ActionMapScope {
+  private normalizeScope(layer: Layer): Scope {
     if (layer.scope) {
       if (layer.scope !== "global" && !layer.target) {
         throw new Error(`ActionMap scope "${layer.scope}" requires a target renderable`)
@@ -271,8 +272,8 @@ export class LayerService {
     return "global"
   }
 
-  private compileLayerRuntimeState(layer: ActionMapLayer): CompileLayerRuntimeStateResult {
-    const mergedRequires: ActionMapEventData = {}
+  private compileLayerRuntimeState(layer: Layer): CompileLayerRuntimeStateResult {
+    const mergedRequires: EventData = {}
     const matchers: RuntimeMatcher[] = []
     const compileFields: Record<string, unknown> = Object.create(null)
     const conditionKeys = new Set<string>()

@@ -5,12 +5,12 @@ import type { CommandService } from "./commands.js"
 import type { ConditionService } from "./conditions.js"
 import type { NotificationService } from "./notify.js"
 import type { RuntimeService } from "./runtime.js"
-import type { ActionMapState } from "./state.js"
+import type { State } from "./state.js"
 import type {
-  ActionMapEventMatchResolverContext,
-  ActionMapEventMatchResolver,
-  ActionMapKeyInputContext,
-  ActionMapRawInputContext,
+  EventMatchResolverContext,
+  EventMatchResolver,
+  KeyInputContext,
+  RawInputContext,
   CompiledBinding,
   PendingSequenceState,
   RegisteredLayer,
@@ -18,10 +18,10 @@ import type {
 } from "../types.js"
 
 export class DispatchService {
-  private readonly eventMatchResolverContext: ActionMapEventMatchResolverContext
+  private readonly eventMatchResolverContext: EventMatchResolverContext
 
   constructor(
-    private readonly state: ActionMapState,
+    private readonly state: State,
     private readonly notify: NotificationService,
     private readonly runtime: RuntimeService,
     private readonly conditions: ConditionService,
@@ -42,7 +42,7 @@ export class DispatchService {
     }
 
     let stopped = false
-    const context: ActionMapRawInputContext = {
+    const context: RawInputContext = {
       sequence,
       stop() {
         stopped = true
@@ -66,7 +66,7 @@ export class DispatchService {
 
   public handleKeyEvent(event: KeyEvent, release: boolean): void {
     const hooks = this.state.config.keyHooks.entries()
-    const context: ActionMapKeyInputContext = {
+    const context: KeyInputContext = {
       event,
       setData: (name, value) => {
         this.runtime.setData(name, value)
@@ -343,9 +343,9 @@ export class DispatchService {
 }
 
 function resolveSingleEventMatchKeys(
-  resolver: ActionMapEventMatchResolver,
+  resolver: EventMatchResolver,
   event: KeyEvent,
-  ctx: ActionMapEventMatchResolverContext,
+  ctx: EventMatchResolverContext,
   notify: NotificationService,
 ): string[] {
   let resolved: readonly string[] | undefined

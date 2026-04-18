@@ -1,12 +1,12 @@
-import type { ActionMapEvents, ActionMapHookName, ActionMapHooks } from "../types.js"
-import type { ActionMapState } from "./state.js"
+import type { Events, HookName, Hooks } from "../types.js"
+import type { State } from "./state.js"
 import { Emitter } from "../lib/emitter.js"
 
 export class NotificationService {
   constructor(
-    private readonly state: ActionMapState,
-    private readonly events: Emitter<ActionMapEvents>,
-    private readonly hooks: Emitter<ActionMapHooks>,
+    private readonly state: State,
+    private readonly events: Emitter<Events>,
+    private readonly hooks: Emitter<Hooks>,
   ) {}
 
   public runWithStateChangeBatch<T>(fn: () => T): T {
@@ -57,7 +57,7 @@ export class NotificationService {
     this.events.emit("error", cause === undefined ? { message } : { message, cause })
   }
 
-  public reportHookError(name: ActionMapHookName, error: unknown): void {
+  public reportHookError(name: HookName, error: unknown): void {
     if (name === "state") {
       this.emitError("[ActionMap] Error in state change hook:", error)
       return

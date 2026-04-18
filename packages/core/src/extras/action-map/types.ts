@@ -2,9 +2,9 @@ import type { Renderable } from "../../Renderable.js"
 import type { KeyEvent } from "../../lib/KeyHandler.js"
 import type { ActionMap } from "./action-map.js"
 
-export type ActionMapEventData = Record<string, unknown>
+export type EventData = Record<string, unknown>
 
-export type ActionMapAttributes = Record<string, unknown>
+export type Attributes = Record<string, unknown>
 
 export interface KeyStroke {
   name: string
@@ -22,13 +22,13 @@ export interface ParsedKeyStroke extends KeyStroke {
   super: boolean
 }
 
-export interface ActionMapEventMatchResolverContext {
+export interface EventMatchResolverContext {
   matchKey(key: KeyLike): string
 }
 
-export type ActionMapEventMatchResolver = (
+export type EventMatchResolver = (
   event: KeyEvent,
-  ctx: ActionMapEventMatchResolverContext,
+  ctx: EventMatchResolverContext,
 ) => readonly string[] | undefined
 
 export interface ParsedKeyToken {
@@ -42,15 +42,15 @@ export interface ParsedKeyPart {
   matchKey: string
 }
 
-export interface ActionMapStringifyOptions {
+export interface StringifyOptions {
   preferDisplay?: boolean
 }
 
-export type ActionMapStringifiableKey = ParsedKeyStroke | ParsedKeyPart | { stroke: ParsedKeyStroke; display?: string }
+export type StringifiableKey = ParsedKeyStroke | ParsedKeyPart | { stroke: ParsedKeyStroke; display?: string }
 
 export type KeyLike = string | KeyStroke
 
-export interface ActionMapBindingSyntax {
+export interface BindingSyntax {
   normalizeTokenName(token: string): string
   parseObjectKey(key: KeyStroke): ParsedKeyPart
 }
@@ -59,61 +59,59 @@ export interface ActionMapBindingSyntax {
  * Read-only view of a registered command. `fields` is raw registration
  * metadata; `attrs` is compiled command-field metadata.
  */
-export interface ActionMapCommandRecord {
+export interface CommandRecord {
   name: string
   fields: Readonly<Record<string, unknown>>
-  attrs?: Readonly<ActionMapAttributes>
+  attrs?: Readonly<Attributes>
 }
 
-export type ActionMapCommandQueryValue =
+export type CommandQueryValue =
   | unknown
   | readonly unknown[]
-  | ((value: unknown, command: ActionMapCommandRecord) => boolean)
+  | ((value: unknown, command: CommandRecord) => boolean)
 
-export type ActionMapCommandFilter =
-  | Readonly<Record<string, ActionMapCommandQueryValue>>
-  | ((command: ActionMapCommandRecord) => boolean)
+export type CommandFilter = Readonly<Record<string, CommandQueryValue>> | ((command: CommandRecord) => boolean)
 
-export interface ActionMapCommandQuery {
+export interface CommandQuery {
   namespace?: string | readonly string[]
   search?: string
   searchIn?: readonly string[]
-  filter?: ActionMapCommandFilter
+  filter?: CommandFilter
 }
 
-export interface ActionMapRunCommandOptions {
+export interface RunCommandOptions {
   event?: KeyEvent
   focused?: Renderable | null
   target?: Renderable | null
   includeCommand?: boolean
 }
 
-export type ActionMapRunCommandResult =
-  | { ok: true; command?: ActionMapCommandRecord }
+export type RunCommandResult =
+  | { ok: true; command?: CommandRecord }
   | { ok: false; reason: "not-found" }
-  | { ok: false; reason: "invalid-args" | "rejected" | "error"; command?: ActionMapCommandRecord }
+  | { ok: false; reason: "invalid-args" | "rejected" | "error"; command?: CommandRecord }
 
-export interface ActionMapCommandContext {
+export interface CommandContext {
   actionMap: ActionMap
   event: KeyEvent
   focused: Renderable | null
   target: Renderable | null
-  data: Readonly<ActionMapEventData>
-  command?: ActionMapCommandRecord
+  data: Readonly<EventData>
+  command?: CommandRecord
 }
 
-export type ActionMapCommandResult = boolean | void | Promise<boolean | void>
+export type CommandResult = boolean | void | Promise<boolean | void>
 
-export type ActionMapCommandHandler = (ctx: ActionMapCommandContext) => ActionMapCommandResult
+export type CommandHandler = (ctx: CommandContext) => CommandResult
 
-export type ActionMapBindingCommand = string | ActionMapCommandHandler
+export type BindingCommand = string | CommandHandler
 
-export type ActionMapBindingEvent = "press" | "release"
+export type BindingEvent = "press" | "release"
 
-export interface ActionMapBindingInput {
+export interface BindingInput {
   key: KeyLike
-  cmd?: ActionMapBindingCommand
-  event?: ActionMapBindingEvent
+  cmd?: BindingCommand
+  event?: BindingEvent
   /**
    * Default `true`. Calls `event.preventDefault()` and
    * `event.stopPropagation()` so the matched key does not reach the focused
@@ -130,101 +128,101 @@ export interface ActionMapBindingInput {
   [key: string]: unknown
 }
 
-export type ActionMapBindingShorthand = Record<string, ActionMapBindingCommand>
+export type BindingShorthand = Record<string, BindingCommand>
 
-export type ActionMapBindings = ActionMapBindingInput[] | ActionMapBindingShorthand
+export type Bindings = BindingInput[] | BindingShorthand
 
-export type ActionMapScope = "global" | "focus" | "focus-within"
+export type Scope = "global" | "focus" | "focus-within"
 
-export interface ActionMapLayerFields {
+export interface LayerFields {
   priority?: number
-  bindings: ActionMapBindings
+  bindings: Bindings
   [key: string]: unknown
 }
 
-export interface ActionMapGlobalLayer extends ActionMapLayerFields {
+export interface GlobalLayer extends LayerFields {
   target?: undefined
   scope?: "global"
 }
 
-export interface ActionMapFocusWithinLayer extends ActionMapLayerFields {
+export interface FocusWithinLayer extends LayerFields {
   target: Renderable
   scope?: "focus-within"
 }
 
-export interface ActionMapFocusLayer extends ActionMapLayerFields {
+export interface FocusLayer extends LayerFields {
   target: Renderable
   scope: "focus"
 }
 
-export type ActionMapTargetLayer = ActionMapFocusWithinLayer | ActionMapFocusLayer
+export type TargetLayer = FocusWithinLayer | FocusLayer
 
-export type ActionMapLayer = ActionMapGlobalLayer | ActionMapTargetLayer
+export type Layer = GlobalLayer | TargetLayer
 
-export interface ActionMapParsedCommand {
+export interface ParsedCommand {
   input: string
   name: string
   args: string[]
 }
 
-export interface ActionMapCommandResolverContext {
-  getCommandAttrs(name: string): Readonly<ActionMapAttributes> | undefined
-  getCommandRecord(name: string): ActionMapCommandRecord | undefined
+export interface CommandResolverContext {
+  getCommandAttrs(name: string): Readonly<Attributes> | undefined
+  getCommandRecord(name: string): CommandRecord | undefined
 }
 
 /**
  * Resolver output. `run` executes the command, `attrs` / `record` expose
  * metadata, and `rejectedResult` overrides the default rejected result.
  */
-export interface ActionMapResolvedBindingCommand {
-  run: ActionMapCommandHandler
-  attrs?: Readonly<ActionMapAttributes>
-  record?: ActionMapCommandRecord
-  rejectedResult?: Extract<ActionMapRunCommandResult, { ok: false }>
+export interface ResolvedBindingCommand {
+  run: CommandHandler
+  attrs?: Readonly<Attributes>
+  record?: CommandRecord
+  rejectedResult?: Extract<RunCommandResult, { ok: false }>
 }
 
-export type ActionMapCommandResolver = (
+export type CommandResolver = (
   command: string,
-  ctx: ActionMapCommandResolverContext,
-) => ActionMapResolvedBindingCommand | undefined
+  ctx: CommandResolverContext,
+) => ResolvedBindingCommand | undefined
 
 /**
  * Input to `registerCommands(...)`. Extra fields stay on `fields` and can be
  * compiled into `attrs` by command-field addons.
  */
-export interface ActionMapCommandDefinition {
+export interface CommandDefinition {
   name: string
-  run: ActionMapCommandHandler
+  run: CommandHandler
   [key: string]: unknown
 }
 
-export interface ActionMapToken {
+export interface Token {
   name: string
   key: KeyLike
 }
 
-export interface ActionMapActiveBinding {
+export interface ActiveBinding {
   sequence: ParsedKeyPart[]
-  command?: ActionMapBindingCommand
-  commandAttrs?: Readonly<ActionMapAttributes>
-  attrs?: Readonly<ActionMapAttributes>
-  event: ActionMapBindingEvent
+  command?: BindingCommand
+  commandAttrs?: Readonly<Attributes>
+  attrs?: Readonly<Attributes>
+  event: BindingEvent
   preventDefault: boolean
   fallthrough: boolean
 }
 
-export interface ActionMapActiveKeyOptions {
+export interface ActiveKeyOptions {
   includeBindings?: boolean
   includeMetadata?: boolean
 }
 
-export interface ActionMapActiveKey {
+export interface ActiveKey {
   stroke: ParsedKeyStroke
   display: string
-  bindings?: ActionMapActiveBinding[]
-  bindingAttrs?: Readonly<ActionMapAttributes>
-  commandAttrs?: Readonly<ActionMapAttributes>
-  command?: ActionMapBindingCommand
+  bindings?: ActiveBinding[]
+  bindingAttrs?: Readonly<Attributes>
+  commandAttrs?: Readonly<Attributes>
+  command?: BindingCommand
   continues: boolean
 }
 
@@ -233,35 +231,35 @@ export interface ActionMapActiveKey {
  * subscribes at registration time and unsubscribes when the owning
  * layer or binding is removed.
  */
-export interface ActionMapReactiveMatcher {
+export interface ReactiveMatcher {
   get(): boolean
   subscribe(onChange: () => void): () => void
 }
 
-export interface ActionMapBindingFieldContext {
+export interface BindingFieldContext {
   require(name: string, value: unknown): void
   attr(name: string, value: unknown): void
   /**
    * Registers a runtime matcher. Raw callbacks re-run on every read;
    * reactive matchers stay cached until they notify.
    */
-  match(matcher: (() => boolean) | ActionMapReactiveMatcher): void
+  match(matcher: (() => boolean) | ReactiveMatcher): void
 }
 
-export type ActionMapBindingFieldCompiler = (value: unknown, ctx: ActionMapBindingFieldContext) => void
+export type BindingFieldCompiler = (value: unknown, ctx: BindingFieldContext) => void
 
-export interface ActionMapLayerFieldContext {
+export interface LayerFieldContext {
   require(name: string, value: unknown): void
   /**
    * Registers a runtime matcher. Raw callbacks re-run on every read;
    * reactive matchers stay cached until they notify.
    */
-  match(matcher: (() => boolean) | ActionMapReactiveMatcher): void
+  match(matcher: (() => boolean) | ReactiveMatcher): void
 }
 
-export type ActionMapLayerFieldCompiler = (value: unknown, ctx: ActionMapLayerFieldContext) => void
+export type LayerFieldCompiler = (value: unknown, ctx: LayerFieldContext) => void
 
-export interface ActionMapBindingParserContext {
+export interface BindingParserContext {
   input: string
   index: number
   layer: Readonly<Record<string, unknown>>
@@ -269,65 +267,65 @@ export interface ActionMapBindingParserContext {
   parseObjectKey(key: KeyStroke): ParsedKeyPart
 }
 
-export interface ActionMapBindingExpanderContext {
+export interface BindingExpanderContext {
   input: string
   layer: Readonly<Record<string, unknown>>
 }
 
-export interface ActionMapBindingParserResult {
+export interface BindingParserResult {
   parts: ParsedKeyPart[]
   nextIndex: number
   usedTokens?: readonly string[]
   unknownTokens?: readonly string[]
 }
 
-export type ActionMapBindingParser = (ctx: ActionMapBindingParserContext) => ActionMapBindingParserResult | undefined
+export type BindingParser = (ctx: BindingParserContext) => BindingParserResult | undefined
 
-export type ActionMapBindingExpander = (ctx: ActionMapBindingExpanderContext) => readonly string[] | undefined
+export type BindingExpander = (ctx: BindingExpanderContext) => readonly string[] | undefined
 
-export interface ActionMapParsedBindingInput {
+export interface ParsedBindingInput {
   sequence: ParsedKeyPart[]
-  cmd?: ActionMapBindingCommand
-  event?: ActionMapBindingEvent
+  cmd?: BindingCommand
+  event?: BindingEvent
   preventDefault?: boolean
   fallthrough?: boolean
   [key: string]: unknown
 }
 
-export interface ActionMapBindingTransformerContext {
+export interface BindingTransformerContext {
   layer: Readonly<Record<string, unknown>>
   parseKey(key: KeyLike): ParsedKeyPart
-  add(binding: ActionMapParsedBindingInput): void
+  add(binding: ParsedBindingInput): void
   skipOriginal(): void
 }
 
-export type ActionMapBindingTransformer = (
-  binding: ActionMapParsedBindingInput,
-  ctx: ActionMapBindingTransformerContext,
+export type BindingTransformer = (
+  binding: ParsedBindingInput,
+  ctx: BindingTransformerContext,
 ) => void
 
-export interface ActionMapCommandFieldContext {
+export interface CommandFieldContext {
   attr(name: string, value: unknown): void
 }
 
-export type ActionMapCommandFieldCompiler = (value: unknown, ctx: ActionMapCommandFieldContext) => void
+export type CommandFieldCompiler = (value: unknown, ctx: CommandFieldContext) => void
 
-export interface ActionMapKeyInputContext {
+export interface KeyInputContext {
   event: KeyEvent
   setData: (name: string, value: unknown) => void
   getData: (name: string) => unknown
   consume: (options?: { preventDefault?: boolean; stopPropagation?: boolean }) => void
 }
 
-export interface ActionMapRawInputContext {
+export interface RawInputContext {
   sequence: string
   stop: () => void
 }
 
-export interface ActionMapUnresolvedCommandContext {
+export interface UnresolvedCommandContext {
   command: string
-  binding: ActionMapParsedBindingInput
-  scope: ActionMapScope
+  binding: ParsedBindingInput
+  scope: Scope
   target?: Renderable
 }
 
@@ -338,7 +336,7 @@ export interface ActionMapUnresolvedCommandContext {
  * `pendingSequence` fires before the batched `state` flush, so most consumers
  * should pick one or the other.
  */
-export type ActionMapHooks = {
+export type Hooks = {
   /**
    * Batched "derived state may have changed" signal. Re-read through getters;
    * framework adapters should use this hook.
@@ -353,25 +351,25 @@ export type ActionMapHooks = {
    * One-time diagnostic when a binding references a command name that is not
    * currently resolvable.
    */
-  unresolvedCommand: ActionMapUnresolvedCommandContext
+  unresolvedCommand: UnresolvedCommandContext
 }
 
-export type ActionMapHookName = keyof ActionMapHooks
+export type HookName = keyof Hooks
 
-export type ActionMapHookListener<TValue> = [TValue] extends [void] ? () => void : (value: TValue) => void
+export type HookListener<TValue> = [TValue] extends [void] ? () => void : (value: TValue) => void
 
-export interface ActionMapWarningEvent {
+export interface WarningEvent {
   message: string
 }
 
-export interface ActionMapErrorEvent {
+export interface ErrorEvent {
   message: string
   cause?: unknown
 }
 
-export type ActionMapEvents = {
-  warning: ActionMapWarningEvent
-  error: ActionMapErrorEvent
+export type Events = {
+  warning: WarningEvent
+  error: ErrorEvent
 }
 
 export type { ActionMap }
@@ -403,12 +401,12 @@ export interface RuntimeMatchable {
   matchCache?: boolean
 }
 
-export interface CompiledBinding extends ActionMapActiveBinding, RuntimeMatchable {
-  run?: ActionMapCommandHandler
+export interface CompiledBinding extends ActiveBinding, RuntimeMatchable {
+  run?: CommandHandler
   activeBindingCacheVersion?: number
-  activeBindingCache?: ActionMapActiveBinding
-  sourceBinding: ActionMapParsedBindingInput
-  sourceScope: ActionMapScope
+  activeBindingCache?: ActiveBinding
+  sourceBinding: ParsedBindingInput
+  sourceScope: Scope
   sourceTarget?: Renderable
   sourceLayerOrder: number
   sourceBindingIndex: number
@@ -432,12 +430,12 @@ export interface ActiveKeyState {
   bindings?: CompiledBinding[]
 }
 
-export interface RegisteredCommand extends ActionMapCommandRecord {
-  run: (ctx: ActionMapCommandContext) => ActionMapCommandResult
-  runner?: ActionMapCommandHandler
-  resolved?: ActionMapResolvedBindingCommand
-  resolvedWithRecord?: ActionMapResolvedBindingCommand
-  record?: ActionMapCommandRecord
+export interface RegisteredCommand extends CommandRecord {
+  run: (ctx: CommandContext) => CommandResult
+  runner?: CommandHandler
+  resolved?: ResolvedBindingCommand
+  resolvedWithRecord?: ResolvedBindingCommand
+  record?: CommandRecord
 }
 
 export interface CompiledBindingsResult {
@@ -459,7 +457,7 @@ export interface SequenceNode {
 export interface RegisteredLayer {
   order: number
   target?: Renderable
-  scope: ActionMapScope
+  scope: Scope
   priority: number
   requires: readonly [name: string, value: unknown][]
   matchers: readonly RuntimeMatcher[]
@@ -468,7 +466,7 @@ export interface RegisteredLayer {
   matchCacheDirty?: boolean
   matchCache?: boolean
   compileFields?: Readonly<Record<string, unknown>>
-  bindingInputs: readonly ActionMapBindingInput[]
+  bindingInputs: readonly BindingInput[]
   compiledBindings: readonly CompiledBinding[]
   hasUnkeyedBindings: boolean
   hasTokenBindings: boolean

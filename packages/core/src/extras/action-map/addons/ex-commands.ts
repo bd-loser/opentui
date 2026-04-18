@@ -1,9 +1,9 @@
 import type {
-  ActionMapCommandDefinition,
-  ActionMapCommandContext,
-  ActionMapCommandRecord,
+  CommandDefinition,
+  CommandContext,
+  CommandRecord,
   ActionMap,
-  ActionMapParsedCommand,
+  ParsedCommand,
 } from "../types.js"
 
 const EMPTY_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
@@ -12,7 +12,7 @@ export interface ExCommand {
   name: string
   aliases?: string[]
   nargs?: "0" | "1" | "?" | "*" | "+"
-  run: (ctx: ActionMapCommandContext & { raw: string; args: string[] }) => void | Promise<void>
+  run: (ctx: CommandContext & { raw: string; args: string[] }) => void | Promise<void>
   [key: string]: unknown
 }
 
@@ -25,7 +25,7 @@ function normalizeExCommandName(actionMap: ActionMap, name: string): string {
   return `:${normalized}`
 }
 
-function parseCommandInput(input: string): ActionMapParsedCommand {
+function parseCommandInput(input: string): ParsedCommand {
   const trimmed = input.trim()
   if (!trimmed) {
     throw new Error("Invalid action map command: command cannot be empty")
@@ -74,7 +74,7 @@ function validateCommandArgs(command: ExCommand, args: string[]): boolean {
 }
 
 export function registerExCommands(actionMap: ActionMap, commands: ExCommand[]): () => void {
-  const registrations: ActionMapCommandDefinition[] = []
+  const registrations: CommandDefinition[] = []
   const commandMap = new Map<string, ExCommand>()
 
   for (const command of commands) {
@@ -145,7 +145,7 @@ export function registerExCommands(actionMap: ActionMap, commands: ExCommand[]):
       attrs,
       record,
       run(baseCtx) {
-        const commandView: ActionMapCommandRecord =
+        const commandView: CommandRecord =
           record ??
           (attrs
             ? { name: normalizedName, fields: EMPTY_FIELDS, attrs }

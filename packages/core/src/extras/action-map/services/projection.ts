@@ -279,36 +279,29 @@ export class ProjectionService {
   public getActiveLayers(focused: Renderable | null): RegisteredLayer[] {
     const activeLayers: RegisteredLayer[] = []
 
-    if (focused) {
-      let current: Renderable | null = focused
-      let isFocusedTarget = true
+    let current: Renderable | null = focused ?? this.renderer.root
+    let isFocusedTarget = focused !== null
 
-      while (current) {
-        const bucket = this.state.layers.targetLayers.get(current)
-        if (bucket) {
-          if (isFocusedTarget) {
-            activeLayers.push(...bucket.focusLayers)
-          }
-
-          activeLayers.push(...bucket.focusWithinLayers)
+    while (current) {
+      const bucket = this.state.layers.targetLayers.get(current)
+      if (bucket) {
+        if (isFocusedTarget) {
+          activeLayers.push(...bucket.focusLayers)
         }
 
-        current = current.parent
-        isFocusedTarget = false
+        activeLayers.push(...bucket.focusWithinLayers)
       }
+
+      current = current.parent
+      isFocusedTarget = false
     }
 
-    activeLayers.push(...this.state.layers.globalLayers)
     return activeLayers
   }
 
   public isLayerActiveForFocused(layer: RegisteredLayer, focused: Renderable | null): boolean {
-    if (layer.scope === "global") {
-      return true
-    }
-
-    const target = layer.target
-    if (!target || target.isDestroyed || !focused) {
+    const target = layer.indexTarget
+    if (target.isDestroyed) {
       return false
     }
 
@@ -316,7 +309,7 @@ export class ProjectionService {
       return target === focused
     }
 
-    let current: Renderable | null = focused
+    let current: Renderable | null = focused ?? this.renderer.root
     while (current) {
       if (current === target) {
         return true

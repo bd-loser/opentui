@@ -71,6 +71,7 @@ interface CompileLayerRuntimeStateResult {
 interface LayersOptions {
   compiler: CompilerService
   commands: CommandService
+  rootTarget: Renderable
   warnUnknownField: (kind: "binding" | "layer", fieldName: string) => void
 }
 
@@ -100,9 +101,11 @@ export class LayerService {
       let compileFields: Readonly<Record<string, unknown>> | undefined
       let commands: readonly RegisteredCommand[]
       let commandLookup: ReadonlyMap<string, RegisteredCommand> | undefined
+      let indexTarget: Renderable
 
       try {
         scope = this.normalizeScope(layer)
+        indexTarget = this.resolveIndexTarget(layer)
         bindingInputs = snapshotBindingInputs(layer.bindings ?? [])
         commands = this.createCommands(layer.commands)
         commandLookup = createCommandLookup(commands)
@@ -131,6 +134,7 @@ export class LayerService {
       const registeredLayer: RegisteredLayer = {
         order,
         target,
+        indexTarget,
         scope,
         priority: layer.priority ?? 0,
         requires,
@@ -256,6 +260,10 @@ export class LayerService {
     return "global"
   }
 
+  private resolveIndexTarget(layer: Layer): Renderable {
+    return layer.target ?? this.options.rootTarget
+  }
+
   private createCommands(
     commands: readonly CommandDefinition[] | undefined,
   ): readonly RegisteredCommand[] {
@@ -329,19 +337,7 @@ export class LayerService {
   }
 
   private indexLayer(layer: RegisteredLayer): void {
-    if (layer.scope === "global") {
-      this.state.layers.globalLayers = sortByPriorityAndOrder([...this.state.layers.globalLayers, layer], {
-        order: "desc",
-      })
-      return
-    }
-
-    const target = layer.target
-    if (!target) {
-      return
-    }
-
-    const bucket = this.getOrCreateTargetBucket(target)
+    const bucket = this.getOrCreateTargetBucket(layer.indexTarget)
     if (layer.scope === "focus") {
       bucket.focusLayers = sortByPriorityAndOrder([...bucket.focusLayers, layer], { order: "desc" })
     } else {
@@ -352,14 +348,8 @@ export class LayerService {
   }
 
   private removeLayerFromIndex(layer: RegisteredLayer): void {
-    if (layer.scope === "global") {
-      this.state.layers.globalLayers = this.state.layers.globalLayers.filter((candidate) => candidate !== layer)
-      return
-    }
-
-    const target = layer.target
     const bucket = layer.bucket
-    if (!target || !bucket) {
+    if (!bucket) {
       return
     }
 
@@ -370,7 +360,7 @@ export class LayerService {
     }
 
     if (bucket.focusLayers.length === 0 && bucket.focusWithinLayers.length === 0) {
-      this.state.layers.targetLayers.delete(target)
+      this.state.layers.targetLayers.delete(layer.indexTarget)
     }
 
     layer.bucket = undefined

@@ -48,7 +48,6 @@ export interface ConfigState {
 
 export interface LayersState {
   layers: Set<RegisteredLayer>
-  globalLayers: RegisteredLayer[]
   targetLayers: WeakMap<Renderable, RegisteredLayerBucket>
   layersWithConditions: number
   layersWithCommands: number
@@ -153,7 +152,6 @@ export function createActionMapState(): State {
     },
     layers: {
       layers: new Set<RegisteredLayer>(),
-      globalLayers: [],
       targetLayers: new WeakMap<Renderable, RegisteredLayerBucket>(),
       layersWithConditions: 0,
       layersWithCommands: 0,

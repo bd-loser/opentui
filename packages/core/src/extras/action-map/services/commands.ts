@@ -36,7 +36,7 @@ import type {
 } from "../types.js"
 import type { NotificationService } from "./notify.js"
 import type { RuntimeService } from "./runtime.js"
-import type { State } from "./state.js"
+import type { ActiveCommandView, LayerCommandEntry, ResolvedCommandEntry, State } from "./state.js"
 
 const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const
 const SNAPSHOT_COMMAND_METADATA_OPTIONS = Object.freeze({ deep: true, preserveNonPlainObjects: true })
@@ -77,29 +77,6 @@ interface NormalizeRegisteredCommandsOptions {
   onError(message: string, cause?: unknown): void
 }
 
-interface LayerCommandEntry {
-  layer: RegisteredLayer
-  command: RegisteredCommand
-}
-
-interface ResolvedCommandEntry {
-  layer?: RegisteredLayer
-  resolved: ResolvedBindingCommand
-}
-
-interface ActiveCommandView {
-  entries: readonly LayerCommandEntry[]
-  reachable: readonly LayerCommandEntry[]
-  reachableByName: ReadonlyMap<string, LayerCommandEntry>
-  chainsByName: ReadonlyMap<string, readonly LayerCommandEntry[]>
-  resolvedWithoutRecordChains: Map<string, readonly ResolvedCommandEntry[]>
-  resolvedWithRecordChains: Map<string, readonly ResolvedCommandEntry[]>
-  fallbackWithoutRecord: Map<string, ResolvedBindingCommand | null>
-  fallbackWithRecord: Map<string, ResolvedBindingCommand | null>
-  fallbackWithoutRecordErrors: Set<string>
-  fallbackWithRecordErrors: Set<string>
-}
-
 function createSyntheticCommandEvent(): KeyEvent {
   return new KeyEvent({
     name: "command",
@@ -116,11 +93,6 @@ function createSyntheticCommandEvent(): KeyEvent {
 }
 
 export class CommandService {
-  private activeCommandViewVersion = -1
-  private activeCommandView: ActiveCommandView | undefined
-  private registeredCommandsCacheVersion = -1
-  private registeredCommandsCache: readonly RegisteredCommand[] = []
-
   constructor(
     private readonly state: State,
     private readonly notify: NotificationService,
@@ -447,8 +419,12 @@ export class CommandService {
     const currentFocused = this.runtime.getFocusedRenderableIfAvailable()
     const derivedStateVersion = this.state.notify.derivedStateVersion
 
-    if (focused === currentFocused && this.activeCommandViewVersion === derivedStateVersion && this.activeCommandView) {
-      return this.activeCommandView
+    if (
+      focused === currentFocused &&
+      this.state.commands.activeCommandViewVersion === derivedStateVersion &&
+      this.state.commands.activeCommandView
+    ) {
+      return this.state.commands.activeCommandView
     }
 
     const entries: LayerCommandEntry[] = []
@@ -501,8 +477,8 @@ export class CommandService {
     }
 
     if (focused === currentFocused) {
-      this.activeCommandViewVersion = derivedStateVersion
-      this.activeCommandView = view
+      this.state.commands.activeCommandViewVersion = derivedStateVersion
+      this.state.commands.activeCommandView = view
     }
 
     return view
@@ -510,8 +486,8 @@ export class CommandService {
 
   private getRegisteredCommands(): readonly RegisteredCommand[] {
     const cacheVersion = this.state.commands.commandMetadataVersion
-    if (this.registeredCommandsCacheVersion === cacheVersion) {
-      return this.registeredCommandsCache
+    if (this.state.commands.registeredCommandsCacheVersion === cacheVersion) {
+      return this.state.commands.registeredCommandsCache
     }
 
     const layers = [...this.state.layers.layers]
@@ -526,8 +502,8 @@ export class CommandService {
       commands.push(...layer.commands)
     }
 
-    this.registeredCommandsCacheVersion = cacheVersion
-    this.registeredCommandsCache = commands
+    this.state.commands.registeredCommandsCacheVersion = cacheVersion
+    this.state.commands.registeredCommandsCache = commands
     return commands
   }
 
@@ -646,22 +622,16 @@ export class CommandService {
     resolved: ResolvedBindingCommand,
     context: CommandContext,
   ): CommandExecutionResult {
+    const command = resolved.record
     let result: CommandResult
 
     try {
       result = resolved.run(context)
     } catch (error) {
       this.notify.emitError(`[ActionMap] Error running command "${commandName}":`, error)
-      if (resolved.record) {
-        return {
-          status: "error",
-          result: { ok: false, reason: "error", command: resolved.record },
-        }
-      }
-
       return {
         status: "error",
-        result: { ok: false, reason: "error" },
+        result: { ok: false, reason: "error", command },
       }
     }
 
@@ -670,16 +640,9 @@ export class CommandService {
         this.notify.emitError(`[ActionMap] Async error in command "${commandName}":`, error)
       })
 
-      if (resolved.record) {
-        return {
-          status: "handled",
-          result: { ok: true, command: resolved.record },
-        }
-      }
-
       return {
         status: "handled",
-        result: { ok: true },
+        result: { ok: true, command },
       }
     }
 
@@ -691,29 +654,15 @@ export class CommandService {
         }
       }
 
-      if (resolved.record) {
-        return {
-          status: "rejected",
-          result: { ok: false, reason: "rejected", command: resolved.record },
-        }
-      }
-
       return {
         status: "rejected",
-        result: { ok: false, reason: "rejected" },
-      }
-    }
-
-    if (resolved.record) {
-      return {
-        status: "handled",
-        result: { ok: true, command: resolved.record },
+        result: { ok: false, reason: "rejected", command },
       }
     }
 
     return {
       status: "handled",
-      result: { ok: true },
+      result: { ok: true, command },
     }
   }
 

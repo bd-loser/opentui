@@ -3,11 +3,14 @@ import { KeyEvent } from "../../../lib/KeyHandler.js"
 import type { ActionMap } from "../action-map.js"
 import type { Emitter } from "../lib/emitter.js"
 import {
+  EMPTY_COMMAND_FIELDS,
   getErrorMessage,
   isPromiseLike,
   mergeAttribute,
   normalizeBindingCommand,
   normalizeCommandName,
+  RESERVED_COMMAND_FIELDS,
+  SNAPSHOT_COMMAND_METADATA_OPTIONS,
   snapshotDataValue,
   snapshotParsedBindingInput,
   stringifyKeySequence,
@@ -19,8 +22,6 @@ import type {
   CommandDefinition,
   CommandFieldCompiler,
   CommandFieldContext,
-  CommandHandler,
-  CommandRecord,
   CommandResolver,
   CommandResolverContext,
   CommandResult,
@@ -36,16 +37,6 @@ import type { NotificationService } from "./notify.js"
 import type { ProjectionService } from "./projection.js"
 import type { RuntimeService } from "./runtime.js"
 import type { State } from "./state.js"
-const SNAPSHOT_COMMAND_METADATA_OPTIONS = Object.freeze({ deep: true, preserveNonPlainObjects: true })
-const SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS = Object.freeze({
-  deep: true,
-  freeze: true,
-  preserveNonPlainObjects: true,
-})
-
-export const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
-
-const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 
 interface ResolvedCommandLookup {
   resolved?: ResolvedBindingCommand
@@ -110,7 +101,7 @@ export class CommandService {
     return this.notify.runWithStateChangeBatch(() => {
       this.state.config.commandResolvers.append(resolver)
       this.state.commands.commandMetadataVersion += 1
-        this.projection.ensureValidPendingSequence()
+      this.projection.ensureValidPendingSequence()
       this.notify.queueStateChange()
 
       return () => {
@@ -257,10 +248,6 @@ export class CommandService {
     this.handleUnresolvedCommand(command, binding)
   }
 
-  public getCommandRecord(command: RegisteredCommand): CommandRecord {
-    return getRegisteredCommandRecord(command)
-  }
-
   private hasRegisteredCommand(name: string): boolean {
     return this.state.commands.registeredNames.has(name)
   }
@@ -311,63 +298,6 @@ export class CommandService {
         return this.projection.getTopCommandRecord(name, focused)
       },
     }
-  }
-
-  public resolveRegisteredCommand(
-    command: RegisteredCommand,
-    options?: { includeRecord?: boolean },
-  ): ResolvedBindingCommand {
-    const includeRecord = options?.includeRecord === true
-    if (includeRecord) {
-      const existing = command.resolvedWithRecord
-      if (existing) {
-        return existing
-      }
-
-      const resolved: ResolvedBindingCommand = {
-        run: this.createRegisteredCommandRunner(command),
-      }
-
-      if (command.attrs) {
-        resolved.attrs = command.attrs
-      }
-
-      resolved.record = this.getCommandRecord(command)
-      command.resolvedWithRecord = resolved
-      return resolved
-    }
-
-    const existing = command.resolved
-    if (existing) {
-      return existing
-    }
-
-    const resolved: ResolvedBindingCommand = {
-      run: this.createRegisteredCommandRunner(command),
-    }
-
-    if (command.attrs) {
-      resolved.attrs = command.attrs
-    }
-
-    command.resolved = resolved
-    return resolved
-  }
-
-  private createRegisteredCommandRunner(command: RegisteredCommand): CommandHandler {
-    if (command.runner) {
-      return command.runner
-    }
-
-    const runner: CommandHandler = (ctx) => {
-      return command.run({
-        ...ctx,
-        command: this.getCommandRecord(command),
-      })
-    }
-
-    command.runner = runner
-    return runner
   }
 
   private executeResolvedCommand(
@@ -521,32 +451,4 @@ function createCommandFieldContext(mergedAttrs: Attributes, fieldName: string): 
       )
     },
   }
-}
-
-function getRegisteredCommandRecord(command: RegisteredCommand): CommandRecord {
-  if (command.record) {
-    return command.record
-  }
-
-  let fields = EMPTY_COMMAND_FIELDS
-  if (command.fields !== EMPTY_COMMAND_FIELDS && Object.keys(command.fields).length > 0) {
-    fields = snapshotDataValue(command.fields, SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS) as Readonly<Record<string, unknown>>
-  }
-
-  let record: CommandRecord
-  if (command.attrs) {
-    record = Object.freeze({
-      name: command.name,
-      fields,
-      attrs: snapshotDataValue(command.attrs, SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS) as Readonly<Attributes>,
-    })
-  } else {
-    record = Object.freeze({
-      name: command.name,
-      fields,
-    })
-  }
-
-  command.record = record
-  return record
 }

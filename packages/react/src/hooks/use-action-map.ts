@@ -106,15 +106,15 @@ export const usePendingSequence = (): readonly ParsedKeyPart[] => {
 
 export function useBindings<TRenderable extends Renderable = Renderable>(
   createLayer: () => UseGlobalBindingsLayer,
-  deps: DependencyList,
+  deps?: DependencyList,
 ): BindingsRef<TRenderable>
 export function useBindings<TRenderable extends Renderable = Renderable>(
   createLayer: () => UseTargetBindingsLayer<TRenderable>,
-  deps: DependencyList,
+  deps?: DependencyList,
 ): BindingsRef<TRenderable>
 export function useBindings<TRenderable extends Renderable = Renderable>(
   createLayer: () => UseBindingsLayer<TRenderable>,
-  deps: DependencyList,
+  deps: DependencyList = [],
 ): BindingsRef<TRenderable> {
   const actionMap = useActionMap()
   const layer = useMemo(createLayer, deps)

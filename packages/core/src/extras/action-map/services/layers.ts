@@ -2,7 +2,7 @@ import { RenderableEvents, type Renderable } from "../../../Renderable.js"
 import type { CompilerService } from "./compiler.js"
 import type { CommandService } from "./commands.js"
 import type { ConditionService } from "./conditions.js"
-import type { RuntimeService } from "./runtime.js"
+import type { ProjectionService } from "./projection.js"
 import type {
   BindingInput,
   CommandDefinition,
@@ -11,7 +11,6 @@ import type {
   Layer,
   Scope,
   ParsedKeyToken,
-  PendingSequenceState,
   RegisteredCommand,
   RegisteredLayer,
   RegisteredLayerBucket,
@@ -81,7 +80,7 @@ export class LayerService {
     private readonly state: State,
     private readonly notify: NotificationService,
     private readonly conditions: ConditionService,
-    private readonly runtime: RuntimeService,
+    private readonly projection: ProjectionService,
     private readonly options: LayersOptions,
   ) {}
 
@@ -178,7 +177,7 @@ export class LayerService {
       }
 
       if (registeredLayer.commands.length > 0) {
-        this.runtime.ensureValidPendingSequence()
+        this.projection.ensureValidPendingSequence()
       }
 
       this.notify.queueStateChange()
@@ -227,86 +226,19 @@ export class LayerService {
           this.conditions.registerRuntimeMatchable(binding)
         }
 
-        if (this.state.runtime.pendingSequence?.layer === layer) {
+        if (this.state.projection.pendingSequence?.layer === layer) {
           shouldClearPending = true
         }
       }
 
       if (shouldClearPending) {
-        this.runtime.setPendingSequence(null)
+        this.projection.setPendingSequence(null)
       }
 
       if (nextCompilations.size > 0) {
         this.notify.queueStateChange()
       }
     })
-  }
-
-  public getActiveLayers(focused: Renderable | null): RegisteredLayer[] {
-    const activeLayers: RegisteredLayer[] = []
-
-    if (focused) {
-      let current: Renderable | null = focused
-      let isFocusedTarget = true
-
-      while (current) {
-        const bucket = this.state.layers.targetLayers.get(current)
-        if (bucket) {
-          if (isFocusedTarget) {
-            activeLayers.push(...bucket.focusLayers)
-          }
-
-          activeLayers.push(...bucket.focusWithinLayers)
-        }
-
-        current = current.parent
-        isFocusedTarget = false
-      }
-    }
-
-    activeLayers.push(...this.state.layers.globalLayers)
-
-    return activeLayers
-  }
-
-  public isLayerActiveForFocused(layer: RegisteredLayer, focused: Renderable | null): boolean {
-    if (layer.scope === "global") {
-      return true
-    }
-
-    const target = layer.target
-    if (!target || target.isDestroyed || !focused) {
-      return false
-    }
-
-    if (layer.scope === "focus") {
-      return target === focused
-    }
-
-    let current: Renderable | null = focused
-    while (current) {
-      if (current === target) {
-        return true
-      }
-
-      current = current.parent
-    }
-
-    return false
-  }
-
-  public layerCanCacheActiveKeys(layer: RegisteredLayer): boolean {
-    return !layer.hasUnkeyedMatchers && !layer.hasUnkeyedBindings
-  }
-
-  public activeLayersCanCacheActiveKeys(activeLayers: readonly RegisteredLayer[]): boolean {
-    for (const layer of activeLayers) {
-      if (!this.layerCanCacheActiveKeys(layer)) {
-        return false
-      }
-    }
-
-    return true
   }
 
   private normalizeScope(layer: Layer): Scope {
@@ -470,10 +402,10 @@ export class LayerService {
       layer.offTargetDestroy?.()
       layer.offTargetDestroy = undefined
 
-      if (this.state.runtime.pendingSequence?.layer === layer) {
-        this.runtime.setPendingSequence(null)
+      if (this.state.projection.pendingSequence?.layer === layer) {
+        this.projection.setPendingSequence(null)
       } else if (layer.commands.length > 0) {
-        this.runtime.ensureValidPendingSequence()
+        this.projection.ensureValidPendingSequence()
       }
 
       this.notify.queueStateChange()

@@ -44,6 +44,24 @@ function createCommandLookup(commands: readonly RegisteredCommand[]): ReadonlyMa
   return lookup
 }
 
+function addRegisteredCommandNames(target: Map<string, number>, commands: readonly RegisteredCommand[]): void {
+  for (const command of commands) {
+    target.set(command.name, (target.get(command.name) ?? 0) + 1)
+  }
+}
+
+function removeRegisteredCommandNames(target: Map<string, number>, commands: readonly RegisteredCommand[]): void {
+  for (const command of commands) {
+    const count = target.get(command.name)
+    if (!count || count <= 1) {
+      target.delete(command.name)
+      continue
+    }
+
+    target.set(command.name, count - 1)
+  }
+}
+
 interface CompileLayerRuntimeStateResult {
   requires: readonly [name: string, value: unknown][]
   matchers: readonly RuntimeMatcher[]
@@ -82,12 +100,14 @@ export class LayerService {
       let conditionKeys: readonly string[]
       let hasUnkeyedMatchers: boolean
       let compileFields: Readonly<Record<string, unknown>> | undefined
-      let localCommands: ReadonlyMap<string, RegisteredCommand> | undefined
+      let commands: readonly RegisteredCommand[]
+      let commandLookup: ReadonlyMap<string, RegisteredCommand> | undefined
 
       try {
         scope = this.normalizeScope(layer)
         bindingInputs = snapshotBindingInputs(layer.bindings ?? [])
-        localCommands = this.createLocalCommands(layer.commands)
+        commands = this.createCommands(layer.commands)
+        commandLookup = createCommandLookup(commands)
         ;({ requires, matchers, conditionKeys, hasUnkeyedMatchers, compileFields } =
           this.compileLayerRuntimeState(layer))
       } catch (error) {
@@ -103,10 +123,10 @@ export class LayerService {
         target,
         order,
         compileFields,
-        localCommands,
+        commandLookup,
       )
 
-      if (compiledBindings.bindings.length === 0 && !compiledBindings.hasTokenBindings && !localCommands) {
+      if (compiledBindings.bindings.length === 0 && !compiledBindings.hasTokenBindings && commands.length === 0) {
         return NOOP
       }
 
@@ -121,8 +141,9 @@ export class LayerService {
         hasUnkeyedMatchers,
         matchCacheDirty: true,
         compileFields,
+        commands,
+        commandLookup,
         bindingInputs,
-        localCommands,
         compiledBindings: compiledBindings.bindings,
         hasUnkeyedBindings: compiledBindings.bindings.some((binding) => binding.hasUnkeyedMatchers),
         hasTokenBindings: compiledBindings.hasTokenBindings,
@@ -130,8 +151,10 @@ export class LayerService {
       }
 
       this.state.layers.layers.add(registeredLayer)
-      if (registeredLayer.localCommands) {
-        this.state.layers.layersWithLocalCommands += 1
+      if (registeredLayer.commands.length > 0) {
+        this.state.layers.layersWithCommands += 1
+        this.state.commands.commandMetadataVersion += 1
+        addRegisteredCommandNames(this.state.commands.registeredNames, registeredLayer.commands)
       }
 
       if (registeredLayer.requires.length > 0 || registeredLayer.matchers.length > 0) {
@@ -152,6 +175,10 @@ export class LayerService {
         registeredLayer.offTargetDestroy = () => {
           target.off(RenderableEvents.DESTROYED, onTargetDestroy)
         }
+      }
+
+      if (registeredLayer.commands.length > 0) {
+        this.runtime.ensureValidPendingSequence()
       }
 
       this.notify.queueStateChange()
@@ -180,7 +207,7 @@ export class LayerService {
             layer.target,
             layer.order,
             layer.compileFields,
-            layer.localCommands,
+            layer.commandLookup,
           ),
         )
       }
@@ -298,15 +325,14 @@ export class LayerService {
     return "global"
   }
 
-  private createLocalCommands(
+  private createCommands(
     commands: readonly CommandDefinition[] | undefined,
-  ): ReadonlyMap<string, RegisteredCommand> | undefined {
+  ): readonly RegisteredCommand[] {
     if (!commands || commands.length === 0) {
-      return undefined
+      return []
     }
 
-    const normalized = this.options.commands.normalizeCommands(commands)
-    return createCommandLookup(normalized)
+    return this.options.commands.normalizeCommands(commands)
   }
 
   private compileLayerRuntimeState(layer: Layer): CompileLayerRuntimeStateResult {
@@ -429,8 +455,10 @@ export class LayerService {
         this.state.layers.layersWithConditions -= 1
       }
 
-      if (layer.localCommands) {
-        this.state.layers.layersWithLocalCommands -= 1
+      if (layer.commands.length > 0) {
+        this.state.layers.layersWithCommands -= 1
+        this.state.commands.commandMetadataVersion += 1
+        removeRegisteredCommandNames(this.state.commands.registeredNames, layer.commands)
       }
 
       this.conditions.unregisterRuntimeMatchable(layer)
@@ -444,6 +472,8 @@ export class LayerService {
 
       if (this.state.runtime.pendingSequence?.layer === layer) {
         this.runtime.setPendingSequence(null)
+      } else if (layer.commands.length > 0) {
+        this.runtime.ensureValidPendingSequence()
       }
 
       this.notify.queueStateChange()

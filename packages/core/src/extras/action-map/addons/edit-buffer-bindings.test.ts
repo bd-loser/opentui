@@ -503,7 +503,7 @@ describe("edit buffer bindings addon", () => {
     offSecond()
   })
 
-  test("skips colliding commands and continues registering the rest of the batch", () => {
+  test("allows colliding command names on separate layers and continues registering the rest of the batch", () => {
     const actionMap = getActionMap(renderer)
     const errors: string[] = []
 
@@ -526,8 +526,9 @@ describe("edit buffer bindings addon", () => {
       registerEditBufferCommands(actionMap)
     }).not.toThrow()
 
-    expect(errors).toEqual(['ActionMap command "delete-line" is already registered'])
+    expect(errors).toEqual([])
     expect(actionMap.getCommands().some((command) => command.name === "submit")).toBe(true)
+    expect(actionMap.getCommands({ visibility: "registered" }).filter((command) => command.name === "delete-line")).toHaveLength(2)
     expect(actionMap.getActiveKeys().find((candidate) => candidate.stroke.name === "x")?.command).toBe("submit")
   })
 })

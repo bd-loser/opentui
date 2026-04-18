@@ -67,6 +67,8 @@ export type CommandQueryValue = unknown | readonly unknown[] | ((value: unknown,
 export type CommandFilter = Readonly<Record<string, CommandQueryValue>> | ((command: CommandRecord) => boolean)
 
 export interface CommandQuery {
+  visibility?: "reachable" | "active" | "registered"
+  focused?: Renderable | null
   namespace?: string | readonly string[]
   search?: string
   searchIn?: readonly string[]
@@ -179,7 +181,7 @@ export interface ResolvedBindingCommand {
 export type CommandResolver = (command: string, ctx: CommandResolverContext) => ResolvedBindingCommand | undefined
 
 /**
- * Input to `registerCommands(...)`. Extra fields stay on `fields` and can be
+ * Layer command registration input. Extra fields stay on `fields` and can be
  * compiled into `attrs` by command-field addons.
  */
 export interface CommandDefinition {
@@ -408,8 +410,6 @@ export interface RuntimeMatchable {
 
 export interface CompiledBinding extends ActiveBinding, RuntimeMatchable {
   run?: CommandHandler
-  activeBindingCacheVersion?: number
-  activeBindingCache?: ActiveBinding
   sourceBinding: ParsedBindingInput
   sourceScope: Scope
   sourceTarget?: Renderable
@@ -471,8 +471,9 @@ export interface RegisteredLayer {
   matchCacheDirty?: boolean
   matchCache?: boolean
   compileFields?: Readonly<Record<string, unknown>>
+  commands: readonly RegisteredCommand[]
+  commandLookup?: ReadonlyMap<string, RegisteredCommand>
   bindingInputs: readonly BindingInput[]
-  localCommands?: ReadonlyMap<string, RegisteredCommand>
   compiledBindings: readonly CompiledBinding[]
   hasUnkeyedBindings: boolean
   hasTokenBindings: boolean

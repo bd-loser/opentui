@@ -90,7 +90,7 @@ export class CompilerService {
     sourceTarget: Renderable | undefined,
     sourceLayerOrder: number,
     compileFields?: Readonly<Record<string, unknown>>,
-    localCommands?: ReadonlyMap<string, RegisteredCommand>,
+    commandLookup?: ReadonlyMap<string, RegisteredCommand>,
   ): CompiledBindingsResult {
     const root = createSequenceNode(null, null, null)
     const compiledBindings: CompiledBinding[] = []
@@ -238,7 +238,11 @@ export class CompilerService {
               compiledBinding.attrs = attrs
             }
 
-            commands.resolveCompiledBindingCommand(compiledBinding, localCommands)
+            if (typeof command === "function") {
+              compiledBinding.run = command
+            } else {
+              commands.warnIfBindingCommandIsCurrentlyUnresolved(compiledBinding, commandLookup)
+            }
 
             if (compiledSequence.length === 0) {
               continue

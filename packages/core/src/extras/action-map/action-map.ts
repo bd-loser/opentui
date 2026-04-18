@@ -142,9 +142,10 @@ export class ActionMap {
     this.notify = new NotificationService(this.state, this.events, this.hooks)
     this.conditions = new ConditionService(this.state, this.notify)
     this.runtime = new RuntimeService(this.state, this.renderer, this.hooks, this.notify, this.conditions)
-    this.commands = new CommandService(this.state, this.notify, this.runtime, this.conditions, this.hooks, {
+    this.commands = new CommandService(this.state, this.notify, this.runtime, this.hooks, {
       actionMap: this,
     })
+    this.runtime.connectCommands(this.commands)
     this.compiler = new CompilerService(this.state, this.notify, this.commands, this.conditions, {
       warnUnknownField: (kind, fieldName) => {
         this.warnUnknownField(kind, fieldName)
@@ -481,7 +482,10 @@ export class ActionMap {
   }
 
   public registerCommands(commands: CommandDefinition[]): () => void {
-    return this.commands.registerCommands(commands)
+    return this.registerLayer({
+      scope: "global",
+      commands,
+    })
   }
 
   private handleFocusedRenderableChange(_focused: Renderable | null): void {

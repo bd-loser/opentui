@@ -1,4 +1,17 @@
+import type { Renderable } from "../../../Renderable.js"
+import { KeyEvent } from "../../../lib/KeyHandler.js"
 import type { ActionMap } from "../action-map.js"
+import type { Emitter } from "../lib/emitter.js"
+import {
+  getErrorMessage,
+  isPromiseLike,
+  mergeAttribute,
+  normalizeBindingCommand,
+  normalizeCommandName,
+  snapshotDataValue,
+  snapshotParsedBindingInput,
+  stringifyKeySequence,
+} from "../lib/utils.js"
 import type {
   Attributes,
   BindingCommand,
@@ -13,29 +26,17 @@ import type {
   CommandResolver,
   CommandResolverContext,
   CommandResult,
+  CompiledBinding,
   Hooks,
+  RegisteredCommand,
+  RegisteredLayer,
   ResolvedBindingCommand,
   RunCommandOptions,
   RunCommandResult,
-  CompiledBinding,
-  RegisteredCommand,
 } from "../types.js"
-import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
 import type { RuntimeService } from "./runtime.js"
-import type { ConditionService } from "./conditions.js"
-import { KeyEvent } from "../../../lib/KeyHandler.js"
-import type { Emitter } from "../lib/emitter.js"
-import {
-  getErrorMessage,
-  isPromiseLike,
-  mergeAttribute,
-  normalizeBindingCommand,
-  normalizeCommandName,
-  snapshotDataValue,
-  snapshotParsedBindingInput,
-  stringifyKeySequence,
-} from "../lib/utils.js"
+import type { State } from "./state.js"
 
 const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const
 const SNAPSHOT_COMMAND_METADATA_OPTIONS = Object.freeze({ deep: true, preserveNonPlainObjects: true })
@@ -54,8 +55,8 @@ interface ResolvedCommandLookup {
   hadError: boolean
 }
 
-interface RunResolvedCommandResult {
-  status: "ok" | "rejected" | "error"
+interface CommandExecutionResult {
+  status: "handled" | "rejected" | "error"
   result: RunCommandResult
 }
 
@@ -73,8 +74,30 @@ interface QueryRegisteredCommandsOptions {
 interface NormalizeRegisteredCommandsOptions {
   commands: readonly CommandDefinition[]
   commandFields: ReadonlyMap<string, CommandFieldCompiler>
-  hasCommand(name: string): boolean
   onError(message: string, cause?: unknown): void
+}
+
+interface LayerCommandEntry {
+  layer: RegisteredLayer
+  command: RegisteredCommand
+}
+
+interface ResolvedCommandEntry {
+  layer?: RegisteredLayer
+  resolved: ResolvedBindingCommand
+}
+
+interface ActiveCommandView {
+  entries: readonly LayerCommandEntry[]
+  reachable: readonly LayerCommandEntry[]
+  reachableByName: ReadonlyMap<string, LayerCommandEntry>
+  chainsByName: ReadonlyMap<string, readonly LayerCommandEntry[]>
+  resolvedWithoutRecordChains: Map<string, readonly ResolvedCommandEntry[]>
+  resolvedWithRecordChains: Map<string, readonly ResolvedCommandEntry[]>
+  fallbackWithoutRecord: Map<string, ResolvedBindingCommand | null>
+  fallbackWithRecord: Map<string, ResolvedBindingCommand | null>
+  fallbackWithoutRecordErrors: Set<string>
+  fallbackWithRecordErrors: Set<string>
 }
 
 function createSyntheticCommandEvent(): KeyEvent {
@@ -93,18 +116,39 @@ function createSyntheticCommandEvent(): KeyEvent {
 }
 
 export class CommandService {
+  private activeCommandViewVersion = -1
+  private activeCommandView: ActiveCommandView | undefined
+  private registeredCommandsCacheVersion = -1
+  private registeredCommandsCache: readonly RegisteredCommand[] = []
+
   constructor(
     private readonly state: State,
     private readonly notify: NotificationService,
     private readonly runtime: RuntimeService,
-    private readonly conditions: ConditionService,
     private readonly hooks: Emitter<Hooks>,
     private readonly options: CommandsOptions,
   ) {}
 
   public getCommands(query?: CommandQuery): readonly CommandRecord[] {
+    const visibility = query?.visibility ?? "reachable"
+    const focused = query && Object.prototype.hasOwnProperty.call(query, "focused")
+      ? (query.focused ?? null)
+      : this.runtime.getFocusedRenderableIfAvailable()
+
+    let commands: readonly RegisteredCommand[]
+    if (visibility === "registered") {
+      commands = this.getRegisteredCommands()
+    } else {
+      const view = this.getActiveCommandView(focused)
+      if (visibility === "active") {
+        commands = view.entries.map((entry) => entry.command)
+      } else {
+        commands = view.reachable.map((entry) => entry.command)
+      }
+    }
+
     return queryRegisteredCommands({
-      commands: this.state.commands.commands.values(),
+      commands,
       query,
       getCommandRecord: (command) => this.getCommandRecord(command),
       onFilterError: (error) => {
@@ -117,24 +161,34 @@ export class CommandService {
     return normalizeCommandName(name)
   }
 
-  public normalizeCommands(
-    commands: readonly CommandDefinition[],
-    options?: { hasCommand?: (name: string) => boolean },
-  ): RegisteredCommand[] {
+  public normalizeCommands(commands: readonly CommandDefinition[]): RegisteredCommand[] {
     return normalizeRegisteredCommands({
       commands,
       commandFields: this.state.config.commandFields,
-      hasCommand: (name) => {
-        const hasCommand = options?.hasCommand
-        if (hasCommand) {
-          return hasCommand(name)
-        }
-
-        return false
-      },
       onError: (message, cause) => {
         this.notify.emitError(message, cause)
       },
+    })
+  }
+
+  public registerCommandResolver(resolver: CommandResolver): () => void {
+    return this.notify.runWithStateChangeBatch(() => {
+      this.state.config.commandResolvers.append(resolver)
+      this.state.commands.commandMetadataVersion += 1
+      this.runtime.ensureValidPendingSequence()
+      this.notify.queueStateChange()
+
+      return () => {
+        this.notify.runWithStateChangeBatch(() => {
+          if (!this.state.config.commandResolvers.remove(resolver)) {
+            return
+          }
+
+          this.state.commands.commandMetadataVersion += 1
+          this.runtime.ensureValidPendingSequence()
+          this.notify.queueStateChange()
+        })
+      }
     })
   }
 
@@ -152,335 +206,350 @@ export class CommandService {
     }
 
     const includeRecord = options?.includeCommand === true
-    const focused = options?.focused ?? this.runtime.getFocusedRenderable()
+    const focused = options?.focused ?? this.runtime.getFocusedRenderableIfAvailable()
     const event = options?.event ?? createSyntheticCommandEvent()
-    const context: CommandContext = {
-      actionMap: this.options.actionMap,
-      event,
-      focused,
-      target: options?.target ?? null,
-      data: this.runtime.getReadonlyData(),
-    }
-
+    const data = this.runtime.getReadonlyData()
+    const view = this.getActiveCommandView(focused)
+    const chain = this.getResolvedCommandChain(view, normalized, focused, includeRecord)
     let rejectedResult: RunCommandResult | undefined
-    for (const resolved of this.getActiveLayerCommandResolutions(normalized, focused, includeRecord)) {
-      const execution = this.runResolvedCommand(normalized, resolved, context)
-      if (execution.status === "ok" || execution.status === "error") {
-        return execution.result
-      }
 
-      rejectedResult = execution.result
-    }
-
-    let resolved: ResolvedBindingCommand | undefined
-    if (!this.state.config.commandResolvers.has()) {
-      const registered = this.state.commands.commands.get(normalized)
-      if (!registered) {
-        return rejectedResult ?? { ok: false, reason: "not-found" }
-      }
-
-      resolved = this.getResolvedRegisteredCommand(registered, { includeRecord })
-    } else {
-      const lookup = this.resolveCommandString(normalized, { includeRecord })
-      resolved = lookup.resolved
-      if (!resolved) {
-        if (lookup.hadError) {
-          return { ok: false, reason: "error" }
+    if (chain) {
+      for (const entry of chain) {
+        const context: CommandContext = {
+          actionMap: this.options.actionMap,
+          event,
+          focused,
+          target: options?.target ?? entry.layer?.target ?? null,
+          data,
         }
 
-        return rejectedResult ?? { ok: false, reason: "not-found" }
+        const execution = this.executeResolvedCommand(normalized, entry.resolved, context)
+        if (execution.status === "handled" || execution.status === "error") {
+          return execution.result
+        }
+
+        rejectedResult = execution.result
       }
     }
 
-    return this.runResolvedCommand(normalized, resolved, context).result
+    const fallbackErrors = includeRecord ? view.fallbackWithRecordErrors : view.fallbackWithoutRecordErrors
+    if (fallbackErrors.has(normalized)) {
+      return { ok: false, reason: "error" }
+    }
+
+    return rejectedResult ?? { ok: false, reason: "not-found" }
   }
 
   public runBinding(
-    layer: { target?: CommandContext["target"] },
+    bindingLayer: RegisteredLayer,
     binding: CompiledBinding,
     event: KeyEvent,
-    focused: CommandContext["focused"],
+    focused: Renderable | null,
   ): boolean {
-    const run = binding.run
-    if (!run) {
-      return false
-    }
+    const data = this.runtime.getReadonlyData()
 
-    const context: CommandContext = {
-      actionMap: this.options.actionMap,
-      event,
-      focused,
-      target: layer.target ?? null,
-      data: this.runtime.getReadonlyData(),
-    }
+    if (binding.run) {
+      const result = this.executeResolvedCommand(
+        typeof binding.command === "string" ? binding.command : "<function>",
+        { run: binding.run },
+        {
+          actionMap: this.options.actionMap,
+          event,
+          focused,
+          target: bindingLayer.target ?? null,
+          data,
+        },
+      )
 
-    let result: CommandResult
-    try {
-      result = run(context)
-    } catch (error) {
-      this.notify.emitError(`[ActionMap] Error running command ${describeBindingCommand(binding)}:`, error)
+      if (result.status === "rejected") {
+        return false
+      }
+
       applyBindingEventEffects(binding, event)
       return true
     }
 
-    if (isPromiseLike(result)) {
-      result.catch((error) => {
-        this.notify.emitError(`[ActionMap] Async error in command ${describeBindingCommand(binding)}:`, error)
-      })
-      applyBindingEventEffects(binding, event)
-      return true
-    }
-
-    if (result === false) {
+    if (typeof binding.command !== "string") {
       return false
     }
 
-    applyBindingEventEffects(binding, event)
-    return true
-  }
+    const view = this.getActiveCommandView(focused)
+    const chain = this.getResolvedCommandChain(view, binding.command, focused, false)
+    if (chain) {
+      for (const entry of chain) {
+        const context: CommandContext = {
+          actionMap: this.options.actionMap,
+          event,
+          focused,
+          target: entry.layer?.target ?? bindingLayer.target ?? null,
+          data,
+        }
 
-  public registerCommandResolver(resolver: CommandResolver): () => void {
-    return this.notify.runWithStateChangeBatch(() => {
-      this.state.config.commandResolvers.append(resolver)
-      this.refreshBindingCommandResolution()
-      this.notify.queueStateChange()
+        const execution = this.executeResolvedCommand(binding.command, entry.resolved, context)
+        if (execution.status === "rejected") {
+          continue
+        }
 
-      return () => {
-        this.notify.runWithStateChangeBatch(() => {
-          if (!this.state.config.commandResolvers.remove(resolver)) {
-            return
-          }
-
-          this.refreshBindingCommandResolution()
-          this.notify.queueStateChange()
-        })
-      }
-    })
-  }
-
-  public registerCommands(commands: CommandDefinition[]): () => void {
-    return this.notify.runWithStateChangeBatch(() => {
-      const normalizedCommands = this.normalizeCommands(commands, {
-        hasCommand: (name) => this.state.commands.commands.has(name),
-      })
-
-      for (const command of normalizedCommands) {
-        this.state.commands.commands.set(command.name, command)
-      }
-
-      if (normalizedCommands.length > 0) {
-        this.refreshBindingCommandResolution()
-        this.notify.queueStateChange()
-      }
-
-      return () => {
-        this.notify.runWithStateChangeBatch(() => {
-          let removed = false
-
-          for (const command of normalizedCommands) {
-            const current = this.state.commands.commands.get(command.name)
-            if (current !== command) {
-              continue
-            }
-
-            this.state.commands.commands.delete(command.name)
-            removed = true
-          }
-
-          if (removed) {
-            this.refreshBindingCommandResolution()
-            this.notify.queueStateChange()
-          }
-        })
-      }
-    })
-  }
-
-  public refreshBindingCommandResolution(): void {
-    for (const layer of this.state.layers.layers) {
-      for (const binding of layer.compiledBindings) {
-        this.resolveCompiledBindingCommand(binding, layer.localCommands)
+        applyBindingEventEffects(binding, event)
+        return true
       }
     }
 
-    this.state.commands.commandMetadataVersion += 1
-    this.runtime.ensureValidPendingSequence()
+    return false
   }
 
-  public resolveCompiledBindingCommand(
+  public canResolveCommand(command: string, focused: Renderable | null): boolean {
+    const active = this.getActiveCommandView(focused).reachableByName.get(command)
+    if (active) {
+      return true
+    }
+
+    return this.getFallbackResolvedCommand(this.getActiveCommandView(focused), command, focused, false) !== undefined
+  }
+
+  public getCommandAttrs(command: string, focused: Renderable | null): Readonly<Attributes> | undefined {
+    const top = this.getTopResolvedCommand(command, focused, false)
+    return top?.resolved.attrs
+  }
+
+  public createCommandProjection(focused: Renderable | null): {
+    canResolve(name: string): boolean
+    getAttrs(name: string): Readonly<Attributes> | undefined
+  } {
+    const view = this.getActiveCommandView(focused)
+
+    return {
+      canResolve: (name) => {
+        if (view.reachableByName.has(name)) {
+          return true
+        }
+
+        return this.getFallbackResolvedCommand(view, name, focused, false) !== undefined
+      },
+      getAttrs: (name) => {
+        const active = view.reachableByName.get(name)
+        if (active) {
+          return active.command.attrs
+        }
+
+        const fallback = this.getFallbackResolvedCommand(view, name, focused, false)
+        return fallback?.resolved.attrs
+      },
+    }
+  }
+
+  public warnIfBindingCommandIsCurrentlyUnresolved(
     binding: CompiledBinding,
-    localCommands?: ReadonlyMap<string, RegisteredCommand>,
+    layerCommands?: ReadonlyMap<string, RegisteredCommand>,
   ): void {
-    binding.run = undefined
-    binding.commandAttrs = undefined
-    binding.activeBindingCacheVersion = undefined
-    binding.activeBindingCache = undefined
-
     const command = binding.command
-    if (command === undefined) {
+    if (typeof command !== "string") {
       return
     }
 
-    if (typeof command === "function") {
-      binding.run = command
+    if (layerCommands?.has(command)) {
       return
     }
 
-    if (localCommands) {
-      const localCommand = localCommands.get(command)
-      if (localCommand) {
-        const resolved = this.getResolvedRegisteredCommand(localCommand)
-        binding.run = resolved.run
-        binding.commandAttrs = resolved.attrs
-        return
-      }
-    }
-
-    if (!this.state.config.commandResolvers.has()) {
-      const registered = this.state.commands.commands.get(command)
-      if (!registered) {
-        this.handleUnresolvedCommand(command, binding)
-        return
-      }
-
-      const resolved = this.getResolvedRegisteredCommand(registered)
-      binding.run = resolved.run
-      binding.commandAttrs = resolved.attrs
+    if (this.hasRegisteredCommand(command)) {
       return
     }
 
-    const lookup = this.resolveCommandString(command)
-    const resolved = lookup.resolved
-    if (!resolved) {
-      if (!lookup.hadError) {
-        this.handleUnresolvedCommand(command, binding)
-      }
-
+    const focused = this.runtime.getFocusedRenderableIfAvailable()
+    const lookup = this.resolveCommandWithResolvers(command, focused)
+    if (lookup.resolved || lookup.hadError) {
       return
     }
 
-    binding.run = resolved.run
-    binding.commandAttrs = resolved.attrs
+    this.handleUnresolvedCommand(command, binding)
   }
 
   public getCommandRecord(command: RegisteredCommand): CommandRecord {
     return getRegisteredCommandRecord(command)
   }
 
-  private getActiveLayerCommandResolutions(
+  private getTopResolvedCommand(
     command: string,
-    focused: CommandContext["focused"],
+    focused: Renderable | null,
     includeRecord: boolean,
-  ): ResolvedBindingCommand[] {
-    if (this.state.layers.layersWithLocalCommands === 0) {
-      return []
+  ): ResolvedCommandEntry | undefined {
+    const view = this.getActiveCommandView(focused)
+    const active = view.reachableByName.get(command)
+    if (active) {
+      return {
+        layer: active.layer,
+        resolved: this.getResolvedRegisteredCommand(active.command, { includeRecord }),
+      }
     }
 
-    const resolutions: ResolvedBindingCommand[] = []
-    const activeLayers = this.runtime.getActiveLayers(focused)
-
-    for (const layer of activeLayers) {
-      if (!layer.localCommands) {
-        continue
-      }
-
-      if (!this.conditions.layerMatchesRuntimeState(layer)) {
-        continue
-      }
-
-      const localCommand = layer.localCommands.get(command)
-      if (!localCommand) {
-        continue
-      }
-
-      resolutions.push(this.getResolvedRegisteredCommand(localCommand, { includeRecord }))
-    }
-
-    return resolutions
+    return this.getFallbackResolvedCommand(view, command, focused, includeRecord)
   }
 
-  private runResolvedCommand(
-    commandName: string,
-    resolved: ResolvedBindingCommand,
-    context: CommandContext,
-  ): RunResolvedCommandResult {
-    let result: CommandResult
-
-    try {
-      result = resolved.run(context)
-    } catch (error) {
-      this.notify.emitError(`[ActionMap] Error running command "${commandName}":`, error)
-      if (resolved.record) {
-        return {
-          status: "error",
-          result: { ok: false, reason: "error", command: resolved.record },
-        }
-      }
-
-      return {
-        status: "error",
-        result: { ok: false, reason: "error" },
-      }
+  private getFallbackResolvedCommand(
+    view: ActiveCommandView,
+    command: string,
+    focused: Renderable | null,
+    includeRecord: boolean,
+  ): ResolvedCommandEntry | undefined {
+    const cache = includeRecord ? view.fallbackWithRecord : view.fallbackWithoutRecord
+    const errorCache = includeRecord ? view.fallbackWithRecordErrors : view.fallbackWithoutRecordErrors
+    if (cache.has(command)) {
+      const cached = cache.get(command)
+      return cached ? { resolved: cached } : undefined
     }
 
-    if (isPromiseLike(result)) {
-      result.catch((error) => {
-        this.notify.emitError(`[ActionMap] Async error in command "${commandName}":`, error)
-      })
-
-      if (resolved.record) {
-        return {
-          status: "ok",
-          result: { ok: true, command: resolved.record },
-        }
-      }
-
-      return {
-        status: "ok",
-        result: { ok: true },
-      }
+    const lookup = this.resolveCommandWithResolvers(command, focused, { includeRecord })
+    cache.set(command, lookup.resolved ?? null)
+    if (lookup.hadError) {
+      errorCache.add(command)
     }
 
-    if (result === false) {
-      if (resolved.rejectedResult) {
-        return {
-          status: "rejected",
-          result: resolved.rejectedResult,
-        }
-      }
-
-      if (resolved.record) {
-        return {
-          status: "rejected",
-          result: { ok: false, reason: "rejected", command: resolved.record },
-        }
-      }
-
-      return {
-        status: "rejected",
-        result: { ok: false, reason: "rejected" },
-      }
+    if (!lookup.resolved) {
+      return undefined
     }
 
-    if (resolved.record) {
-      return {
-        status: "ok",
-        result: { ok: true, command: resolved.record },
-      }
-    }
-
-    return {
-      status: "ok",
-      result: { ok: true },
-    }
+    return { resolved: lookup.resolved }
   }
 
-  private resolveCommandString(command: string, options?: { includeRecord?: boolean }): ResolvedCommandLookup {
+  private getResolvedCommandChain(
+    view: ActiveCommandView,
+    command: string,
+    focused: Renderable | null,
+    includeRecord: boolean,
+  ): readonly ResolvedCommandEntry[] | undefined {
+    const cache = includeRecord ? view.resolvedWithRecordChains : view.resolvedWithoutRecordChains
+    const cached = cache.get(command)
+    if (cached) {
+      return cached.length > 0 ? cached : undefined
+    }
+
+    const resolved: ResolvedCommandEntry[] = []
+    const activeChain = view.chainsByName.get(command)
+    if (activeChain) {
+      for (const entry of activeChain) {
+        resolved.push({
+          layer: entry.layer,
+          resolved: this.getResolvedRegisteredCommand(entry.command, { includeRecord }),
+        })
+      }
+    }
+
+    const fallback = this.getFallbackResolvedCommand(view, command, focused, includeRecord)
+    if (fallback) {
+      resolved.push(fallback)
+    }
+
+    cache.set(command, resolved)
+    return resolved.length > 0 ? resolved : undefined
+  }
+
+  private getActiveCommandView(focused: Renderable | null): ActiveCommandView {
+    const currentFocused = this.runtime.getFocusedRenderableIfAvailable()
+    const derivedStateVersion = this.state.notify.derivedStateVersion
+
+    if (focused === currentFocused && this.activeCommandViewVersion === derivedStateVersion && this.activeCommandView) {
+      return this.activeCommandView
+    }
+
+    const entries: LayerCommandEntry[] = []
+    const reachable: LayerCommandEntry[] = []
+    const reachableByName = new Map<string, LayerCommandEntry>()
+    const chainsByName = new Map<string, LayerCommandEntry[]>()
+
+    if (this.state.layers.layersWithCommands > 0) {
+      const activeLayers = this.runtime.getActiveLayers(focused)
+
+      for (const layer of activeLayers) {
+        if (layer.commands.length === 0) {
+          continue
+        }
+
+        if (!this.runtime.layerMatchesRuntimeState(layer)) {
+          continue
+        }
+
+        for (const command of layer.commands) {
+          const entry: LayerCommandEntry = { layer, command }
+          entries.push(entry)
+
+          const existing = chainsByName.get(command.name)
+          if (existing) {
+            existing.push(entry)
+          } else {
+            chainsByName.set(command.name, [entry])
+          }
+
+          if (!reachableByName.has(command.name)) {
+            reachableByName.set(command.name, entry)
+            reachable.push(entry)
+          }
+        }
+      }
+    }
+
+    const view: ActiveCommandView = {
+      entries,
+      reachable,
+      reachableByName,
+      chainsByName,
+      resolvedWithoutRecordChains: new Map<string, readonly ResolvedCommandEntry[]>(),
+      resolvedWithRecordChains: new Map<string, readonly ResolvedCommandEntry[]>(),
+      fallbackWithoutRecord: new Map<string, ResolvedBindingCommand | null>(),
+      fallbackWithRecord: new Map<string, ResolvedBindingCommand | null>(),
+      fallbackWithoutRecordErrors: new Set<string>(),
+      fallbackWithRecordErrors: new Set<string>(),
+    }
+
+    if (focused === currentFocused) {
+      this.activeCommandViewVersion = derivedStateVersion
+      this.activeCommandView = view
+    }
+
+    return view
+  }
+
+  private getRegisteredCommands(): readonly RegisteredCommand[] {
+    const cacheVersion = this.state.commands.commandMetadataVersion
+    if (this.registeredCommandsCacheVersion === cacheVersion) {
+      return this.registeredCommandsCache
+    }
+
+    const layers = [...this.state.layers.layers]
+    layers.sort((left, right) => left.order - right.order)
+
+    const commands: RegisteredCommand[] = []
+    for (const layer of layers) {
+      if (layer.commands.length === 0) {
+        continue
+      }
+
+      commands.push(...layer.commands)
+    }
+
+    this.registeredCommandsCacheVersion = cacheVersion
+    this.registeredCommandsCache = commands
+    return commands
+  }
+
+  private hasRegisteredCommand(name: string): boolean {
+    return this.state.commands.registeredNames.has(name)
+  }
+
+  private resolveCommandWithResolvers(
+    command: string,
+    focused: Renderable | null,
+    options?: { includeRecord?: boolean },
+  ): ResolvedCommandLookup {
+    const resolvers = this.state.config.commandResolvers.values()
+    if (resolvers.length === 0) {
+      return { hadError: false }
+    }
+
     const includeRecord = options?.includeRecord === true
-    const context = this.createCommandResolverContext(includeRecord)
+    const context = this.createCommandResolverContext(includeRecord, focused)
     let hadError = false
 
-    for (const resolver of this.state.config.commandResolvers.values()) {
+    for (const resolver of resolvers) {
       let resolved: ResolvedBindingCommand | undefined
 
       try {
@@ -496,33 +565,21 @@ export class CommandService {
       }
     }
 
-    const registered = this.state.commands.commands.get(command)
-    if (registered) {
-      return {
-        hadError,
-        resolved: this.getResolvedRegisteredCommand(registered, { includeRecord }),
-      }
-    }
-
     return { hadError }
   }
 
-  private createCommandResolverContext(includeRecord: boolean): CommandResolverContext {
+  private createCommandResolverContext(includeRecord: boolean, focused: Renderable | null): CommandResolverContext {
     return {
       getCommandAttrs: (name: string) => {
-        return this.state.commands.commands.get(name)?.attrs
+        return this.getCommandAttrs(name, focused)
       },
       getCommandRecord: (name: string) => {
         if (!includeRecord) {
           return undefined
         }
 
-        const registered = this.state.commands.commands.get(name)
-        if (!registered) {
-          return undefined
-        }
-
-        return this.getCommandRecord(registered)
+        const top = this.getTopResolvedCommand(name, focused, true)
+        return top?.resolved.record
       },
     }
   }
@@ -584,6 +641,82 @@ export class CommandService {
     return runner
   }
 
+  private executeResolvedCommand(
+    commandName: string,
+    resolved: ResolvedBindingCommand,
+    context: CommandContext,
+  ): CommandExecutionResult {
+    let result: CommandResult
+
+    try {
+      result = resolved.run(context)
+    } catch (error) {
+      this.notify.emitError(`[ActionMap] Error running command "${commandName}":`, error)
+      if (resolved.record) {
+        return {
+          status: "error",
+          result: { ok: false, reason: "error", command: resolved.record },
+        }
+      }
+
+      return {
+        status: "error",
+        result: { ok: false, reason: "error" },
+      }
+    }
+
+    if (isPromiseLike(result)) {
+      result.catch((error) => {
+        this.notify.emitError(`[ActionMap] Async error in command "${commandName}":`, error)
+      })
+
+      if (resolved.record) {
+        return {
+          status: "handled",
+          result: { ok: true, command: resolved.record },
+        }
+      }
+
+      return {
+        status: "handled",
+        result: { ok: true },
+      }
+    }
+
+    if (result === false) {
+      if (resolved.rejectedResult) {
+        return {
+          status: "rejected",
+          result: resolved.rejectedResult,
+        }
+      }
+
+      if (resolved.record) {
+        return {
+          status: "rejected",
+          result: { ok: false, reason: "rejected", command: resolved.record },
+        }
+      }
+
+      return {
+        status: "rejected",
+        result: { ok: false, reason: "rejected" },
+      }
+    }
+
+    if (resolved.record) {
+      return {
+        status: "handled",
+        result: { ok: true, command: resolved.record },
+      }
+    }
+
+    return {
+      status: "handled",
+      result: { ok: true },
+    }
+  }
+
   private handleUnresolvedCommand(command: string, binding: CompiledBinding): void {
     const sequence = stringifyKeySequence(binding.sourceBinding.sequence, { preferDisplay: true })
     const warningKey = `unresolved:${binding.sourceLayerOrder}:${binding.sourceBindingIndex}:${command}:${sequence}`
@@ -606,18 +739,6 @@ export class CommandService {
   }
 }
 
-function describeBindingCommand(binding: CompiledBinding): string {
-  if (typeof binding.command === "string") {
-    return `"${binding.command}"`
-  }
-
-  if (typeof binding.command === "function") {
-    return "<function>"
-  }
-
-  return "<none>"
-}
-
 function applyBindingEventEffects(binding: CompiledBinding, event: KeyEvent): void {
   if (!binding.preventDefault) {
     return
@@ -630,10 +751,11 @@ function applyBindingEventEffects(binding: CompiledBinding, event: KeyEvent): vo
 function queryRegisteredCommands(options: QueryRegisteredCommandsOptions): readonly CommandRecord[] {
   const namespace = options.query?.namespace
   const normalizedSearch = options.query?.search?.trim().toLowerCase() ?? ""
-  const searchKeys =
-    options.query?.searchIn && options.query.searchIn.length > 0
-      ? options.query.searchIn
-      : DEFAULT_COMMAND_SEARCH_FIELDS
+  let searchKeys = DEFAULT_COMMAND_SEARCH_FIELDS as readonly string[]
+  if (options.query?.searchIn && options.query.searchIn.length > 0) {
+    searchKeys = options.query.searchIn
+  }
+
   const filter = options.query?.filter
   let filterEntries: readonly [string, CommandQueryValue][] | undefined
   let filterPredicate: ((command: CommandRecord) => boolean) | undefined
@@ -695,12 +817,7 @@ function normalizeRegisteredCommands(options: NormalizeRegisteredCommandsOptions
       const normalizedName = normalizeCommandName(command.name)
 
       if (seen.has(normalizedName)) {
-        options.onError(`Duplicate action map command "${normalizedName}" in the same registration batch`)
-        continue
-      }
-
-      if (options.hasCommand(normalizedName)) {
-        options.onError(`ActionMap command "${normalizedName}" is already registered`)
+        options.onError(`Duplicate action map command "${normalizedName}" in the same layer`)
         continue
       }
 
@@ -767,9 +884,7 @@ function getRegisteredCommandRecord(command: RegisteredCommand): CommandRecord {
 
   let fields = EMPTY_COMMAND_FIELDS
   if (command.fields !== EMPTY_COMMAND_FIELDS && Object.keys(command.fields).length > 0) {
-    fields = snapshotDataValue(command.fields, SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS) as Readonly<
-      Record<string, unknown>
-    >
+    fields = snapshotDataValue(command.fields, SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS) as Readonly<Record<string, unknown>>
   }
 
   let record: CommandRecord

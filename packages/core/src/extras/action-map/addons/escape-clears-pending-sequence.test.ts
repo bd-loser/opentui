@@ -21,7 +21,7 @@ describe("escape clears pending sequence addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "delete-line",
         run() {
@@ -34,7 +34,7 @@ describe("escape clears pending sequence addon", () => {
           calls.push("escape")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -67,7 +67,7 @@ describe("escape clears pending sequence addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "delete-line",
         run() {
@@ -80,7 +80,7 @@ describe("escape clears pending sequence addon", () => {
           calls.push("escape")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -105,7 +105,7 @@ describe("escape clears pending sequence addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "delete-line",
         run() {
@@ -118,7 +118,7 @@ describe("escape clears pending sequence addon", () => {
           calls.push("escape")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",

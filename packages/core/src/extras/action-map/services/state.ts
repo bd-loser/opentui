@@ -60,7 +60,7 @@ export interface LayerCommandEntry {
 }
 
 export interface ResolvedCommandEntry {
-  layer?: RegisteredLayer
+  target?: Renderable
   resolved: ResolvedBindingCommand
 }
 

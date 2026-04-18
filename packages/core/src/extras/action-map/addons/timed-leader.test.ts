@@ -22,14 +22,14 @@ describe("timed leader addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "leader-action",
         run() {
           calls.push("leader")
         },
       },
-    ])
+    ] })
 
     registerTimedLeader(actionMap, {
       trigger: { name: "x", ctrl: true },
@@ -50,14 +50,14 @@ describe("timed leader addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "leader-action",
         run() {
           calls.push("leader")
         },
       },
-    ])
+    ] })
 
     registerTimedLeader(actionMap, {
       trigger: { name: "x", hyper: true },
@@ -79,14 +79,14 @@ describe("timed leader addon", () => {
     const calls: string[] = []
     const states: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "leader-action",
         run() {
           calls.push("leader")
         },
       },
-    ])
+    ] })
 
     registerTimedLeader(actionMap, {
       trigger: { name: "x", ctrl: true },
@@ -127,12 +127,12 @@ describe("timed leader addon", () => {
       },
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "leader-action",
         run() {},
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",

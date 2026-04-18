@@ -21,14 +21,14 @@ describe("base layout fallback addon", () => {
     const calls: string[] = []
 
     registerBaseLayoutFallback(actionMap)
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "copy",
         run() {
           calls.push("copy")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "ctrl+c", cmd: "copy" }],
@@ -44,7 +44,7 @@ describe("base layout fallback addon", () => {
     const calls: string[] = []
 
     registerBaseLayoutFallback(actionMap)
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "fallback-copy",
         run() {
@@ -57,7 +57,7 @@ describe("base layout fallback addon", () => {
           calls.push("direct")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [
@@ -78,14 +78,14 @@ describe("base layout fallback addon", () => {
     const offFallback = registerBaseLayoutFallback(actionMap)
     offFallback()
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "copy",
         run() {
           calls.push("copy")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "ctrl+c", cmd: "copy" }],

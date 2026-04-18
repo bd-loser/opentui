@@ -762,7 +762,7 @@ function registerActionMap(renderer: CliRenderer): void {
   disposers.push(addons.registerMetadataFields(actionMapInstance))
 
   disposers.push(
-    actionMapInstance.registerCommands([
+    actionMapInstance.registerLayer({ scope: "global", commands: [
       {
         name: "focus-next",
         title: "Next target",
@@ -840,7 +840,7 @@ function registerActionMap(renderer: CliRenderer): void {
           setStatus(renderer, `Beta decreased to ${betaCount}`)
         },
       },
-    ]),
+    ] }),
   )
 
   disposers.push(

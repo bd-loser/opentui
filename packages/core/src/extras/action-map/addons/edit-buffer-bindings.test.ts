@@ -252,14 +252,14 @@ describe("edit buffer bindings addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "fallback",
         run() {
           calls.push("fallback")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "fallback" }],
@@ -334,14 +334,14 @@ describe("edit buffer bindings addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "custom-left",
         run() {
           calls.push("custom-left")
         },
       },
-    ])
+    ] })
 
     const off = registerManagedTextareaLayer(actionMap, {
       scope: "global",
@@ -511,12 +511,12 @@ describe("edit buffer bindings addon", () => {
       errors.push(event.message)
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "delete-line",
         run() {},
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],

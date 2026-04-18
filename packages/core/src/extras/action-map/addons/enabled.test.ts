@@ -28,14 +28,14 @@ describe("enabled addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "noop",
         run() {
           calls.push("noop")
         },
       },
-    ])
+    ] })
 
     expect(() => {
       actionMap.registerLayer({
@@ -58,7 +58,7 @@ describe("enabled addon", () => {
     let enabled = false
 
     registerEnabledField(actionMap)
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "always-off",
         run() {
@@ -71,7 +71,7 @@ describe("enabled addon", () => {
           calls.push("dynamic")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -134,7 +134,7 @@ describe("enabled addon", () => {
     }
 
     registerEnabledField(actionMap)
-    actionMap.registerCommands([{ name: "dynamic", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "dynamic", run() {} }] })
     const off = actionMap.registerLayer({
       scope: "global",
       enabled: enabledMatcher,
@@ -170,7 +170,7 @@ describe("enabled addon", () => {
     let enabled = true
 
     registerEnabledField(actionMap)
-    actionMap.registerCommands([{ name: "delete-line", run() {} }])
+    actionMap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
     actionMap.registerLayer({
       scope: "global",
       enabled: () => enabled,
@@ -197,14 +197,14 @@ describe("enabled addon", () => {
       errors.push(event.message)
     })
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "noop",
         run() {
           calls.push("noop")
         },
       },
-    ])
+    ] })
 
     expect(() => {
       actionMap.registerLayer({
@@ -239,14 +239,14 @@ describe("enabled addon", () => {
     const calls: string[] = []
 
     registerEnabledField(actionMap)
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "noop",
         run() {
           calls.push("noop")
         },
       },
-    ])
+    ] })
     actionMap.registerLayer({
       scope: "global",
       enabled: () => {

@@ -390,7 +390,7 @@ export function registerEditBufferCommands(actionMap: ActionMap, options?: EditB
     }
   }
 
-  const dispose = actionMap.registerCommands(createEditBufferCommands(descriptions))
+  const dispose = actionMap.registerLayer({ scope: "global", commands: createEditBufferCommands(descriptions) })
   const registration = { count: 1, dispose }
   editBufferCommandRegistrations.set(actionMap, registration)
 

@@ -11,7 +11,6 @@ import type {
   BindingTransformer,
   Events,
   Hooks,
-  CommandDefinition,
   CommandFieldCompiler,
   CommandQuery,
   CommandRecord,
@@ -479,13 +478,6 @@ export class ActionMap {
 
   public clearEventMatchResolvers(): void {
     this.state.config.eventMatchResolvers.clear()
-  }
-
-  public registerCommands(commands: CommandDefinition[]): () => void {
-    return this.registerLayer({
-      scope: "global",
-      commands,
-    })
   }
 
   private handleFocusedRenderableChange(_focused: Renderable | null): void {

@@ -22,14 +22,14 @@ describe("comma bindings addon", () => {
     const calls: string[] = []
 
     registerCommaBindings(actionMap)
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "command",
         run() {
           calls.push("command")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",
@@ -69,14 +69,14 @@ describe("comma bindings addon", () => {
     const offCommaBindings = registerCommaBindings(actionMap)
     offCommaBindings()
 
-    actionMap.registerCommands([
+    actionMap.registerLayer({ scope: "global", commands: [
       {
         name: "sequence",
         run() {
           calls.push("sequence")
         },
       },
-    ])
+    ] })
 
     actionMap.registerLayer({
       scope: "global",

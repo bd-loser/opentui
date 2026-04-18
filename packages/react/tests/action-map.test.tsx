@@ -110,6 +110,56 @@ describe("React action map hooks", () => {
     expect(calls).toEqual(["global"])
   })
 
+  test("useBindings factory does not re-register on unrelated rerenders", async () => {
+    let setTick!: Dispatch<SetStateAction<number>>
+    let registerCalls = 0
+
+    function App() {
+      const manager = useActionMap()
+      const [tick, setTickSignal] = useState(0)
+      setTick = setTickSignal
+
+      useEffect(() => {
+        return manager.registerLayer({ scope: "global", commands: [{ name: "probe", run() {} }] })
+      }, [manager])
+
+      useEffect(() => {
+        const original = manager.registerLayer.bind(manager)
+        manager.registerLayer = ((layer) => {
+          registerCalls += 1
+          return original(layer)
+        }) as typeof manager.registerLayer
+
+        return () => {
+          manager.registerLayer = original
+        }
+      }, [manager])
+
+      useBindings(
+        () => ({
+          scope: "global" as const,
+          bindings: { x: "probe" },
+        }),
+        [],
+      )
+
+      return <text>{tick}</text>
+    }
+
+    await act(async () => {
+      testSetup = await testRender(<App />, { width: 20, height: 6 })
+    })
+
+    expect(registerCalls).toBe(1)
+
+    act(() => {
+      setTick((value) => value + 1)
+    })
+    await testSetup.renderOnce()
+
+    expect(registerCalls).toBe(1)
+  })
+
   test("useActiveKeys updates on focus changes and direct blur", async () => {
     let firstTarget!: Renderable
     let secondTarget!: Renderable

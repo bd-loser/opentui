@@ -23,6 +23,7 @@ import type {
 import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
 import type { RuntimeService } from "./runtime.js"
+import type { ConditionService } from "./conditions.js"
 import { KeyEvent } from "../../../lib/KeyHandler.js"
 import type { Emitter } from "../lib/emitter.js"
 import {
@@ -51,6 +52,11 @@ const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({}
 interface ResolvedCommandLookup {
   resolved?: ResolvedBindingCommand
   hadError: boolean
+}
+
+interface RunResolvedCommandResult {
+  status: "ok" | "rejected" | "error"
+  result: RunCommandResult
 }
 
 interface CommandsOptions {
@@ -91,6 +97,7 @@ export class CommandService {
     private readonly state: State,
     private readonly notify: NotificationService,
     private readonly runtime: RuntimeService,
+    private readonly conditions: ConditionService,
     private readonly hooks: Emitter<Hooks>,
     private readonly options: CommandsOptions,
   ) {}
@@ -110,6 +117,27 @@ export class CommandService {
     return normalizeCommandName(name)
   }
 
+  public normalizeCommands(
+    commands: readonly CommandDefinition[],
+    options?: { hasCommand?: (name: string) => boolean },
+  ): RegisteredCommand[] {
+    return normalizeRegisteredCommands({
+      commands,
+      commandFields: this.state.config.commandFields,
+      hasCommand: (name) => {
+        const hasCommand = options?.hasCommand
+        if (hasCommand) {
+          return hasCommand(name)
+        }
+
+        return false
+      },
+      onError: (message, cause) => {
+        this.notify.emitError(message, cause)
+      },
+    })
+  }
+
   public runCommand(cmd: string, options?: RunCommandOptions): RunCommandResult {
     let normalized: BindingCommand | undefined
 
@@ -124,12 +152,31 @@ export class CommandService {
     }
 
     const includeRecord = options?.includeCommand === true
-    let resolved: ResolvedBindingCommand | undefined
+    const focused = options?.focused ?? this.runtime.getFocusedRenderable()
+    const event = options?.event ?? createSyntheticCommandEvent()
+    const context: CommandContext = {
+      actionMap: this.options.actionMap,
+      event,
+      focused,
+      target: options?.target ?? null,
+      data: this.runtime.getReadonlyData(),
+    }
 
+    let rejectedResult: RunCommandResult | undefined
+    for (const resolved of this.getActiveLayerCommandResolutions(normalized, focused, includeRecord)) {
+      const execution = this.runResolvedCommand(normalized, resolved, context)
+      if (execution.status === "ok" || execution.status === "error") {
+        return execution.result
+      }
+
+      rejectedResult = execution.result
+    }
+
+    let resolved: ResolvedBindingCommand | undefined
     if (!this.state.config.commandResolvers.has()) {
       const registered = this.state.commands.commands.get(normalized)
       if (!registered) {
-        return { ok: false, reason: "not-found" }
+        return rejectedResult ?? { ok: false, reason: "not-found" }
       }
 
       resolved = this.getResolvedRegisteredCommand(registered, { includeRecord })
@@ -141,51 +188,11 @@ export class CommandService {
           return { ok: false, reason: "error" }
         }
 
-        return { ok: false, reason: "not-found" }
+        return rejectedResult ?? { ok: false, reason: "not-found" }
       }
     }
 
-    const event = options?.event ?? createSyntheticCommandEvent()
-    const context: CommandContext = {
-      actionMap: this.options.actionMap,
-      event,
-      focused: options?.focused ?? this.runtime.getFocusedRenderable(),
-      target: options?.target ?? null,
-      data: this.runtime.getReadonlyData(),
-    }
-
-    let result: CommandResult
-    try {
-      result = resolved.run(context)
-    } catch (error) {
-      this.notify.emitError(`[ActionMap] Error running command "${normalized}":`, error)
-      if (resolved.record) {
-        return { ok: false, reason: "error", command: resolved.record }
-      }
-
-      return { ok: false, reason: "error" }
-    }
-
-    if (isPromiseLike(result)) {
-      result.catch((error) => {
-        this.notify.emitError(`[ActionMap] Async error in command "${normalized}":`, error)
-      })
-      return resolved.record ? { ok: true, command: resolved.record } : { ok: true }
-    }
-
-    if (result === false) {
-      if (resolved.rejectedResult) {
-        return resolved.rejectedResult
-      }
-
-      if (resolved.record) {
-        return { ok: false, reason: "rejected", command: resolved.record }
-      }
-
-      return { ok: false, reason: "rejected" }
-    }
-
-    return resolved.record ? { ok: true, command: resolved.record } : { ok: true }
+    return this.runResolvedCommand(normalized, resolved, context).result
   }
 
   public runBinding(
@@ -253,13 +260,8 @@ export class CommandService {
 
   public registerCommands(commands: CommandDefinition[]): () => void {
     return this.notify.runWithStateChangeBatch(() => {
-      const normalizedCommands = normalizeRegisteredCommands({
-        commands,
-        commandFields: this.state.config.commandFields,
+      const normalizedCommands = this.normalizeCommands(commands, {
         hasCommand: (name) => this.state.commands.commands.has(name),
-        onError: (message, cause) => {
-          this.notify.emitError(message, cause)
-        },
       })
 
       for (const command of normalizedCommands) {
@@ -297,7 +299,7 @@ export class CommandService {
   public refreshBindingCommandResolution(): void {
     for (const layer of this.state.layers.layers) {
       for (const binding of layer.compiledBindings) {
-        this.resolveCompiledBindingCommand(binding)
+        this.resolveCompiledBindingCommand(binding, layer.localCommands)
       }
     }
 
@@ -305,7 +307,10 @@ export class CommandService {
     this.runtime.ensureValidPendingSequence()
   }
 
-  public resolveCompiledBindingCommand(binding: CompiledBinding): void {
+  public resolveCompiledBindingCommand(
+    binding: CompiledBinding,
+    localCommands?: ReadonlyMap<string, RegisteredCommand>,
+  ): void {
     binding.run = undefined
     binding.commandAttrs = undefined
     binding.activeBindingCacheVersion = undefined
@@ -319,6 +324,16 @@ export class CommandService {
     if (typeof command === "function") {
       binding.run = command
       return
+    }
+
+    if (localCommands) {
+      const localCommand = localCommands.get(command)
+      if (localCommand) {
+        const resolved = this.getResolvedRegisteredCommand(localCommand)
+        binding.run = resolved.run
+        binding.commandAttrs = resolved.attrs
+        return
+      }
     }
 
     if (!this.state.config.commandResolvers.has()) {
@@ -350,6 +365,114 @@ export class CommandService {
 
   public getCommandRecord(command: RegisteredCommand): CommandRecord {
     return getRegisteredCommandRecord(command)
+  }
+
+  private getActiveLayerCommandResolutions(
+    command: string,
+    focused: CommandContext["focused"],
+    includeRecord: boolean,
+  ): ResolvedBindingCommand[] {
+    if (this.state.layers.layersWithLocalCommands === 0) {
+      return []
+    }
+
+    const resolutions: ResolvedBindingCommand[] = []
+    const activeLayers = this.runtime.getActiveLayers(focused)
+
+    for (const layer of activeLayers) {
+      if (!layer.localCommands) {
+        continue
+      }
+
+      if (!this.conditions.layerMatchesRuntimeState(layer)) {
+        continue
+      }
+
+      const localCommand = layer.localCommands.get(command)
+      if (!localCommand) {
+        continue
+      }
+
+      resolutions.push(this.getResolvedRegisteredCommand(localCommand, { includeRecord }))
+    }
+
+    return resolutions
+  }
+
+  private runResolvedCommand(
+    commandName: string,
+    resolved: ResolvedBindingCommand,
+    context: CommandContext,
+  ): RunResolvedCommandResult {
+    let result: CommandResult
+
+    try {
+      result = resolved.run(context)
+    } catch (error) {
+      this.notify.emitError(`[ActionMap] Error running command "${commandName}":`, error)
+      if (resolved.record) {
+        return {
+          status: "error",
+          result: { ok: false, reason: "error", command: resolved.record },
+        }
+      }
+
+      return {
+        status: "error",
+        result: { ok: false, reason: "error" },
+      }
+    }
+
+    if (isPromiseLike(result)) {
+      result.catch((error) => {
+        this.notify.emitError(`[ActionMap] Async error in command "${commandName}":`, error)
+      })
+
+      if (resolved.record) {
+        return {
+          status: "ok",
+          result: { ok: true, command: resolved.record },
+        }
+      }
+
+      return {
+        status: "ok",
+        result: { ok: true },
+      }
+    }
+
+    if (result === false) {
+      if (resolved.rejectedResult) {
+        return {
+          status: "rejected",
+          result: resolved.rejectedResult,
+        }
+      }
+
+      if (resolved.record) {
+        return {
+          status: "rejected",
+          result: { ok: false, reason: "rejected", command: resolved.record },
+        }
+      }
+
+      return {
+        status: "rejected",
+        result: { ok: false, reason: "rejected" },
+      }
+    }
+
+    if (resolved.record) {
+      return {
+        status: "ok",
+        result: { ok: true, command: resolved.record },
+      }
+    }
+
+    return {
+      status: "ok",
+      result: { ok: true },
+    }
   }
 
   private resolveCommandString(command: string, options?: { includeRecord?: boolean }): ResolvedCommandLookup {

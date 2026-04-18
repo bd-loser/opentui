@@ -283,6 +283,204 @@ describe("action map", () => {
     expect(calls).toEqual(["resolver", "resolver"])
   })
 
+  test("layer commands resolve bindings, shadow globals, and expose local metadata", () => {
+    const actionMap = getActionMap(renderer)
+    const { warnings } = captureDiagnostics(actionMap)
+    const calls: string[] = []
+    const target = createFocusableBox("layer-command-target")
+
+    renderer.root.add(target)
+
+    actionMap.registerCommandFields({
+      desc(value, ctx) {
+        ctx.attr("desc", value)
+      },
+    })
+
+    actionMap.registerCommands([
+      {
+        name: "submit",
+        run() {
+          calls.push("global")
+        },
+      },
+    ])
+
+    actionMap.registerLayer({
+      target,
+      commands: [
+        {
+          name: "submit",
+          desc: "Local submit",
+          run() {
+            calls.push("local")
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "submit" }],
+    })
+
+    expect(actionMap.runCommand("submit")).toEqual({ ok: true })
+
+    target.focus()
+
+    expect(getActiveKey(actionMap, "x", { includeMetadata: true })?.commandAttrs).toEqual({ desc: "Local submit" })
+
+    mockInput.pressKey("x")
+
+    expect(actionMap.runCommand("submit", { includeCommand: true })).toEqual({
+      ok: true,
+      command: {
+        name: "submit",
+        fields: { desc: "Local submit" },
+        attrs: { desc: "Local submit" },
+      },
+    })
+    expect(calls).toEqual(["global", "local", "local"])
+    expect(warnings).toEqual([])
+  })
+
+  test("runCommand falls through rejecting layer commands in active-layer order", () => {
+    const actionMap = getActionMap(renderer)
+    const calls: string[] = []
+    const parent = createFocusableBox("layer-command-parent")
+    const child = createFocusableBox("layer-command-child")
+
+    renderer.root.add(parent)
+    parent.add(child)
+
+    actionMap.registerLayer({
+      target: parent,
+      commands: [
+        {
+          name: "submit",
+          run() {
+            calls.push("parent")
+          },
+        },
+      ],
+    })
+
+    actionMap.registerLayer({
+      target: child,
+      commands: [
+        {
+          name: "submit",
+          run() {
+            calls.push("child")
+            return false
+          },
+        },
+      ],
+    })
+
+    child.focus()
+
+    expect(actionMap.runCommand("submit")).toEqual({ ok: true })
+    expect(calls).toEqual(["child", "parent"])
+  })
+
+  test("runCommand falls through rejecting layer commands to globals", () => {
+    const actionMap = getActionMap(renderer)
+    const calls: string[] = []
+    const target = createFocusableBox("layer-command-fallback-target")
+
+    renderer.root.add(target)
+
+    actionMap.registerCommands([
+      {
+        name: "submit",
+        run() {
+          calls.push("global")
+        },
+      },
+    ])
+
+    actionMap.registerLayer({
+      target,
+      commands: [
+        {
+          name: "submit",
+          run() {
+            calls.push("local")
+            return false
+          },
+        },
+      ],
+    })
+
+    target.focus()
+
+    expect(actionMap.runCommand("submit")).toEqual({ ok: true })
+    expect(calls).toEqual(["local", "global"])
+  })
+
+  test("supports command-only layers for scoped runCommand resolution", () => {
+    const actionMap = getActionMap(renderer)
+    const calls: string[] = []
+    const target = createFocusableBox("command-only-layer-target")
+
+    renderer.root.add(target)
+
+    const off = actionMap.registerLayer({
+      target,
+      commands: [
+        {
+          name: "submit",
+          run() {
+            calls.push("local")
+          },
+        },
+      ],
+    })
+
+    expect(actionMap.runCommand("submit")).toEqual({ ok: false, reason: "not-found" })
+
+    target.focus()
+
+    expect(actionMap.runCommand("submit")).toEqual({ ok: true })
+
+    off()
+
+    expect(actionMap.runCommand("submit")).toEqual({ ok: false, reason: "not-found" })
+    expect(calls).toEqual(["local"])
+  })
+
+  test("refreshing global command resolution keeps same-name layer command bindings", () => {
+    const actionMap = getActionMap(renderer)
+    const calls: string[] = []
+    const target = createFocusableBox("layer-command-refresh-target")
+
+    renderer.root.add(target)
+
+    actionMap.registerLayer({
+      target,
+      commands: [
+        {
+          name: "shared",
+          run() {
+            calls.push("local")
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "shared" }],
+    })
+
+    actionMap.registerCommands([
+      {
+        name: "shared",
+        run() {
+          calls.push("global")
+        },
+      },
+    ])
+
+    target.focus()
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["local"])
+  })
+
   test("treats thrown command resolvers as errors without emitting unresolved warnings", () => {
     const actionMap = getActionMap(renderer)
     const { warnings, errors } = captureDiagnostics(actionMap)

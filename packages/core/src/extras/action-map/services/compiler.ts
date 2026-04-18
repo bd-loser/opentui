@@ -35,6 +35,7 @@ import {
   mergeAttribute,
   mergeRequirement,
   normalizeBindingCommand,
+  stringifyKeySequence,
   snapshotAttributes,
   snapshotParsedBindingInput,
 } from "../lib/utils.js"
@@ -263,6 +264,8 @@ export class CompilerService {
       }
     }
 
+    this.warnAboutDeadMetadataOnlyBindings(root, compiledBindings)
+
     return {
       root,
       bindings: compiledBindings,
@@ -421,6 +424,57 @@ export class CompilerService {
 
       throw error
     }
+  }
+
+  private warnAboutDeadMetadataOnlyBindings(root: SequenceNode, bindings: readonly CompiledBinding[]): void {
+    for (const binding of bindings) {
+      if (binding.command !== undefined) {
+        continue
+      }
+
+      if (binding.event === "release") {
+        this.warnDeadMetadataOnlyBinding(binding)
+        continue
+      }
+
+      const node = this.getSequenceNode(root, binding.sequence)
+      if (!node) {
+        continue
+      }
+
+      if (node.children.size > 0) {
+        continue
+      }
+
+      if (node.bindings.some((candidate) => candidate.command !== undefined)) {
+        continue
+      }
+
+      this.warnDeadMetadataOnlyBinding(binding)
+    }
+  }
+
+  private getSequenceNode(root: SequenceNode, sequence: readonly ParsedKeyPart[]): SequenceNode | undefined {
+    let node: SequenceNode | undefined = root
+
+    for (const part of sequence) {
+      node = node.children.get(part.matchKey)
+      if (!node) {
+        return undefined
+      }
+    }
+
+    return node
+  }
+
+  private warnDeadMetadataOnlyBinding(binding: CompiledBinding): void {
+    const sequence = stringifyKeySequence(binding.sourceBinding.sequence, { preferDisplay: true })
+    const warningKey = `dead-binding:${binding.sourceLayerOrder}:${binding.sourceBindingIndex}:${sequence}`
+
+    this.notify.warnOnce(
+      warningKey,
+      `[ActionMap] Binding "${sequence}" in ${binding.sourceScope} layer has no command and no reachable continuations; it will never trigger`,
+    )
   }
 }
 

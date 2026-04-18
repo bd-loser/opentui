@@ -1800,7 +1800,7 @@ describe("action map", () => {
     expect(calls).toEqual(["external"])
   })
 
-  test("supports typed binding fields through key input hooks", () => {
+  test("supports typed binding fields through key intercepts", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
@@ -1810,7 +1810,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.onKeyInput(({ event, setData }) => {
+    actionMap.intercept("key", ({ event, setData }) => {
       if (event.name === "x") {
         setData("vim.mode", "normal")
       }
@@ -3110,7 +3110,7 @@ describe("action map", () => {
     expect(actionMap.hasPendingSequence()).toBe(false)
   })
 
-  test("onKeyInput can be gated by hasPendingSequence", () => {
+  test("key intercepts can be gated by hasPendingSequence", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
@@ -3127,7 +3127,7 @@ describe("action map", () => {
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
-    const off = actionMap.onKeyInput(({ event }) => {
+    const off = actionMap.intercept("key", ({ event }) => {
       if (!actionMap.hasPendingSequence()) {
         return
       }
@@ -3167,7 +3167,7 @@ describe("action map", () => {
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
-    actionMap.hook("pendingSequence", (sequence) => {
+    actionMap.on("pendingSequence", (sequence) => {
       changes.push(sequence.map((stroke) => stroke.name).join(""))
     })
 
@@ -3195,7 +3195,7 @@ describe("action map", () => {
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
-    actionMap.hook("state", () => {
+    actionMap.on("state", () => {
       const pending = stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
       const active = getActiveKeyNames(actionMap).join(",") || "<none>"
       snapshots.push(`${pending}:${active}`)
@@ -3229,7 +3229,7 @@ describe("action map", () => {
     actionMap.setData("vim.mode", "normal")
     mockInput.pressKey("d")
 
-    actionMap.hook("state", () => {
+    actionMap.on("state", () => {
       const pending = stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
       const active = getActiveKeyNames(actionMap).join(",") || "<none>"
       snapshots.push(`${pending}:${active}`)
@@ -3254,7 +3254,7 @@ describe("action map", () => {
       bindings: [{ key: "x", cmd: "local" }],
     })
 
-    actionMap.hook("state", () => {
+    actionMap.on("state", () => {
       snapshots.push(getActiveKeyNames(actionMap).join(",") || "<none>")
     })
 
@@ -3280,7 +3280,7 @@ describe("action map", () => {
     target.focus()
     mockInput.pressKey("d")
 
-    actionMap.hook("state", () => {
+    actionMap.on("state", () => {
       const pending = stringifyKeySequence(actionMap.getPendingSequenceParts(), { preferDisplay: true }) || "<root>"
       const active = getActiveKeyNames(actionMap).join(",") || "<none>"
       snapshots.push(`${pending}:${active}`)
@@ -3361,7 +3361,7 @@ describe("action map", () => {
     expect(actionMap.getPendingSequence()).toEqual([])
   })
 
-  test("can unsubscribe state change listeners", () => {
+  test("can unsubscribe state listeners", () => {
     const actionMap = getActionMap(renderer)
     const target = createFocusableBox("unsubscribe-target")
     const snapshots: string[] = []
@@ -3374,7 +3374,7 @@ describe("action map", () => {
       bindings: [{ key: "x", cmd: "local" }],
     })
 
-    const off = actionMap.hook("state", () => {
+    const off = actionMap.on("state", () => {
       snapshots.push(getActiveKeyNames(actionMap).join(",") || "<none>")
     })
 
@@ -3384,7 +3384,7 @@ describe("action map", () => {
     expect(snapshots).toEqual([])
   })
 
-  test("uses a stable state change listener snapshot when listeners unsubscribe mid-notification", () => {
+  test("uses a stable state listener snapshot when listeners unsubscribe mid-notification", () => {
     const actionMap = getActionMap(renderer)
     const target = createFocusableBox("state-snapshot-target")
     const calls: string[] = []
@@ -3399,12 +3399,12 @@ describe("action map", () => {
 
     let offSecond!: () => void
 
-    actionMap.hook("state", () => {
+    actionMap.on("state", () => {
       calls.push(`first:${getActiveKeyNames(actionMap).join(",") || "<none>"}`)
       offSecond()
     })
 
-    offSecond = actionMap.hook("state", () => {
+    offSecond = actionMap.on("state", () => {
       calls.push(`second:${getActiveKeyNames(actionMap).join(",") || "<none>"}`)
     })
 
@@ -3598,7 +3598,7 @@ describe("action map", () => {
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
-    actionMap.onKeyInput(({ event, consume }) => {
+    actionMap.intercept("key", ({ event, consume }) => {
       if (event.name !== "backspace") {
         return
       }
@@ -3915,7 +3915,7 @@ describe("action map", () => {
 
     renderer.root.add(target)
 
-    actionMap.hook("unresolvedCommand", (ctx) => {
+    actionMap.on("unresolvedCommand", (ctx) => {
       calls.push({
         command: ctx.command,
         binding: stringifyKeySequence(ctx.binding.sequence, { preferDisplay: true }),
@@ -4000,6 +4000,40 @@ describe("action map", () => {
 
     expect(warnings).toEqual(['[ActionMap] Unknown layer field "mode" was ignored'])
     expect(errors).toEqual(["Invalid action map command: command cannot be empty"])
+  })
+
+  test("can unsubscribe warning and error listeners", () => {
+    const actionMap = getActionMap(renderer)
+    const warnings: string[] = []
+    const errors: string[] = []
+    const originalWarn = console.warn
+    const originalError = console.error
+    console.warn = () => {}
+    console.error = () => {}
+
+    try {
+      const offWarning = actionMap.on("warning", (event) => {
+        warnings.push(event.message)
+      })
+      const offError = actionMap.on("error", (event) => {
+        errors.push(event.message)
+      })
+
+      offWarning()
+      offError()
+
+      actionMap.registerLayer({
+        scope: "global",
+        mode: "normal",
+        bindings: [{ key: "x", cmd: "   " }],
+      })
+    } finally {
+      console.warn = originalWarn
+      console.error = originalError
+    }
+
+    expect(warnings).toEqual([])
+    expect(errors).toEqual([])
   })
 
   test("falls back to console.warn when no warning listener is registered", () => {
@@ -4232,12 +4266,12 @@ describe("action map", () => {
     expect(activeKey?.bindings?.map((binding) => binding.command)).toEqual([undefined])
   })
 
-  test("supports raw input hooks and stop semantics", () => {
+  test("supports raw intercepts and stop semantics", () => {
     const actionMap = getActionMap(renderer)
     const rawCalls: string[] = []
     const keyCalls: string[] = []
 
-    actionMap.onRawInput(({ sequence, stop }) => {
+    actionMap.intercept("raw", ({ sequence, stop }) => {
       rawCalls.push(sequence)
       stop()
     })
@@ -4252,7 +4286,7 @@ describe("action map", () => {
     expect(keyCalls).toEqual([])
   })
 
-  test("supports release hooks", async () => {
+  test("supports release key intercepts", async () => {
     renderer.destroy()
     const testSetup = await createTestRenderer({ width: 40, height: 10, kittyKeyboard: true })
     renderer = testSetup.renderer
@@ -4261,7 +4295,8 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const events: string[] = []
 
-    actionMap.onKeyInput(
+    actionMap.intercept(
+      "key",
       ({ event }) => {
         events.push(`${event.name}:${event.eventType}`)
       },
@@ -4382,7 +4417,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.onKeyInput(({ event, setData }) => {
+    actionMap.intercept("key", ({ event, setData }) => {
       if (event.name === "x") {
         setData("vim.mode", "normal")
       }
@@ -4444,13 +4479,14 @@ describe("action map", () => {
     expect(seen).toEqual(["normal", "visual"])
   })
 
-  test("orders key hooks by priority, exposes getData, and cleans them up", () => {
+  test("orders key intercepts by priority, exposes getData, and cleans them up", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
     actionMap.setData("vim.mode", "normal")
 
-    const offLow = actionMap.onKeyInput(
+    const offLow = actionMap.intercept(
+      "key",
       ({ event, getData }) => {
         if (event.name !== "x") {
           return
@@ -4461,7 +4497,8 @@ describe("action map", () => {
       { priority: 1 },
     )
 
-    actionMap.onKeyInput(
+    actionMap.intercept(
+      "key",
       ({ event }) => {
         if (event.name === "x") {
           calls.push("high:first")
@@ -4470,7 +4507,8 @@ describe("action map", () => {
       { priority: 10 },
     )
 
-    actionMap.onKeyInput(
+    actionMap.intercept(
+      "key",
       ({ event }) => {
         if (event.name === "x") {
           calls.push("high:second")
@@ -4491,13 +4529,14 @@ describe("action map", () => {
     expect(calls).toEqual(["high:first", "high:second"])
   })
 
-  test("uses a stable key hook snapshot when hooks unsubscribe mid-dispatch", () => {
+  test("uses a stable key intercept snapshot when interceptors unsubscribe mid-dispatch", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
     let offSecond!: () => void
 
-    actionMap.onKeyInput(
+    actionMap.intercept(
+      "key",
       ({ event }) => {
         if (event.name !== "x") {
           return
@@ -4509,7 +4548,8 @@ describe("action map", () => {
       { priority: 3 },
     )
 
-    offSecond = actionMap.onKeyInput(
+    offSecond = actionMap.intercept(
+      "key",
       ({ event }) => {
         if (event.name === "x") {
           calls.push("second")
@@ -4518,7 +4558,8 @@ describe("action map", () => {
       { priority: 2 },
     )
 
-    actionMap.onKeyInput(
+    actionMap.intercept(
+      "key",
       ({ event }) => {
         if (event.name === "x") {
           calls.push("third")
@@ -4535,25 +4576,28 @@ describe("action map", () => {
     expect(calls).toEqual(["first", "third"])
   })
 
-  test("orders raw hooks by priority and cleans them up", () => {
+  test("orders raw intercepts by priority and cleans them up", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    const offLow = actionMap.onRawInput(
+    const offLow = actionMap.intercept(
+      "raw",
       ({ sequence }) => {
         calls.push(`low:${sequence}`)
       },
       { priority: 1 },
     )
 
-    actionMap.onRawInput(
+    actionMap.intercept(
+      "raw",
       ({ sequence }) => {
         calls.push(`high:first:${sequence}`)
       },
       { priority: 10 },
     )
 
-    actionMap.onRawInput(
+    actionMap.intercept(
+      "raw",
       ({ sequence }) => {
         calls.push(`high:second:${sequence}`)
       },
@@ -4772,7 +4816,7 @@ describe("action map", () => {
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
-    const off = actionMap.hook("pendingSequence", (sequence) => {
+    const off = actionMap.on("pendingSequence", (sequence) => {
       changes.push(sequence.map((stroke) => stroke.name).join(""))
     })
 
@@ -4796,12 +4840,12 @@ describe("action map", () => {
 
     let offSecond!: () => void
 
-    actionMap.hook("pendingSequence", (sequence) => {
+    actionMap.on("pendingSequence", (sequence) => {
       calls.push(`first:${sequence.map((stroke) => stroke.name).join("")}`)
       offSecond()
     })
 
-    offSecond = actionMap.hook("pendingSequence", (sequence) => {
+    offSecond = actionMap.on("pendingSequence", (sequence) => {
       calls.push(`second:${sequence.map((stroke) => stroke.name).join("")}`)
     })
 
@@ -4822,17 +4866,17 @@ describe("action map", () => {
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
-    actionMap.hook("pendingSequence", () => {
+    actionMap.on("pendingSequence", () => {
       throw new Error("boom")
     })
-    actionMap.hook("pendingSequence", (sequence) => {
+    actionMap.on("pendingSequence", (sequence) => {
       changes.push(sequence.map((stroke) => stroke.name).join(""))
     })
 
     mockInput.pressKey("d")
 
     expect(changes).toEqual(["d"])
-    expect(errors.some((message) => message.includes("Error in pending sequence hook:"))).toBe(true)
+    expect(errors.some((message) => message.includes("Error in pending sequence listener:"))).toBe(true)
   })
 
   test("recompiles tokenized layers when tokens are registered and disposed", () => {

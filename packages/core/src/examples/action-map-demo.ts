@@ -933,7 +933,7 @@ function registerActionMap(renderer: CliRenderer): void {
   )
 
   disposers.push(
-    actionMapInstance.hook("state", () => {
+    actionMapInstance.on("state", () => {
       renderStatus(renderer)
     }),
   )

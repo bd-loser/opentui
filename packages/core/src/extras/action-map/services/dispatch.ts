@@ -53,7 +53,7 @@ export class DispatchService {
       try {
         hook.listener(context)
       } catch (error) {
-        this.notify.emitError("[ActionMap] Error in raw input hook:", error)
+        this.notify.emitError("[ActionMap] Error in raw intercept listener:", error)
       }
 
       if (stopped) {
@@ -96,7 +96,7 @@ export class DispatchService {
       try {
         hook.listener(context)
       } catch (error) {
-        this.notify.emitError("[ActionMap] Error in key input hook:", error)
+        this.notify.emitError("[ActionMap] Error in key intercept listener:", error)
       }
 
       if (event.propagationStopped) {

@@ -317,17 +317,10 @@ export interface UnresolvedCommandContext {
   target?: Renderable
 }
 
-/**
- * Hooks exposed by `actionMap.hook(...)`. Use `state` for batched derived-
- * state re-reads, `pendingSequence` when you need synchronous sequence values,
- * and `unresolvedCommand` for one-time missing-command diagnostics.
- * `pendingSequence` fires before the batched `state` flush, so most consumers
- * should pick one or the other.
- */
 export type Hooks = {
   /**
    * Batched "derived state may have changed" signal. Re-read through getters;
-   * framework adapters should use this hook.
+   * framework adapters should use this event.
    */
   state: void
   /**
@@ -344,7 +337,7 @@ export type Hooks = {
 
 export type HookName = keyof Hooks
 
-export type HookListener<TValue> = [TValue] extends [void] ? () => void : (value: TValue) => void
+export type Listener<TValue> = [TValue] extends [void] ? () => void : (value: TValue) => void
 
 export interface WarningEvent {
   message: string
@@ -355,9 +348,32 @@ export interface ErrorEvent {
   cause?: unknown
 }
 
-export type Events = {
+/**
+ * Events exposed by `actionMap.on(...)`. `state` is batched, `pendingSequence`
+ * is synchronous, and `unresolvedCommand` is emitted during layer registration
+ * when a string command name cannot be resolved.
+ */
+export type Events = Hooks & {
   warning: WarningEvent
   error: ErrorEvent
+}
+
+export type EventName = keyof Events
+
+export type Intercepts = {
+  key: KeyInputContext
+  raw: RawInputContext
+}
+
+export type InterceptName = keyof Intercepts
+
+export interface KeyInterceptOptions {
+  priority?: number
+  release?: boolean
+}
+
+export interface RawInterceptOptions {
+  priority?: number
 }
 
 export type { ActionMap }

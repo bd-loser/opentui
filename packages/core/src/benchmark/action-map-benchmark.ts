@@ -366,7 +366,7 @@ function registerExternalBindingFields(actionMap: ActionMap, store: FlagStore): 
 function registerStateChangeNoopListener(actionMap: ActionMap): () => void {
   let events = 0
 
-  return actionMap.hook("state", () => {
+  return actionMap.on("state", () => {
     events += 1
   })
 }
@@ -374,10 +374,10 @@ function registerStateChangeNoopListener(actionMap: ActionMap): () => void {
 function registerStateChangeReadListeners(actionMap: ActionMap): () => void {
   let sink = 0
 
-  const offActiveKeys = actionMap.hook("state", () => {
+  const offActiveKeys = actionMap.on("state", () => {
     sink += actionMap.getActiveKeys().length
   })
-  const offPendingSequence = actionMap.hook("state", () => {
+  const offPendingSequence = actionMap.on("state", () => {
     sink += actionMap.getPendingSequenceParts().length
   })
 
@@ -391,10 +391,10 @@ function registerStateChangeReadListeners(actionMap: ActionMap): () => void {
 function registerStateChangeMetadataListeners(actionMap: ActionMap): () => void {
   let sink = 0
 
-  const offActiveKeys = actionMap.hook("state", () => {
+  const offActiveKeys = actionMap.on("state", () => {
     sink += actionMap.getActiveKeys({ includeMetadata: true }).length
   })
-  const offPendingSequence = actionMap.hook("state", () => {
+  const offPendingSequence = actionMap.on("state", () => {
     sink += actionMap.getPendingSequenceParts().length
   })
 
@@ -408,10 +408,10 @@ function registerStateChangeMetadataListeners(actionMap: ActionMap): () => void 
 function registerStateChangeBindingListeners(actionMap: ActionMap): () => void {
   let sink = 0
 
-  const offActiveKeys = actionMap.hook("state", () => {
+  const offActiveKeys = actionMap.on("state", () => {
     sink += actionMap.getActiveKeys({ includeBindings: true }).length
   })
-  const offPendingSequence = actionMap.hook("state", () => {
+  const offPendingSequence = actionMap.on("state", () => {
     sink += actionMap.getPendingSequenceParts().length
   })
 
@@ -1594,7 +1594,8 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       for (let index = 0; index < 80; index += 1) {
-        resources.actionMap.onKeyInput(
+        resources.actionMap.intercept(
+          "key",
           ({ event }) => {
             if (event.name === "z") {
               return

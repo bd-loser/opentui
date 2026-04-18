@@ -176,14 +176,14 @@ export const useActionMap = (): ActionMap => {
   return getActionMap(renderer)
 }
 
-// Use the batched `state` hook for derived reads. Pending-sequence changes
+// Use the batched `state` event for derived reads. Pending-sequence changes
 // already flow through `state`, so subscribing to both would duplicate work.
 function useActionMapStateVersion(actionMap: ActionMap): Accessor<number> {
   const [version, setVersion] = createSignal(0)
   let dispose: (() => void) | undefined
 
   onMount(() => {
-    dispose = actionMap.hook("state", () => {
+    dispose = actionMap.on("state", () => {
       setVersion((value) => value + 1)
     })
 

@@ -279,10 +279,7 @@ export class ProjectionService {
   public getActiveLayers(focused: Renderable | null): RegisteredLayer[] {
     const activeLayers: RegisteredLayer[] = []
 
-    let current: Renderable | null = focused ?? this.renderer.root
-    let isFocusedTarget = focused !== null
-
-    while (current) {
+    this.forEachActivationTarget(focused, (current, isFocusedTarget) => {
       const bucket = this.state.layers.targetLayers.get(current)
       if (bucket) {
         if (isFocusedTarget) {
@@ -291,10 +288,7 @@ export class ProjectionService {
 
         activeLayers.push(...bucket.focusWithinLayers)
       }
-
-      current = current.parent
-      isFocusedTarget = false
-    }
+    })
 
     return activeLayers
   }
@@ -309,16 +303,17 @@ export class ProjectionService {
       return target === focused
     }
 
-    let current: Renderable | null = focused ?? this.renderer.root
-    while (current) {
+    let isActive = false
+    this.forEachActivationTarget(focused, (current) => {
       if (current === target) {
-        return true
+        isActive = true
+        return false
       }
 
-      current = current.parent
-    }
+      return true
+    })
 
-    return false
+    return isActive
   }
 
   public layerCanCacheActiveKeys(layer: RegisteredLayer): boolean {
@@ -337,6 +332,24 @@ export class ProjectionService {
 
   public layerMatchesRuntimeState(layer: RegisteredLayer): boolean {
     return this.conditions.layerMatchesRuntimeState(layer)
+  }
+
+  private forEachActivationTarget(
+    focused: Renderable | null,
+    visit: (target: Renderable, isFocusedTarget: boolean) => boolean | void,
+  ): void {
+    let current: Renderable | null = focused ?? this.renderer.root
+    let isFocusedTarget = focused !== null
+
+    while (current) {
+      const shouldContinue = visit(current, isFocusedTarget)
+      if (shouldContinue === false) {
+        return
+      }
+
+      current = current.parent
+      isFocusedTarget = false
+    }
   }
 
   private collectSequenceStrokesFromNode(node: SequenceNode): ParsedKeyStroke[] {

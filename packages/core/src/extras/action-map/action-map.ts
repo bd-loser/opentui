@@ -158,6 +158,7 @@ export class ActionMap {
     this.layers = new LayerService(this.state, this.notify, this.conditions, this.projection, {
       compiler: this.compiler,
       commands: this.commands,
+      rootTarget: this.renderer.root,
       warnUnknownField: (kind, fieldName) => {
         this.warnUnknownField(kind, fieldName)
       },

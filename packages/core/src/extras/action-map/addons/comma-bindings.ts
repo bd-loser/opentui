@@ -1,6 +1,6 @@
-import type { ActionMapBindingExpander, ActionMap } from "../types.js"
+import type { BindingExpander, ActionMap } from "../types.js"
 
-const commaBindingExpander: ActionMapBindingExpander = ({ input }) => {
+const commaBindingExpander: BindingExpander = ({ input }) => {
   if (!input.includes(",")) {
     return undefined
   }

@@ -15,9 +15,9 @@ export { registerLeader } from "./leader.js"
 export { registerMetadataFields } from "./metadata.js"
 export { registerTimedLeader } from "./timed-leader.js"
 
-export type { ActionMapAliases } from "./aliases.js"
+export type { Aliases } from "./aliases.js"
 export type { EscapeClearsPendingSequenceOptions } from "./escape-clears-pending-sequence.js"
-export type { ActionMapEnabled } from "./enabled.js"
+export type { Enabled } from "./enabled.js"
 export type { ExCommand } from "./ex-commands.js"
 export type {
   EditBufferCommandName,

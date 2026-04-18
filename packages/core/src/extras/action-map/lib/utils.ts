@@ -1,14 +1,14 @@
 import type { KeyEvent } from "../../../lib/KeyHandler.js"
 import type {
-  ActionMapAttributes,
-  ActionMapBindingCommand,
-  ActionMapParsedBindingInput,
+  Attributes,
+  BindingCommand,
+  ParsedBindingInput,
   KeyStroke,
-  ActionMapBindingInput,
-  ActionMapBindings,
-  ActionMapEventData,
-  ActionMapStringifiableKey,
-  ActionMapStringifyOptions,
+  BindingInput,
+  Bindings,
+  EventData,
+  StringifiableKey,
+  StringifyOptions,
   ParsedKeyPart,
   ParsedKeyStroke,
   SequenceNode,
@@ -135,7 +135,7 @@ export function createSequenceNode(
   }
 }
 
-export function mergeRequirement(target: ActionMapEventData, name: string, value: unknown, source: string): void {
+export function mergeRequirement(target: EventData, name: string, value: unknown, source: string): void {
   if (Object.prototype.hasOwnProperty.call(target, name) && !Object.is(target[name], value)) {
     throw new Error(`Conflicting action map requirement for "${name}" from ${source}`)
   }
@@ -143,7 +143,7 @@ export function mergeRequirement(target: ActionMapEventData, name: string, value
   target[name] = value
 }
 
-export function mergeAttribute(target: ActionMapAttributes, name: string, value: unknown, source: string): void {
+export function mergeAttribute(target: Attributes, name: string, value: unknown, source: string): void {
   if (Object.prototype.hasOwnProperty.call(target, name) && !Object.is(target[name], value)) {
     throw new Error(`Conflicting action map attribute for "${name}" from ${source}`)
   }
@@ -151,22 +151,22 @@ export function mergeAttribute(target: ActionMapAttributes, name: string, value:
   target[name] = value
 }
 
-export function snapshotAttributes(attrs: ActionMapAttributes): Readonly<ActionMapAttributes> | undefined {
+export function snapshotAttributes(attrs: Attributes): Readonly<Attributes> | undefined {
   if (Object.keys(attrs).length === 0) {
     return undefined
   }
 
-  return snapshotDataValue(attrs, { freeze: true }) as Readonly<ActionMapAttributes>
+  return snapshotDataValue(attrs, { freeze: true }) as Readonly<Attributes>
 }
 
-export function snapshotBindingInput(binding: ActionMapBindingInput): ActionMapBindingInput {
+export function snapshotBindingInput(binding: BindingInput): BindingInput {
   return {
     ...binding,
     key: typeof binding.key === "string" ? binding.key : { ...binding.key },
   }
 }
 
-export function snapshotParsedBindingInput(binding: ActionMapParsedBindingInput): ActionMapParsedBindingInput {
+export function snapshotParsedBindingInput(binding: ParsedBindingInput): ParsedBindingInput {
   return {
     ...binding,
     sequence: binding.sequence.map((part) => createParsedKeyPart(part.stroke, part.display, part.matchKey)),
@@ -174,8 +174,8 @@ export function snapshotParsedBindingInput(binding: ActionMapParsedBindingInput)
 }
 
 export function normalizeBindingCommand(
-  command: ActionMapBindingCommand | undefined,
-): ActionMapBindingCommand | undefined {
+  command: BindingCommand | undefined,
+): BindingCommand | undefined {
   if (command === undefined || typeof command === "function") {
     return command
   }
@@ -188,12 +188,12 @@ export function normalizeBindingCommand(
   return trimmed
 }
 
-export function snapshotBindingInputs(bindings: ActionMapBindings): ActionMapBindingInput[] {
+export function snapshotBindingInputs(bindings: Bindings): BindingInput[] {
   return normalizeBindingInputs(bindings).map((binding) => snapshotBindingInput(binding))
 }
 
 function hasDisplayStroke(
-  input: ActionMapStringifiableKey,
+  input: StringifiableKey,
 ): input is ParsedKeyPart | { stroke: ParsedKeyStroke; display?: string } {
   return "stroke" in input
 }
@@ -238,7 +238,7 @@ export function createParsedKeyPart(
   }
 }
 
-export function stringifyKeyStroke(input: ActionMapStringifiableKey, options?: ActionMapStringifyOptions): string {
+export function stringifyKeyStroke(input: StringifiableKey, options?: StringifyOptions): string {
   if (hasDisplayStroke(input)) {
     if (options?.preferDisplay && input.display) {
       return input.display
@@ -251,8 +251,8 @@ export function stringifyKeyStroke(input: ActionMapStringifiableKey, options?: A
 }
 
 export function stringifyKeySequence(
-  input: readonly ActionMapStringifiableKey[],
-  options?: ActionMapStringifyOptions,
+  input: readonly StringifiableKey[],
+  options?: StringifyOptions,
 ): string {
   return input.map((part) => stringifyKeyStroke(part, options)).join("")
 }
@@ -292,12 +292,12 @@ export function normalizeCommandName(name: string): string {
   return trimmed
 }
 
-export function normalizeBindingInputs(bindings: ActionMapBindings): ActionMapBindingInput[] {
+export function normalizeBindingInputs(bindings: Bindings): BindingInput[] {
   if (Array.isArray(bindings)) {
     return bindings
   }
 
-  const normalized: ActionMapBindingInput[] = []
+  const normalized: BindingInput[] = []
   for (const [key, cmd] of Object.entries(bindings)) {
     if (typeof cmd !== "string" && typeof cmd !== "function") {
       throw new Error(

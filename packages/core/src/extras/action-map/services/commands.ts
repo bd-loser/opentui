@@ -1,26 +1,26 @@
 import type { ActionMap } from "../action-map.js"
 import type {
-  ActionMapAttributes,
-  ActionMapBindingCommand,
-  ActionMapCommandContext,
-  ActionMapCommandDefinition,
-  ActionMapCommandFieldCompiler,
-  ActionMapCommandFieldContext,
-  ActionMapCommandHandler,
-  ActionMapCommandQuery,
-  ActionMapCommandQueryValue,
-  ActionMapCommandRecord,
-  ActionMapCommandResolver,
-  ActionMapCommandResolverContext,
-  ActionMapCommandResult,
-  ActionMapHooks,
-  ActionMapResolvedBindingCommand,
-  ActionMapRunCommandOptions,
-  ActionMapRunCommandResult,
+  Attributes,
+  BindingCommand,
+  CommandContext,
+  CommandDefinition,
+  CommandFieldCompiler,
+  CommandFieldContext,
+  CommandHandler,
+  CommandQuery,
+  CommandQueryValue,
+  CommandRecord,
+  CommandResolver,
+  CommandResolverContext,
+  CommandResult,
+  Hooks,
+  ResolvedBindingCommand,
+  RunCommandOptions,
+  RunCommandResult,
   CompiledBinding,
   RegisteredCommand,
 } from "../types.js"
-import type { ActionMapState } from "./state.js"
+import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
 import type { RuntimeService } from "./runtime.js"
 import { KeyEvent } from "../../../lib/KeyHandler.js"
@@ -49,24 +49,24 @@ export const RESERVED_COMMAND_FIELDS = new Set(["name", "run"])
 const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 
 interface ResolvedCommandLookup {
-  resolved?: ActionMapResolvedBindingCommand
+  resolved?: ResolvedBindingCommand
   hadError: boolean
 }
 
-interface ActionMapCommandsOptions {
+interface CommandsOptions {
   actionMap: ActionMap
 }
 
 interface QueryRegisteredCommandsOptions {
   commands: Iterable<RegisteredCommand>
-  query?: ActionMapCommandQuery
-  getCommandRecord(command: RegisteredCommand): ActionMapCommandRecord
+  query?: CommandQuery
+  getCommandRecord(command: RegisteredCommand): CommandRecord
   onFilterError(error: unknown): void
 }
 
 interface NormalizeRegisteredCommandsOptions {
-  commands: readonly ActionMapCommandDefinition[]
-  commandFields: ReadonlyMap<string, ActionMapCommandFieldCompiler>
+  commands: readonly CommandDefinition[]
+  commandFields: ReadonlyMap<string, CommandFieldCompiler>
   hasCommand(name: string): boolean
   onError(message: string, cause?: unknown): void
 }
@@ -88,14 +88,14 @@ function createSyntheticCommandEvent(): KeyEvent {
 
 export class CommandService {
   constructor(
-    private readonly state: ActionMapState,
+    private readonly state: State,
     private readonly notify: NotificationService,
     private readonly runtime: RuntimeService,
-    private readonly hooks: Emitter<ActionMapHooks>,
-    private readonly options: ActionMapCommandsOptions,
+    private readonly hooks: Emitter<Hooks>,
+    private readonly options: CommandsOptions,
   ) {}
 
-  public getCommands(query?: ActionMapCommandQuery): readonly ActionMapCommandRecord[] {
+  public getCommands(query?: CommandQuery): readonly CommandRecord[] {
     return queryRegisteredCommands({
       commands: this.state.commands.commands.values(),
       query,
@@ -110,8 +110,8 @@ export class CommandService {
     return normalizeCommandName(name)
   }
 
-  public runCommand(cmd: string, options?: ActionMapRunCommandOptions): ActionMapRunCommandResult {
-    let normalized: ActionMapBindingCommand | undefined
+  public runCommand(cmd: string, options?: RunCommandOptions): RunCommandResult {
+    let normalized: BindingCommand | undefined
 
     try {
       normalized = normalizeBindingCommand(cmd)
@@ -124,7 +124,7 @@ export class CommandService {
     }
 
     const includeRecord = options?.includeCommand === true
-    let resolved: ActionMapResolvedBindingCommand | undefined
+    let resolved: ResolvedBindingCommand | undefined
 
     if (!this.state.config.commandResolvers.has()) {
       const registered = this.state.commands.commands.get(normalized)
@@ -146,7 +146,7 @@ export class CommandService {
     }
 
     const event = options?.event ?? createSyntheticCommandEvent()
-    const context: ActionMapCommandContext = {
+    const context: CommandContext = {
       actionMap: this.options.actionMap,
       event,
       focused: options?.focused ?? this.runtime.getFocusedRenderable(),
@@ -154,7 +154,7 @@ export class CommandService {
       data: this.runtime.getReadonlyData(),
     }
 
-    let result: ActionMapCommandResult
+    let result: CommandResult
     try {
       result = resolved.run(context)
     } catch (error) {
@@ -189,17 +189,17 @@ export class CommandService {
   }
 
   public runBinding(
-    layer: { target?: ActionMapCommandContext["target"] },
+    layer: { target?: CommandContext["target"] },
     binding: CompiledBinding,
     event: KeyEvent,
-    focused: ActionMapCommandContext["focused"],
+    focused: CommandContext["focused"],
   ): boolean {
     const run = binding.run
     if (!run) {
       return false
     }
 
-    const context: ActionMapCommandContext = {
+    const context: CommandContext = {
       actionMap: this.options.actionMap,
       event,
       focused,
@@ -207,7 +207,7 @@ export class CommandService {
       data: this.runtime.getReadonlyData(),
     }
 
-    let result: ActionMapCommandResult
+    let result: CommandResult
     try {
       result = run(context)
     } catch (error) {
@@ -232,7 +232,7 @@ export class CommandService {
     return true
   }
 
-  public registerCommandResolver(resolver: ActionMapCommandResolver): () => void {
+  public registerCommandResolver(resolver: CommandResolver): () => void {
     return this.notify.runWithStateChangeBatch(() => {
       this.state.config.commandResolvers.append(resolver)
       this.refreshBindingCommandResolution()
@@ -251,7 +251,7 @@ export class CommandService {
     })
   }
 
-  public registerCommands(commands: ActionMapCommandDefinition[]): () => void {
+  public registerCommands(commands: CommandDefinition[]): () => void {
     return this.notify.runWithStateChangeBatch(() => {
       const normalizedCommands = normalizeRegisteredCommands({
         commands,
@@ -348,7 +348,7 @@ export class CommandService {
     binding.commandAttrs = resolved.attrs
   }
 
-  public getCommandRecord(command: RegisteredCommand): ActionMapCommandRecord {
+  public getCommandRecord(command: RegisteredCommand): CommandRecord {
     return getRegisteredCommandRecord(command)
   }
 
@@ -358,7 +358,7 @@ export class CommandService {
     let hadError = false
 
     for (const resolver of this.state.config.commandResolvers.values()) {
-      let resolved: ActionMapResolvedBindingCommand | undefined
+      let resolved: ResolvedBindingCommand | undefined
 
       try {
         resolved = resolver(command, context)
@@ -384,7 +384,7 @@ export class CommandService {
     return { hadError }
   }
 
-  private createCommandResolverContext(includeRecord: boolean): ActionMapCommandResolverContext {
+  private createCommandResolverContext(includeRecord: boolean): CommandResolverContext {
     return {
       getCommandAttrs: (name: string) => {
         return this.state.commands.commands.get(name)?.attrs
@@ -407,7 +407,7 @@ export class CommandService {
   private getResolvedRegisteredCommand(
     command: RegisteredCommand,
     options?: { includeRecord?: boolean },
-  ): ActionMapResolvedBindingCommand {
+  ): ResolvedBindingCommand {
     const includeRecord = options?.includeRecord === true
     if (includeRecord) {
       const existing = command.resolvedWithRecord
@@ -415,7 +415,7 @@ export class CommandService {
         return existing
       }
 
-      const resolved: ActionMapResolvedBindingCommand = {
+      const resolved: ResolvedBindingCommand = {
         run: this.createRegisteredCommandRunner(command),
       }
 
@@ -433,7 +433,7 @@ export class CommandService {
       return existing
     }
 
-    const resolved: ActionMapResolvedBindingCommand = {
+    const resolved: ResolvedBindingCommand = {
       run: this.createRegisteredCommandRunner(command),
     }
 
@@ -445,12 +445,12 @@ export class CommandService {
     return resolved
   }
 
-  private createRegisteredCommandRunner(command: RegisteredCommand): ActionMapCommandHandler {
+  private createRegisteredCommandRunner(command: RegisteredCommand): CommandHandler {
     if (command.runner) {
       return command.runner
     }
 
-    const runner: ActionMapCommandHandler = (ctx) => {
+    const runner: CommandHandler = (ctx) => {
       return command.run({
         ...ctx,
         command: this.getCommandRecord(command),
@@ -504,7 +504,7 @@ function applyBindingEventEffects(binding: CompiledBinding, event: KeyEvent): vo
   event.stopPropagation()
 }
 
-function queryRegisteredCommands(options: QueryRegisteredCommandsOptions): readonly ActionMapCommandRecord[] {
+function queryRegisteredCommands(options: QueryRegisteredCommandsOptions): readonly CommandRecord[] {
   const namespace = options.query?.namespace
   const normalizedSearch = options.query?.search?.trim().toLowerCase() ?? ""
   const searchKeys =
@@ -512,8 +512,8 @@ function queryRegisteredCommands(options: QueryRegisteredCommandsOptions): reado
       ? options.query.searchIn
       : DEFAULT_COMMAND_SEARCH_FIELDS
   const filter = options.query?.filter
-  let filterEntries: readonly [string, ActionMapCommandQueryValue][] | undefined
-  let filterPredicate: ((command: ActionMapCommandRecord) => boolean) | undefined
+  let filterEntries: readonly [string, CommandQueryValue][] | undefined
+  let filterPredicate: ((command: CommandRecord) => boolean) | undefined
 
   if (typeof filter === "function") {
     filterPredicate = filter
@@ -521,7 +521,7 @@ function queryRegisteredCommands(options: QueryRegisteredCommandsOptions): reado
     filterEntries = Object.entries(filter)
   }
 
-  const results: ActionMapCommandRecord[] = []
+  const results: CommandRecord[] = []
 
   for (const command of options.commands) {
     if (!commandMatchesNamespace(command, namespace)) {
@@ -567,7 +567,7 @@ function normalizeRegisteredCommands(options: NormalizeRegisteredCommandsOptions
     let normalizedCommand: RegisteredCommand | undefined
 
     try {
-      const mergedAttrs: ActionMapAttributes = {}
+      const mergedAttrs: Attributes = {}
       const mergedFields: Record<string, unknown> = {}
       const normalizedName = normalizeCommandName(command.name)
 
@@ -624,7 +624,7 @@ function normalizeRegisteredCommands(options: NormalizeRegisteredCommandsOptions
   return normalizedCommands
 }
 
-function createCommandFieldContext(mergedAttrs: ActionMapAttributes, fieldName: string): ActionMapCommandFieldContext {
+function createCommandFieldContext(mergedAttrs: Attributes, fieldName: string): CommandFieldContext {
   return {
     attr(name, attributeValue) {
       mergeAttribute(
@@ -637,7 +637,7 @@ function createCommandFieldContext(mergedAttrs: ActionMapAttributes, fieldName: 
   }
 }
 
-function getRegisteredCommandRecord(command: RegisteredCommand): ActionMapCommandRecord {
+function getRegisteredCommandRecord(command: RegisteredCommand): CommandRecord {
   if (command.record) {
     return command.record
   }
@@ -649,7 +649,7 @@ function getRegisteredCommandRecord(command: RegisteredCommand): ActionMapComman
     >
   }
 
-  let record: ActionMapCommandRecord
+  let record: CommandRecord
   if (command.attrs) {
     record = Object.freeze({
       name: command.name,
@@ -657,7 +657,7 @@ function getRegisteredCommandRecord(command: RegisteredCommand): ActionMapComman
       attrs: snapshotDataValue(
         command.attrs,
         SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS,
-      ) as Readonly<ActionMapAttributes>,
+      ) as Readonly<Attributes>,
     })
   } else {
     record = Object.freeze({
@@ -701,7 +701,7 @@ function commandMatchesNamespace(
 
 function commandMatchesFilters(
   command: RegisteredCommand,
-  filters: readonly [string, ActionMapCommandQueryValue][] | undefined,
+  filters: readonly [string, CommandQueryValue][] | undefined,
   options: QueryRegisteredCommandsOptions,
 ): boolean {
   if (!filters) {
@@ -739,11 +739,11 @@ function commandKeyMatchesSearch(command: RegisteredCommand, key: string, search
 function commandKeyMatchesQuery(
   command: RegisteredCommand,
   key: string,
-  matcher: ActionMapCommandQueryValue,
+  matcher: CommandQueryValue,
   options: QueryRegisteredCommandsOptions,
 ): boolean {
   if (typeof matcher === "function") {
-    let record: ActionMapCommandRecord | undefined
+    let record: CommandRecord | undefined
     const getRecord = () => {
       if (!record) {
         record = options.getCommandRecord(command)

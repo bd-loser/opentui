@@ -2,16 +2,16 @@ import type { Renderable } from "../../../Renderable.js"
 import type { CliRenderer } from "../../../renderer.js"
 import type { ConditionService } from "./conditions.js"
 import type { NotificationService } from "./notify.js"
-import type { ActionMapState } from "./state.js"
+import type { State } from "./state.js"
 import type {
   ActiveKeySelection,
   ActiveKeyState,
-  ActionMapActiveBinding,
-  ActionMapActiveKey,
-  ActionMapActiveKeyOptions,
-  ActionMapAttributes,
-  ActionMapEventData,
-  ActionMapHooks,
+  ActiveBinding,
+  ActiveKey,
+  ActiveKeyOptions,
+  Attributes,
+  EventData,
+  Hooks,
   CompiledBinding,
   ParsedKeyPart,
   ParsedKeyStroke,
@@ -32,9 +32,9 @@ function getLiveRenderer(renderer: CliRenderer): CliRenderer {
 
 export class RuntimeService {
   constructor(
-    private readonly state: ActionMapState,
+    private readonly state: State,
     private readonly renderer: CliRenderer,
-    private readonly hooks: Emitter<ActionMapHooks>,
+    private readonly hooks: Emitter<Hooks>,
     private readonly notify: NotificationService,
     private readonly conditions: ConditionService,
   ) {}
@@ -87,7 +87,7 @@ export class RuntimeService {
     })
   }
 
-  public getReadonlyData(): Readonly<ActionMapEventData> {
+  public getReadonlyData(): Readonly<EventData> {
     if (this.state.runtime.readonlyDataVersion === this.state.runtime.dataVersion) {
       return this.state.runtime.readonlyData
     }
@@ -178,7 +178,7 @@ export class RuntimeService {
     return parts
   }
 
-  public getActiveKeys(options?: ActionMapActiveKeyOptions): readonly ActionMapActiveKey[] {
+  public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey[] {
     const projections = this.state.runtime
     const derivedStateVersion = this.state.notify.derivedStateVersion
     const includeBindings = options?.includeBindings === true
@@ -388,7 +388,7 @@ export class RuntimeService {
     return display ?? stringifyKeyStroke(node.stroke)
   }
 
-  private toActiveBinding(binding: CompiledBinding): ActionMapActiveBinding {
+  private toActiveBinding(binding: CompiledBinding): ActiveBinding {
     if (binding.activeBindingCacheVersion === this.state.commands.commandMetadataVersion) {
       const cached = binding.activeBindingCache
       if (cached) {
@@ -396,7 +396,7 @@ export class RuntimeService {
       }
     }
 
-    const activeBinding: ActionMapActiveBinding = {
+    const activeBinding: ActiveBinding = {
       sequence: binding.sequence,
       command: binding.command,
       commandAttrs: binding.commandAttrs,
@@ -411,11 +411,11 @@ export class RuntimeService {
     return activeBinding
   }
 
-  private collectActiveBindings(bindings: readonly CompiledBinding[]): ActionMapActiveBinding[] {
+  private collectActiveBindings(bindings: readonly CompiledBinding[]): ActiveBinding[] {
     return bindings.map((binding) => this.toActiveBinding(binding))
   }
 
-  private getActiveCommandAttrs(binding: CompiledBinding): Readonly<ActionMapAttributes> | undefined {
+  private getActiveCommandAttrs(binding: CompiledBinding): Readonly<Attributes> | undefined {
     return binding.commandAttrs
   }
 
@@ -423,7 +423,7 @@ export class RuntimeService {
     activeLayers: RegisteredLayer[],
     includeBindings: boolean,
     includeMetadata: boolean,
-  ): readonly ActionMapActiveKey[] {
+  ): readonly ActiveKey[] {
     const conditions = this.conditions
     const activeKeys = new Map<string, ActiveKeyState>()
     const stopped = new Set<string>()
@@ -457,7 +457,7 @@ export class RuntimeService {
       }
     }
 
-    const materialized: ActionMapActiveKey[] = []
+    const materialized: ActiveKey[] = []
     for (const state of activeKeys.values()) {
       const activeKey = this.materializeActiveKey(state, includeBindings, includeMetadata)
       if (!activeKey) {
@@ -474,8 +474,8 @@ export class RuntimeService {
     children: ReadonlyMap<string, SequenceNode>,
     includeBindings: boolean,
     includeMetadata: boolean,
-  ): readonly ActionMapActiveKey[] {
-    const activeKeys: ActionMapActiveKey[] = []
+  ): readonly ActiveKey[] {
+    const activeKeys: ActiveKey[] = []
 
     for (const child of children.values()) {
       const selection = this.selectActiveKey(child, includeBindings)
@@ -626,12 +626,12 @@ export class RuntimeService {
     state: ActiveKeyState,
     includeBindings: boolean,
     includeMetadata: boolean,
-  ): ActionMapActiveKey | undefined {
+  ): ActiveKey | undefined {
     if (!state.commandBinding && !state.continues) {
       return undefined
     }
 
-    const activeKey: ActionMapActiveKey = {
+    const activeKey: ActiveKey = {
       stroke: snapshotStroke(state.stroke),
       display: state.display,
       continues: state.continues,

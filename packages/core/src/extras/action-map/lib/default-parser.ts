@@ -1,7 +1,7 @@
 import type {
-  ActionMapBindingParser,
-  ActionMapBindingSyntax,
-  ActionMapEventMatchResolver,
+  BindingParser,
+  BindingSyntax,
+  EventMatchResolver,
   KeyLike,
   KeyStroke,
   ParsedKeyPart,
@@ -20,7 +20,7 @@ import { namedSingleStrokeKeys } from "./named-keys.js"
 
 const emptyTokens = new Map<string, ParsedKeyToken>()
 
-export const defaultBindingSyntax: ActionMapBindingSyntax = {
+export const defaultBindingSyntax: BindingSyntax = {
   normalizeTokenName(token) {
     const normalized = token.trim().toLowerCase()
     if (!normalized) {
@@ -185,7 +185,13 @@ function parseKeySequenceWithDefaultParser(
   let index = 0
 
   while (index < key.length) {
-    const result = defaultBindingParser({ input: key, index, layer: Object.freeze({}), tokens })
+    const result = defaultBindingParser({
+      input: key,
+      index,
+      layer: Object.freeze({}),
+      tokens,
+      parseObjectKey: defaultBindingSyntax.parseObjectKey,
+    })
     if (!result || result.nextIndex <= index) {
       throw new Error(`Default action map binding parser must advance the input for "${key}" at index ${index}`)
     }
@@ -197,7 +203,7 @@ function parseKeySequenceWithDefaultParser(
   return parts
 }
 
-export const defaultBindingParser: ActionMapBindingParser = ({ input, index, tokens }) => {
+export const defaultBindingParser: BindingParser = ({ input, index, tokens }) => {
   if (index === 0 && isSingleStrokeString(input, tokens)) {
     const normalizedToken = input.trim().toLowerCase()
     const token = tokens.get(normalizedToken)
@@ -274,6 +280,6 @@ export function parseKeySequenceLike(
   return parseKeySequenceWithDefaultParser(key, tokens, extraNames)
 }
 
-export const defaultEventMatchResolver: ActionMapEventMatchResolver = (event) => {
+export const defaultEventMatchResolver: EventMatchResolver = (event) => {
   return [buildBindingKey(normalizeEventKeyStroke(event))]
 }

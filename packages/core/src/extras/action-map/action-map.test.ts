@@ -9,10 +9,11 @@ import {
   getActionMap,
   stringifyKeySequence,
   stringifyKeyStroke,
-  type ActionMapActiveKey,
-  type ActionMapActiveKeyOptions,
+  type ActiveKey,
+  type ActiveKeyOptions,
+  type CommandRecord,
   type ActionMap,
-  type ActionMapReactiveMatcher,
+  type ReactiveMatcher,
 } from "./index.js"
 
 let renderer: TestRenderer
@@ -27,11 +28,7 @@ function createFocusableBox(id: string): BoxRenderable {
   })
 }
 
-function getActiveKey(
-  actionMap: ActionMap,
-  name: string,
-  options?: ActionMapActiveKeyOptions,
-): ActionMapActiveKey | undefined {
+function getActiveKey(actionMap: ActionMap, name: string, options?: ActiveKeyOptions): ActiveKey | undefined {
   return actionMap.getActiveKeys(options).find((candidate) => candidate.stroke.name === name)
 }
 
@@ -46,11 +43,7 @@ function getCommand(actionMap: ActionMap, name: string) {
   return actionMap.getCommands().find((candidate) => candidate.name === name)
 }
 
-function getActiveKeyDisplay(
-  actionMap: ActionMap,
-  display: string,
-  options?: ActionMapActiveKeyOptions,
-): ActionMapActiveKey | undefined {
+function getActiveKeyDisplay(actionMap: ActionMap, display: string, options?: ActiveKeyOptions): ActiveKey | undefined {
   return actionMap.getActiveKeys(options).find((candidate) => candidate.display === display)
 }
 
@@ -78,7 +71,7 @@ function getMatchKeyForEventName(event: KeyEvent, name: string): string {
 }
 
 // Tiny reactive-matcher test helper that exposes subscription counts.
-interface ReactiveBoolean extends ActionMapReactiveMatcher {
+interface ReactiveBoolean extends ReactiveMatcher {
   set(next: boolean): void
   readonly subscriptions: number
   readonly subscribeCalls: number
@@ -2242,7 +2235,7 @@ describe("action map", () => {
       causes.push(event.cause)
     })
 
-    const badMatcher: ActionMapReactiveMatcher = {
+    const badMatcher: ReactiveMatcher = {
       get: () => true,
       subscribe() {
         throw new Error("subscribe boom")
@@ -2278,7 +2271,7 @@ describe("action map", () => {
       errors.push(event.message)
     })
 
-    const badMatcher: ActionMapReactiveMatcher = {
+    const badMatcher: ReactiveMatcher = {
       get: () => true,
       subscribe() {
         return () => {
@@ -2313,7 +2306,7 @@ describe("action map", () => {
     })
 
     const cause = new Error("get boom")
-    const badMatcher: ActionMapReactiveMatcher = {
+    const badMatcher: ReactiveMatcher = {
       get() {
         throw cause
       },
@@ -2826,7 +2819,7 @@ describe("action map", () => {
       actionMap
         .getCommands({
           filter: {
-            usage(value, command) {
+            usage(value: unknown, command: CommandRecord) {
               return typeof value === "string" && value.includes("<file>") && command.fields.namespace === "excommands"
             },
           },
@@ -2838,7 +2831,7 @@ describe("action map", () => {
         .getCommands({
           namespace: "excommands",
           filter: {
-            usage(value) {
+            usage(value: unknown) {
               return typeof value === "string" && value.includes("<file>")
             },
           },

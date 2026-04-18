@@ -1,22 +1,22 @@
 import type { Renderable } from "../../../Renderable.js"
 import type { CommandService } from "./commands.js"
 import type { ConditionService } from "./conditions.js"
-import type { ActionMapState } from "./state.js"
+import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
 import type {
-  ActionMapAttributes,
-  ActionMapBindingCommand,
-  ActionMapBindingEvent,
-  ActionMapBindingExpander,
-  ActionMapBindingExpanderContext,
-  ActionMapBindingInput,
-  ActionMapBindingParser,
-  ActionMapBindingParserContext,
-  ActionMapBindingSyntax,
-  ActionMapEventData,
-  ActionMapParsedBindingInput,
-  ActionMapReactiveMatcher,
-  ActionMapScope,
+  Attributes,
+  BindingCommand,
+  BindingEvent,
+  BindingExpander,
+  BindingExpanderContext,
+  BindingInput,
+  BindingParser,
+  BindingParserContext,
+  BindingSyntax,
+  EventData,
+  ParsedBindingInput,
+  ReactiveMatcher,
+  Scope,
   CompiledBinding,
   CompiledBindingsResult,
   KeyLike,
@@ -51,18 +51,18 @@ interface ParsedBindingSequenceResult {
   hasTokenBindings: boolean
 }
 
-export interface ActionMapCompilerOptions {
+export interface CompilerOptions {
   warnUnknownField: (kind: "binding" | "layer", fieldName: string) => void
   warnUnknownToken: (token: string, sequence: string) => void
 }
 
 export class CompilerService {
   constructor(
-    private readonly state: ActionMapState,
+    private readonly state: State,
     private readonly notify: NotificationService,
     private readonly commands: CommandService,
     private readonly conditions: ConditionService,
-    private readonly options: ActionMapCompilerOptions,
+    private readonly options: CompilerOptions,
   ) {}
 
   public normalizeTokenName(token: string): string {
@@ -83,9 +83,9 @@ export class CompilerService {
   }
 
   public compileBindings(
-    bindings: readonly ActionMapBindingInput[],
+    bindings: readonly BindingInput[],
     tokens: ReadonlyMap<string, ParsedKeyToken>,
-    sourceScope: ActionMapScope,
+    sourceScope: Scope,
     sourceTarget: Renderable | undefined,
     sourceLayerOrder: number,
     compileFields?: Readonly<Record<string, unknown>>,
@@ -155,8 +155,8 @@ export class CompilerService {
           try {
             const event = this.normalizeBindingEvent(compiledInput.event)
             const compiledSequence = compiledInput.sequence
-            let mergedRequires: ActionMapEventData | undefined
-            let mergedAttrs: ActionMapAttributes | undefined
+            let mergedRequires: EventData | undefined
+            let mergedAttrs: Attributes | undefined
             let matchers: RuntimeMatcher[] | undefined
             let conditionKeys: Set<string> | undefined
             let hasUnkeyedMatchers = false
@@ -170,7 +170,7 @@ export class CompilerService {
                 continue
               }
 
-              const value = compiledInput[fieldName as keyof ActionMapParsedBindingInput]
+              const value = compiledInput[fieldName as keyof ParsedBindingInput]
 
               if (value === undefined) {
                 continue
@@ -265,7 +265,7 @@ export class CompilerService {
     }
   }
 
-  private getBindingSyntax(): ActionMapBindingSyntax {
+  private getBindingSyntax(): BindingSyntax {
     const syntax = this.state.config.bindingSyntax
     if (!syntax) {
       throw new Error("No action map binding syntax is registered")
@@ -279,7 +279,7 @@ export class CompilerService {
     return createParsedKeyPart(parsed.stroke, parsed.display, parsed.matchKey)
   }
 
-  private normalizeBindingEvent(event: unknown): ActionMapBindingEvent {
+  private normalizeBindingEvent(event: unknown): BindingEvent {
     if (event === undefined || event === "press") {
       return "press"
     }
@@ -292,12 +292,12 @@ export class CompilerService {
   }
 
   private applyBindingTransformers(
-    binding: ActionMapBindingInput,
+    binding: BindingInput,
     sequence: ParsedKeyPart[],
     tokens: ReadonlyMap<string, ParsedKeyToken>,
-    bindingParsers: readonly ActionMapBindingParser[],
+    bindingParsers: readonly BindingParser[],
     compileFields?: Readonly<Record<string, unknown>>,
-  ): ActionMapParsedBindingInput[] {
+  ): ParsedBindingInput[] {
     const bindingTransformers = this.state.config.bindingTransformers.values()
 
     if (bindingTransformers.length === 0) {
@@ -306,11 +306,11 @@ export class CompilerService {
       ]
     }
 
-    const parsedBinding: ActionMapParsedBindingInput = {
+    const parsedBinding: ParsedBindingInput = {
       ...binding,
       sequence: sequence.map((part) => createParsedKeyPart(part.stroke, part.display, part.matchKey)),
     }
-    const extraBindings: ActionMapParsedBindingInput[] = []
+    const extraBindings: ParsedBindingInput[] = []
     let keepOriginal = true
     const layer = compileFields ?? EMPTY_COMPILE_FIELDS
 
@@ -421,7 +421,7 @@ export class CompilerService {
 
 function expandBindingInputWithExpanders(
   key: KeyLike,
-  expanders: readonly ActionMapBindingExpander[],
+  expanders: readonly BindingExpander[],
   options?: {
     layer?: Readonly<Record<string, unknown>>
   },
@@ -437,7 +437,7 @@ function expandBindingInputWithExpanders(
     const nextCandidates: string[] = []
 
     for (const input of candidates) {
-      const result = expander({ input, layer } satisfies ActionMapBindingExpanderContext)
+      const result = expander({ input, layer } satisfies BindingExpanderContext)
       if (!result) {
         nextCandidates.push(input)
         continue
@@ -464,7 +464,7 @@ function expandBindingInputWithExpanders(
 
 function parseBindingSequenceWithParsers(
   key: string,
-  parsers: readonly ActionMapBindingParser[],
+  parsers: readonly BindingParser[],
   options: {
     tokens?: ReadonlyMap<string, ParsedKeyToken>
     layer?: Readonly<Record<string, unknown>>
@@ -497,7 +497,7 @@ function parseBindingSequenceWithParsers(
         layer,
         tokens,
         parseObjectKey,
-      } satisfies ActionMapBindingParserContext)
+      } satisfies BindingParserContext)
       if (!result) {
         continue
       }
@@ -534,7 +534,7 @@ function parseBindingSequenceWithParsers(
 
 function parseSingleKeyPartWithParsers(
   key: KeyLike,
-  parsers: readonly ActionMapBindingParser[],
+  parsers: readonly BindingParser[],
   options: {
     tokens?: ReadonlyMap<string, ParsedKeyToken>
     layer?: Readonly<Record<string, unknown>>

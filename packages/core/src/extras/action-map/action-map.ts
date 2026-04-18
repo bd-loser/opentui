@@ -2,30 +2,31 @@ import type { Renderable } from "../../Renderable.js"
 import { CliRenderEvents, type CliRenderer } from "../../renderer.js"
 import { KeyEvent } from "../../lib/KeyHandler.js"
 import type {
-  ActionMapActiveKey,
-  ActionMapActiveKeyOptions,
-  ActionMapBindingExpander,
-  ActionMapBindingParser,
-  ActionMapBindingSyntax,
-  ActionMapBindingFieldCompiler,
-  ActionMapBindingTransformer,
-  ActionMapHookListener,
-  ActionMapHooks,
-  ActionMapEvents,
-  ActionMapCommandDefinition,
-  ActionMapCommandFieldCompiler,
-  ActionMapCommandQuery,
-  ActionMapCommandRecord,
-  ActionMapRunCommandOptions,
-  ActionMapRunCommandResult,
-  ActionMapCommandResolver,
-  ActionMapKeyInputContext,
-  ActionMapLayer,
-  ActionMapLayerFieldCompiler,
-  ActionMapRawInputContext,
-  ActionMapEventMatchResolver,
-  ActionMapStringifiableKey,
-  ActionMapToken,
+  ActiveKey,
+  ActiveKeyOptions,
+  BindingExpander,
+  BindingParser,
+  BindingSyntax,
+  BindingFieldCompiler,
+  BindingTransformer,
+  HookListener,
+  HookName,
+  Hooks,
+  Events,
+  CommandDefinition,
+  CommandFieldCompiler,
+  CommandQuery,
+  CommandRecord,
+  RunCommandOptions,
+  RunCommandResult,
+  CommandResolver,
+  KeyInputContext,
+  Layer,
+  LayerFieldCompiler,
+  RawInputContext,
+  EventMatchResolver,
+  StringifiableKey,
+  Token,
   KeyLike,
   ParsedKeyPart,
   ParsedKeyToken,
@@ -47,9 +48,9 @@ import { createActionMapState } from "./services/state.js"
 const actionMapsByRenderer = new WeakMap<CliRenderer, ActionMap>()
 const NOOP = (): void => {}
 
-type ActionMapFieldKind = "layer" | "binding" | "command"
+type FieldKind = "layer" | "binding" | "command"
 
-function getKeyMatchKey(input: ActionMapStringifiableKey): string {
+function getKeyMatchKey(input: StringifiableKey): string {
   if ("matchKey" in input) {
     return input.matchKey
   }
@@ -64,7 +65,7 @@ function getKeyMatchKey(input: ActionMapStringifiableKey): string {
 function registerFieldCompilers<T>(
   fields: Record<string, T>,
   options: {
-    kind: ActionMapFieldKind
+    kind: FieldKind
     reservedFields: ReadonlySet<string>
     registeredFields: Map<string, T>
     emitError(message: string): void
@@ -111,8 +112,8 @@ export class ActionMap {
   private cleanedUp = false
   // Reuse `Emitter`, but keep its `onError` hook as a no-op so throwing error
   // listeners cannot re-enter `emitError` and loop forever.
-  private events = new Emitter<ActionMapEvents>(() => {})
-  private hooks: Emitter<ActionMapHooks>
+  private events = new Emitter<Events>(() => {})
+  private hooks: Emitter<Hooks>
   private readonly notify: NotificationService
   private readonly runtime: RuntimeService
   private readonly conditions: ConditionService
@@ -132,7 +133,7 @@ export class ActionMap {
     }
 
     this.renderer = renderer
-    this.hooks = new Emitter<ActionMapHooks>((name, error) => {
+    this.hooks = new Emitter<Hooks>((name, error) => {
       this.notify.reportHookError(name, error)
     })
     this.notify = new NotificationService(this.state, this.events, this.hooks)
@@ -235,7 +236,7 @@ export class ActionMap {
     return this.runtime.getPendingSequenceParts()
   }
 
-  public createKeyMatcher(key: KeyLike): (input: ActionMapStringifiableKey | null | undefined) => boolean {
+  public createKeyMatcher(key: KeyLike): (input: StringifiableKey | null | undefined) => boolean {
     const matchKey = this.compiler.parseTokenKey(key).matchKey
 
     return (input) => {
@@ -275,11 +276,11 @@ export class ActionMap {
     return true
   }
 
-  public getActiveKeys(options?: ActionMapActiveKeyOptions): readonly ActionMapActiveKey[] {
+  public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey[] {
     return this.runtime.getActiveKeys(options)
   }
 
-  public getCommands(query?: ActionMapCommandQuery): readonly ActionMapCommandRecord[] {
+  public getCommands(query?: CommandQuery): readonly CommandRecord[] {
     return this.commands.getCommands(query)
   }
 
@@ -287,32 +288,32 @@ export class ActionMap {
     return this.commands.normalizeCommandName(name)
   }
 
-  public runCommand(cmd: string, options?: ActionMapRunCommandOptions): ActionMapRunCommandResult {
+  public runCommand(cmd: string, options?: RunCommandOptions): RunCommandResult {
     return this.commands.runCommand(cmd, options)
   }
 
-  public hook<TName extends ActionMapHookName>(
+  public hook<TName extends HookName>(
     name: TName,
-    fn: ActionMapHookListener<ActionMapHooks[TName]>,
+    fn: HookListener<Hooks[TName]>,
   ): () => void {
     return this.hooks.hook(name, fn)
   }
 
-  public on<TName extends keyof ActionMapEvents>(name: TName, fn: EmitterListener<ActionMapEvents[TName]>): this {
+  public on<TName extends keyof Events>(name: TName, fn: EmitterListener<Events[TName]>): this {
     this.events.hook(name, fn)
     return this
   }
 
-  public off<TName extends keyof ActionMapEvents>(name: TName, fn: EmitterListener<ActionMapEvents[TName]>): this {
+  public off<TName extends keyof Events>(name: TName, fn: EmitterListener<Events[TName]>): this {
     this.events.off(name, fn)
     return this
   }
 
-  public registerLayer(layer: ActionMapLayer): () => void {
+  public registerLayer(layer: Layer): () => void {
     return this.layers.registerLayer(layer)
   }
 
-  public registerLayerFields(fields: Record<string, ActionMapLayerFieldCompiler>): () => void {
+  public registerLayerFields(fields: Record<string, LayerFieldCompiler>): () => void {
     return registerFieldCompilers(fields, {
       kind: "layer",
       reservedFields: RESERVED_LAYER_FIELDS,
@@ -323,15 +324,15 @@ export class ActionMap {
     })
   }
 
-  public registerBindingTransformer(transformer: ActionMapBindingTransformer): () => void {
+  public registerBindingTransformer(transformer: BindingTransformer): () => void {
     return this.state.config.bindingTransformers.append(transformer)
   }
 
-  public prependBindingParser(parser: ActionMapBindingParser): () => void {
+  public prependBindingParser(parser: BindingParser): () => void {
     return this.state.config.bindingParsers.prepend(parser)
   }
 
-  public appendBindingParser(parser: ActionMapBindingParser): () => void {
+  public appendBindingParser(parser: BindingParser): () => void {
     return this.state.config.bindingParsers.append(parser)
   }
 
@@ -339,7 +340,7 @@ export class ActionMap {
     this.state.config.bindingParsers.clear()
   }
 
-  public setBindingSyntax(syntax: ActionMapBindingSyntax): void {
+  public setBindingSyntax(syntax: BindingSyntax): void {
     this.state.config.bindingSyntax = syntax
   }
 
@@ -347,7 +348,7 @@ export class ActionMap {
     this.state.config.bindingSyntax = undefined
   }
 
-  public registerToken(token: ActionMapToken): () => void {
+  public registerToken(token: Token): () => void {
     let normalizedToken: string
 
     try {
@@ -401,11 +402,11 @@ export class ActionMap {
     }
   }
 
-  public prependBindingExpander(expander: ActionMapBindingExpander): () => void {
+  public prependBindingExpander(expander: BindingExpander): () => void {
     return this.state.config.bindingExpanders.prepend(expander)
   }
 
-  public appendBindingExpander(expander: ActionMapBindingExpander): () => void {
+  public appendBindingExpander(expander: BindingExpander): () => void {
     return this.state.config.bindingExpanders.append(expander)
   }
 
@@ -413,7 +414,7 @@ export class ActionMap {
     this.state.config.bindingExpanders.clear()
   }
 
-  public registerBindingFields(fields: Record<string, ActionMapBindingFieldCompiler>): () => void {
+  public registerBindingFields(fields: Record<string, BindingFieldCompiler>): () => void {
     return registerFieldCompilers(fields, {
       kind: "binding",
       reservedFields: RESERVED_BINDING_FIELDS,
@@ -424,7 +425,7 @@ export class ActionMap {
     })
   }
 
-  public registerCommandFields(fields: Record<string, ActionMapCommandFieldCompiler>): () => void {
+  public registerCommandFields(fields: Record<string, CommandFieldCompiler>): () => void {
     return registerFieldCompilers(fields, {
       kind: "command",
       reservedFields: RESERVED_COMMAND_FIELDS,
@@ -435,11 +436,11 @@ export class ActionMap {
     })
   }
 
-  public registerCommandResolver(resolver: ActionMapCommandResolver): () => void {
+  public registerCommandResolver(resolver: CommandResolver): () => void {
     return this.commands.registerCommandResolver(resolver)
   }
 
-  public registerEventMatchResolver(resolver: ActionMapEventMatchResolver): () => void {
+  public registerEventMatchResolver(resolver: EventMatchResolver): () => void {
     return this.state.config.eventMatchResolvers.append(resolver)
   }
 
@@ -448,7 +449,7 @@ export class ActionMap {
   }
 
   public onKeyInput(
-    fn: (ctx: ActionMapKeyInputContext) => void,
+    fn: (ctx: KeyInputContext) => void,
     options?: { priority?: number; release?: boolean },
   ): () => void {
     return this.state.config.keyHooks.register(fn, {
@@ -457,13 +458,13 @@ export class ActionMap {
     })
   }
 
-  public onRawInput(fn: (ctx: ActionMapRawInputContext) => void, options?: { priority?: number }): () => void {
+  public onRawInput(fn: (ctx: RawInputContext) => void, options?: { priority?: number }): () => void {
     return this.state.config.rawHooks.register(fn, {
       priority: options?.priority ?? 0,
     })
   }
 
-  public registerCommands(commands: ActionMapCommandDefinition[]): () => void {
+  public registerCommands(commands: CommandDefinition[]): () => void {
     return this.commands.registerCommands(commands)
   }
 

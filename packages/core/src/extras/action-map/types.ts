@@ -112,7 +112,9 @@ export interface BindingInput {
    * Default `true`. Calls `event.preventDefault()` and
    * `event.stopPropagation()` so the matched key does not reach the focused
    * renderable or later `renderer.keyInput` listeners. Independent of
-   * `fallthrough`, which only controls dispatch inside the action-map.
+   * `fallthrough`, which only controls dispatch inside the action-map. Set
+   * `preventDefault: false` if you want a fallthrough binding to keep matching
+   * inside the action-map and still let the key escape to later handlers.
    */
   preventDefault?: boolean
   /**

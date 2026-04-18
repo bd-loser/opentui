@@ -20,8 +20,6 @@ import type {
   CommandFieldCompiler,
   CommandFieldContext,
   CommandHandler,
-  CommandQuery,
-  CommandQueryValue,
   CommandRecord,
   CommandResolver,
   CommandResolverContext,
@@ -35,10 +33,9 @@ import type {
   RunCommandResult,
 } from "../types.js"
 import type { NotificationService } from "./notify.js"
+import type { ProjectionService } from "./projection.js"
 import type { RuntimeService } from "./runtime.js"
-import type { ActiveCommandView, LayerCommandEntry, ResolvedCommandEntry, State } from "./state.js"
-
-const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const
+import type { State } from "./state.js"
 const SNAPSHOT_COMMAND_METADATA_OPTIONS = Object.freeze({ deep: true, preserveNonPlainObjects: true })
 const SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS = Object.freeze({
   deep: true,
@@ -62,13 +59,6 @@ interface CommandExecutionResult {
 
 interface CommandsOptions {
   actionMap: ActionMap
-}
-
-interface QueryRegisteredCommandsOptions {
-  commands: Iterable<RegisteredCommand>
-  query?: CommandQuery
-  getCommandRecord(command: RegisteredCommand): CommandRecord
-  onFilterError(error: unknown): void
 }
 
 interface NormalizeRegisteredCommandsOptions {
@@ -97,37 +87,10 @@ export class CommandService {
     private readonly state: State,
     private readonly notify: NotificationService,
     private readonly runtime: RuntimeService,
+    private readonly projection: ProjectionService,
     private readonly hooks: Emitter<Hooks>,
     private readonly options: CommandsOptions,
   ) {}
-
-  public getCommands(query?: CommandQuery): readonly CommandRecord[] {
-    const visibility = query?.visibility ?? "reachable"
-    const focused = query && Object.prototype.hasOwnProperty.call(query, "focused")
-      ? (query.focused ?? null)
-      : this.runtime.getFocusedRenderableIfAvailable()
-
-    let commands: readonly RegisteredCommand[]
-    if (visibility === "registered") {
-      commands = this.getRegisteredCommands()
-    } else {
-      const view = this.getActiveCommandView(focused)
-      if (visibility === "active") {
-        commands = view.entries.map((entry) => entry.command)
-      } else {
-        commands = view.reachable.map((entry) => entry.command)
-      }
-    }
-
-    return queryRegisteredCommands({
-      commands,
-      query,
-      getCommandRecord: (command) => this.getCommandRecord(command),
-      onFilterError: (error) => {
-        this.notify.emitError("[ActionMap] Error in command query filter:", error)
-      },
-    })
-  }
 
   public normalizeCommandName(name: string): string {
     return normalizeCommandName(name)
@@ -147,7 +110,7 @@ export class CommandService {
     return this.notify.runWithStateChangeBatch(() => {
       this.state.config.commandResolvers.append(resolver)
       this.state.commands.commandMetadataVersion += 1
-      this.runtime.ensureValidPendingSequence()
+        this.projection.ensureValidPendingSequence()
       this.notify.queueStateChange()
 
       return () => {
@@ -157,7 +120,7 @@ export class CommandService {
           }
 
           this.state.commands.commandMetadataVersion += 1
-          this.runtime.ensureValidPendingSequence()
+          this.projection.ensureValidPendingSequence()
           this.notify.queueStateChange()
         })
       }
@@ -178,11 +141,11 @@ export class CommandService {
     }
 
     const includeRecord = options?.includeCommand === true
-    const focused = options?.focused ?? this.runtime.getFocusedRenderableIfAvailable()
+    const focused = options?.focused ?? this.projection.getFocusedRenderableIfAvailable()
     const event = options?.event ?? createSyntheticCommandEvent()
     const data = this.runtime.getReadonlyData()
-    const view = this.getActiveCommandView(focused)
-    const chain = this.getResolvedCommandChain(view, normalized, focused, includeRecord)
+    const chainLookup = this.projection.getResolvedCommandChain(normalized, focused, includeRecord)
+    const chain = chainLookup.entries
     let rejectedResult: RunCommandResult | undefined
 
     if (chain) {
@@ -204,8 +167,7 @@ export class CommandService {
       }
     }
 
-    const fallbackErrors = includeRecord ? view.fallbackWithRecordErrors : view.fallbackWithoutRecordErrors
-    if (fallbackErrors.has(normalized)) {
+    if (chainLookup.hadError) {
       return { ok: false, reason: "error" }
     }
 
@@ -245,8 +207,7 @@ export class CommandService {
       return false
     }
 
-    const view = this.getActiveCommandView(focused)
-    const chain = this.getResolvedCommandChain(view, binding.command, focused, false)
+    const chain = this.projection.getResolvedCommandChain(binding.command, focused, false).entries
     if (chain) {
       for (const entry of chain) {
         const context: CommandContext = {
@@ -270,46 +231,6 @@ export class CommandService {
     return false
   }
 
-  public canResolveCommand(command: string, focused: Renderable | null): boolean {
-    const active = this.getActiveCommandView(focused).reachableByName.get(command)
-    if (active) {
-      return true
-    }
-
-    return this.getFallbackResolvedCommand(this.getActiveCommandView(focused), command, focused, false) !== undefined
-  }
-
-  public getCommandAttrs(command: string, focused: Renderable | null): Readonly<Attributes> | undefined {
-    const top = this.getTopResolvedCommand(command, focused, false)
-    return top?.resolved.attrs
-  }
-
-  public createCommandProjection(focused: Renderable | null): {
-    canResolve(name: string): boolean
-    getAttrs(name: string): Readonly<Attributes> | undefined
-  } {
-    const view = this.getActiveCommandView(focused)
-
-    return {
-      canResolve: (name) => {
-        if (view.reachableByName.has(name)) {
-          return true
-        }
-
-        return this.getFallbackResolvedCommand(view, name, focused, false) !== undefined
-      },
-      getAttrs: (name) => {
-        const active = view.reachableByName.get(name)
-        if (active) {
-          return active.command.attrs
-        }
-
-        const fallback = this.getFallbackResolvedCommand(view, name, focused, false)
-        return fallback?.resolved.attrs
-      },
-    }
-  }
-
   public warnIfBindingCommandIsCurrentlyUnresolved(
     binding: CompiledBinding,
     layerCommands?: ReadonlyMap<string, RegisteredCommand>,
@@ -327,7 +248,7 @@ export class CommandService {
       return
     }
 
-    const focused = this.runtime.getFocusedRenderableIfAvailable()
+    const focused = this.projection.getFocusedRenderableIfAvailable()
     const lookup = this.resolveCommandWithResolvers(command, focused)
     if (lookup.resolved || lookup.hadError) {
       return
@@ -340,175 +261,11 @@ export class CommandService {
     return getRegisteredCommandRecord(command)
   }
 
-  private getTopResolvedCommand(
-    command: string,
-    focused: Renderable | null,
-    includeRecord: boolean,
-  ): ResolvedCommandEntry | undefined {
-    const view = this.getActiveCommandView(focused)
-    const active = view.reachableByName.get(command)
-    if (active) {
-      return {
-        target: active.layer.target,
-        resolved: this.getResolvedRegisteredCommand(active.command, { includeRecord }),
-      }
-    }
-
-    return this.getFallbackResolvedCommand(view, command, focused, includeRecord)
-  }
-
-  private getFallbackResolvedCommand(
-    view: ActiveCommandView,
-    command: string,
-    focused: Renderable | null,
-    includeRecord: boolean,
-  ): ResolvedCommandEntry | undefined {
-    const cache = includeRecord ? view.fallbackWithRecord : view.fallbackWithoutRecord
-    const errorCache = includeRecord ? view.fallbackWithRecordErrors : view.fallbackWithoutRecordErrors
-    if (cache.has(command)) {
-      const cached = cache.get(command)
-      return cached ? { resolved: cached } : undefined
-    }
-
-    const lookup = this.resolveCommandWithResolvers(command, focused, { includeRecord })
-    cache.set(command, lookup.resolved ?? null)
-    if (lookup.hadError) {
-      errorCache.add(command)
-    }
-
-    if (!lookup.resolved) {
-      return undefined
-    }
-
-    return { resolved: lookup.resolved }
-  }
-
-  private getResolvedCommandChain(
-    view: ActiveCommandView,
-    command: string,
-    focused: Renderable | null,
-    includeRecord: boolean,
-  ): readonly ResolvedCommandEntry[] | undefined {
-    const cache = includeRecord ? view.resolvedWithRecordChains : view.resolvedWithoutRecordChains
-    const cached = cache.get(command)
-    if (cached) {
-      return cached.length > 0 ? cached : undefined
-    }
-
-    const resolved: ResolvedCommandEntry[] = []
-    const activeChain = view.chainsByName.get(command)
-    if (activeChain) {
-      for (const entry of activeChain) {
-        resolved.push({ target: entry.layer.target, resolved: this.getResolvedRegisteredCommand(entry.command, { includeRecord }) })
-      }
-    }
-
-    const fallback = this.getFallbackResolvedCommand(view, command, focused, includeRecord)
-    if (fallback) {
-      resolved.push(fallback)
-    }
-
-    cache.set(command, resolved)
-    return resolved.length > 0 ? resolved : undefined
-  }
-
-  private getActiveCommandView(focused: Renderable | null): ActiveCommandView {
-    const currentFocused = this.runtime.getFocusedRenderableIfAvailable()
-    const derivedStateVersion = this.state.notify.derivedStateVersion
-
-    if (
-      focused === currentFocused &&
-      this.state.commands.activeCommandViewVersion === derivedStateVersion &&
-      this.state.commands.activeCommandView
-    ) {
-      return this.state.commands.activeCommandView
-    }
-
-    const entries: LayerCommandEntry[] = []
-    const reachable: LayerCommandEntry[] = []
-    const reachableByName = new Map<string, LayerCommandEntry>()
-    const chainsByName = new Map<string, LayerCommandEntry[]>()
-
-    if (this.state.layers.layersWithCommands > 0) {
-      const activeLayers = this.runtime.getActiveLayers(focused)
-
-      for (const layer of activeLayers) {
-        if (layer.commands.length === 0) {
-          continue
-        }
-
-        if (!this.runtime.layerMatchesRuntimeState(layer)) {
-          continue
-        }
-
-        for (const command of layer.commands) {
-          const entry: LayerCommandEntry = { layer, command }
-          entries.push(entry)
-
-          const existing = chainsByName.get(command.name)
-          if (existing) {
-            existing.push(entry)
-          } else {
-            chainsByName.set(command.name, [entry])
-          }
-
-          if (!reachableByName.has(command.name)) {
-            reachableByName.set(command.name, entry)
-            reachable.push(entry)
-          }
-        }
-      }
-    }
-
-    const view: ActiveCommandView = {
-      entries,
-      reachable,
-      reachableByName,
-      chainsByName,
-      resolvedWithoutRecordChains: new Map<string, readonly ResolvedCommandEntry[]>(),
-      resolvedWithRecordChains: new Map<string, readonly ResolvedCommandEntry[]>(),
-      fallbackWithoutRecord: new Map<string, ResolvedBindingCommand | null>(),
-      fallbackWithRecord: new Map<string, ResolvedBindingCommand | null>(),
-      fallbackWithoutRecordErrors: new Set<string>(),
-      fallbackWithRecordErrors: new Set<string>(),
-    }
-
-    if (focused === currentFocused) {
-      this.state.commands.activeCommandViewVersion = derivedStateVersion
-      this.state.commands.activeCommandView = view
-    }
-
-    return view
-  }
-
-  private getRegisteredCommands(): readonly RegisteredCommand[] {
-    const cacheVersion = this.state.commands.commandMetadataVersion
-    if (this.state.commands.registeredCommandsCacheVersion === cacheVersion) {
-      return this.state.commands.registeredCommandsCache
-    }
-
-    const layers = [...this.state.layers.layers]
-    layers.sort((left, right) => left.order - right.order)
-
-    const commands: RegisteredCommand[] = []
-    for (const layer of layers) {
-      if (layer.commands.length === 0) {
-        continue
-      }
-
-      commands.push(...layer.commands)
-    }
-
-    this.state.commands.registeredCommandsCacheVersion = cacheVersion
-    this.state.commands.registeredCommandsCache = commands
-    return commands
-  }
-
   private hasRegisteredCommand(name: string): boolean {
     return this.state.commands.registeredNames.has(name)
   }
 
-  private resolveCommandWithResolvers(
+  public resolveCommandWithResolvers(
     command: string,
     focused: Renderable | null,
     options?: { includeRecord?: boolean },
@@ -544,20 +301,19 @@ export class CommandService {
   private createCommandResolverContext(includeRecord: boolean, focused: Renderable | null): CommandResolverContext {
     return {
       getCommandAttrs: (name: string) => {
-        return this.getCommandAttrs(name, focused)
+        return this.projection.getCommandAttrs(name, focused)
       },
       getCommandRecord: (name: string) => {
         if (!includeRecord) {
           return undefined
         }
 
-        const top = this.getTopResolvedCommand(name, focused, true)
-        return top?.resolved.record
+        return this.projection.getTopCommandRecord(name, focused)
       },
     }
   }
 
-  private getResolvedRegisteredCommand(
+  public resolveRegisteredCommand(
     command: RegisteredCommand,
     options?: { includeRecord?: boolean },
   ): ResolvedBindingCommand {
@@ -694,62 +450,6 @@ function applyBindingEventEffects(binding: CompiledBinding, event: KeyEvent): vo
   event.stopPropagation()
 }
 
-function queryRegisteredCommands(options: QueryRegisteredCommandsOptions): readonly CommandRecord[] {
-  const namespace = options.query?.namespace
-  const normalizedSearch = options.query?.search?.trim().toLowerCase() ?? ""
-  let searchKeys = DEFAULT_COMMAND_SEARCH_FIELDS as readonly string[]
-  if (options.query?.searchIn && options.query.searchIn.length > 0) {
-    searchKeys = options.query.searchIn
-  }
-
-  const filter = options.query?.filter
-  let filterEntries: readonly [string, CommandQueryValue][] | undefined
-  let filterPredicate: ((command: CommandRecord) => boolean) | undefined
-
-  if (typeof filter === "function") {
-    filterPredicate = filter
-  } else if (filter) {
-    filterEntries = Object.entries(filter)
-  }
-
-  const results: CommandRecord[] = []
-
-  for (const command of options.commands) {
-    if (!commandMatchesNamespace(command, namespace)) {
-      continue
-    }
-
-    if (!commandMatchesSearch(command, normalizedSearch, searchKeys)) {
-      continue
-    }
-
-    if (!commandMatchesFilters(command, filterEntries, options)) {
-      continue
-    }
-
-    const record = options.getCommandRecord(command)
-
-    if (filterPredicate) {
-      let matches = false
-
-      try {
-        matches = filterPredicate(record)
-      } catch (error) {
-        options.onFilterError(error)
-        continue
-      }
-
-      if (!matches) {
-        continue
-      }
-    }
-
-    results.push(record)
-  }
-
-  return results
-}
-
 function normalizeRegisteredCommands(options: NormalizeRegisteredCommandsOptions): RegisteredCommand[] {
   const normalizedCommands: RegisteredCommand[] = []
   const seen = new Set<string>()
@@ -849,213 +549,4 @@ function getRegisteredCommandRecord(command: RegisteredCommand): CommandRecord {
 
   command.record = record
   return record
-}
-
-function commandMatchesSearch(command: RegisteredCommand, search: string, searchKeys: readonly string[]): boolean {
-  if (!search) {
-    return true
-  }
-
-  for (const key of searchKeys) {
-    if (commandKeyMatchesSearch(command, key, search)) {
-      return true
-    }
-  }
-
-  return false
-}
-
-function commandMatchesNamespace(
-  command: RegisteredCommand,
-  namespace: string | readonly string[] | undefined,
-): boolean {
-  if (namespace === undefined) {
-    return true
-  }
-
-  if (!Object.prototype.hasOwnProperty.call(command.fields, "namespace")) {
-    return false
-  }
-
-  return commandValueMatchesFilter(command.fields.namespace, namespace)
-}
-
-function commandMatchesFilters(
-  command: RegisteredCommand,
-  filters: readonly [string, CommandQueryValue][] | undefined,
-  options: QueryRegisteredCommandsOptions,
-): boolean {
-  if (!filters) {
-    return true
-  }
-
-  for (const [key, matcher] of filters) {
-    if (!commandKeyMatchesQuery(command, key, matcher, options)) {
-      return false
-    }
-  }
-
-  return true
-}
-
-function commandKeyMatchesSearch(command: RegisteredCommand, key: string, search: string): boolean {
-  if (key === "name" && commandValueMatchesSearch(command.name, search)) {
-    return true
-  }
-
-  if (
-    Object.prototype.hasOwnProperty.call(command.fields, key) &&
-    commandValueMatchesSearch(command.fields[key], search)
-  ) {
-    return true
-  }
-
-  if (command.attrs && Object.prototype.hasOwnProperty.call(command.attrs, key)) {
-    return commandValueMatchesSearch(command.attrs[key], search)
-  }
-
-  return false
-}
-
-function commandKeyMatchesQuery(
-  command: RegisteredCommand,
-  key: string,
-  matcher: CommandQueryValue,
-  options: QueryRegisteredCommandsOptions,
-): boolean {
-  if (typeof matcher === "function") {
-    let record: CommandRecord | undefined
-    const getRecord = () => {
-      if (!record) {
-        record = options.getCommandRecord(command)
-      }
-
-      return record
-    }
-    let foundValue = false
-
-    if (key === "name") {
-      foundValue = true
-      try {
-        if (matcher(command.name, getRecord())) {
-          return true
-        }
-      } catch (error) {
-        options.onFilterError(error)
-        return false
-      }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(command.fields, key)) {
-      foundValue = true
-
-      try {
-        if (matcher(command.fields[key], getRecord())) {
-          return true
-        }
-      } catch (error) {
-        options.onFilterError(error)
-        return false
-      }
-    }
-
-    if (command.attrs && Object.prototype.hasOwnProperty.call(command.attrs, key)) {
-      foundValue = true
-
-      try {
-        if (matcher(command.attrs[key], getRecord())) {
-          return true
-        }
-      } catch (error) {
-        options.onFilterError(error)
-        return false
-      }
-    }
-
-    if (!foundValue) {
-      try {
-        return matcher(undefined, getRecord())
-      } catch (error) {
-        options.onFilterError(error)
-        return false
-      }
-    }
-
-    return false
-  }
-
-  return commandKeyMatchesExact(command, key, matcher)
-}
-
-function commandKeyMatchesExact(
-  command: RegisteredCommand,
-  key: string,
-  matcher: unknown | readonly unknown[],
-): boolean {
-  if (key === "name" && commandValueMatchesFilter(command.name, matcher)) {
-    return true
-  }
-
-  if (
-    Object.prototype.hasOwnProperty.call(command.fields, key) &&
-    commandValueMatchesFilter(command.fields[key], matcher)
-  ) {
-    return true
-  }
-
-  if (command.attrs && Object.prototype.hasOwnProperty.call(command.attrs, key)) {
-    return commandValueMatchesFilter(command.attrs[key], matcher)
-  }
-
-  return false
-}
-
-function commandValueMatchesFilter(value: unknown, matcher: unknown | readonly unknown[]): boolean {
-  if (Array.isArray(matcher)) {
-    for (const expected of matcher) {
-      if (commandValueMatchesExact(value, expected)) {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  return commandValueMatchesExact(value, matcher)
-}
-
-function commandValueMatchesExact(value: unknown, expected: unknown): boolean {
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      if (commandValueMatchesExact(entry, expected)) {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  return Object.is(value, expected)
-}
-
-function commandValueMatchesSearch(value: unknown, search: string): boolean {
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      if (commandValueMatchesSearch(entry, search)) {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  if (typeof value === "string") {
-    return value.toLowerCase().includes(search)
-  }
-
-  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
-    return String(value).toLowerCase().includes(search)
-  }
-
-  return false
 }

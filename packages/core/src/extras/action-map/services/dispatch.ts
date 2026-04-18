@@ -4,6 +4,7 @@ import type { CompilerService } from "./compiler.js"
 import type { CommandService } from "./commands.js"
 import type { ConditionService } from "./conditions.js"
 import type { NotificationService } from "./notify.js"
+import type { ProjectionService } from "./projection.js"
 import type { RuntimeService } from "./runtime.js"
 import type { State } from "./state.js"
 import type {
@@ -24,6 +25,7 @@ export class DispatchService {
     private readonly state: State,
     private readonly notify: NotificationService,
     private readonly runtime: RuntimeService,
+    private readonly projection: ProjectionService,
     private readonly conditions: ConditionService,
     private readonly commands: CommandService,
     private readonly compiler: CompilerService,
@@ -113,8 +115,8 @@ export class DispatchService {
   }
 
   private dispatchReleaseLayers(event: KeyEvent): void {
-    const focused = this.runtime.getFocusedRenderable()
-    const activeLayers = this.runtime.getActiveLayers(focused)
+    const focused = this.projection.getFocusedRenderable()
+    const activeLayers = this.projection.getActiveLayers(focused)
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
     const matchKeys = this.resolveEventMatchKeys(event)
 
@@ -143,8 +145,8 @@ export class DispatchService {
   }
 
   private dispatchLayers(event: KeyEvent): void {
-    const focused = this.runtime.getFocusedRenderable()
-    const pending = this.runtime.ensureValidPendingSequence()
+    const focused = this.projection.getFocusedRenderable()
+    const pending = this.projection.ensureValidPendingSequence()
     const matchKeys = this.resolveEventMatchKeys(event)
 
     if (pending) {
@@ -152,7 +154,7 @@ export class DispatchService {
       return
     }
 
-    const activeLayers = this.runtime.getActiveLayers(focused)
+    const activeLayers = this.projection.getActiveLayers(focused)
     this.dispatchFromRoot(activeLayers, matchKeys, event, focused)
   }
 
@@ -164,12 +166,12 @@ export class DispatchService {
   ): void {
     const nextNode = this.getReachableChild(pending.node, matchKeys, focused)
     if (!nextNode) {
-      this.runtime.setPendingSequence(null)
+      this.projection.setPendingSequence(null)
       return
     }
 
     if (nextNode.children.size > 0) {
-      this.runtime.setPendingSequence({
+      this.projection.setPendingSequence({
         layer: pending.layer,
         node: nextNode,
       })
@@ -179,7 +181,7 @@ export class DispatchService {
     }
 
     this.runBindings(pending.layer, nextNode.bindings, event, focused)
-    this.runtime.setPendingSequence(null)
+    this.projection.setPendingSequence(null)
   }
 
   private dispatchFromRoot(
@@ -205,7 +207,7 @@ export class DispatchService {
       }
 
       if (nextNode.children.size > 0) {
-        this.runtime.setPendingSequence({
+        this.projection.setPendingSequence({
           layer,
           node: nextNode,
         })
@@ -316,7 +318,7 @@ export class DispatchService {
   ): SequenceNode | undefined {
     for (const strokeKey of matchKeys) {
       const child = node.children.get(strokeKey)
-      if (!child || !this.runtime.nodeHasReachableBindings(child, focused)) {
+      if (!child || !this.projection.nodeHasReachableBindings(child, focused)) {
         continue
       }
 

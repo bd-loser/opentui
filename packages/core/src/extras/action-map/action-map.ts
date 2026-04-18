@@ -31,7 +31,6 @@ import type {
   ParsedKeyPart,
   ParsedKeyToken,
   ParsedKeyStroke,
-  PendingSequenceState,
 } from "./types.js"
 import { buildBindingKey, getErrorMessage } from "./lib/utils.js"
 import { CommandService, RESERVED_COMMAND_FIELDS } from "./services/commands.js"
@@ -42,6 +41,7 @@ import { LayerService, RESERVED_LAYER_FIELDS } from "./services/layers.js"
 import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./lib/default-parser.js"
 import { Emitter, type EmitterListener } from "./lib/emitter.js"
 import { NotificationService } from "./services/notify.js"
+import { ProjectionService } from "./services/projection.js"
 import { RuntimeService } from "./services/runtime.js"
 import { createActionMapState } from "./services/state.js"
 
@@ -120,6 +120,7 @@ export class ActionMap {
   private readonly runtime: RuntimeService
   private readonly conditions: ConditionService
   private readonly commands: CommandService
+  private readonly projection: ProjectionService
   private readonly compiler: CompilerService
   private readonly dispatch: DispatchService
   private readonly layers: LayerService
@@ -140,11 +141,11 @@ export class ActionMap {
     })
     this.notify = new NotificationService(this.state, this.events, this.hooks)
     this.conditions = new ConditionService(this.state, this.notify)
-    this.runtime = new RuntimeService(this.state, this.renderer, this.hooks, this.notify, this.conditions)
-    this.commands = new CommandService(this.state, this.notify, this.runtime, this.hooks, {
+    this.projection = new ProjectionService(this.state, this.renderer, this.hooks, this.notify, this.conditions)
+    this.runtime = new RuntimeService(this.state, this.notify, this.conditions, this.projection)
+    this.commands = new CommandService(this.state, this.notify, this.runtime, this.projection, this.hooks, {
       actionMap: this,
     })
-    this.runtime.connectCommands(this.commands)
     this.compiler = new CompilerService(this.state, this.notify, this.commands, this.conditions, {
       warnUnknownField: (kind, fieldName) => {
         this.warnUnknownField(kind, fieldName)
@@ -153,7 +154,7 @@ export class ActionMap {
         this.warnUnknownToken(token, sequence)
       },
     })
-    this.layers = new LayerService(this.state, this.notify, this.conditions, this.runtime, {
+    this.layers = new LayerService(this.state, this.notify, this.conditions, this.projection, {
       compiler: this.compiler,
       commands: this.commands,
       warnUnknownField: (kind, fieldName) => {
@@ -164,6 +165,7 @@ export class ActionMap {
       this.state,
       this.notify,
       this.runtime,
+      this.projection,
       this.conditions,
       this.commands,
       this.compiler,
@@ -200,7 +202,7 @@ export class ActionMap {
 
     this.cleanedUp = true
 
-    this.setPendingSequence(null)
+    this.projection.setPendingSequence(null)
 
     for (const layer of this.state.layers.layers) {
       // Drop matcher subscriptions before clearing layer state.
@@ -229,15 +231,15 @@ export class ActionMap {
   }
 
   public hasPendingSequence(): boolean {
-    return this.runtime.ensureValidPendingSequence() !== undefined
+    return this.projection.ensureValidPendingSequence() !== undefined
   }
 
   public getPendingSequence(): readonly ParsedKeyStroke[] {
-    return this.runtime.getPendingSequence()
+    return this.projection.getPendingSequence()
   }
 
   public getPendingSequenceParts(): readonly ParsedKeyPart[] {
-    return this.runtime.getPendingSequenceParts()
+    return this.projection.getPendingSequenceParts()
   }
 
   public createKeyMatcher(key: KeyLike): (input: StringifiableKey | null | undefined) => boolean {
@@ -253,27 +255,27 @@ export class ActionMap {
   }
 
   public clearPendingSequence(): void {
-    this.setPendingSequence(null)
+    this.projection.setPendingSequence(null)
   }
 
   public popPendingSequence(): boolean {
-    const pending = this.runtime.ensureValidPendingSequence()
+    const pending = this.projection.ensureValidPendingSequence()
     if (!pending) {
       return false
     }
 
     if (pending.node.depth <= 1) {
-      this.setPendingSequence(null)
+      this.projection.setPendingSequence(null)
       return true
     }
 
     const parent = pending.node.parent
     if (!parent || !parent.stroke) {
-      this.setPendingSequence(null)
+      this.projection.setPendingSequence(null)
       return true
     }
 
-    this.setPendingSequence({
+    this.projection.setPendingSequence({
       layer: pending.layer,
       node: parent,
     })
@@ -281,11 +283,11 @@ export class ActionMap {
   }
 
   public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey[] {
-    return this.runtime.getActiveKeys(options)
+    return this.projection.getActiveKeys(options)
   }
 
   public getCommands(query?: CommandQuery): readonly CommandRecord[] {
-    return this.commands.getCommands(query)
+    return this.projection.getCommands(query)
   }
 
   public normalizeCommandName(name: string): string {
@@ -485,7 +487,7 @@ export class ActionMap {
       // Any focus change breaks a pending sequence. Prefix dispatch is captured
       // against the state that started it, and changing focus can change the
       // active bindings and their precedence.
-      this.setPendingSequence(null)
+      this.projection.setPendingSequence(null)
       this.queueStateChange()
     })
   }
@@ -504,10 +506,6 @@ export class ActionMap {
 
   private applyTokenState(nextTokens: Map<string, ParsedKeyToken>): void {
     this.layers.applyTokenState(nextTokens)
-  }
-
-  private setPendingSequence(next: PendingSequenceState | null): void {
-    this.runtime.setPendingSequence(next)
   }
 
   private warnOnce(key: string, message: string): void {

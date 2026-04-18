@@ -80,10 +80,26 @@ export interface ActiveCommandView {
 export interface CommandsState {
   commandMetadataVersion: number
   registeredNames: Map<string, number>
+}
+
+export interface ProjectionState {
+  pendingSequence: PendingSequenceState | null
+  pendingSequenceCacheVersion: number
+  pendingSequenceCache: readonly ParsedKeyStroke[]
+  pendingSequencePartsCacheVersion: number
+  pendingSequencePartsCache: readonly ParsedKeyPart[]
   activeCommandViewVersion: number
   activeCommandView?: ActiveCommandView
   registeredCommandsCacheVersion: number
   registeredCommandsCache: readonly RegisteredCommand[]
+  activeKeysPlainCacheVersion: number
+  activeKeysPlainCache: readonly ActiveKey[]
+  activeKeysBindingsCacheVersion: number
+  activeKeysBindingsCache: readonly ActiveKey[]
+  activeKeysMetadataCacheVersion: number
+  activeKeysMetadataCache: readonly ActiveKey[]
+  activeKeysBindingsAndMetadataCacheVersion: number
+  activeKeysBindingsAndMetadataCache: readonly ActiveKey[]
 }
 
 export interface ConditionsState {
@@ -95,19 +111,6 @@ export interface RuntimeState {
   dataVersion: number
   readonlyDataVersion: number
   readonlyData: Readonly<EventData>
-  pendingSequence: PendingSequenceState | null
-  pendingSequenceCacheVersion: number
-  pendingSequenceCache: readonly ParsedKeyStroke[]
-  pendingSequencePartsCacheVersion: number
-  pendingSequencePartsCache: readonly ParsedKeyPart[]
-  activeKeysPlainCacheVersion: number
-  activeKeysPlainCache: readonly ActiveKey[]
-  activeKeysBindingsCacheVersion: number
-  activeKeysBindingsCache: readonly ActiveKey[]
-  activeKeysMetadataCacheVersion: number
-  activeKeysMetadataCache: readonly ActiveKey[]
-  activeKeysBindingsAndMetadataCacheVersion: number
-  activeKeysBindingsAndMetadataCache: readonly ActiveKey[]
 }
 
 export interface NotifyState {
@@ -123,6 +126,7 @@ export interface State {
   config: ConfigState
   layers: LayersState
   commands: CommandsState
+  projection: ProjectionState
   conditions: ConditionsState
   runtime: RuntimeState
   notify: NotifyState
@@ -157,10 +161,25 @@ export function createActionMapState(): State {
     commands: {
       commandMetadataVersion: 0,
       registeredNames: new Map<string, number>(),
+    },
+    projection: {
+      pendingSequence: null,
+      pendingSequenceCacheVersion: -1,
+      pendingSequenceCache: [],
+      pendingSequencePartsCacheVersion: -1,
+      pendingSequencePartsCache: [],
       activeCommandViewVersion: -1,
       activeCommandView: undefined,
       registeredCommandsCacheVersion: -1,
       registeredCommandsCache: [],
+      activeKeysPlainCacheVersion: -1,
+      activeKeysPlainCache: [],
+      activeKeysBindingsCacheVersion: -1,
+      activeKeysBindingsCache: [],
+      activeKeysMetadataCacheVersion: -1,
+      activeKeysMetadataCache: [],
+      activeKeysBindingsAndMetadataCacheVersion: -1,
+      activeKeysBindingsAndMetadataCache: [],
     },
     conditions: {
       runtimeKeyDependents: new Map<string, Set<RuntimeMatchable>>(),
@@ -170,19 +189,6 @@ export function createActionMapState(): State {
       dataVersion: 0,
       readonlyDataVersion: -1,
       readonlyData: EMPTY_DATA,
-      pendingSequence: null,
-      pendingSequenceCacheVersion: -1,
-      pendingSequenceCache: [],
-      pendingSequencePartsCacheVersion: -1,
-      pendingSequencePartsCache: [],
-      activeKeysPlainCacheVersion: -1,
-      activeKeysPlainCache: [],
-      activeKeysBindingsCacheVersion: -1,
-      activeKeysBindingsCache: [],
-      activeKeysMetadataCacheVersion: -1,
-      activeKeysMetadataCache: [],
-      activeKeysBindingsAndMetadataCacheVersion: -1,
-      activeKeysBindingsAndMetadataCache: [],
     },
     notify: {
       derivedStateVersion: 0,

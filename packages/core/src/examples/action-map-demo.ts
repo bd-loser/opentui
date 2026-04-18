@@ -17,8 +17,8 @@ import {
 import {
   addons,
   getActionMap,
-  type ActionMapActiveKey,
-  type ActionMapCommandRecord,
+  type ActiveKey,
+  type CommandRecord,
   type ActionMap,
   stringifyKeySequence,
   stringifyKeyStroke,
@@ -155,7 +155,7 @@ function getMetadataText(value: unknown): string | undefined {
   return trimmed || undefined
 }
 
-function getActiveKeyLabel(activeKey: ActionMapActiveKey): string {
+function getActiveKeyLabel(activeKey: ActiveKey): string {
   if (activeKey.continues) {
     const group = getMetadataText(activeKey.bindingAttrs?.group)
     if (group) {
@@ -200,11 +200,11 @@ function parseExPromptInput(input: string): { raw: string; name: string; args: s
   }
 }
 
-function getExPromptCommandFieldText(command: ActionMapCommandRecord, fieldName: string): string | undefined {
+function getExPromptCommandFieldText(command: CommandRecord, fieldName: string): string | undefined {
   return getMetadataText(command.fields[fieldName])
 }
 
-function getExPromptCommandNargs(command: ActionMapCommandRecord): ExArgCount | undefined {
+function getExPromptCommandNargs(command: CommandRecord): ExArgCount | undefined {
   const value = command.fields.nargs
   if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
     return value
@@ -213,11 +213,11 @@ function getExPromptCommandNargs(command: ActionMapCommandRecord): ExArgCount | 
   return undefined
 }
 
-function getExPromptCommands(): readonly ActionMapCommandRecord[] {
+function getExPromptCommands(): readonly CommandRecord[] {
   return actionMap?.getCommands({ namespace: "excommands" }) ?? []
 }
 
-function buildExPromptSuggestions(commands: readonly ActionMapCommandRecord[]): ExPromptSuggestion[] {
+function buildExPromptSuggestions(commands: readonly CommandRecord[]): ExPromptSuggestion[] {
   const suggestions: ExPromptSuggestion[] = []
 
   for (const command of commands) {

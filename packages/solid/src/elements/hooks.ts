@@ -10,12 +10,12 @@ import {
 } from "@opentui/core"
 import {
   getActionMap,
-  type ActionMapActiveKey,
-  type ActionMapActiveKeyOptions,
-  type ActionMapLayer,
-  type ActionMapLayerFields,
+  type ActiveKey,
+  type ActiveKeyOptions,
+  type Layer,
+  type LayerFields,
   type ActionMap,
-  type ActionMapReactiveMatcher,
+  type ReactiveMatcher,
   type ParsedKeyPart,
 } from "@opentui/core/extras"
 import {
@@ -128,7 +128,7 @@ export type UseBindingsTarget<TRenderable extends Renderable = Renderable> =
   | undefined
   | (() => TRenderable | null | undefined)
 
-type UseBindingsLayerBase = ActionMapLayerFields
+type UseBindingsLayerBase = LayerFields
 
 export type BindingsRef<TRenderable extends Renderable = Renderable> = (value: TRenderable) => void
 
@@ -197,7 +197,7 @@ function useActionMapStateVersion(actionMap: ActionMap): Accessor<number> {
   return version
 }
 
-export const useActiveKeys = (options?: ActionMapActiveKeyOptions): Accessor<readonly ActionMapActiveKey[]> => {
+export const useActiveKeys = (options?: ActiveKeyOptions): Accessor<readonly ActiveKey[]> => {
   const actionMap = useActionMap()
   const version = useActionMapStateVersion(actionMap)
 
@@ -230,7 +230,7 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
   let dispose: (() => void) | undefined
   let mounted = false
   let registered = false
-  let registeredScope: ActionMapLayer["scope"] | undefined
+  let registeredScope: Layer["scope"] | undefined
   let refTarget: Renderable | undefined
 
   const register = (): void => {
@@ -248,7 +248,7 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
 
     const { scope: _scope, target: _target, ...baseLayer } = layer
 
-    let resolvedLayer: ActionMapLayer
+    let resolvedLayer: Layer
     if (resolvedScope === "global") {
       resolvedLayer = {
         ...baseLayer,
@@ -313,14 +313,14 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
 }
 
 /**
- * Adapts a Solid accessor to `ActionMapReactiveMatcher`. The subscription
+ * Adapts a Solid accessor to `ReactiveMatcher`. The subscription
  * lives in a disposable reactive root so unregistering the layer tears it
  * down. Pass `predicate` when the accessor value is not already boolean.
  */
 export function reactiveMatcherFromSignal<T>(
   accessor: Accessor<T>,
   predicate?: (value: T) => boolean,
-): ActionMapReactiveMatcher {
+): ReactiveMatcher {
   return {
     get() {
       return predicate ? predicate(accessor()) : Boolean(accessor())

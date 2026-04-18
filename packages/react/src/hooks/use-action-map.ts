@@ -1,12 +1,12 @@
 import type { Renderable } from "@opentui/core"
 import {
   getActionMap,
-  type ActionMapActiveKey,
-  type ActionMapActiveKeyOptions,
-  type ActionMapLayer,
-  type ActionMapLayerFields,
+  type ActiveKey,
+  type ActiveKeyOptions,
+  type Layer,
+  type LayerFields,
   type ActionMap,
-  type ActionMapReactiveMatcher,
+  type ReactiveMatcher,
   type ParsedKeyPart,
 } from "@opentui/core/extras"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react"
@@ -18,7 +18,7 @@ export type UseBindingsTarget<TRenderable extends Renderable = Renderable> =
   | undefined
   | (() => TRenderable | null | undefined)
 
-type UseBindingsLayerBase = ActionMapLayerFields
+type UseBindingsLayerBase = LayerFields
 
 export type BindingsRef<TRenderable extends Renderable = Renderable> = (value: TRenderable | null) => void
 
@@ -84,7 +84,7 @@ function useActionMapStateVersion(actionMap: ActionMap): number {
   return version
 }
 
-export const useActiveKeys = (options?: ActionMapActiveKeyOptions): readonly ActionMapActiveKey[] => {
+export const useActiveKeys = (options?: ActiveKeyOptions): readonly ActiveKey[] => {
   const actionMap = useActionMap()
   const version = useActionMapStateVersion(actionMap)
 
@@ -118,7 +118,7 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
   const refTargetRef = useRef<TRenderable | undefined>(undefined)
   const disposeRef = useRef<(() => void) | undefined>(undefined)
   const mountedRef = useRef(false)
-  const registeredScopeRef = useRef<ActionMapLayer["scope"] | undefined>(undefined)
+  const registeredScopeRef = useRef<Layer["scope"] | undefined>(undefined)
   const registeredTargetRef = useRef<Renderable | undefined>(undefined)
 
   layerRef.current = layer
@@ -150,7 +150,7 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
 
     const { scope: _scope, target: _target, ...baseLayer } = currentLayer
 
-    const resolvedLayer: ActionMapLayer =
+    const resolvedLayer: Layer =
       resolvedScope === "global"
         ? {
             ...baseLayer,
@@ -214,14 +214,14 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
 
 /**
  * Adapts any `subscribe` + `getSnapshot` store to
- * `ActionMapReactiveMatcher`. Pass `predicate` when the snapshot value is not
+ * `ReactiveMatcher`. Pass `predicate` when the snapshot value is not
  * already boolean.
  */
 export function reactiveMatcherFromStore<T>(
   subscribe: (onStoreChange: () => void) => () => void,
   getSnapshot: () => T,
   predicate?: (value: T) => boolean,
-): ActionMapReactiveMatcher {
+): ReactiveMatcher {
   return {
     get() {
       return predicate ? predicate(getSnapshot()) : Boolean(getSnapshot())

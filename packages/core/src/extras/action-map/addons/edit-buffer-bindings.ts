@@ -4,11 +4,11 @@ import { InputRenderable } from "../../../renderables/Input.js"
 import { TextareaRenderable, defaultTextareaKeyBindings, type TextareaAction } from "../../../renderables/Textarea.js"
 import type { EditBufferRenderable } from "../../../renderables/EditBufferRenderable.js"
 import type {
-  ActionMapBindingInput,
-  ActionMapBindings,
-  ActionMapCommandDefinition,
-  ActionMapCommandContext,
-  ActionMapLayer,
+  BindingInput,
+  Bindings,
+  CommandDefinition,
+  CommandContext,
+  Layer,
   ActionMap,
 } from "../types.js"
 import { snapshotBindingInputs } from "../lib/utils.js"
@@ -106,7 +106,7 @@ const editBufferCommandRegistrations = new WeakMap<
 >()
 const textareaMappingSuspensionRegistrations = new WeakMap<ActionMap, { count: number; dispose: () => void }>()
 
-export type ManagedTextareaLayer = Omit<ActionMapLayer, "bindings"> & { bindings?: ActionMapBindings }
+export type ManagedTextareaLayer = Omit<Layer, "bindings"> & { bindings?: Bindings }
 
 function isManagedTextarea(editor: EditBufferRenderable | null): editor is TextareaRenderable {
   return editor instanceof TextareaRenderable && !(editor instanceof InputRenderable)
@@ -151,7 +151,7 @@ function setTextareaSuspend(editor: TextareaRenderable, suspended: boolean): voi
 
 function createDefaultTextareaBindings(
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): ActionMapBindingInput[] {
+): BindingInput[] {
   return defaultTextareaKeyBindings.map((binding) => ({
     key: keyBindingToString(binding),
     cmd: binding.action,
@@ -164,14 +164,14 @@ function createDefaultTextareaBindings(
  * take precedence. Prefer `registerManagedTextareaLayer` unless you are
  * composing a custom textarea integration.
  */
-export function createTextareaBindings(overrides?: ActionMapBindings): ActionMapBindingInput[] {
+export function createTextareaBindings(overrides?: Bindings): BindingInput[] {
   return createTextareaBindingsWithDescriptions(overrides, editBufferCommandDescriptions)
 }
 
 function createTextareaBindingsWithDescriptions(
-  overrides: ActionMapBindings | undefined,
+  overrides: Bindings | undefined,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): ActionMapBindingInput[] {
+): BindingInput[] {
   const overrideBindings = overrides ? snapshotBindingInputs(overrides) : []
   return [...overrideBindings, ...createDefaultTextareaBindings(descriptions)]
 }
@@ -282,7 +282,7 @@ export function registerTextareaMappingSuspension(actionMap: ActionMap): () => v
   }
 }
 
-function withFocusedEditor(ctx: ActionMapCommandContext, run: (editor: EditBufferRenderable) => boolean): boolean {
+function withFocusedEditor(ctx: CommandContext, run: (editor: EditBufferRenderable) => boolean): boolean {
   const editor = getLiveRenderer(ctx.actionMap).currentFocusedEditor
   if (!editor || editor.isDestroyed) {
     return false
@@ -299,7 +299,7 @@ function createEditBufferCommand(
   name: EditBufferCommandName,
   run: (editor: EditBufferRenderable) => boolean,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): ActionMapCommandDefinition {
+): CommandDefinition {
   return {
     name,
     desc: descriptions[name],
@@ -311,7 +311,7 @@ function createEditBufferCommand(
 
 function createEditBufferCommands(
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
-): ActionMapCommandDefinition[] {
+): CommandDefinition[] {
   return [
     createEditBufferCommand("move-left", (editor) => editor.moveCursorLeft(), descriptions),
     createEditBufferCommand("move-right", (editor) => editor.moveCursorRight(), descriptions),

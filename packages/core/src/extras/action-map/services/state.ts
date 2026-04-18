@@ -1,18 +1,18 @@
 import type { Renderable } from "../../../Renderable.js"
 import type {
-  ActionMapActiveKey,
-  ActionMapBindingExpander,
-  ActionMapBindingFieldCompiler,
-  ActionMapBindingParser,
-  ActionMapBindingSyntax,
-  ActionMapBindingTransformer,
-  ActionMapCommandFieldCompiler,
-  ActionMapCommandResolver,
-  ActionMapEventData,
-  ActionMapEventMatchResolver,
-  ActionMapKeyInputContext,
-  ActionMapLayerFieldCompiler,
-  ActionMapRawInputContext,
+  ActiveKey,
+  BindingExpander,
+  BindingFieldCompiler,
+  BindingParser,
+  BindingSyntax,
+  BindingTransformer,
+  CommandFieldCompiler,
+  CommandResolver,
+  EventData,
+  EventMatchResolver,
+  KeyInputContext,
+  LayerFieldCompiler,
+  RawInputContext,
   ParsedKeyPart,
   ParsedKeyStroke,
   ParsedKeyToken,
@@ -24,64 +24,64 @@ import type {
 } from "../types.js"
 import { OrderedRegistry, PriorityRegistry } from "../lib/registry.js"
 
-const EMPTY_DATA: Readonly<ActionMapEventData> = Object.freeze({})
+const EMPTY_DATA: Readonly<EventData> = Object.freeze({})
 
-export interface ActionMapCoreState {
+export interface CoreState {
   order: number
 }
 
-export interface ActionMapConfigState {
+export interface ConfigState {
   tokens: Map<string, ParsedKeyToken>
-  bindingSyntax: ActionMapBindingSyntax | undefined
-  layerFields: Map<string, ActionMapLayerFieldCompiler>
-  bindingExpanders: OrderedRegistry<ActionMapBindingExpander>
-  bindingParsers: OrderedRegistry<ActionMapBindingParser>
-  bindingTransformers: OrderedRegistry<ActionMapBindingTransformer>
-  bindingFields: Map<string, ActionMapBindingFieldCompiler>
-  commandFields: Map<string, ActionMapCommandFieldCompiler>
-  commandResolvers: OrderedRegistry<ActionMapCommandResolver>
-  eventMatchResolvers: OrderedRegistry<ActionMapEventMatchResolver>
-  keyHooks: PriorityRegistry<(ctx: ActionMapKeyInputContext) => void, { priority: number; release: boolean }>
-  rawHooks: PriorityRegistry<(ctx: ActionMapRawInputContext) => void, { priority: number }>
+  bindingSyntax: BindingSyntax | undefined
+  layerFields: Map<string, LayerFieldCompiler>
+  bindingExpanders: OrderedRegistry<BindingExpander>
+  bindingParsers: OrderedRegistry<BindingParser>
+  bindingTransformers: OrderedRegistry<BindingTransformer>
+  bindingFields: Map<string, BindingFieldCompiler>
+  commandFields: Map<string, CommandFieldCompiler>
+  commandResolvers: OrderedRegistry<CommandResolver>
+  eventMatchResolvers: OrderedRegistry<EventMatchResolver>
+  keyHooks: PriorityRegistry<(ctx: KeyInputContext) => void, { priority: number; release: boolean }>
+  rawHooks: PriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>
 }
 
-export interface ActionMapLayersState {
+export interface LayersState {
   layers: Set<RegisteredLayer>
   globalLayers: RegisteredLayer[]
   targetLayers: WeakMap<Renderable, RegisteredLayerBucket>
   layersWithConditions: number
 }
 
-export interface ActionMapCommandsState {
+export interface CommandsState {
   commands: Map<string, RegisteredCommand>
   commandMetadataVersion: number
 }
 
-export interface ActionMapConditionsState {
+export interface ConditionsState {
   runtimeKeyDependents: Map<string, Set<RuntimeMatchable>>
 }
 
-export interface ActionMapRuntimeState {
-  data: ActionMapEventData
+export interface RuntimeState {
+  data: EventData
   dataVersion: number
   readonlyDataVersion: number
-  readonlyData: Readonly<ActionMapEventData>
+  readonlyData: Readonly<EventData>
   pendingSequence: PendingSequenceState | null
   pendingSequenceCacheVersion: number
   pendingSequenceCache: readonly ParsedKeyStroke[]
   pendingSequencePartsCacheVersion: number
   pendingSequencePartsCache: readonly ParsedKeyPart[]
   activeKeysPlainCacheVersion: number
-  activeKeysPlainCache: readonly ActionMapActiveKey[]
+  activeKeysPlainCache: readonly ActiveKey[]
   activeKeysBindingsCacheVersion: number
-  activeKeysBindingsCache: readonly ActionMapActiveKey[]
+  activeKeysBindingsCache: readonly ActiveKey[]
   activeKeysMetadataCacheVersion: number
-  activeKeysMetadataCache: readonly ActionMapActiveKey[]
+  activeKeysMetadataCache: readonly ActiveKey[]
   activeKeysBindingsAndMetadataCacheVersion: number
-  activeKeysBindingsAndMetadataCache: readonly ActionMapActiveKey[]
+  activeKeysBindingsAndMetadataCache: readonly ActiveKey[]
 }
 
-export interface ActionMapNotifyState {
+export interface NotifyState {
   derivedStateVersion: number
   stateChangeDepth: number
   stateChangePending: boolean
@@ -89,17 +89,17 @@ export interface ActionMapNotifyState {
   usedWarningKeys: Set<string>
 }
 
-export interface ActionMapState {
-  core: ActionMapCoreState
-  config: ActionMapConfigState
-  layers: ActionMapLayersState
-  commands: ActionMapCommandsState
-  conditions: ActionMapConditionsState
-  runtime: ActionMapRuntimeState
-  notify: ActionMapNotifyState
+export interface State {
+  core: CoreState
+  config: ConfigState
+  layers: LayersState
+  commands: CommandsState
+  conditions: ConditionsState
+  runtime: RuntimeState
+  notify: NotifyState
 }
 
-export function createActionMapState(): ActionMapState {
+export function createActionMapState(): State {
   return {
     core: {
       order: 0,
@@ -107,16 +107,16 @@ export function createActionMapState(): ActionMapState {
     config: {
       tokens: new Map<string, ParsedKeyToken>(),
       bindingSyntax: undefined,
-      layerFields: new Map<string, ActionMapLayerFieldCompiler>(),
-      bindingExpanders: new OrderedRegistry<ActionMapBindingExpander>(),
-      bindingParsers: new OrderedRegistry<ActionMapBindingParser>(),
-      bindingTransformers: new OrderedRegistry<ActionMapBindingTransformer>(),
-      bindingFields: new Map<string, ActionMapBindingFieldCompiler>(),
-      commandFields: new Map<string, ActionMapCommandFieldCompiler>(),
-      commandResolvers: new OrderedRegistry<ActionMapCommandResolver>(),
-      eventMatchResolvers: new OrderedRegistry<ActionMapEventMatchResolver>(),
-      keyHooks: new PriorityRegistry<(ctx: ActionMapKeyInputContext) => void, { priority: number; release: boolean }>(),
-      rawHooks: new PriorityRegistry<(ctx: ActionMapRawInputContext) => void, { priority: number }>(),
+      layerFields: new Map<string, LayerFieldCompiler>(),
+      bindingExpanders: new OrderedRegistry<BindingExpander>(),
+      bindingParsers: new OrderedRegistry<BindingParser>(),
+      bindingTransformers: new OrderedRegistry<BindingTransformer>(),
+      bindingFields: new Map<string, BindingFieldCompiler>(),
+      commandFields: new Map<string, CommandFieldCompiler>(),
+      commandResolvers: new OrderedRegistry<CommandResolver>(),
+      eventMatchResolvers: new OrderedRegistry<EventMatchResolver>(),
+      keyHooks: new PriorityRegistry<(ctx: KeyInputContext) => void, { priority: number; release: boolean }>(),
+      rawHooks: new PriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>(),
     },
     layers: {
       layers: new Set<RegisteredLayer>(),

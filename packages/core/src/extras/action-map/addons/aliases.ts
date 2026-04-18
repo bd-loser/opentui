@@ -1,13 +1,13 @@
 import type { ActionMap } from "../types.js"
 
-export type ActionMapAliases = Record<string, string>
+export type Aliases = Record<string, string>
 
-function normalizeAliases(value: unknown): ActionMapAliases {
+function normalizeAliases(value: unknown): Aliases {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error('ActionMap aliases field "aliases" must be an object of key-name mappings')
   }
 
-  const aliases: ActionMapAliases = {}
+  const aliases: Aliases = {}
 
   for (const [name, key] of Object.entries(value as Record<string, unknown>)) {
     const trimmedName = name.trim()
@@ -30,7 +30,7 @@ function normalizeAliases(value: unknown): ActionMapAliases {
   return aliases
 }
 
-function getAliases(layer: Readonly<Record<string, unknown>>): ActionMapAliases | undefined {
+function getAliases(layer: Readonly<Record<string, unknown>>): Aliases | undefined {
   const aliases = layer.aliases
   if (!aliases || typeof aliases !== "object" || Array.isArray(aliases)) {
     return undefined

@@ -1,9 +1,9 @@
-import type { ActionMapBindingParser, ActionMap, ActionMapBindingParserContext, ParsedKeyPart } from "../types.js"
+import type { BindingParser, ActionMap, BindingParserContext, ParsedKeyPart } from "../types.js"
 
 function parseEmacsStroke(
   input: string,
   sequence: string,
-  parseObjectKey: ActionMapBindingParserContext["parseObjectKey"],
+  parseObjectKey: BindingParserContext["parseObjectKey"],
 ): ParsedKeyPart {
   const parts = input.split("+")
   let name = ""
@@ -68,7 +68,7 @@ function parseEmacsStroke(
 
 function parseEmacsSequence(
   input: string,
-  parseObjectKey: ActionMapBindingParserContext["parseObjectKey"],
+  parseObjectKey: BindingParserContext["parseObjectKey"],
 ): ParsedKeyPart[] | undefined {
   const strokes = input.trim().split(/\s+/).filter(Boolean)
 
@@ -84,7 +84,7 @@ function parseEmacsSequence(
 }
 
 export function registerEmacsBindings(actionMap: ActionMap): () => void {
-  const parseEmacsBinding: ActionMapBindingParser = ({ input, index, parseObjectKey }) => {
+  const parseEmacsBinding: BindingParser = ({ input, index, parseObjectKey }) => {
     const parsed = parseEmacsSequence(input, parseObjectKey)
     if (!parsed || index !== 0) {
       return undefined

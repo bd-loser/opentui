@@ -1,12 +1,12 @@
-import type { ActionMap, ActionMapReactiveMatcher } from "../types.js"
+import type { ActionMap, ReactiveMatcher } from "../types.js"
 
 /**
  * Accepted `enabled` values: boolean, raw `() => boolean`, or an
- * `ActionMapReactiveMatcher` for subscription-driven invalidation.
+ * `ReactiveMatcher` for subscription-driven invalidation.
  */
-export type ActionMapEnabled = boolean | (() => boolean) | ActionMapReactiveMatcher
+export type Enabled = boolean | (() => boolean) | ReactiveMatcher
 
-function isReactiveMatcher(value: unknown): value is ActionMapReactiveMatcher {
+function isReactiveMatcher(value: unknown): value is ReactiveMatcher {
   if (!value || typeof value !== "object") {
     return false
   }
@@ -15,7 +15,7 @@ function isReactiveMatcher(value: unknown): value is ActionMapReactiveMatcher {
   return typeof candidate.get === "function" && typeof candidate.subscribe === "function"
 }
 
-function normalizeEnabledValue(fieldName: string, value: unknown): ActionMapEnabled {
+function normalizeEnabledValue(fieldName: string, value: unknown): Enabled {
   if (typeof value === "boolean") {
     return value
   }

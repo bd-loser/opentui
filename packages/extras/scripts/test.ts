@@ -10,7 +10,15 @@ const rootDir = resolve(__dirname, "..")
 const testRuns = [
   {
     cwd: rootDir,
-    args: ["test", "./tests", "./keymap/keymap.test.ts", "./keymap/keymap.host.test.ts", "./keymap/addons", "./keymap/react"],
+    args: [
+      "test",
+      "./tests",
+      "./keymap/keymap.test.ts",
+      "./keymap/keymap.host.test.ts",
+      "./keymap/html.test.ts",
+      "./keymap/addons",
+      "./keymap/react",
+    ],
   },
   {
     cwd: resolve(rootDir, "keymap/solid"),

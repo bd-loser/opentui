@@ -1,4 +1,5 @@
 import { Keymap } from "./keymap.js"
+import { buildBindingKey, normalizeEventKeyStroke } from "./lib/utils.js"
 import type { KeymapEvent, KeymapHost } from "./types.js"
 
 export * from "./index.js"
@@ -56,6 +57,27 @@ const HTML_KEY_NAME_ALIASES = new Map<string, string>([
   ["Control", "control"],
   ["Shift", "shift"],
 ])
+
+function isPrintableSymbol(name: string): boolean {
+  return name.length === 1 && !/^[a-z0-9]$/i.test(name)
+}
+
+function getHtmlEventMatchKeys(event: HtmlKeymapEvent): string[] {
+  const normalized = normalizeEventKeyStroke(event)
+  const primary = buildBindingKey(normalized)
+
+  if (!normalized.shift || !isPrintableSymbol(normalized.name)) {
+    return [primary]
+  }
+
+  return [
+    primary,
+    buildBindingKey({
+      ...normalized,
+      shift: false,
+    }),
+  ]
+}
 
 class HtmlWrappedKeymapEvent implements HtmlKeymapEvent {
   public propagationStopped = false
@@ -287,6 +309,9 @@ export function getKeymap(root: HTMLElement): Keymap<HTMLElement, HtmlKeymapEven
   }
 
   const keymap = new Keymap(createHtmlKeymapHost(root))
+  keymap.prependEventMatchResolver((event) => {
+    return getHtmlEventMatchKeys(event)
+  })
   keymapsByRoot.set(root, keymap)
   return keymap
 }

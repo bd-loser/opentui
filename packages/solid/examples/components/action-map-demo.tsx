@@ -659,6 +659,8 @@ export default function ActionMapDemo() {
       setLeaderArmed(false)
     },
   })
+  const offEscapePending = addons.registerEscapeClearsPendingSequence(manager)
+  const offBackspacePending = addons.registerBackspacePopsPendingSequence(manager)
 
   const offManagedTextareas = addons.registerManagedTextareaLayer(manager, {
     scope: "global",
@@ -845,6 +847,8 @@ export default function ActionMapDemo() {
     renderer.off(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
     offManagedTextareas()
     offLeader()
+    offEscapePending()
+    offBackspacePending()
     offEx()
     offCommands()
     offMetadata()

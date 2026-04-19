@@ -33,9 +33,18 @@ kbd {
 }
 
 .app-shell {
+  position: relative;
   max-width: 1280px;
   margin: 0 auto;
   padding: 2rem;
+}
+
+.app-shell.prompt-open .hero,
+.app-shell.prompt-open .layout {
+  filter: blur(12px) saturate(0.82);
+  transform: scale(0.992);
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .hero {
@@ -68,6 +77,7 @@ kbd {
 .hero-card,
 .panel,
 .editor-card,
+.prompt-overlay,
 .prompt-shell,
 .help-card,
 .sidebar-card {
@@ -118,7 +128,6 @@ kbd {
 
 .panel,
 .editor-card,
-.prompt-shell,
 .help-card,
 .sidebar-card {
   padding: 1rem;
@@ -183,6 +192,14 @@ textarea:focus,
   color: #9fb2c9;
 }
 
+.prompt-eyebrow {
+  margin: 0 0 0.35rem;
+  color: #7dd3fc;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.72rem;
+}
+
 .counter {
   margin-top: 1rem;
   font-size: clamp(2rem, 5vw, 3rem);
@@ -210,6 +227,42 @@ textarea {
 .prompt-shell.is-hidden,
 .help-card.is-hidden {
   display: none;
+}
+
+.prompt-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(2, 8, 23, 0.68);
+  z-index: 30;
+}
+
+.prompt-overlay.is-hidden {
+  display: none;
+}
+
+.prompt-shell {
+  width: min(100%, 46rem);
+  padding: 1.25rem;
+  border-color: rgba(125, 211, 252, 0.34);
+  background:
+    linear-gradient(180deg, rgba(12, 22, 39, 0.96), rgba(8, 15, 28, 0.96)),
+    rgba(8, 15, 28, 0.96);
+  box-shadow:
+    0 24px 80px rgba(2, 8, 23, 0.62),
+    0 0 0 1px rgba(125, 211, 252, 0.14);
+}
+
+.prompt-header {
+  align-items: flex-start;
+}
+
+.prompt-header span {
+  max-width: 18rem;
+  text-align: right;
+  line-height: 1.45;
 }
 
 .prompt-suggestions,
@@ -270,5 +323,23 @@ textarea {
 
   .app-shell {
     padding: 1rem;
+  }
+
+  .prompt-overlay {
+    padding: 1rem;
+    align-items: end;
+  }
+
+  .prompt-shell {
+    width: 100%;
+  }
+
+  .prompt-header {
+    flex-direction: column;
+  }
+
+  .prompt-header span {
+    max-width: none;
+    text-align: left;
   }
 }

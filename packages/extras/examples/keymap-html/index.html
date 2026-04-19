@@ -65,16 +65,6 @@ Use leader bindings and ex commands.</textarea>
             </section>
           </div>
 
-          <section id="prompt-shell" class="prompt-shell is-hidden">
-            <div class="prompt-header">
-              <h2>Ex Prompt</h2>
-              <span>Commands come from the keymap resolver chain.</span>
-            </div>
-            <input id="command-input" class="prompt-input" autocomplete="off" spellcheck="false" />
-            <div id="command-help" class="prompt-help"></div>
-            <div id="command-suggestions" class="prompt-suggestions"></div>
-          </section>
-
           <section id="help-card" class="help-card">
             <h2>Quick Help</h2>
             <div id="help-copy" class="help-copy"></div>
@@ -93,6 +83,21 @@ Use leader bindings and ex commands.</textarea>
           </section>
         </aside>
       </main>
+
+      <div id="prompt-overlay" class="prompt-overlay is-hidden">
+        <section id="prompt-shell" class="prompt-shell" role="dialog" aria-modal="true" aria-labelledby="prompt-title">
+          <div class="prompt-header">
+            <div>
+              <p class="prompt-eyebrow">Command Palette</p>
+              <h2 id="prompt-title">Ex Prompt</h2>
+            </div>
+            <span>Commands come from the keymap resolver chain. Press <kbd>Esc</kbd> to close.</span>
+          </div>
+          <input id="command-input" class="prompt-input" autocomplete="off" spellcheck="false" />
+          <div id="command-help" class="prompt-help"></div>
+          <div id="command-suggestions" class="prompt-suggestions"></div>
+        </section>
+      </div>
     </div>
 
     <script type="module" src="/app.js"></script>

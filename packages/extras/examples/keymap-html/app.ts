@@ -13,6 +13,7 @@ const notesCard = document.getElementById("notes-card") as HTMLElement | null
 const draftCard = document.getElementById("draft-card") as HTMLElement | null
 const notesField = document.getElementById("notes-field") as HTMLTextAreaElement | null
 const draftField = document.getElementById("draft-field") as HTMLTextAreaElement | null
+const promptOverlay = document.getElementById("prompt-overlay") as HTMLElement | null
 const promptShell = document.getElementById("prompt-shell") as HTMLElement | null
 const commandInput = document.getElementById("command-input") as HTMLInputElement | null
 const commandHelp = document.getElementById("command-help") as HTMLElement | null
@@ -35,6 +36,7 @@ if (
   !draftCard ||
   !notesField ||
   !draftField ||
+  !promptOverlay ||
   !promptShell ||
   !commandInput ||
   !commandHelp ||
@@ -151,7 +153,8 @@ function focusOffset(delta: number): void {
 
 function setPromptVisible(visible: boolean): void {
   promptVisible = visible
-  promptShell.classList.toggle("is-hidden", !visible)
+  app.classList.toggle("prompt-open", visible)
+  promptOverlay.classList.toggle("is-hidden", !visible)
 }
 
 function getText(value: unknown): string | undefined {
@@ -430,7 +433,7 @@ function renderHelp(): void {
   helpCopy.innerHTML = [
     "<div><kbd>Tab</kbd> and <kbd>Shift+Tab</kbd> cycle focus between panels and textareas.</div>",
     "<div><kbd>Space</kbd> arms a leader sequence for <kbd>Space s</kbd>, <kbd>Space h</kbd>, and <kbd>Space r</kbd>.</div>",
-    "<div><kbd>:</kbd> opens the ex prompt. Try <kbd>:help</kbd>, <kbd>:reset</kbd>, <kbd>:write alpha</kbd>, or <kbd>:focus draft</kbd>.</div>",
+    "<div><kbd>:</kbd> opens the ex prompt as a modal overlay. Try <kbd>:help</kbd>, <kbd>:reset</kbd>, <kbd>:write alpha</kbd>, or <kbd>:focus draft</kbd>.</div>",
     "<div>The Alpha and Beta panels each install their own focus-within layers with <kbd>j</kbd>, <kbd>k</kbd>, and <kbd>Enter</kbd>.</div>",
     "<div>The Notes and Draft textareas use plain browser editing plus keymap bindings for <kbd>Ctrl+Enter</kbd>.</div>",
   ].join("")
@@ -663,6 +666,15 @@ app.addEventListener("focusout", () => {
       focused: getCurrentFocusedTarget()?.id ?? "none",
     })
   })
+})
+
+promptOverlay.addEventListener("mousedown", (event) => {
+  if (event.target !== promptOverlay) {
+    return
+  }
+
+  debug("prompt backdrop click")
+  closePrompt()
 })
 
 renderCounters()

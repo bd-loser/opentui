@@ -86,16 +86,20 @@ Use leader bindings and ex commands.</textarea>
 
       <div id="prompt-overlay" class="prompt-overlay is-hidden">
         <section id="prompt-shell" class="prompt-shell" role="dialog" aria-modal="true" aria-labelledby="prompt-title">
-          <div class="prompt-header">
-            <div>
-              <p class="prompt-eyebrow">Command Palette</p>
-              <h2 id="prompt-title">Ex Prompt</h2>
+          <div class="prompt-input-shell">
+            <div class="prompt-header">
+              <div>
+                <p class="prompt-eyebrow">Command Palette</p>
+                <h2 id="prompt-title">Ex Prompt</h2>
+              </div>
+              <span>Commands come from the keymap resolver chain. Press <kbd>Esc</kbd> to close.</span>
             </div>
-            <span>Commands come from the keymap resolver chain. Press <kbd>Esc</kbd> to close.</span>
+            <input id="command-input" class="prompt-input" autocomplete="off" spellcheck="false" />
           </div>
-          <input id="command-input" class="prompt-input" autocomplete="off" spellcheck="false" />
-          <div id="command-help" class="prompt-help"></div>
-          <div id="command-suggestions" class="prompt-suggestions"></div>
+          <div class="prompt-results">
+            <div id="command-help" class="prompt-help"></div>
+            <div id="command-suggestions" class="prompt-suggestions"></div>
+          </div>
         </section>
       </div>
     </div>

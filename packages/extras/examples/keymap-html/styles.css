@@ -233,9 +233,8 @@ textarea {
   position: fixed;
   inset: 0;
   display: grid;
-  align-items: start;
-  justify-items: center;
-  padding: clamp(2.5rem, 10vh, 6rem) 1.5rem 1.5rem;
+  place-items: center;
+  padding: 1.5rem;
   background: rgba(2, 8, 23, 0.68);
   z-index: 30;
 }
@@ -245,10 +244,13 @@ textarea {
 }
 
 .prompt-shell {
-  display: grid;
-  gap: 0.85rem;
+  position: relative;
   width: min(100%, 46rem);
-  padding: 1.25rem;
+  overflow: visible;
+}
+
+.prompt-input-shell,
+.prompt-results {
   border-color: rgba(125, 211, 252, 0.34);
   background:
     linear-gradient(180deg, rgba(12, 22, 39, 0.96), rgba(8, 15, 28, 0.96)),
@@ -256,6 +258,27 @@ textarea {
   box-shadow:
     0 24px 80px rgba(2, 8, 23, 0.62),
     0 0 0 1px rgba(125, 211, 252, 0.14);
+}
+
+.prompt-input-shell {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 0.85rem;
+  padding: 1.25rem;
+  border: 1px solid rgba(125, 211, 252, 0.34);
+  border-radius: 1.2rem;
+}
+
+.prompt-results {
+  position: absolute;
+  top: calc(100% + 0.9rem);
+  left: 0;
+  right: 0;
+  z-index: 1;
+  padding: 1rem 1.05rem;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 1rem;
 }
 
 .prompt-header {
@@ -296,7 +319,7 @@ textarea {
 }
 
 .prompt-suggestions {
-  margin-top: 0;
+  margin-top: 0.65rem;
   max-height: min(16rem, 42vh);
   overflow: auto;
   align-content: start;
@@ -341,7 +364,7 @@ textarea {
 
   .prompt-overlay {
     padding: 1rem;
-    align-items: end;
+    align-items: center;
   }
 
   .prompt-shell {
@@ -355,5 +378,9 @@ textarea {
   .prompt-header span {
     max-width: none;
     text-align: left;
+  }
+
+  .prompt-results {
+    top: calc(100% + 0.75rem);
   }
 }

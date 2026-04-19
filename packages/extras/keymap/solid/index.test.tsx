@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { Renderable } from "@opentui/core"
 import { addons, stringifyKeySequence } from "@opentui/extras/keymap"
-import { Show, createEffect, createSignal, onCleanup } from "solid-js"
 import {
   reactiveMatcherFromSignal,
-  testRender,
-  useKeymap,
   useActiveKeys,
   useBindings,
+  useKeymap,
   usePendingSequence,
-} from "../index.js"
+} from "@opentui/extras/keymap/solid"
+import { testRender } from "@opentui/solid"
+import { Show, createEffect, createSignal, onCleanup } from "solid-js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 

@@ -21,19 +21,52 @@
     "./keymap": {
       "import": "./keymap/index.ts",
       "types": "./keymap/index.ts"
+    },
+    "./keymap/react": {
+      "import": "./keymap/react/index.ts",
+      "types": "./keymap/react/index.ts"
+    },
+    "./keymap/solid": {
+      "import": "./keymap/solid/index.ts",
+      "types": "./keymap/solid/index.ts"
     }
   },
   "scripts": {
     "build": "bun run scripts/build.ts",
     "publish": "bun run scripts/publish.ts",
-    "test": "bun test"
+    "test": "bun run scripts/test.ts"
   },
   "dependencies": {
     "@opentui/core": "workspace:*"
   },
+  "peerDependencies": {
+    "@opentui/react": "workspace:*",
+    "@opentui/solid": "workspace:*",
+    "react": ">=19.0.0",
+    "solid-js": "1.9.11"
+  },
+  "peerDependenciesMeta": {
+    "@opentui/react": {
+      "optional": true
+    },
+    "@opentui/solid": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "solid-js": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@opentui/react": "workspace:*",
+    "@opentui/solid": "workspace:*",
     "@types/bun": "latest",
     "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "react": ">=19.0.0",
+    "solid-js": "1.9.11",
     "typescript": "^5"
   },
   "engines": {

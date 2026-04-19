@@ -22,6 +22,7 @@ interface PackageJson {
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>
 }
 
 const __filename = fileURLToPath(import.meta.url)
@@ -65,10 +66,14 @@ const externalDeps: string[] = [
   ...Object.keys(packageJson.peerDependencies || {}),
 ]
 
-const keymapEntrypoint = join(rootDir, "keymap/index.ts")
+const keymapEntrypoints = [
+  join(rootDir, "keymap/index.ts"),
+  join(rootDir, "keymap/react/index.ts"),
+  join(rootDir, "keymap/solid/index.ts"),
+]
 
 const buildResult = await Bun.build({
-  entrypoints: [join(rootDir, packageJson.module), keymapEntrypoint],
+  entrypoints: [join(rootDir, packageJson.module), ...keymapEntrypoints],
   target: "bun",
   format: "esm",
   outdir: distDir,
@@ -110,6 +115,16 @@ const exports = {
     import: "./keymap/index.js",
     require: "./keymap/index.js",
   },
+  "./keymap/react": {
+    types: "./keymap/react/index.d.ts",
+    import: "./keymap/react/index.js",
+    require: "./keymap/react/index.js",
+  },
+  "./keymap/solid": {
+    types: "./keymap/solid/index.d.ts",
+    import: "./keymap/solid/index.js",
+    require: "./keymap/solid/index.js",
+  },
 }
 
 writeFileSync(
@@ -133,6 +148,7 @@ writeFileSync(
       dependencies: packageJson.dependencies,
       devDependencies: packageJson.devDependencies,
       peerDependencies: packageJson.peerDependencies,
+      peerDependenciesMeta: packageJson.peerDependenciesMeta,
     },
     null,
     2,

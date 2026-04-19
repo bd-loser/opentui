@@ -71,7 +71,7 @@ import * as scrollboxMouseTest from "./scrollbox-mouse-test.js"
 import * as textTruncationDemo from "./text-truncation-demo.js"
 import * as grayscaleBufferDemo from "./grayscale-buffer-demo.js"
 import * as focusRestoreDemo from "./focus-restore-demo.js"
-import * as actionMapDemo from "./action-map-demo.js"
+import * as keymapDemo from "./keymap-demo.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 import * as corePluginSlotsDemo from "./core-plugin-slots-demo.js"
 import * as wideGraphemeOverlayDemo from "./wide-grapheme-overlay-demo.js"
@@ -410,11 +410,11 @@ const examples: Example[] = [
     destroy: inputExample.destroy,
   },
   {
-    name: "Action Map Demo",
+    name: "Keymap Demo",
     description:
       "Global and local bindings with counters, leader commands, a centered : prompt, and three switchable textareas",
-    run: actionMapDemo.run,
-    destroy: actionMapDemo.destroy,
+    run: keymapDemo.run,
+    destroy: keymapDemo.destroy,
   },
   {
     name: "Terminal Palette Demo",

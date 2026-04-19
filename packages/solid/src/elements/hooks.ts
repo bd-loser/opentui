@@ -9,12 +9,12 @@ import {
   type TimelineOptions,
 } from "@opentui/core"
 import {
-  getActionMap,
+  getKeymap,
   type ActiveKey,
   type ActiveKeyOptions,
   type Layer,
   type LayerFields,
-  type ActionMap,
+  type Keymap,
   type ReactiveMatcher,
   type KeySequencePart,
 } from "@opentui/core/extras"
@@ -171,19 +171,19 @@ function resolveBindingsTarget(target: UseBindingsTarget | undefined): Renderabl
   return target ?? undefined
 }
 
-export const useActionMap = (): ActionMap => {
+export const useKeymap = (): Keymap => {
   const renderer = useRenderer()
-  return getActionMap(renderer)
+  return getKeymap(renderer)
 }
 
 // Use the batched `state` event for derived reads. Pending-sequence changes
 // already flow through `state`, so subscribing to both would duplicate work.
-function useActionMapStateVersion(actionMap: ActionMap): Accessor<number> {
+function useKeymapStateVersion(keymap: Keymap): Accessor<number> {
   const [version, setVersion] = createSignal(0)
   let dispose: (() => void) | undefined
 
   onMount(() => {
-    dispose = actionMap.on("state", () => {
+    dispose = keymap.on("state", () => {
       setVersion((value) => value + 1)
     })
 
@@ -198,22 +198,22 @@ function useActionMapStateVersion(actionMap: ActionMap): Accessor<number> {
 }
 
 export const useActiveKeys = (options?: ActiveKeyOptions): Accessor<readonly ActiveKey[]> => {
-  const actionMap = useActionMap()
-  const version = useActionMapStateVersion(actionMap)
+  const keymap = useKeymap()
+  const version = useKeymapStateVersion(keymap)
 
   return createMemo(() => {
     version()
-    return actionMap.getActiveKeys(options)
+    return keymap.getActiveKeys(options)
   })
 }
 
 export const usePendingSequence = (): Accessor<readonly KeySequencePart[]> => {
-  const actionMap = useActionMap()
-  const version = useActionMapStateVersion(actionMap)
+  const keymap = useKeymap()
+  const version = useKeymapStateVersion(keymap)
 
   return createMemo(() => {
     version()
-    return actionMap.getPendingSequence()
+    return keymap.getPendingSequence()
   })
 }
 
@@ -226,7 +226,7 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
 export function useBindings<TRenderable extends Renderable = Renderable>(
   layer: UseBindingsLayer<TRenderable>,
 ): BindingsRef<TRenderable> {
-  const actionMap = useActionMap()
+  const keymap = useKeymap()
   let dispose: (() => void) | undefined
   let mounted = false
   let registered = false
@@ -266,7 +266,7 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
       }
     }
 
-    dispose = actionMap.registerLayer(resolvedLayer)
+    dispose = keymap.registerLayer(resolvedLayer)
     registered = true
     registeredScope = resolvedScope
   }

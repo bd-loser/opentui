@@ -8,7 +8,7 @@ import { CodeDemo } from "./code-demo.tsx"
 import DiffDemo from "./diff-demo.tsx"
 import ExtendDemo from "./extend-demo.tsx"
 import InputScene from "./input-demo.tsx"
-import ActionMapDemo from "./action-map-demo.tsx"
+import KeymapDemo from "./keymap-demo.tsx"
 import LineNumberDemo from "./line-number-demo.tsx"
 import MouseScene from "./mouse-demo.tsx"
 import PluginSlotsDemo from "./plugin-slots-demo.tsx"
@@ -49,9 +49,9 @@ const EXAMPLES = [
     scene: "input-demo",
   },
   {
-    name: "Action Map Demo",
+    name: "Keymap Demo",
     description: "Global and local bindings with a centered : prompt, ex commands, and a ctrl+x leader extension",
-    scene: "action-map-demo",
+    scene: "keymap-demo",
   },
   {
     name: "Autocomplete Demo",
@@ -194,8 +194,8 @@ const ExampleSelector = () => {
       <Match when={selectedScene() === "input-demo"}>
         <InputScene />
       </Match>
-      <Match when={selectedScene() === "action-map-demo"}>
-        <ActionMapDemo />
+      <Match when={selectedScene() === "keymap-demo"}>
+        <KeymapDemo />
       </Match>
       <Match when={selectedScene() === "autocomplete-demo"}>
         <AutocompleteDemo />

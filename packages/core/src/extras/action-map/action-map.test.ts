@@ -4157,7 +4157,7 @@ describe("action map", () => {
     expect(warnings).toEqual(['[ActionMap] Unresolved command "missing-command" for binding "x" in global layer'])
   })
 
-  test("warns when an exact binding has no command and no reachable continuations", () => {
+  test("does not warn about dead metadata-only bindings by default", () => {
     const actionMap = getActionMap(renderer)
     const { warnings } = captureDiagnostics(actionMap)
 
@@ -4166,21 +4166,80 @@ describe("action map", () => {
       bindings: [{ key: "x" }],
     })
 
-    expect(warnings).toEqual([
-      '[ActionMap] Binding "x" in global layer has no command and no reachable continuations; it will never trigger',
-    ])
+    expect(warnings).toEqual([])
   })
 
-  test("does not warn for metadata-only prefix bindings", () => {
+  test("registerLayerAnalyzer analyzes compiled layers and can be unsubscribed", () => {
     const actionMap = getActionMap(renderer)
-    const { warnings } = captureDiagnostics(actionMap)
+    const calls: string[] = []
+
+    const off = actionMap.registerLayerAnalyzer((ctx) => {
+      calls.push(`${ctx.scope}:${ctx.order}:${ctx.compiledBindings.length}:${ctx.hasTokenBindings ? "tokens" : "plain"}`)
+    })
 
     actionMap.registerLayer({
       scope: "global",
-      bindings: [{ key: "g" }, { key: "gd", cmd: () => {} }],
+      bindings: [{ key: "x", cmd: () => {} }],
     })
 
-    expect(warnings).toEqual([])
+    off()
+
+    actionMap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "y", cmd: () => {} }],
+    })
+
+    expect(calls).toEqual(["global:0:1:plain"])
+  })
+
+  test("registerLayerAnalyzer reruns on token-driven recompilation", () => {
+    const actionMap = getActionMap(renderer)
+    const calls: string[] = []
+
+    actionMap.registerLayerAnalyzer((ctx) => {
+      calls.push(`${ctx.order}:${ctx.compiledBindings[0]?.sequence[0]?.display ?? "missing"}`)
+    })
+
+    actionMap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "<leader>x", cmd: () => {} }],
+    })
+
+    actionMap.registerToken({ name: "<leader>", key: { name: "space" } })
+
+    expect(calls).toEqual(["0:x", "0:<leader>"])
+  })
+
+  test("registerLayerAnalyzer warnings flow through warning events", () => {
+    const actionMap = getActionMap(renderer)
+    const { warnings } = captureDiagnostics(actionMap)
+
+    actionMap.registerLayerAnalyzer((ctx) => {
+      ctx.warnOnce(`layer:${ctx.order}`, `layer ${ctx.order} warning`)
+    })
+
+    actionMap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: () => {} }],
+    })
+
+    expect(warnings).toEqual(["layer 0 warning"])
+  })
+
+  test("registerLayerAnalyzer errors flow through error events", () => {
+    const actionMap = getActionMap(renderer)
+    const { errors } = captureDiagnostics(actionMap)
+
+    actionMap.registerLayerAnalyzer(() => {
+      throw new Error("analysis boom")
+    })
+
+    actionMap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: () => {} }],
+    })
+
+    expect(errors).toEqual(["[ActionMap] Error in layer analyzer:"])
   })
 
   test("notifies unresolved command listeners with command, binding, scope, and target context", () => {

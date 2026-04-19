@@ -117,6 +117,31 @@ describe("edit buffer bindings addon", () => {
     expect(bindings.some((binding) => binding.key === "backspace" && binding.desc === "Delete backward")).toBe(true)
   })
 
+  test("registerManagedTextareaLayer normalizes shorthand overrides through actionMap.normalizeBindings", () => {
+    const actionMap = getActionMap(renderer)
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 4,
+      initialValue: "Line 1\nLine 2",
+    })
+    renderer.root.add(textarea)
+
+    registerEditBufferCommands(actionMap)
+    const off = registerManagedTextareaLayer(actionMap, {
+      target: textarea,
+      bindings: { dd: "delete-line" },
+    })
+
+    textarea.focus()
+    textarea.gotoLine(1)
+    mockInput.pressKey("d")
+    mockInput.pressKey("d")
+
+    expect(textarea.plainText).toBe("Line 1")
+
+    off()
+  })
+
   test("registerTextareaMappingSuspension disables local textarea shortcuts but preserves plain typing", () => {
     const actionMap = getActionMap(renderer)
     const textarea = new TextareaRenderable(renderer, {

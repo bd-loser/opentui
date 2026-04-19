@@ -43,7 +43,7 @@ export interface StringifyOptions {
   preferDisplay?: boolean
 }
 
-export type StringifiableKey = ParsedKeyStroke | ParsedKeyPart | { stroke: ParsedKeyStroke; display?: string }
+export type StringifiableKey = KeyStroke | ParsedKeyStroke | ParsedKeyPart | { stroke: ParsedKeyStroke; display?: string }
 
 export type KeyLike = string | KeyStroke
 
@@ -255,6 +255,21 @@ export interface LayerFieldContext {
 
 export type LayerFieldCompiler = (value: unknown, ctx: LayerFieldContext) => void
 
+export interface LayerAnalysisContext {
+  scope: Scope
+  target?: Renderable
+  order: number
+  bindingInputs: readonly BindingInput[]
+  compiledBindings: readonly CompiledBinding[]
+  root: SequenceNode
+  hasTokenBindings: boolean
+  warn(message: string): void
+  warnOnce(key: string, message: string): void
+  error(message: string, cause?: unknown): void
+}
+
+export type LayerAnalyzer = (ctx: LayerAnalysisContext) => void
+
 export interface BindingParserContext {
   input: string
   index: number
@@ -280,6 +295,7 @@ export type BindingParser = (ctx: BindingParserContext) => BindingParserResult |
 export type BindingExpander = (ctx: BindingExpanderContext) => readonly string[] | undefined
 
 export interface ParsedBindingInput {
+  key: KeyLike
   sequence: ParsedKeyPart[]
   cmd?: BindingCommand
   event?: BindingEvent

@@ -263,7 +263,7 @@ export function stringifyKeyStroke(input: StringifiableKey, options?: StringifyO
     return stringifyCanonicalStroke(input.stroke)
   }
 
-  return stringifyCanonicalStroke(input)
+  return stringifyCanonicalStroke(normalizeKeyStroke(input))
 }
 
 export function stringifyKeySequence(input: readonly StringifiableKey[], options?: StringifyOptions): string {

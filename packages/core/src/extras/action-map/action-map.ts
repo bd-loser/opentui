@@ -362,8 +362,16 @@ export class ActionMap {
     })
   }
 
-  public registerBindingTransformer(transformer: BindingTransformer): () => void {
+  public prependBindingTransformer(transformer: BindingTransformer): () => void {
+    return this.state.config.bindingTransformers.prepend(transformer)
+  }
+
+  public appendBindingTransformer(transformer: BindingTransformer): () => void {
     return this.state.config.bindingTransformers.append(transformer)
+  }
+
+  public clearBindingTransformers(): void {
+    this.state.config.bindingTransformers.clear()
   }
 
   public prependBindingParser(parser: BindingParser): () => void {
@@ -474,15 +482,35 @@ export class ActionMap {
     })
   }
 
-  public registerCommandResolver(resolver: CommandResolver): () => void {
-    return this.commands.registerCommandResolver(resolver)
+  public prependCommandResolver(resolver: CommandResolver): () => void {
+    return this.commands.prependCommandResolver(resolver)
   }
 
-  public registerLayerAnalyzer(analyzer: LayerAnalyzer): () => void {
+  public appendCommandResolver(resolver: CommandResolver): () => void {
+    return this.commands.appendCommandResolver(resolver)
+  }
+
+  public clearCommandResolvers(): void {
+    this.commands.clearCommandResolvers()
+  }
+
+  public prependLayerAnalyzer(analyzer: LayerAnalyzer): () => void {
+    return this.state.config.layerAnalyzers.prepend(analyzer)
+  }
+
+  public appendLayerAnalyzer(analyzer: LayerAnalyzer): () => void {
     return this.state.config.layerAnalyzers.append(analyzer)
   }
 
-  public registerEventMatchResolver(resolver: EventMatchResolver): () => void {
+  public clearLayerAnalyzers(): void {
+    this.state.config.layerAnalyzers.clear()
+  }
+
+  public prependEventMatchResolver(resolver: EventMatchResolver): () => void {
+    return this.state.config.eventMatchResolvers.prepend(resolver)
+  }
+
+  public appendEventMatchResolver(resolver: EventMatchResolver): () => void {
     return this.state.config.eventMatchResolvers.append(resolver)
   }
 

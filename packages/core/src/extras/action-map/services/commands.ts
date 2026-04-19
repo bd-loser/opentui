@@ -97,16 +97,38 @@ export class CommandService {
     })
   }
 
-  public registerCommandResolver(resolver: CommandResolver): () => void {
+  public prependCommandResolver(resolver: CommandResolver): () => void {
+    return this.mutateCommandResolvers(() => this.state.config.commandResolvers.prepend(resolver), resolver)
+  }
+
+  public appendCommandResolver(resolver: CommandResolver): () => void {
+    return this.mutateCommandResolvers(() => this.state.config.commandResolvers.append(resolver), resolver)
+  }
+
+  public clearCommandResolvers(): void {
+    if (!this.state.config.commandResolvers.has()) {
+      return
+    }
+
+    this.notify.runWithStateChangeBatch(() => {
+      this.state.config.commandResolvers.clear()
+      this.state.commands.commandMetadataVersion += 1
+      this.projection.ensureValidPendingSequence()
+      this.notify.queueStateChange()
+    })
+  }
+
+  private mutateCommandResolvers(register: () => () => void, resolver: CommandResolver): () => void {
     return this.notify.runWithStateChangeBatch(() => {
-      this.state.config.commandResolvers.append(resolver)
+      const off = register()
       this.state.commands.commandMetadataVersion += 1
       this.projection.ensureValidPendingSequence()
       this.notify.queueStateChange()
 
       return () => {
         this.notify.runWithStateChangeBatch(() => {
-          if (!this.state.config.commandResolvers.remove(resolver)) {
+          off()
+          if (this.state.config.commandResolvers.values().includes(resolver)) {
             return
           }
 

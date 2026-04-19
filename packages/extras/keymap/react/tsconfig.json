@@ -4,7 +4,8 @@
     "target": "ESNext",
     "module": "NodeNext",
     "moduleDetection": "force",
-    "jsx": "preserve",
+    "jsx": "react-jsx",
+    "jsxImportSource": "@opentui/react",
     "allowJs": true,
     "moduleResolution": "NodeNext",
     "verbatimModuleSyntax": true,
@@ -15,6 +16,5 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  },
-  "exclude": ["dist"]
+  }
 }

@@ -13,7 +13,8 @@ import {
   type KeymapActiveKey,
   type KeymapCommandRecord,
 } from "@opentui/extras/keymap"
-import { render, useActiveKeys, useBindings, useKeymap, usePendingSequence, useRenderer } from "@opentui/solid"
+import { useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/extras/keymap/solid"
+import { render, useRenderer } from "@opentui/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
 
 const palette = {

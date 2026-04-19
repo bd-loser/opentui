@@ -15,7 +15,8 @@ import {
   type KeymapCommandDefinition,
   type KeymapCommandRecord,
 } from "@opentui/extras/keymap"
-import { createRoot, useActiveKeys, useBindings, useKeymap, usePendingSequence, useRenderer } from "@opentui/react"
+import { useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/extras/keymap/react"
+import { createRoot, useRenderer } from "@opentui/react"
 import {
   useCallback,
   useEffect,

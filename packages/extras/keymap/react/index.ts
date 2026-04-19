@@ -8,9 +8,9 @@ import {
   type Keymap,
   type ReactiveMatcher,
   type KeySequencePart,
-} from "@opentui/extras/keymap"
+} from "../index.js"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, type DependencyList } from "react"
-import { useRenderer } from "./use-renderer.js"
+import { useRenderer } from "@opentui/react"
 
 export type UseBindingsTarget<TRenderable extends Renderable = Renderable> =
   | TRenderable

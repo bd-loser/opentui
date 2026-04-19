@@ -1,0 +1,74 @@
+import type { Keymap, KeySequencePart } from "../types.js"
+import { registerLeader, type LeaderOptions } from "./leader.js"
+
+export interface TimedLeaderOptions extends LeaderOptions {
+  timeoutMs?: number
+  onArm?: () => void
+  onDisarm?: () => void
+}
+
+export function registerTimedLeader(keymap: Keymap, options: TimedLeaderOptions): () => void {
+  const matchesTrigger = keymap.createKeyMatcher(options.trigger)
+  const timeoutMs = options.timeoutMs ?? 1500
+
+  let armed = false
+  let timeout: ReturnType<typeof setTimeout> | undefined
+
+  const clearTimer = (): void => {
+    if (!timeout) {
+      return
+    }
+
+    clearTimeout(timeout)
+    timeout = undefined
+  }
+
+  const scheduleTimeout = (): void => {
+    clearTimer()
+    timeout = setTimeout(() => {
+      keymap.clearPendingSequence()
+    }, timeoutMs)
+  }
+
+  const syncArmedState = (sequence: readonly KeySequencePart[]): void => {
+    const nextArmed = matchesTrigger(sequence[0])
+    if (nextArmed) {
+      scheduleTimeout()
+    } else {
+      clearTimer()
+    }
+
+    if (nextArmed === armed) {
+      return
+    }
+
+    armed = nextArmed
+    if (armed) {
+      options.onArm?.()
+      return
+    }
+
+    options.onDisarm?.()
+  }
+
+  const offLeader = registerLeader(keymap, options)
+  const offPendingSequenceChange = keymap.on("pendingSequence", (sequence) => {
+    syncArmedState(sequence)
+  })
+  syncArmedState(keymap.getPendingSequence())
+
+  const dispose = (): void => {
+    clearTimer()
+    offPendingSequenceChange()
+    offLeader()
+
+    if (!armed) {
+      return
+    }
+
+    armed = false
+    options.onDisarm?.()
+  }
+
+  return dispose
+}

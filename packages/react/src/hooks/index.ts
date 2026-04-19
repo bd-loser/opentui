@@ -1,4 +1,4 @@
-export * from "./use-action-map.js"
+export * from "./use-keymap.js"
 export * from "./use-keyboard.js"
 export * from "./use-renderer.js"
 export * from "./use-resize.js"

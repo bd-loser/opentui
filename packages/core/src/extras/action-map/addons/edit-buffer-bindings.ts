@@ -89,14 +89,8 @@ export interface EditBufferCommandOptions {
   descriptions?: Partial<Record<EditBufferCommandName, string>>
 }
 
-const editBufferCommandRegistrations = new WeakMap<
-  ActionMap,
-  {
-    count: number
-    dispose: () => void
-  }
->()
-const textareaMappingSuspensionRegistrations = new WeakMap<ActionMap, { count: number; dispose: () => void }>()
+const EDIT_BUFFER_COMMANDS_RESOURCE = Symbol("action-map:edit-buffer-commands")
+const TEXTAREA_MAPPING_SUSPENSION_RESOURCE = Symbol("action-map:textarea-mapping-suspension")
 
 export type ManagedTextareaLayer = Omit<Layer, "bindings"> & { bindings?: Bindings }
 
@@ -182,94 +176,59 @@ function getLiveRenderer(actionMap: ActionMap) {
  * `registerManagedTextareaLayer` unless you need this separately.
  */
 export function registerTextareaMappingSuspension(actionMap: ActionMap): () => void {
-  const existing = textareaMappingSuspensionRegistrations.get(actionMap)
-  if (existing) {
-    existing.count += 1
+  return actionMap.acquireResource(TEXTAREA_MAPPING_SUSPENSION_RESOURCE, () => {
+    const previousSuspendStates = new WeakMap<TextareaRenderable, boolean>()
+    let suspendedEditor: TextareaRenderable | null = null
+
+    const suspendEditor = (editor: EditBufferRenderable | null): void => {
+      if (!isManagedTextarea(editor) || editor.isDestroyed) {
+        suspendedEditor = null
+        return
+      }
+
+      if (!previousSuspendStates.has(editor)) {
+        previousSuspendStates.set(editor, editor.traits.suspend === true)
+      }
+
+      setTextareaSuspend(editor, true)
+      suspendedEditor = editor
+    }
+
+    const restoreEditor = (editor: EditBufferRenderable | null): void => {
+      if (!isManagedTextarea(editor)) {
+        return
+      }
+
+      const previousSuspend = previousSuspendStates.get(editor)
+      if (previousSuspend === undefined) {
+        return
+      }
+
+      previousSuspendStates.delete(editor)
+      if (!editor.isDestroyed) {
+        setTextareaSuspend(editor, previousSuspend)
+      }
+
+      if (suspendedEditor === editor) {
+        suspendedEditor = null
+      }
+    }
+
+    const onFocusedEditor = (current: EditBufferRenderable | null, previous: EditBufferRenderable | null): void => {
+      restoreEditor(previous)
+      suspendEditor(current)
+    }
+
+    const renderer = getLiveRenderer(actionMap)
+
+    renderer.on(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
+    suspendEditor(renderer.currentFocusedEditor)
+
     return () => {
-      const current = textareaMappingSuspensionRegistrations.get(actionMap)
-      if (current !== existing) {
-        return
-      }
-
-      current.count -= 1
-      if (current.count > 0) {
-        return
-      }
-
-      current.dispose()
-      textareaMappingSuspensionRegistrations.delete(actionMap)
+      renderer.off(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
+      restoreEditor(suspendedEditor)
     }
-  }
-
-  const previousSuspendStates = new WeakMap<TextareaRenderable, boolean>()
-  let suspendedEditor: TextareaRenderable | null = null
-
-  const suspendEditor = (editor: EditBufferRenderable | null): void => {
-    if (!isManagedTextarea(editor) || editor.isDestroyed) {
-      suspendedEditor = null
-      return
-    }
-
-    if (!previousSuspendStates.has(editor)) {
-      previousSuspendStates.set(editor, editor.traits.suspend === true)
-    }
-
-    setTextareaSuspend(editor, true)
-    suspendedEditor = editor
-  }
-
-  const restoreEditor = (editor: EditBufferRenderable | null): void => {
-    if (!isManagedTextarea(editor)) {
-      return
-    }
-
-    const previousSuspend = previousSuspendStates.get(editor)
-    if (previousSuspend === undefined) {
-      return
-    }
-
-    previousSuspendStates.delete(editor)
-    if (!editor.isDestroyed) {
-      setTextareaSuspend(editor, previousSuspend)
-    }
-
-    if (suspendedEditor === editor) {
-      suspendedEditor = null
-    }
-  }
-
-  const onFocusedEditor = (current: EditBufferRenderable | null, previous: EditBufferRenderable | null): void => {
-    restoreEditor(previous)
-    suspendEditor(current)
-  }
-
-  const renderer = getLiveRenderer(actionMap)
-
-  renderer.on(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
-  suspendEditor(renderer.currentFocusedEditor)
-
-  const dispose = (): void => {
-    renderer.off(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
-    restoreEditor(suspendedEditor)
-  }
-
-  const registration = { count: 1, dispose }
-  textareaMappingSuspensionRegistrations.set(actionMap, registration)
-
-  return () => {
-    const current = textareaMappingSuspensionRegistrations.get(actionMap)
-    if (current !== registration) {
-      return
-    }
-
-    registration.count -= 1
-    if (registration.count > 0) {
-      return
-    }
-
-    registration.dispose()
-    textareaMappingSuspensionRegistrations.delete(actionMap)
-  }
+  })
 }
 
 function withFocusedEditor(ctx: CommandContext, run: (editor: EditBufferRenderable) => boolean): boolean {
@@ -370,43 +329,9 @@ function createEditBufferCommands(descriptions: Readonly<Record<EditBufferComman
  */
 export function registerEditBufferCommands(actionMap: ActionMap, options?: EditBufferCommandOptions): () => void {
   const descriptions = resolveEditBufferCommandDescriptions(options)
-  const existing = editBufferCommandRegistrations.get(actionMap)
-  if (existing) {
-    existing.count += 1
-    return () => {
-      const current = editBufferCommandRegistrations.get(actionMap)
-      if (current !== existing) {
-        return
-      }
-
-      current.count -= 1
-      if (current.count > 0) {
-        return
-      }
-
-      current.dispose()
-      editBufferCommandRegistrations.delete(actionMap)
-    }
-  }
-
-  const dispose = actionMap.registerLayer({ scope: "global", commands: createEditBufferCommands(descriptions) })
-  const registration = { count: 1, dispose }
-  editBufferCommandRegistrations.set(actionMap, registration)
-
-  return () => {
-    const current = editBufferCommandRegistrations.get(actionMap)
-    if (current !== registration) {
-      return
-    }
-
-    registration.count -= 1
-    if (registration.count > 0) {
-      return
-    }
-
-    registration.dispose()
-    editBufferCommandRegistrations.delete(actionMap)
-  }
+  return actionMap.acquireResource(EDIT_BUFFER_COMMANDS_RESOURCE, () => {
+    return actionMap.registerLayer({ scope: "global", commands: createEditBufferCommands(descriptions) })
+  })
 }
 
 /**

@@ -1,5 +1,6 @@
 import {
   addons,
+  createHtmlKeymapEvent,
   getKeymap,
   stringifyKeySequence,
   type ActiveKey,
@@ -64,6 +65,51 @@ let selectedSuggestion = 0
 let lastAction = "Focus a panel or textarea to begin."
 let logEntries: Array<{ at: string; message: string }> = []
 
+const DEBUG_NAMESPACE = "[html-keymap-demo]"
+
+function summarizeActiveKeys(keys: readonly ActiveKey[]): string[] {
+  return keys.map((entry) => {
+    const summary = entry.continues ? "prefix" : typeof entry.command === "string" ? entry.command : "fn"
+    return `${entry.display}:${summary}`
+  })
+}
+
+function debug(label: string, details?: Record<string, unknown>): void {
+  if (details) {
+    console.groupCollapsed(`${DEBUG_NAMESPACE} ${label}`)
+    console.table(details)
+    console.groupEnd()
+    return
+  }
+
+  console.log(`${DEBUG_NAMESPACE} ${label}`)
+}
+
+function debugKeyEvent(phase: "keydown" | "keyup", event: KeyboardEvent): void {
+  const normalized = createHtmlKeymapEvent(event)
+  debug(`${phase} ${event.key}`, {
+    rawKey: event.key,
+    code: event.code,
+    target: event.target instanceof HTMLElement ? event.target.id || event.target.tagName.toLowerCase() : "unknown",
+    ctrl: event.ctrlKey,
+    shift: event.shiftKey,
+    alt: event.altKey,
+    meta: event.metaKey,
+    repeat: event.repeat,
+    cancelable: event.cancelable,
+    defaultPrevented: event.defaultPrevented,
+    normalizedName: normalized.name,
+    normalizedCtrl: normalized.ctrl,
+    normalizedShift: normalized.shift,
+    normalizedMeta: normalized.meta,
+    normalizedSuper: normalized.super,
+    focused: getCurrentFocusedTarget()?.id ?? "none",
+    activeKeys: summarizeActiveKeys(keymap.getActiveKeys({ includeMetadata: true })).join(", ") || "none",
+    pending: stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true }) || "none",
+    promptVisible,
+  })
+}
+
 interface ExSuggestion {
   label: string
   insert: string
@@ -74,6 +120,7 @@ interface ExSuggestion {
 function appendLog(message: string): void {
   lastAction = message
   logEntries = [{ at: new Date().toLocaleTimeString(), message }, ...logEntries].slice(0, 8)
+  console.log(`${DEBUG_NAMESPACE} action`, message)
   renderLog()
 }
 
@@ -94,6 +141,11 @@ function focusOffset(delta: number): void {
   const current = getCurrentFocusedTarget()
   const currentIndex = focusableTargets.findIndex((target) => target === current)
   const nextIndex = currentIndex === -1 ? 0 : (currentIndex + delta + focusableTargets.length) % focusableTargets.length
+  debug("focus offset", {
+    delta,
+    current: current?.id ?? "none",
+    next: focusableTargets[nextIndex]?.id ?? "none",
+  })
   focusableTargets[nextIndex]?.focus()
 }
 
@@ -165,6 +217,9 @@ function completeSuggestion(): void {
 
 function openPrompt(): void {
   if (promptVisible) {
+    debug("prompt already open", {
+      focused: getCurrentFocusedTarget()?.id ?? "none",
+    })
     commandInput.focus()
     return
   }
@@ -176,6 +231,10 @@ function openPrompt(): void {
   commandInput.focus()
   commandInput.setSelectionRange(commandInput.value.length, commandInput.value.length)
   appendLog("Opened ex prompt")
+  debug("prompt opened", {
+    restoreTarget: promptRestoreTarget?.id ?? "none",
+    focused: getCurrentFocusedTarget()?.id ?? "none",
+  })
   renderPrompt()
   renderAll()
 }
@@ -195,6 +254,9 @@ function closePrompt(): void {
 
   promptRestoreTarget = null
   appendLog("Closed ex prompt")
+  debug("prompt closed", {
+    focused: getCurrentFocusedTarget()?.id ?? "none",
+  })
   renderPrompt()
   renderAll()
 }
@@ -205,6 +267,11 @@ function runPromptCommand(): void {
     closePrompt()
     return
   }
+
+  debug("run prompt command", {
+    command,
+    focused: getCurrentFocusedTarget()?.id ?? "none",
+  })
 
   const result = keymap.runCommand(command)
   if (result.ok) {
@@ -377,6 +444,16 @@ function renderAll(): void {
   renderHelp()
 }
 
+function debugStateSnapshot(source: string): void {
+  debug(`state ${source}`, {
+    focused: getCurrentFocusedTarget()?.id ?? "none",
+    promptVisible,
+    leaderArmed,
+    pending: stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true }) || "none",
+    activeKeys: summarizeActiveKeys(keymap.getActiveKeys({ includeMetadata: true })).join(", ") || "none",
+  })
+}
+
 disposers()
 
 function disposers(): void {
@@ -387,6 +464,7 @@ function disposers(): void {
       name: ":help",
       desc: "Toggle the help card",
       run() {
+        debug("command :help")
         toggleHelp()
       },
     },
@@ -394,6 +472,7 @@ function disposers(): void {
       name: ":reset",
       desc: "Reset the counters",
       run() {
+        debug("command :reset")
         resetDemo()
       },
     },
@@ -404,6 +483,9 @@ function disposers(): void {
       desc: "Log a snapshot for the current demo state",
       usage: ":write [label]",
       run({ args }) {
+        debug("command :write", {
+          args: args.join(" "),
+        })
         saveSnapshot(args[0] ?? "write")
       },
     },
@@ -413,6 +495,9 @@ function disposers(): void {
       desc: "Focus alpha, beta, notes, or draft",
       usage: ":focus <alpha|beta|notes|draft>",
       run({ args }) {
+        debug("command :focus", {
+          args: args.join(" "),
+        })
         const targetName = args[0]?.toLowerCase()
         const targets = new Map<string, HTMLElement>([
           ["alpha", alphaPanel],
@@ -530,19 +615,54 @@ function disposers(): void {
   })
 
   keymap.on("state", () => {
+    debugStateSnapshot("event")
     renderAll()
   })
   keymap.on("warning", (event) => {
+    debug("warning", {
+      code: event.code,
+      message: event.message,
+    })
     appendLog(`Warning: ${event.message}`)
   })
   keymap.on("error", (event) => {
+    debug("error", {
+      code: event.code,
+      message: event.message,
+    })
     appendLog(`Error: ${event.message}`)
   })
 }
 
 commandInput.addEventListener("input", () => {
   selectedSuggestion = 0
+  debug("prompt input", {
+    value: commandInput.value,
+    suggestions: getCommandSuggestions().map((suggestion) => suggestion.label).join(", ") || "none",
+  })
   renderPrompt()
+})
+
+app.addEventListener("keydown", (event) => {
+  debugKeyEvent("keydown", event)
+})
+
+app.addEventListener("keyup", (event) => {
+  debugKeyEvent("keyup", event)
+})
+
+app.addEventListener("focusin", () => {
+  debug("focusin", {
+    focused: getCurrentFocusedTarget()?.id ?? "none",
+  })
+})
+
+app.addEventListener("focusout", () => {
+  queueMicrotask(() => {
+    debug("focusout", {
+      focused: getCurrentFocusedTarget()?.id ?? "none",
+    })
+  })
 })
 
 renderCounters()
@@ -550,3 +670,4 @@ renderHelp()
 appendLog(lastAction)
 renderAll()
 alphaPanel.focus()
+debugStateSnapshot("initial")

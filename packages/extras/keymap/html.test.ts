@@ -190,6 +190,28 @@ describe("html keymap adapter", () => {
     expect(keymap.getActiveKeys().map((candidate) => candidate.stroke.name)).toEqual(["x"])
   })
 
+  test("dispatches shifted punctuation bindings using literal characters", () => {
+    const keymap = getKeymap(root as unknown as HTMLElement)
+    const calls: string[] = []
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        { name: "prompt-open", run() { calls.push(":") } },
+        { name: "toggle-help", run() { calls.push("?") } },
+      ],
+      bindings: [
+        { key: ":", cmd: "prompt-open" },
+        { key: "?", cmd: "toggle-help" },
+      ],
+    })
+
+    root.emit("keydown", new FakeKeyboardEvent(":", false, true))
+    root.emit("keydown", new FakeKeyboardEvent("?", false, true))
+
+    expect(calls).toEqual([":", "?"])
+  })
+
   test("clears pending sequences when focus changes", async () => {
     const keymap = getKeymap(root as unknown as HTMLElement)
     const first = root.append(new FakeElement("first", document))

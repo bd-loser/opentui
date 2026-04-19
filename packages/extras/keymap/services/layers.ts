@@ -5,7 +5,6 @@ import type { ConditionService } from "./conditions.js"
 import type { ProjectionService } from "./projection.js"
 import type {
   BindingInput,
-  CommandDefinition,
   CompiledBinding,
   CompiledBindingsResult,
   EventData,
@@ -123,9 +122,10 @@ export class LayerService {
 
       try {
         scope = this.normalizeScope(layer)
-        indexTarget = this.resolveIndexTarget(layer)
+        indexTarget = layer.target ?? this.options.rootTarget
         bindingInputs = snapshotBindingInputs(layer.bindings ?? [])
-        commands = this.createCommands(layer.commands)
+        commands =
+          !layer.commands || layer.commands.length === 0 ? [] : this.options.commands.normalizeCommands(layer.commands)
         commandLookup = createCommandLookup(commands)
         ;({ requires, matchers, conditionKeys, hasUnkeyedMatchers, compileFields } =
           this.compileLayerRuntimeState(layer))
@@ -297,19 +297,6 @@ export class LayerService {
 
     return "global"
   }
-
-  private resolveIndexTarget(layer: Layer): Renderable {
-    return layer.target ?? this.options.rootTarget
-  }
-
-  private createCommands(commands: readonly CommandDefinition[] | undefined): readonly RegisteredCommand[] {
-    if (!commands || commands.length === 0) {
-      return []
-    }
-
-    return this.options.commands.normalizeCommands(commands)
-  }
-
   private runLayerAnalyzers(options: AnalyzeLayerOptions): void {
     const analyzers = this.state.config.layerAnalyzers.values()
     if (analyzers.length === 0) {

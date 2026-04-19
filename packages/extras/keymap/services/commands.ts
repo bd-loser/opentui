@@ -82,10 +82,6 @@ export class CommandService {
     private readonly options: CommandsOptions,
   ) {}
 
-  public normalizeCommandName(name: string): string {
-    return normalizeCommandName(name)
-  }
-
   public normalizeCommands(commands: readonly CommandDefinition[]): RegisteredCommand[] {
     return normalizeRegisteredCommands({
       commands,
@@ -256,7 +252,7 @@ export class CommandService {
       return
     }
 
-    if (this.hasRegisteredCommand(command)) {
+    if (this.state.commands.registeredNames.has(command)) {
       return
     }
 
@@ -268,11 +264,6 @@ export class CommandService {
 
     this.handleUnresolvedCommand(command, binding)
   }
-
-  private hasRegisteredCommand(name: string): boolean {
-    return this.state.commands.registeredNames.has(name)
-  }
-
   public resolveCommandWithResolvers(
     command: string,
     focused: Renderable | null,

@@ -32,7 +32,13 @@ import type {
   KeySequencePart,
   ResolvedKeyToken,
 } from "./types.js"
-import { buildBindingKey, getErrorMessage, normalizeBindingInputs, normalizeKeyStroke } from "./lib/utils.js"
+import {
+  buildBindingKey,
+  getErrorMessage,
+  normalizeBindingInputs,
+  normalizeCommandName,
+  normalizeKeyStroke,
+} from "./lib/utils.js"
 import { RESERVED_BINDING_FIELDS, RESERVED_COMMAND_FIELDS, RESERVED_LAYER_FIELDS } from "./schema.js"
 import { CommandService } from "./services/commands.js"
 import { CompilerService } from "./services/compiler.js"
@@ -299,7 +305,7 @@ export class Keymap {
   }
 
   public normalizeCommandName(name: string): string {
-    return this.commands.normalizeCommandName(name)
+    return normalizeCommandName(name)
   }
 
   public normalizeBindings(bindings: Bindings): BindingInput[] {
@@ -387,7 +393,7 @@ export class Keymap {
       reservedFields: RESERVED_LAYER_FIELDS,
       registeredFields: this.state.config.layerFields,
       emitError: (code, error, message) => {
-        this.emitError(code, error, message)
+        this.notify.emitError(code, error, message)
       },
     })
   }
@@ -430,12 +436,16 @@ export class Keymap {
     try {
       normalizedToken = this.compiler.normalizeTokenName(token.name)
     } catch (error) {
-      this.emitError("token-name-normalize-error", error, getErrorMessage(error, "Failed to register keymap token"))
+      this.notify.emitError(
+        "token-name-normalize-error",
+        error,
+        getErrorMessage(error, "Failed to register keymap token"),
+      )
       return NOOP
     }
 
     if (this.state.config.tokens.has(normalizedToken)) {
-      this.emitError(
+      this.notify.emitError(
         "duplicate-token",
         { token: normalizedToken },
         `Keymap token "${normalizedToken}" is already registered`,
@@ -448,7 +458,7 @@ export class Keymap {
     try {
       parsedToken = this.compiler.parseTokenKey(token.key)
     } catch (error) {
-      this.emitError(
+      this.notify.emitError(
         "token-parse-error",
         error,
         getErrorMessage(error, `Failed to register keymap token "${normalizedToken}"`),
@@ -465,9 +475,9 @@ export class Keymap {
     nextTokens.set(normalizedToken, registeredToken)
 
     try {
-      this.applyTokenState(nextTokens)
+      this.layers.applyTokenState(nextTokens)
     } catch (error) {
-      this.emitError(
+      this.notify.emitError(
         "token-register-error",
         error,
         getErrorMessage(error, `Failed to register keymap token "${normalizedToken}"`),
@@ -482,9 +492,9 @@ export class Keymap {
         nextTokens.delete(normalizedToken)
 
         try {
-          this.applyTokenState(nextTokens)
+          this.layers.applyTokenState(nextTokens)
         } catch (error) {
-          this.emitError(
+          this.notify.emitError(
             "token-unregister-error",
             error,
             getErrorMessage(error, `Failed to unregister keymap token "${normalizedToken}"`),
@@ -512,7 +522,7 @@ export class Keymap {
       reservedFields: RESERVED_BINDING_FIELDS,
       registeredFields: this.state.config.bindingFields,
       emitError: (code, error, message) => {
-        this.emitError(code, error, message)
+        this.notify.emitError(code, error, message)
       },
     })
   }
@@ -523,7 +533,7 @@ export class Keymap {
       reservedFields: RESERVED_COMMAND_FIELDS,
       registeredFields: this.state.config.commandFields,
       emitError: (code, error, message) => {
-        this.emitError(code, error, message)
+        this.notify.emitError(code, error, message)
       },
     })
   }
@@ -565,37 +575,17 @@ export class Keymap {
   }
 
   private handleFocusedRenderableChange(_focused: Renderable | null): void {
-    this.runWithStateChangeBatch(() => {
+    this.notify.runWithStateChangeBatch(() => {
       // Any focus change breaks a pending sequence. Prefix dispatch is captured
       // against the state that started it, and changing focus can change the
       // active bindings and their precedence.
       this.projection.setPendingSequence(null)
-      this.queueStateChange()
+      this.notify.queueStateChange()
     })
   }
 
-  private runWithStateChangeBatch<T>(fn: () => T): T {
-    return this.notify.runWithStateChangeBatch(fn)
-  }
-
-  private queueStateChange(): void {
-    this.notify.queueStateChange()
-  }
-
-  private emitError(code: string, error: unknown, message: string): void {
-    this.notify.emitError(code, error, message)
-  }
-
-  private applyTokenState(nextTokens: Map<string, ResolvedKeyToken>): void {
-    this.layers.applyTokenState(nextTokens)
-  }
-
-  private warnOnce(key: string, code: string, warning: unknown, message: string): void {
-    this.notify.warnOnce(key, code, warning, message)
-  }
-
   private warnUnknownField(kind: "binding" | "layer", fieldName: string): void {
-    this.warnOnce(
+    this.notify.warnOnce(
       `${kind}:${fieldName}`,
       `unknown-${kind}-field`,
       { field: fieldName, kind },
@@ -604,7 +594,7 @@ export class Keymap {
   }
 
   private warnUnknownToken(token: string, sequence: string): void {
-    this.warnOnce(
+    this.notify.warnOnce(
       `token:${token}`,
       "unknown-token",
       { token, sequence },

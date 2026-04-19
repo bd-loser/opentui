@@ -115,7 +115,7 @@ export class ProjectionService {
       return undefined
     }
 
-    if (!this.layerMatchesRuntimeState(pending.layer)) {
+    if (!this.conditions.layerMatchesRuntimeState(pending.layer)) {
       this.setPendingSequence(null)
       return undefined
     }
@@ -313,10 +313,6 @@ export class ProjectionService {
     return true
   }
 
-  public layerMatchesRuntimeState(layer: RegisteredLayer): boolean {
-    return this.conditions.layerMatchesRuntimeState(layer)
-  }
-
   private forEachActivationTarget(
     focused: Renderable | null,
     visit: (target: Renderable, isFocusedTarget: boolean) => boolean | void,
@@ -333,10 +329,6 @@ export class ProjectionService {
       current = current.parent
       isFocusedTarget = false
     }
-  }
-
-  private collectSequenceStrokesFromNode(node: SequenceNode): NormalizedKeyStroke[] {
-    return this.collectSequencePartsFromNode(node).map((part) => snapshotStroke(part.stroke))
   }
 
   private collectSequencePartsFromNode(node: SequenceNode): KeySequencePart[] {
@@ -850,7 +842,7 @@ export class ProjectionService {
 
     if (this.state.layers.layersWithCommands > 0) {
       for (const layer of this.getActiveLayers(focused)) {
-        if (layer.commands.length === 0 || !this.layerMatchesRuntimeState(layer)) {
+        if (layer.commands.length === 0 || !this.conditions.layerMatchesRuntimeState(layer)) {
           continue
         }
 

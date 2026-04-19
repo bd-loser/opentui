@@ -112,11 +112,21 @@ kbd {
   display: grid;
   grid-template-columns: minmax(0, 1.65fr) minmax(18rem, 0.9fr);
   gap: 1rem;
+  align-items: start;
 }
 
 .workspace {
   display: grid;
   gap: 1rem;
+  align-content: start;
+  align-items: start;
+  grid-auto-rows: max-content;
+}
+
+.sidebar {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
 }
 
 .panels,
@@ -124,6 +134,7 @@ kbd {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
+  align-items: start;
 }
 
 .panel,

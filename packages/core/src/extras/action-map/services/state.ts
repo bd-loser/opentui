@@ -7,6 +7,7 @@ import type {
   BindingSyntax,
   BindingTransformer,
   CommandFieldCompiler,
+  LayerAnalyzer,
   CommandResolver,
   EventData,
   EventMatchResolver,
@@ -40,6 +41,7 @@ export interface ConfigState {
   bindingTransformers: OrderedRegistry<BindingTransformer>
   bindingFields: Map<string, BindingFieldCompiler>
   commandFields: Map<string, CommandFieldCompiler>
+  layerAnalyzers: OrderedRegistry<LayerAnalyzer>
   commandResolvers: OrderedRegistry<CommandResolver>
   eventMatchResolvers: OrderedRegistry<EventMatchResolver>
   keyHooks: PriorityRegistry<(ctx: KeyInputContext) => void, { priority: number; release: boolean }>
@@ -143,6 +145,7 @@ export function createActionMapState(): State {
       bindingTransformers: new OrderedRegistry<BindingTransformer>(),
       bindingFields: new Map<string, BindingFieldCompiler>(),
       commandFields: new Map<string, CommandFieldCompiler>(),
+      layerAnalyzers: new OrderedRegistry<LayerAnalyzer>(),
       commandResolvers: new OrderedRegistry<CommandResolver>(),
       eventMatchResolvers: new OrderedRegistry<EventMatchResolver>(),
       keyHooks: new PriorityRegistry<(ctx: KeyInputContext) => void, { priority: number; release: boolean }>(),

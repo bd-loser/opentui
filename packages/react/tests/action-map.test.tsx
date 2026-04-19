@@ -4,13 +4,7 @@ import { act } from "react"
 import { addons, stringifyKeySequence } from "@opentui/core/extras"
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react"
 import { testRender } from "../src/test-utils.js"
-import {
-  reactiveMatcherFromStore,
-  useActionMap,
-  useActiveKeys,
-  useBindings,
-  usePendingSequence,
-} from "../src/index.js"
+import { reactiveMatcherFromStore, useActionMap, useActiveKeys, useBindings, usePendingSequence } from "../src/index.js"
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -58,22 +52,23 @@ describe("React action map hooks", () => {
       const manager = useActionMap()
 
       useEffect(() => {
-        return manager.registerLayer({ scope: "global", commands: [
-          {
-            name: "global",
-            run() {
-              calls.push("global")
+        return manager.registerLayer({
+          scope: "global",
+          commands: [
+            {
+              name: "global",
+              run() {
+                calls.push("global")
+              },
             },
-          },
-        ] })
+          ],
+        })
       }, [manager])
 
-      useBindings(
-        () => ({
-          scope: "global" as const,
-          bindings: { x: "global" },
-        }),
-      )
+      useBindings(() => ({
+        scope: "global" as const,
+        bindings: { x: "global" },
+      }))
 
       return <text>bindings</text>
     }
@@ -134,12 +129,10 @@ describe("React action map hooks", () => {
         }
       }, [manager])
 
-      useBindings(
-        () => ({
-          scope: "global" as const,
-          bindings: { x: "probe" },
-        }),
-      )
+      useBindings(() => ({
+        scope: "global" as const,
+        bindings: { x: "probe" },
+      }))
 
       return <text>{tick}</text>
     }
@@ -167,24 +160,23 @@ describe("React action map hooks", () => {
       const activeKeys = useActiveKeys()
 
       useEffect(() => {
-        return manager.registerLayer({ scope: "global", commands: [
-          { name: "first", run() {} },
-          { name: "second", run() {} },
-        ] })
+        return manager.registerLayer({
+          scope: "global",
+          commands: [
+            { name: "first", run() {} },
+            { name: "second", run() {} },
+          ],
+        })
       }, [manager])
 
-      const firstBindingsRef = useBindings(
-        () => ({
-          scope: "focus-within" as const,
-          bindings: { x: "first" },
-        }),
-      )
-      const secondBindingsRef = useBindings(
-        () => ({
-          scope: "focus-within" as const,
-          bindings: { y: "second" },
-        }),
-      )
+      const firstBindingsRef = useBindings(() => ({
+        scope: "focus-within" as const,
+        bindings: { x: "first" },
+      }))
+      const secondBindingsRef = useBindings(() => ({
+        scope: "focus-within" as const,
+        bindings: { y: "second" },
+      }))
 
       return (
         <box width={24} height={8} flexDirection="column">
@@ -247,16 +239,12 @@ describe("React action map hooks", () => {
         return manager.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
       }, [manager])
 
-      useBindings(
-        () => ({
-          scope: "global" as const,
-          bindings: [{ key: "dd", cmd: "delete-line" }],
-        }),
-      )
+      useBindings(() => ({
+        scope: "global" as const,
+        bindings: [{ key: "dd", cmd: "delete-line" }],
+      }))
 
-      return (
-        <text>{`Pending: ${stringifyKeySequence(pendingSequence, { preferDisplay: true }) || "<root>"}`}</text>
-      )
+      return <text>{`Pending: ${stringifyKeySequence(pendingSequence, { preferDisplay: true }) || "<root>"}`}</text>
     }
 
     await act(async () => {
@@ -291,22 +279,23 @@ describe("React action map hooks", () => {
       setActive = setActiveSignal
 
       useEffect(() => {
-        return manager.registerLayer({ scope: "global", commands: [
-          {
-            name: "target",
-            run() {
-              calls.push("target")
+        return manager.registerLayer({
+          scope: "global",
+          commands: [
+            {
+              name: "target",
+              run() {
+                calls.push("target")
+              },
             },
-          },
-        ] })
+          ],
+        })
       }, [manager])
 
-      const bindingsRef = useBindings(
-        () => ({
-          scope: "focus-within" as const,
-          bindings: [{ key: "x", cmd: "target" }],
-        }),
-      )
+      const bindingsRef = useBindings(() => ({
+        scope: "focus-within" as const,
+        bindings: [{ key: "x", cmd: "target" }],
+      }))
 
       return (
         <box width={20} height={6}>
@@ -346,22 +335,23 @@ describe("React action map hooks", () => {
       setActive = setActiveSignal
 
       useEffect(() => {
-        return manager.registerLayer({ scope: "global", commands: [
-          {
-            name: "target",
-            run() {
-              calls.push("target")
+        return manager.registerLayer({
+          scope: "global",
+          commands: [
+            {
+              name: "target",
+              run() {
+                calls.push("target")
+              },
             },
-          },
-        ] })
+          ],
+        })
       }, [manager])
 
-      const bindingsRef = useBindings(
-        () => ({
-          scope: "focus-within" as const,
-          bindings: [{ key: "x", cmd: "target" }],
-        }),
-      )
+      const bindingsRef = useBindings(() => ({
+        scope: "focus-within" as const,
+        bindings: [{ key: "x", cmd: "target" }],
+      }))
 
       return (
         <box width={20} height={6}>
@@ -424,14 +414,17 @@ describe("React action map hooks", () => {
 
       useEffect(() => {
         const offEnabled = addons.registerEnabledField(manager)
-        const offCommands = manager.registerLayer({ scope: "global", commands: [
-          {
-            name: "reactive",
-            run() {
-              calls.push("reactive")
+        const offCommands = manager.registerLayer({
+          scope: "global",
+          commands: [
+            {
+              name: "reactive",
+              run() {
+                calls.push("reactive")
+              },
             },
-          },
-        ] })
+          ],
+        })
 
         return () => {
           offCommands()
@@ -508,14 +501,17 @@ describe("React action map hooks", () => {
 
       useEffect(() => {
         const offEnabled = addons.registerEnabledField(manager)
-        const offCommands = manager.registerLayer({ scope: "global", commands: [
-          {
-            name: "normal-only",
-            run() {
-              calls.push("normal")
+        const offCommands = manager.registerLayer({
+          scope: "global",
+          commands: [
+            {
+              name: "normal-only",
+              run() {
+                calls.push("normal")
+              },
             },
-          },
-        ] })
+          ],
+        })
         return () => {
           offCommands()
           offEnabled()
@@ -527,10 +523,7 @@ describe("React action map hooks", () => {
         [],
       )
 
-      useBindings(
-        () => ({ scope: "global" as const, enabled: matcher, bindings: { x: "normal-only" } }),
-        [matcher],
-      )
+      useBindings(() => ({ scope: "global" as const, enabled: matcher, bindings: { x: "normal-only" } }), [matcher])
 
       return <box width={20} height={6} />
     }
@@ -609,12 +602,10 @@ describe("React action map hooks", () => {
 
     try {
       function App() {
-        useBindings(
-          () => ({
-            scope: "focus-within",
-            bindings: { x: "target" },
-          }),
-        )
+        useBindings(() => ({
+          scope: "focus-within",
+          bindings: { x: "target" },
+        }))
 
         return <text>bindings</text>
       }
@@ -642,13 +633,11 @@ describe("React action map hooks", () => {
 
     try {
       function App() {
-        useBindings(
-          () => ({
-            scope: "focus-within",
-            target: () => undefined,
-            bindings: { x: "target" },
-          }),
-        )
+        useBindings(() => ({
+          scope: "focus-within",
+          target: () => undefined,
+          bindings: { x: "target" },
+        }))
 
         return <text>bindings</text>
       }

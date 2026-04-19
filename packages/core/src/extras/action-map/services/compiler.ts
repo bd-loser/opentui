@@ -422,7 +422,6 @@ export class CompilerService {
       throw error
     }
   }
-
 }
 
 function expandBindingInputWithExpanders(

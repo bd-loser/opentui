@@ -277,14 +277,17 @@ describe("edit buffer bindings addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "fallback",
-        run() {
-          calls.push("fallback")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "fallback",
+          run() {
+            calls.push("fallback")
+          },
         },
-      },
-    ] })
+      ],
+    })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "fallback" }],
@@ -359,14 +362,17 @@ describe("edit buffer bindings addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "custom-left",
-        run() {
-          calls.push("custom-left")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "custom-left",
+          run() {
+            calls.push("custom-left")
+          },
         },
-      },
-    ] })
+      ],
+    })
 
     const off = registerManagedTextareaLayer(actionMap, {
       scope: "global",
@@ -536,12 +542,15 @@ describe("edit buffer bindings addon", () => {
       errors.push(event.message)
     })
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "delete-line",
-        run() {},
-      },
-    ] })
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "delete-line",
+          run() {},
+        },
+      ],
+    })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
@@ -553,7 +562,9 @@ describe("edit buffer bindings addon", () => {
 
     expect(errors).toEqual([])
     expect(actionMap.getCommands().some((command) => command.name === "submit")).toBe(true)
-    expect(actionMap.getCommands({ visibility: "registered" }).filter((command) => command.name === "delete-line")).toHaveLength(2)
+    expect(
+      actionMap.getCommands({ visibility: "registered" }).filter((command) => command.name === "delete-line"),
+    ).toHaveLength(2)
     expect(actionMap.getActiveKeys().find((candidate) => candidate.stroke.name === "x")?.command).toBe("submit")
   })
 })

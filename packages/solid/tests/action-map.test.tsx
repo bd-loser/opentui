@@ -49,14 +49,17 @@ describe("solid action map hooks", () => {
 
     function GlobalBindings() {
       const manager = useActionMap()
-      const offCommands = manager.registerLayer({ scope: "global", commands: [
-        {
-          name: "global",
-          run() {
-            calls.push("global")
+      const offCommands = manager.registerLayer({
+        scope: "global",
+        commands: [
+          {
+            name: "global",
+            run() {
+              calls.push("global")
+            },
           },
-        },
-      ] })
+        ],
+      })
 
       useBindings({
         scope: "global",
@@ -143,10 +146,13 @@ describe("solid action map hooks", () => {
     function App() {
       const manager = useActionMap()
       const activeKeys = useActiveKeys()
-      const offCommands = manager.registerLayer({ scope: "global", commands: [
-        { name: "first", run() {} },
-        { name: "second", run() {} },
-      ] })
+      const offCommands = manager.registerLayer({
+        scope: "global",
+        commands: [
+          { name: "first", run() {} },
+          { name: "second", run() {} },
+        ],
+      })
 
       const firstBindingsRef = useBindings({
         scope: "focus-within",
@@ -224,9 +230,7 @@ describe("solid action map hooks", () => {
         offCommands()
       })
 
-      return (
-        <text>{`Pending: ${stringifyKeySequence(pendingSequence(), { preferDisplay: true }) || "<root>"}`}</text>
-      )
+      return <text>{`Pending: ${stringifyKeySequence(pendingSequence(), { preferDisplay: true }) || "<root>"}`}</text>
     }
 
     testSetup = await testRender(() => <App />, { width: 24, height: 6 })
@@ -254,14 +258,17 @@ describe("solid action map hooks", () => {
       const [active, setActiveSignal] = createSignal<"first" | "second">("first")
       setActive = setActiveSignal
 
-      const offCommands = manager.registerLayer({ scope: "global", commands: [
-        {
-          name: "target",
-          run() {
-            calls.push("target")
+      const offCommands = manager.registerLayer({
+        scope: "global",
+        commands: [
+          {
+            name: "target",
+            run() {
+              calls.push("target")
+            },
           },
-        },
-      ] })
+        ],
+      })
 
       onCleanup(() => {
         offCommands()
@@ -302,14 +309,17 @@ describe("solid action map hooks", () => {
       setEnabled = setEnabledSignal
 
       const offEnabled = addons.registerEnabledField(manager)
-      const offCommands = manager.registerLayer({ scope: "global", commands: [
-        {
-          name: "reactive",
-          run() {
-            calls.push("reactive")
+      const offCommands = manager.registerLayer({
+        scope: "global",
+        commands: [
+          {
+            name: "reactive",
+            run() {
+              calls.push("reactive")
+            },
           },
-        },
-      ] })
+        ],
+      })
 
       useBindings({
         scope: "global",
@@ -382,14 +392,17 @@ describe("solid action map hooks", () => {
 
     function App() {
       const manager = useActionMap()
-      const offCommands = manager.registerLayer({ scope: "global", commands: [
-        {
-          name: "guarded",
-          run() {
-            calls.push("guarded")
+      const offCommands = manager.registerLayer({
+        scope: "global",
+        commands: [
+          {
+            name: "guarded",
+            run() {
+              calls.push("guarded")
+            },
           },
-        },
-      ] })
+        ],
+      })
       onCleanup(offCommands)
 
       addons.registerEnabledField(manager)
@@ -477,14 +490,17 @@ describe("solid action map hooks", () => {
 
     function App() {
       const manager = useActionMap()
-      const offCommands = manager.registerLayer({ scope: "global", commands: [
-        {
-          name: "normal-only",
-          run() {
-            calls.push("normal")
+      const offCommands = manager.registerLayer({
+        scope: "global",
+        commands: [
+          {
+            name: "normal-only",
+            run() {
+              calls.push("normal")
+            },
           },
-        },
-      ] })
+        ],
+      })
       onCleanup(offCommands)
 
       addons.registerEnabledField(manager)

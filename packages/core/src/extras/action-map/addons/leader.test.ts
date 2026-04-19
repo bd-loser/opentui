@@ -21,20 +21,23 @@ describe("leader addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "leader-action",
-        run() {
-          calls.push("leader")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "leader-action",
+          run() {
+            calls.push("leader")
+          },
         },
-      },
-      {
-        name: "plain-action",
-        run() {
-          calls.push("plain")
+        {
+          name: "plain-action",
+          run() {
+            calls.push("plain")
+          },
         },
-      },
-    ] })
+      ],
+    })
 
     registerLeader(actionMap, {
       trigger: { name: "x", ctrl: true },
@@ -62,14 +65,17 @@ describe("leader addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "leader-action",
-        run() {
-          calls.push("leader")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "leader-action",
+          run() {
+            calls.push("leader")
+          },
         },
-      },
-    ] })
+      ],
+    })
 
     actionMap.registerLayer({
       scope: "global",
@@ -98,14 +104,17 @@ describe("leader addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "leader-only",
-        run() {
-          calls.push("leader")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "leader-only",
+          run() {
+            calls.push("leader")
+          },
         },
-      },
-    ] })
+      ],
+    })
 
     const offLeader = registerLeader(actionMap, {
       trigger: { name: "x", ctrl: true },

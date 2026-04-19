@@ -93,7 +93,14 @@ describe("dead binding warnings addon", () => {
     addons.registerDeadBindingWarnings(actionMap)
     actionMap.registerLayer({
       scope: "global",
-      commands: [{ name: "run", run() { calls.push("run") } }],
+      commands: [
+        {
+          name: "run",
+          run() {
+            calls.push("run")
+          },
+        },
+      ],
       bindings: [{ key: "x", cmd: "run" }],
     })
 

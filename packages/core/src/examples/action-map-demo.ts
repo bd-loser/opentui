@@ -762,85 +762,88 @@ function registerCommandLayers(renderer: CliRenderer): void {
   disposers.push(addons.registerMetadataFields(actionMapInstance))
 
   disposers.push(
-    actionMapInstance.registerLayer({ scope: "global", commands: [
-      {
-        name: "focus-next",
-        title: "Next target",
-        desc: "Next target",
-        category: "Navigation",
-        run() {
-          moveFocus(renderer, 1)
+    actionMapInstance.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "focus-next",
+          title: "Next target",
+          desc: "Next target",
+          category: "Navigation",
+          run() {
+            moveFocus(renderer, 1)
+          },
         },
-      },
-      {
-        name: "focus-prev",
-        title: "Previous target",
-        desc: "Previous target",
-        category: "Navigation",
-        run() {
-          moveFocus(renderer, -1)
+        {
+          name: "focus-prev",
+          title: "Previous target",
+          desc: "Previous target",
+          category: "Navigation",
+          run() {
+            moveFocus(renderer, -1)
+          },
         },
-      },
-      {
-        name: "toggle-help",
-        title: "Toggle help",
-        desc: "Toggle help",
-        category: "View",
-        run() {
-          helpVisible = !helpVisible
-          setStatus(renderer, helpVisible ? "Help shown" : "Help hidden")
+        {
+          name: "toggle-help",
+          title: "Toggle help",
+          desc: "Toggle help",
+          category: "View",
+          run() {
+            helpVisible = !helpVisible
+            setStatus(renderer, helpVisible ? "Help shown" : "Help hidden")
+          },
         },
-      },
-      {
-        name: "open-ex-prompt",
-        title: "Open ex prompt",
-        desc: "Open ex prompt",
-        category: "Ex",
-        run() {
-          openCommandPrompt(renderer)
+        {
+          name: "open-ex-prompt",
+          title: "Open ex prompt",
+          desc: "Open ex prompt",
+          category: "Ex",
+          run() {
+            openCommandPrompt(renderer)
+          },
         },
-      },
-      {
-        name: "alpha-up",
-        title: "Alpha +1",
-        desc: "Alpha +1",
-        category: "Alpha",
-        run() {
-          alphaCount += 1
-          setStatus(renderer, `Alpha increased to ${alphaCount}`)
+        {
+          name: "alpha-up",
+          title: "Alpha +1",
+          desc: "Alpha +1",
+          category: "Alpha",
+          run() {
+            alphaCount += 1
+            setStatus(renderer, `Alpha increased to ${alphaCount}`)
+          },
         },
-      },
-      {
-        name: "alpha-down",
-        title: "Alpha -1",
-        desc: "Alpha -1",
-        category: "Alpha",
-        run() {
-          alphaCount -= 1
-          setStatus(renderer, `Alpha decreased to ${alphaCount}`)
+        {
+          name: "alpha-down",
+          title: "Alpha -1",
+          desc: "Alpha -1",
+          category: "Alpha",
+          run() {
+            alphaCount -= 1
+            setStatus(renderer, `Alpha decreased to ${alphaCount}`)
+          },
         },
-      },
-      {
-        name: "beta-up",
-        title: "Beta +5",
-        desc: "Beta +5",
-        category: "Beta",
-        run() {
-          betaCount += 5
-          setStatus(renderer, `Beta increased to ${betaCount}`)
+        {
+          name: "beta-up",
+          title: "Beta +5",
+          desc: "Beta +5",
+          category: "Beta",
+          run() {
+            betaCount += 5
+            setStatus(renderer, `Beta increased to ${betaCount}`)
+          },
         },
-      },
-      {
-        name: "beta-down",
-        title: "Beta -5",
-        desc: "Beta -5",
-        category: "Beta",
-        run() {
-          betaCount -= 5
-          setStatus(renderer, `Beta decreased to ${betaCount}`)
+        {
+          name: "beta-down",
+          title: "Beta -5",
+          desc: "Beta -5",
+          category: "Beta",
+          run() {
+            betaCount -= 5
+            setStatus(renderer, `Beta decreased to ${betaCount}`)
+          },
         },
-      },
-    ] }),
+      ],
+    }),
   )
 
   disposers.push(

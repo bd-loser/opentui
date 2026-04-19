@@ -547,12 +547,15 @@ function setupMetadataFocusTree(resources: ScenarioResources): BoxRenderable[] {
 async function createScenarioResources(): Promise<ScenarioResources> {
   const testSetup = await createTestRenderer({ width: 80, height: 24 })
   const actionMap = getActionMap(testSetup.renderer)
-  actionMap.registerLayer({ scope: "global", commands: [
-    {
-      name: "noop",
-      run() {},
-    },
-  ] })
+  actionMap.registerLayer({
+    scope: "global",
+    commands: [
+      {
+        name: "noop",
+        run() {},
+      },
+    ],
+  })
 
   return {
     renderer: testSetup.renderer,
@@ -700,18 +703,21 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration() {
-          const off = resources.actionMap.registerLayer({ scope: "global", commands: [
-            {
-              name: "bench-command",
-              namespace: "bench",
-              desc: "Write the current file",
-              title: "Write File",
-              category: "File",
-              usage: ":write <file>",
-              tags: ["file", "write"],
-              run() {},
-            },
-          ] })
+          const off = resources.actionMap.registerLayer({
+            scope: "global",
+            commands: [
+              {
+                name: "bench-command",
+                namespace: "bench",
+                desc: "Write the current file",
+                title: "Write File",
+                category: "File",
+                usage: ":write <file>",
+                tags: ["file", "write"],
+                run() {},
+              },
+            ],
+          })
 
           off()
         },
@@ -733,8 +739,9 @@ const scenarios: BenchmarkScenario[] = [
         },
       })
 
-      resources.actionMap.registerLayer({ scope: "global", commands: 
-        Array.from({ length: 512 }, (_, index) => ({
+      resources.actionMap.registerLayer({
+        scope: "global",
+        commands: Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           namespace: index % 2 === 0 ? "bench" : "other",
           title: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
@@ -742,7 +749,7 @@ const scenarios: BenchmarkScenario[] = [
           tags: index % 4 === 0 ? ["file", "write"] : ["file", "open"],
           run() {},
         })),
-       })
+      })
 
       return {
         resources,
@@ -774,8 +781,9 @@ const scenarios: BenchmarkScenario[] = [
         },
       })
 
-      resources.actionMap.registerLayer({ scope: "global", commands: 
-        Array.from({ length: 512 }, (_, index) => ({
+      resources.actionMap.registerLayer({
+        scope: "global",
+        commands: Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           namespace: index % 2 === 0 ? "bench" : "other",
           title: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
@@ -783,7 +791,7 @@ const scenarios: BenchmarkScenario[] = [
           tags: index % 4 === 0 ? ["file", "write"] : ["file", "open"],
           run() {},
         })),
-       })
+      })
 
       return {
         resources,
@@ -813,8 +821,9 @@ const scenarios: BenchmarkScenario[] = [
         },
       })
 
-      resources.actionMap.registerLayer({ scope: "global", commands: 
-        Array.from({ length: 512 }, (_, index) => ({
+      resources.actionMap.registerLayer({
+        scope: "global",
+        commands: Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           namespace: index % 2 === 0 ? "bench" : "other",
           title: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
@@ -822,7 +831,7 @@ const scenarios: BenchmarkScenario[] = [
           tags: index % 4 === 0 ? ["file", "write"] : ["file", "open"],
           run() {},
         })),
-       })
+      })
 
       return {
         resources,
@@ -851,14 +860,17 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
 
-      resources.actionMap.registerLayer({ scope: "global", commands: [
-        {
-          name: "bench-run-command",
-          title: "Bench Run Command",
-          desc: "Bench Run Command",
-          run() {},
-        },
-      ] })
+      resources.actionMap.registerLayer({
+        scope: "global",
+        commands: [
+          {
+            name: "bench-run-command",
+            title: "Bench Run Command",
+            desc: "Bench Run Command",
+            run() {},
+          },
+        ],
+      })
 
       return {
         resources,
@@ -877,14 +889,17 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
 
-      resources.actionMap.registerLayer({ scope: "global", commands: [
-        {
-          name: "bench-run-command",
-          title: "Bench Run Command",
-          desc: "Bench Run Command",
-          run() {},
-        },
-      ] })
+      resources.actionMap.registerLayer({
+        scope: "global",
+        commands: [
+          {
+            name: "bench-run-command",
+            title: "Bench Run Command",
+            desc: "Bench Run Command",
+            run() {},
+          },
+        ],
+      })
 
       return {
         resources,
@@ -1650,16 +1665,19 @@ const scenarios: BenchmarkScenario[] = [
     async setup() {
       const resources = await createScenarioResources()
 
-      resources.actionMap.registerLayer({ scope: "global", commands: [
-        {
-          name: "consume-data",
-          run(ctx) {
-            if (ctx.data["field-0"] === "value-0") {
-              return
-            }
+      resources.actionMap.registerLayer({
+        scope: "global",
+        commands: [
+          {
+            name: "consume-data",
+            run(ctx) {
+              if (ctx.data["field-0"] === "value-0") {
+                return
+              }
+            },
           },
-        },
-      ] })
+        ],
+      })
 
       for (let index = 0; index < 20; index += 1) {
         resources.actionMap.setData(`field-${index}`, `value-${index}`)

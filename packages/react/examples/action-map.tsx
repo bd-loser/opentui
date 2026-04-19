@@ -15,14 +15,7 @@ import {
   type ActionMapCommandDefinition,
   type ActionMapCommandRecord,
 } from "@opentui/core/extras"
-import {
-  createRoot,
-  useActiveKeys,
-  useBindings,
-  useActionMap,
-  usePendingSequence,
-  useRenderer,
-} from "@opentui/react"
+import { createRoot, useActiveKeys, useBindings, useActionMap, usePendingSequence, useRenderer } from "@opentui/react"
 import {
   useCallback,
   useEffect,
@@ -756,29 +749,25 @@ export const App = () => {
     return addons.registerManagedTextareaLayer(manager, managedTextareaLayer)
   }, [managedTextareaLayer, manager])
 
-  useBindings(
-    () => ({
-      scope: "global" as const,
-      enabled: () => !commandPromptVisibleRef.current,
-      bindings: [
-        { key: "tab", cmd: "focus-next", desc: "Next target" },
-        { key: "shift+tab", cmd: "focus-prev", desc: "Previous target" },
-        { key: "?", cmd: "toggle-help", desc: "Toggle help" },
-        { key: "ctrl+r", cmd: ":reset", desc: "Reset counters" },
-        { key: "<leader>", group: "Leader" },
-        { key: "<leader>s", cmd: ":w session.log", desc: "Write session log", group: "Leader" },
-        { key: "<leader>h", cmd: "toggle-help", desc: "Toggle help", group: "Leader" },
-      ] satisfies ActionMapBindingInput[],
-    }),
-  )
+  useBindings(() => ({
+    scope: "global" as const,
+    enabled: () => !commandPromptVisibleRef.current,
+    bindings: [
+      { key: "tab", cmd: "focus-next", desc: "Next target" },
+      { key: "shift+tab", cmd: "focus-prev", desc: "Previous target" },
+      { key: "?", cmd: "toggle-help", desc: "Toggle help" },
+      { key: "ctrl+r", cmd: ":reset", desc: "Reset counters" },
+      { key: "<leader>", group: "Leader" },
+      { key: "<leader>s", cmd: ":w session.log", desc: "Write session log", group: "Leader" },
+      { key: "<leader>h", cmd: "toggle-help", desc: "Toggle help", group: "Leader" },
+    ] satisfies ActionMapBindingInput[],
+  }))
 
-  useBindings(
-    () => ({
-      scope: "global" as const,
-      enabled: () => !commandPromptVisibleRef.current,
-      bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }] satisfies ActionMapBindingInput[],
-    }),
-  )
+  useBindings(() => ({
+    scope: "global" as const,
+    enabled: () => !commandPromptVisibleRef.current,
+    bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }] satisfies ActionMapBindingInput[],
+  }))
 
   const activeKeys = useActiveKeys({ includeMetadata: true })
   const pendingSequence = usePendingSequence()

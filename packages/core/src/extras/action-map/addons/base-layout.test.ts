@@ -21,14 +21,17 @@ describe("base layout fallback addon", () => {
     const calls: string[] = []
 
     registerBaseLayoutFallback(actionMap)
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "copy",
-        run() {
-          calls.push("copy")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "copy",
+          run() {
+            calls.push("copy")
+          },
         },
-      },
-    ] })
+      ],
+    })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "ctrl+c", cmd: "copy" }],
@@ -44,20 +47,23 @@ describe("base layout fallback addon", () => {
     const calls: string[] = []
 
     registerBaseLayoutFallback(actionMap)
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "fallback-copy",
-        run() {
-          calls.push("fallback")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "fallback-copy",
+          run() {
+            calls.push("fallback")
+          },
         },
-      },
-      {
-        name: "direct-copy",
-        run() {
-          calls.push("direct")
+        {
+          name: "direct-copy",
+          run() {
+            calls.push("direct")
+          },
         },
-      },
-    ] })
+      ],
+    })
     actionMap.registerLayer({
       scope: "global",
       bindings: [
@@ -78,14 +84,17 @@ describe("base layout fallback addon", () => {
     const offFallback = registerBaseLayoutFallback(actionMap)
     offFallback()
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "copy",
-        run() {
-          calls.push("copy")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "copy",
+          run() {
+            calls.push("copy")
+          },
         },
-      },
-    ] })
+      ],
+    })
     actionMap.registerLayer({
       scope: "global",
       bindings: [{ key: "ctrl+c", cmd: "copy" }],

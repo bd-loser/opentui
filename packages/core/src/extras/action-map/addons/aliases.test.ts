@@ -22,14 +22,17 @@ describe("aliases field addon", () => {
     const calls: string[] = []
 
     registerAliasesField(actionMap)
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "submit",
-        run() {
-          calls.push("submit")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "submit",
+          run() {
+            calls.push("submit")
+          },
         },
-      },
-    ] })
+      ],
+    })
     actionMap.registerLayer({
       scope: "global",
       aliases: { myenter: "return" },
@@ -48,14 +51,17 @@ describe("aliases field addon", () => {
     const calls: string[] = []
 
     registerAliasesField(actionMap)
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "submit",
-        run() {
-          calls.push("submit")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "submit",
+          run() {
+            calls.push("submit")
+          },
         },
-      },
-    ] })
+      ],
+    })
     actionMap.registerLayer({
       scope: "global",
       aliases: { enter: "return" },
@@ -89,20 +95,23 @@ describe("aliases field addon", () => {
     const calls: string[] = []
 
     registerAliasesField(actionMap)
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "aliased",
-        run() {
-          calls.push("aliased")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "aliased",
+          run() {
+            calls.push("aliased")
+          },
         },
-      },
-      {
-        name: "plain",
-        run() {
-          calls.push("plain")
+        {
+          name: "plain",
+          run() {
+            calls.push("plain")
+          },
         },
-      },
-    ] })
+      ],
+    })
     actionMap.registerLayer({
       scope: "global",
       aliases: { myenter: "return" },
@@ -126,14 +135,17 @@ describe("aliases field addon", () => {
     const offAliases = registerAliasesField(actionMap)
     offAliases()
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "submit",
-        run() {
-          calls.push("submit")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "submit",
+          run() {
+            calls.push("submit")
+          },
         },
-      },
-    ] })
+      ],
+    })
     actionMap.registerLayer({
       scope: "global",
       aliases: { enter: "return" },
@@ -152,10 +164,13 @@ describe("aliases field addon", () => {
 
     registerAliasesField(actionMap)
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      { name: "submit-enter", run() {} },
-      { name: "submit-return", run() {} },
-    ] })
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        { name: "submit-enter", run() {} },
+        { name: "submit-return", run() {} },
+      ],
+    })
 
     actionMap.registerLayer({
       scope: "global",

@@ -274,30 +274,33 @@ function CounterPanel(props: {
   const incrementCommand = `${props.id}-up`
   const decrementCommand = `${props.id}-down`
 
-  const offCommands = manager.registerLayer({ scope: "global", commands: [
-    {
-      name: incrementCommand,
-      title: `${props.label} +${props.step}`,
-      desc: `${props.label} +${props.step}`,
-      category: props.label,
-      run() {
-        const next = props.count() + props.step
-        props.setCount(next)
-        props.announce(`${props.label} increased to ${next}`)
+  const offCommands = manager.registerLayer({
+    scope: "global",
+    commands: [
+      {
+        name: incrementCommand,
+        title: `${props.label} +${props.step}`,
+        desc: `${props.label} +${props.step}`,
+        category: props.label,
+        run() {
+          const next = props.count() + props.step
+          props.setCount(next)
+          props.announce(`${props.label} increased to ${next}`)
+        },
       },
-    },
-    {
-      name: decrementCommand,
-      title: `${props.label} -${props.step}`,
-      desc: `${props.label} -${props.step}`,
-      category: props.label,
-      run() {
-        const next = props.count() - props.step
-        props.setCount(next)
-        props.announce(`${props.label} decreased to ${next}`)
+      {
+        name: decrementCommand,
+        title: `${props.label} -${props.step}`,
+        desc: `${props.label} -${props.step}`,
+        category: props.label,
+        run() {
+          const next = props.count() - props.step
+          props.setCount(next)
+          props.announce(`${props.label} decreased to ${next}`)
+        },
       },
-    },
-  ] })
+    ],
+  })
 
   const bindingsRef = useBindings({
     bindings: [
@@ -477,48 +480,51 @@ export default function ActionMapDemo() {
     announce("Opened ex prompt")
   }
 
-  const offCommands = manager.registerLayer({ scope: "global", commands: [
-    {
-      name: "focus-next",
-      title: "Next target",
-      desc: "Next target",
-      category: "Navigation",
-      run() {
-        moveFocus(1)
+  const offCommands = manager.registerLayer({
+    scope: "global",
+    commands: [
+      {
+        name: "focus-next",
+        title: "Next target",
+        desc: "Next target",
+        category: "Navigation",
+        run() {
+          moveFocus(1)
+        },
       },
-    },
-    {
-      name: "focus-prev",
-      title: "Previous target",
-      desc: "Previous target",
-      category: "Navigation",
-      run() {
-        moveFocus(-1)
+      {
+        name: "focus-prev",
+        title: "Previous target",
+        desc: "Previous target",
+        category: "Navigation",
+        run() {
+          moveFocus(-1)
+        },
       },
-    },
-    {
-      name: "toggle-help",
-      title: "Toggle help",
-      desc: "Toggle help",
-      category: "View",
-      run() {
-        setHelpVisible((value) => {
-          const next = !value
-          announce(next ? "Help shown" : "Help hidden")
-          return next
-        })
+      {
+        name: "toggle-help",
+        title: "Toggle help",
+        desc: "Toggle help",
+        category: "View",
+        run() {
+          setHelpVisible((value) => {
+            const next = !value
+            announce(next ? "Help shown" : "Help hidden")
+            return next
+          })
+        },
       },
-    },
-    {
-      name: "open-ex-prompt",
-      title: "Open ex prompt",
-      desc: "Open ex prompt",
-      category: "Ex",
-      run() {
-        openCommandPrompt()
+      {
+        name: "open-ex-prompt",
+        title: "Open ex prompt",
+        desc: "Open ex prompt",
+        category: "Ex",
+        run() {
+          openCommandPrompt()
+        },
       },
-    },
-  ] })
+    ],
+  })
 
   const exCommands: DemoExCommand[] = [
     {

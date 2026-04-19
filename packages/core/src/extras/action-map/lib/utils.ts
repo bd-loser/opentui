@@ -312,7 +312,9 @@ export function getRegisteredCommandRecord(command: RegisteredCommand): CommandR
 
   let fields = EMPTY_COMMAND_FIELDS
   if (command.fields !== EMPTY_COMMAND_FIELDS && Object.keys(command.fields).length > 0) {
-    fields = snapshotDataValue(command.fields, SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS) as Readonly<Record<string, unknown>>
+    fields = snapshotDataValue(command.fields, SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS) as Readonly<
+      Record<string, unknown>
+    >
   }
 
   const record = command.attrs

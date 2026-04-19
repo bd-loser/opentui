@@ -31,7 +31,9 @@ import {
 
 const NOOP = (): void => {}
 
-function createCommandLookup(commands: readonly RegisteredCommand[]): ReadonlyMap<string, RegisteredCommand> | undefined {
+function createCommandLookup(
+  commands: readonly RegisteredCommand[],
+): ReadonlyMap<string, RegisteredCommand> | undefined {
   if (commands.length === 0) {
     return undefined
   }
@@ -296,9 +298,7 @@ export class LayerService {
     return layer.target ?? this.options.rootTarget
   }
 
-  private createCommands(
-    commands: readonly CommandDefinition[] | undefined,
-  ): readonly RegisteredCommand[] {
+  private createCommands(commands: readonly CommandDefinition[] | undefined): readonly RegisteredCommand[] {
     if (!commands || commands.length === 0) {
       return []
     }

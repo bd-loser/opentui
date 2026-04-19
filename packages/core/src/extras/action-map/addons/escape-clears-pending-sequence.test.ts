@@ -21,20 +21,23 @@ describe("escape clears pending sequence addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "delete-line",
-        run() {
-          calls.push("delete")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "delete-line",
+          run() {
+            calls.push("delete")
+          },
         },
-      },
-      {
-        name: "escape-command",
-        run() {
-          calls.push("escape")
+        {
+          name: "escape-command",
+          run() {
+            calls.push("escape")
+          },
         },
-      },
-    ] })
+      ],
+    })
 
     actionMap.registerLayer({
       scope: "global",
@@ -49,7 +52,11 @@ describe("escape clears pending sequence addon", () => {
     mockInput.pressKey("d")
     expect(actionMap.hasPendingSequence()).toBe(true)
     expect(actionMap.getPendingSequence()).toEqual([
-      { stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false }, display: "d", matchKey: "d:0:0:0:0:0" },
+      {
+        stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
+        display: "d",
+        matchKey: "d:0:0:0:0:0",
+      },
     ])
 
     mockInput.pressEscape()
@@ -67,20 +74,23 @@ describe("escape clears pending sequence addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "delete-line",
-        run() {
-          calls.push("delete")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "delete-line",
+          run() {
+            calls.push("delete")
+          },
         },
-      },
-      {
-        name: "escape-command",
-        run() {
-          calls.push("escape")
+        {
+          name: "escape-command",
+          run() {
+            calls.push("escape")
+          },
         },
-      },
-    ] })
+      ],
+    })
 
     actionMap.registerLayer({
       scope: "global",
@@ -105,20 +115,23 @@ describe("escape clears pending sequence addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "delete-line",
-        run() {
-          calls.push("delete")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "delete-line",
+          run() {
+            calls.push("delete")
+          },
         },
-      },
-      {
-        name: "escape-command",
-        run() {
-          calls.push("escape")
+        {
+          name: "escape-command",
+          run() {
+            calls.push("escape")
+          },
         },
-      },
-    ] })
+      ],
+    })
 
     actionMap.registerLayer({
       scope: "global",

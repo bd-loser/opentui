@@ -28,14 +28,17 @@ describe("enabled addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "noop",
-        run() {
-          calls.push("noop")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "noop",
+          run() {
+            calls.push("noop")
+          },
         },
-      },
-    ] })
+      ],
+    })
 
     expect(() => {
       actionMap.registerLayer({
@@ -58,20 +61,23 @@ describe("enabled addon", () => {
     let enabled = false
 
     registerEnabledField(actionMap)
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "always-off",
-        run() {
-          calls.push("always-off")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "always-off",
+          run() {
+            calls.push("always-off")
+          },
         },
-      },
-      {
-        name: "dynamic",
-        run() {
-          calls.push("dynamic")
+        {
+          name: "dynamic",
+          run() {
+            calls.push("dynamic")
+          },
         },
-      },
-    ] })
+      ],
+    })
 
     actionMap.registerLayer({
       scope: "global",
@@ -197,14 +203,17 @@ describe("enabled addon", () => {
       errors.push(event.message)
     })
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "noop",
-        run() {
-          calls.push("noop")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "noop",
+          run() {
+            calls.push("noop")
+          },
         },
-      },
-    ] })
+      ],
+    })
 
     expect(() => {
       actionMap.registerLayer({
@@ -239,14 +248,17 @@ describe("enabled addon", () => {
     const calls: string[] = []
 
     registerEnabledField(actionMap)
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "noop",
-        run() {
-          calls.push("noop")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "noop",
+          run() {
+            calls.push("noop")
+          },
         },
-      },
-    ] })
+      ],
+    })
     actionMap.registerLayer({
       scope: "global",
       enabled: () => {

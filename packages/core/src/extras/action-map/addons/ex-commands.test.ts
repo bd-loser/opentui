@@ -31,14 +31,17 @@ describe("ex commands addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "fallback",
-        run() {
-          calls.push("fallback")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "fallback",
+          run() {
+            calls.push("fallback")
+          },
         },
-      },
-    ] })
+      ],
+    })
 
     registerExCommands(actionMap, [
       {
@@ -236,14 +239,17 @@ describe("ex commands addon", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerLayer({ scope: "global", commands: [
-      {
-        name: "fallback",
-        run() {
-          calls.push("fallback")
+    actionMap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "fallback",
+          run() {
+            calls.push("fallback")
+          },
         },
-      },
-    ] })
+      ],
+    })
 
     actionMap.registerLayer({
       scope: "global",

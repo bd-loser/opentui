@@ -208,16 +208,20 @@ export class ProjectionService {
 
   public getCommands(query?: CommandQuery): readonly CommandRecord[] {
     const visibility = query?.visibility ?? "reachable"
-    const focused = query && Object.prototype.hasOwnProperty.call(query, "focused")
-      ? (query.focused ?? null)
-      : this.getFocusedRenderableIfAvailable()
+    const focused =
+      query && Object.prototype.hasOwnProperty.call(query, "focused")
+        ? (query.focused ?? null)
+        : this.getFocusedRenderableIfAvailable()
 
     let commands: readonly RegisteredCommand[]
     if (visibility === "registered") {
       commands = this.getRegisteredCommands()
     } else {
       const view = this.getActiveCommandView(focused)
-      commands = visibility === "active" ? view.entries.map((entry) => entry.command) : view.reachable.map((entry) => entry.command)
+      commands =
+        visibility === "active"
+          ? view.entries.map((entry) => entry.command)
+          : view.reachable.map((entry) => entry.command)
     }
 
     return queryRegisteredCommands({
@@ -351,7 +355,11 @@ export class ProjectionService {
     const activeView = this.getActiveCommandView(focused)
 
     return nodes.map((candidate) => {
-      return createParsedKeyPart(candidate.stroke!, this.getNodeDisplay(candidate, focused, activeView), candidate.matchKey!)
+      return createParsedKeyPart(
+        candidate.stroke!,
+        this.getNodeDisplay(candidate, focused, activeView),
+        candidate.matchKey!,
+      )
     })
   }
 
@@ -385,7 +393,11 @@ export class ProjectionService {
     return false
   }
 
-  private isVisibleBinding(binding: CompiledBinding, focused: Renderable | null, activeView: ActiveCommandView): boolean {
+  private isVisibleBinding(
+    binding: CompiledBinding,
+    focused: Renderable | null,
+    activeView: ActiveCommandView,
+  ): boolean {
     if (binding.command === undefined || binding.run) {
       return true
     }
@@ -405,7 +417,11 @@ export class ProjectionService {
     node: SequenceNode,
     focused: Renderable | null,
     activeView: ActiveCommandView,
-    reachableBindings: readonly CompiledBinding[] = this.getMatchingBindings(node.reachableBindings, focused, activeView),
+    reachableBindings: readonly CompiledBinding[] = this.getMatchingBindings(
+      node.reachableBindings,
+      focused,
+      activeView,
+    ),
   ): string {
     if (!node.stroke) {
       return ""
@@ -433,7 +449,11 @@ export class ProjectionService {
     return display ?? stringifyKeyStroke(node.stroke)
   }
 
-  private toActiveBinding(binding: CompiledBinding, focused: Renderable | null, activeView: ActiveCommandView): ActiveBinding {
+  private toActiveBinding(
+    binding: CompiledBinding,
+    focused: Renderable | null,
+    activeView: ActiveCommandView,
+  ): ActiveBinding {
     return {
       sequence: binding.sequence,
       command: binding.command,
@@ -726,7 +746,9 @@ export class ProjectionService {
         activeKey.bindingAttrs = state.firstBinding.attrs
       }
 
-      const commandAttrs = state.commandBinding ? this.getActiveCommandAttrs(state.commandBinding, focused, activeView) : undefined
+      const commandAttrs = state.commandBinding
+        ? this.getActiveCommandAttrs(state.commandBinding, focused, activeView)
+        : undefined
       if (commandAttrs) {
         activeKey.commandAttrs = commandAttrs
       }
@@ -951,7 +973,9 @@ export class ProjectionService {
 
     this.hooks.emit(
       "pendingSequence",
-      this.state.projection.pendingSequence ? this.collectSequencePartsFromNode(this.state.projection.pendingSequence.node) : [],
+      this.state.projection.pendingSequence
+        ? this.collectSequencePartsFromNode(this.state.projection.pendingSequence.node)
+        : [],
     )
   }
 }

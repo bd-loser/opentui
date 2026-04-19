@@ -1,4 +1,3 @@
-import { KeyEvent, type Renderable } from "@opentui/core"
 import type { CompilerService } from "./compiler.js"
 import type { CommandService } from "./commands.js"
 import type { ConditionService } from "./conditions.js"
@@ -10,6 +9,7 @@ import type {
   EventMatchResolverContext,
   EventMatchResolver,
   KeyInputContext,
+  KeymapEvent,
   RawInputContext,
   CompiledBinding,
   PendingSequenceState,
@@ -17,17 +17,17 @@ import type {
   SequenceNode,
 } from "../types.js"
 
-export class DispatchService {
+export class DispatchService<TTarget extends object, TEvent extends KeymapEvent> {
   private readonly eventMatchResolverContext: EventMatchResolverContext
 
   constructor(
-    private readonly state: State,
-    private readonly notify: NotificationService,
-    private readonly runtime: RuntimeService,
-    private readonly projection: ProjectionService,
-    private readonly conditions: ConditionService,
-    private readonly commands: CommandService,
-    private readonly compiler: CompilerService,
+    private readonly state: State<TTarget, TEvent>,
+    private readonly notify: NotificationService<TTarget, TEvent>,
+    private readonly runtime: RuntimeService<TTarget, TEvent>,
+    private readonly projection: ProjectionService<TTarget, TEvent>,
+    private readonly conditions: ConditionService<TTarget, TEvent>,
+    private readonly commands: CommandService<TTarget, TEvent>,
+    private readonly compiler: CompilerService<TTarget, TEvent>,
   ) {
     this.eventMatchResolverContext = {
       matchKey: (key) => {
@@ -65,9 +65,9 @@ export class DispatchService {
     return false
   }
 
-  public handleKeyEvent(event: KeyEvent, release: boolean): void {
+  public handleKeyEvent(event: TEvent, release: boolean): void {
     const hooks = this.state.config.keyHooks.entries()
-    const context: KeyInputContext = {
+    const context: KeyInputContext<TEvent> = {
       event,
       setData: (name, value) => {
         this.runtime.setData(name, value)
@@ -113,8 +113,8 @@ export class DispatchService {
     this.dispatchLayers(event)
   }
 
-  private dispatchReleaseLayers(event: KeyEvent): void {
-    const focused = this.projection.getFocusedRenderable()
+  private dispatchReleaseLayers(event: TEvent): void {
+    const focused = this.projection.getFocusedTarget()
     const activeLayers = this.projection.getActiveLayers(focused)
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
     const matchKeys = this.resolveEventMatchKeys(event)
@@ -143,8 +143,8 @@ export class DispatchService {
     }
   }
 
-  private dispatchLayers(event: KeyEvent): void {
-    const focused = this.projection.getFocusedRenderable()
+  private dispatchLayers(event: TEvent): void {
+    const focused = this.projection.getFocusedTarget()
     const pending = this.projection.ensureValidPendingSequence()
     const matchKeys = this.resolveEventMatchKeys(event)
 
@@ -158,10 +158,10 @@ export class DispatchService {
   }
 
   private dispatchPendingSequence(
-    pending: PendingSequenceState,
+    pending: PendingSequenceState<TTarget, TEvent>,
     matchKeys: readonly string[],
-    event: KeyEvent,
-    focused: Renderable | null,
+    event: TEvent,
+    focused: TTarget | null,
   ): void {
     const nextNode = this.getReachableChild(pending.node, matchKeys, focused)
     if (!nextNode) {
@@ -184,10 +184,10 @@ export class DispatchService {
   }
 
   private dispatchFromRoot(
-    activeLayers: RegisteredLayer[],
+    activeLayers: RegisteredLayer<TTarget, TEvent>[],
     matchKeys: readonly string[],
-    event: KeyEvent,
-    focused: Renderable | null,
+    event: TEvent,
+    focused: TTarget | null,
   ): void {
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
 
@@ -228,7 +228,7 @@ export class DispatchService {
     }
   }
 
-  private resolveEventMatchKeys(event: KeyEvent): string[] {
+  private resolveEventMatchKeys(event: TEvent): string[] {
     const resolvers = this.state.config.eventMatchResolvers.values()
 
     if (resolvers.length === 0) {
@@ -279,10 +279,10 @@ export class DispatchService {
   }
 
   private runReleaseBindings(
-    layer: RegisteredLayer,
+    layer: RegisteredLayer<TTarget, TEvent>,
     strokeKey: string,
-    event: KeyEvent,
-    focused: Renderable | null,
+    event: TEvent,
+    focused: TTarget | null,
   ): { handled: boolean; stop: boolean } {
     let handled = false
 
@@ -315,10 +315,10 @@ export class DispatchService {
   }
 
   private getReachableChild(
-    node: SequenceNode,
+    node: SequenceNode<TTarget, TEvent>,
     matchKeys: readonly string[],
-    focused: Renderable | null,
-  ): SequenceNode | undefined {
+    focused: TTarget | null,
+  ): SequenceNode<TTarget, TEvent> | undefined {
     for (const strokeKey of matchKeys) {
       const child = node.children.get(strokeKey)
       if (!child || !this.projection.nodeHasReachableBindings(child, focused)) {
@@ -332,10 +332,10 @@ export class DispatchService {
   }
 
   private runBindings(
-    layer: RegisteredLayer,
-    bindings: CompiledBinding[],
-    event: KeyEvent,
-    focused: Renderable | null,
+    layer: RegisteredLayer<TTarget, TEvent>,
+    bindings: CompiledBinding<TTarget, TEvent>[],
+    event: TEvent,
+    focused: TTarget | null,
   ): { handled: boolean; stop: boolean } {
     let handled = false
 
@@ -359,11 +359,11 @@ export class DispatchService {
   }
 }
 
-function resolveSingleEventMatchKeys(
-  resolver: EventMatchResolver,
-  event: KeyEvent,
+function resolveSingleEventMatchKeys<TTarget extends object, TEvent extends KeymapEvent>(
+  resolver: EventMatchResolver<TEvent>,
+  event: TEvent,
   ctx: EventMatchResolverContext,
-  notify: NotificationService,
+  notify: NotificationService<TTarget, TEvent>,
 ): string[] {
   let resolved: readonly string[] | undefined
   try {

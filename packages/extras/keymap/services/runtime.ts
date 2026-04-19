@@ -1,15 +1,15 @@
-import type { EventData } from "../types.js"
+import type { EventData, KeymapEvent } from "../types.js"
 import type { ConditionService } from "./conditions.js"
 import type { NotificationService } from "./notify.js"
 import type { ProjectionService } from "./projection.js"
 import type { State } from "./state.js"
 
-export class RuntimeService {
+export class RuntimeService<TTarget extends object, TEvent extends KeymapEvent> {
   constructor(
-    private readonly state: State,
-    private readonly notify: NotificationService,
-    private readonly conditions: ConditionService,
-    private readonly projection: ProjectionService,
+    private readonly state: State<TTarget, TEvent>,
+    private readonly notify: NotificationService<TTarget, TEvent>,
+    private readonly conditions: ConditionService<TTarget, TEvent>,
+    private readonly projection: ProjectionService<TTarget, TEvent>,
   ) {}
 
   public getData(name: string): unknown {

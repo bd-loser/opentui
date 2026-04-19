@@ -1,11 +1,10 @@
 import { Buffer } from "node:buffer"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { BoxRenderable, KeyEvent } from "@opentui/core"
+import { BoxRenderable, KeyEvent, type Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import {
   defaultBindingParser,
   defaultBindingSyntax,
-  getKeymap,
   stringifyKeySequence,
   stringifyKeyStroke,
   type ActiveKey,
@@ -16,9 +15,12 @@ import {
   type ReactiveMatcher,
   type WarningEvent,
 } from "./index.js"
+import { getKeymap } from "./opentui.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
+
+type OpenTuiKeymap = Keymap<Renderable, KeyEvent>
 
 function createFocusableBox(id: string): BoxRenderable {
   return new BoxRenderable(renderer, {
@@ -29,26 +31,26 @@ function createFocusableBox(id: string): BoxRenderable {
   })
 }
 
-function getActiveKey(keymap: Keymap, name: string, options?: ActiveKeyOptions): ActiveKey | undefined {
+function getActiveKey(keymap: OpenTuiKeymap, name: string, options?: ActiveKeyOptions): ActiveKey | undefined {
   return keymap.getActiveKeys(options).find((candidate) => candidate.stroke.name === name)
 }
 
-function getActiveKeyNames(keymap: Keymap): string[] {
+function getActiveKeyNames(keymap: OpenTuiKeymap): string[] {
   return keymap
     .getActiveKeys()
     .map((candidate) => candidate.stroke.name)
     .sort()
 }
 
-function getCommand(keymap: Keymap, name: string) {
+function getCommand(keymap: OpenTuiKeymap, name: string) {
   return keymap.getCommands().find((candidate) => candidate.name === name)
 }
 
-function getActiveKeyDisplay(keymap: Keymap, display: string, options?: ActiveKeyOptions): ActiveKey | undefined {
+function getActiveKeyDisplay(keymap: OpenTuiKeymap, display: string, options?: ActiveKeyOptions): ActiveKey | undefined {
   return keymap.getActiveKeys(options).find((candidate) => candidate.display === display)
 }
 
-function captureDiagnostics(keymap: Keymap): {
+function captureDiagnostics(keymap: OpenTuiKeymap): {
   warningEvents: WarningEvent[]
   errorEvents: ErrorEvent[]
   warnings: string[]
@@ -179,7 +181,7 @@ describe("keymap", () => {
       }),
     ).toBe(true)
 
-    expect(() => keymap.getActiveKeys()).toThrow("Cannot use a keymap after its renderer was destroyed")
+    expect(() => keymap.getActiveKeys()).toThrow("Cannot use a keymap after its host was destroyed")
   })
 
   test("defaults targetless layers to global scope", () => {
@@ -3500,7 +3502,7 @@ describe("keymap", () => {
       ],
     })
 
-    let queryResult: ReturnType<Keymap["getCommands"]> = []
+    let queryResult: ReturnType<OpenTuiKeymap["getCommands"]> = []
 
     expect(() => {
       queryResult = keymap.getCommands({

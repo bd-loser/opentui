@@ -1,4 +1,3 @@
-import { RenderableEvents, type Renderable } from "@opentui/core"
 import type { CompilerService } from "./compiler.js"
 import type { CommandService } from "./commands.js"
 import type { ConditionService } from "./conditions.js"
@@ -8,6 +7,8 @@ import type {
   CompiledBinding,
   CompiledBindingsResult,
   EventData,
+  KeymapEvent,
+  KeymapHost,
   Layer,
   LayerAnalysisContext,
   Scope,
@@ -30,14 +31,14 @@ import {
 
 const NOOP = (): void => {}
 
-function createCommandLookup(
-  commands: readonly RegisteredCommand[],
-): ReadonlyMap<string, RegisteredCommand> | undefined {
+function createCommandLookup<TTarget extends object, TEvent extends KeymapEvent>(
+  commands: readonly RegisteredCommand<TTarget, TEvent>[],
+): ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>> | undefined {
   if (commands.length === 0) {
     return undefined
   }
 
-  const lookup = new Map<string, RegisteredCommand>()
+  const lookup = new Map<string, RegisteredCommand<TTarget, TEvent>>()
   for (const command of commands) {
     lookup.set(command.name, command)
   }
@@ -45,13 +46,19 @@ function createCommandLookup(
   return lookup
 }
 
-function addRegisteredCommandNames(target: Map<string, number>, commands: readonly RegisteredCommand[]): void {
+function addRegisteredCommandNames<TTarget extends object, TEvent extends KeymapEvent>(
+  target: Map<string, number>,
+  commands: readonly RegisteredCommand<TTarget, TEvent>[],
+): void {
   for (const command of commands) {
     target.set(command.name, (target.get(command.name) ?? 0) + 1)
   }
 }
 
-function removeRegisteredCommandNames(target: Map<string, number>, commands: readonly RegisteredCommand[]): void {
+function removeRegisteredCommandNames<TTarget extends object, TEvent extends KeymapEvent>(
+  target: Map<string, number>,
+  commands: readonly RegisteredCommand<TTarget, TEvent>[],
+): void {
   for (const command of commands) {
     const count = target.get(command.name)
     if (!count || count <= 1) {
@@ -71,58 +78,58 @@ interface CompileLayerRuntimeStateResult {
   compileFields?: Readonly<Record<string, unknown>>
 }
 
-interface LayersOptions {
-  compiler: CompilerService
-  commands: CommandService
-  rootTarget: Renderable
+interface LayersOptions<TTarget extends object, TEvent extends KeymapEvent> {
+  compiler: CompilerService<TTarget, TEvent>
+  commands: CommandService<TTarget, TEvent>
+  host: KeymapHost<TTarget, TEvent>
   warnUnknownField: (kind: "binding" | "layer", fieldName: string) => void
 }
 
-interface AnalyzeLayerOptions {
+interface AnalyzeLayerOptions<TTarget extends object, TEvent extends KeymapEvent> {
   scope: Scope
-  target?: Renderable
+  target?: TTarget
   order: number
-  bindingInputs: readonly BindingInput[]
-  compiledBindings: readonly CompiledBinding[]
-  root: RegisteredLayer["root"]
+  bindingInputs: readonly BindingInput<TTarget, TEvent>[]
+  compiledBindings: readonly CompiledBinding<TTarget, TEvent>[]
+  root: RegisteredLayer<TTarget, TEvent>["root"]
   hasTokenBindings: boolean
 }
 
-export class LayerService {
+export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
   constructor(
-    private readonly state: State,
-    private readonly notify: NotificationService,
-    private readonly conditions: ConditionService,
-    private readonly projection: ProjectionService,
-    private readonly options: LayersOptions,
+    private readonly state: State<TTarget, TEvent>,
+    private readonly notify: NotificationService<TTarget, TEvent>,
+    private readonly conditions: ConditionService<TTarget, TEvent>,
+    private readonly projection: ProjectionService<TTarget, TEvent>,
+    private readonly options: LayersOptions<TTarget, TEvent>,
   ) {}
 
-  public registerLayer(layer: Layer): () => void {
+  public registerLayer(layer: Layer<TTarget, TEvent>): () => void {
     return this.notify.runWithStateChangeBatch(() => {
       const target = layer.target
-      if (target && target.isDestroyed) {
+      if (target && this.options.host.isTargetDestroyed(target)) {
         this.notify.emitError(
           "destroyed-layer-target",
           { target },
-          "Cannot register a keymap layer for a destroyed renderable",
+          "Cannot register a keymap layer for a destroyed keymap target",
         )
         return NOOP
       }
 
       let scope: Scope
-      let bindingInputs: BindingInput[]
+      let bindingInputs: BindingInput<TTarget, TEvent>[]
       let requires: readonly [name: string, value: unknown][]
       let matchers: readonly RuntimeMatcher[]
       let conditionKeys: readonly string[]
       let hasUnkeyedMatchers: boolean
       let compileFields: Readonly<Record<string, unknown>> | undefined
-      let commands: readonly RegisteredCommand[]
-      let commandLookup: ReadonlyMap<string, RegisteredCommand> | undefined
-      let indexTarget: Renderable
+      let commands: readonly RegisteredCommand<TTarget, TEvent>[]
+      let commandLookup: ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>> | undefined
+      let indexTarget: TTarget
 
       try {
         scope = this.normalizeScope(layer)
-        indexTarget = layer.target ?? this.options.rootTarget
+        indexTarget = layer.target ?? this.options.host.rootTarget
         bindingInputs = snapshotBindingInputs(layer.bindings ?? [])
         commands =
           !layer.commands || layer.commands.length === 0 ? [] : this.options.commands.normalizeCommands(layer.commands)
@@ -159,7 +166,7 @@ export class LayerService {
         hasTokenBindings: compiledBindings.hasTokenBindings,
       })
 
-      const registeredLayer: RegisteredLayer = {
+      const registeredLayer: RegisteredLayer<TTarget, TEvent> = {
         order,
         target,
         indexTarget,
@@ -201,11 +208,8 @@ export class LayerService {
           this.unregisterLayer(registeredLayer)
         }
 
-        target.once(RenderableEvents.DESTROYED, onTargetDestroy)
-        registeredLayer.offTargetDestroy = () => {
-          target.off(RenderableEvents.DESTROYED, onTargetDestroy)
+          registeredLayer.offTargetDestroy = this.options.host.onTargetDestroy(target, onTargetDestroy)
         }
-      }
 
       if (registeredLayer.commands.length > 0) {
         this.projection.ensureValidPendingSequence()
@@ -221,7 +225,7 @@ export class LayerService {
 
   public applyTokenState(nextTokens: Map<string, ResolvedKeyToken>): void {
     this.notify.runWithStateChangeBatch(() => {
-      const nextCompilations = new Map<RegisteredLayer, CompiledBindingsResult>()
+      const nextCompilations = new Map<RegisteredLayer<TTarget, TEvent>, CompiledBindingsResult<TTarget, TEvent>>()
 
       for (const layer of this.state.layers.layers) {
         if (!layer.hasTokenBindings) {
@@ -282,10 +286,10 @@ export class LayerService {
     })
   }
 
-  private normalizeScope(layer: Layer): Scope {
+  private normalizeScope(layer: Layer<TTarget, TEvent>): Scope {
     if (layer.scope) {
       if (layer.scope !== "global" && !layer.target) {
-        throw new Error(`Keymap scope "${layer.scope}" requires a target renderable`)
+        throw new Error(`Keymap scope "${layer.scope}" requires a target`)
       }
 
       return layer.scope
@@ -297,13 +301,13 @@ export class LayerService {
 
     return "global"
   }
-  private runLayerAnalyzers(options: AnalyzeLayerOptions): void {
+  private runLayerAnalyzers(options: AnalyzeLayerOptions<TTarget, TEvent>): void {
     const analyzers = this.state.config.layerAnalyzers.values()
     if (analyzers.length === 0) {
       return
     }
 
-    const ctx: LayerAnalysisContext = {
+    const ctx: LayerAnalysisContext<TTarget, TEvent> = {
       scope: options.scope,
       target: options.target,
       order: options.order,
@@ -331,7 +335,7 @@ export class LayerService {
     }
   }
 
-  private compileLayerRuntimeState(layer: Layer): CompileLayerRuntimeStateResult {
+  private compileLayerRuntimeState(layer: Layer<TTarget, TEvent>): CompileLayerRuntimeStateResult {
     const mergedRequires: EventData = {}
     const matchers: RuntimeMatcher[] = []
     const compileFields: Record<string, unknown> = Object.create(null)
@@ -379,13 +383,13 @@ export class LayerService {
     }
   }
 
-  private getOrCreateTargetBucket(target: Renderable): RegisteredLayerBucket {
+  private getOrCreateTargetBucket(target: TTarget): RegisteredLayerBucket<TTarget, TEvent> {
     const existing = this.state.layers.targetLayers.get(target)
     if (existing) {
       return existing
     }
 
-    const bucket: RegisteredLayerBucket = {
+    const bucket: RegisteredLayerBucket<TTarget, TEvent> = {
       focusLayers: [],
       focusWithinLayers: [],
     }
@@ -393,7 +397,7 @@ export class LayerService {
     return bucket
   }
 
-  private indexLayer(layer: RegisteredLayer): void {
+  private indexLayer(layer: RegisteredLayer<TTarget, TEvent>): void {
     const bucket = this.getOrCreateTargetBucket(layer.indexTarget)
     if (layer.scope === "focus") {
       bucket.focusLayers = sortByPriorityAndOrder([...bucket.focusLayers, layer], { order: "desc" })
@@ -404,7 +408,7 @@ export class LayerService {
     layer.bucket = bucket
   }
 
-  private removeLayerFromIndex(layer: RegisteredLayer): void {
+  private removeLayerFromIndex(layer: RegisteredLayer<TTarget, TEvent>): void {
     const bucket = layer.bucket
     if (!bucket) {
       return
@@ -423,7 +427,7 @@ export class LayerService {
     layer.bucket = undefined
   }
 
-  private unregisterLayer(layer: RegisteredLayer): void {
+  private unregisterLayer(layer: RegisteredLayer<TTarget, TEvent>): void {
     this.notify.runWithStateChangeBatch(() => {
       if (!this.state.layers.layers.delete(layer)) {
         return

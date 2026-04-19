@@ -1,4 +1,4 @@
-import type { Keymap } from "../types.js"
+import type { Keymap, KeymapEvent } from "../types.js"
 
 export type Aliases = Record<string, string>
 
@@ -39,7 +39,9 @@ function getAliases(layer: Readonly<Record<string, unknown>>): Aliases | undefin
   return normalizeAliases(aliases)
 }
 
-export function registerAliasesField(keymap: Keymap): () => void {
+export function registerAliasesField<TTarget extends object, TEvent extends KeymapEvent>(
+  keymap: Keymap<TTarget, TEvent>,
+): () => void {
   const offLayerField = keymap.registerLayerFields({
     aliases(value, ctx) {
       normalizeAliases(value)

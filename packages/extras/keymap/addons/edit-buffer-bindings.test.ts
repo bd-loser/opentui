@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BoxRenderable, InputRenderable, InputRenderableEvents, TextareaRenderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { getKeymap } from "../index.js"
+import { getKeymap } from "../opentui.js"
 import {
   createTextareaBindings,
   registerEditBufferCommands,
@@ -36,7 +36,7 @@ describe("edit buffer bindings addon", () => {
       false,
     )
 
-    registerEditBufferCommands(keymap)
+    registerEditBufferCommands(renderer)
 
     expect(keymap.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
       true,
@@ -59,7 +59,7 @@ describe("edit buffer bindings addon", () => {
   test("supports sequence bindings through plain layers", () => {
     const keymap = getKeymap(renderer)
 
-    registerEditBufferCommands(keymap)
+    registerEditBufferCommands(renderer)
     keymap.registerLayer({
       scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
@@ -83,7 +83,7 @@ describe("edit buffer bindings addon", () => {
   test("passes uncaptured input through to the focused textarea", () => {
     const keymap = getKeymap(renderer)
 
-    registerEditBufferCommands(keymap)
+    registerEditBufferCommands(renderer)
     keymap.registerLayer({
       scope: "global",
       bindings: [{ key: "left", cmd: "move-left" }],
@@ -124,8 +124,8 @@ describe("edit buffer bindings addon", () => {
     })
     renderer.root.add(textarea)
 
-    registerEditBufferCommands(keymap)
-    const off = registerManagedTextareaLayer(keymap, {
+    registerEditBufferCommands(renderer)
+    const off = registerManagedTextareaLayer(renderer, {
       target: textarea,
       bindings: { dd: "delete-line" },
     })
@@ -149,7 +149,7 @@ describe("edit buffer bindings addon", () => {
     })
     renderer.root.add(textarea)
 
-    const offSuspension = registerTextareaMappingSuspension(keymap)
+    const offSuspension = registerTextareaMappingSuspension(renderer)
 
     textarea.focus()
     textarea.cursorOffset = 3
@@ -181,7 +181,7 @@ describe("edit buffer bindings addon", () => {
     })
     renderer.root.add(input)
 
-    const offSuspension = registerTextareaMappingSuspension(keymap)
+    const offSuspension = registerTextareaMappingSuspension(renderer)
 
     input.focus()
     expect(input.traits.suspend).toBeUndefined()
@@ -195,7 +195,7 @@ describe("edit buffer bindings addon", () => {
   test("does not double-run textarea actions when a global binding uses the same stroke", () => {
     const keymap = getKeymap(renderer)
 
-    registerEditBufferCommands(keymap)
+    registerEditBufferCommands(renderer)
     keymap.registerLayer({
       scope: "global",
       bindings: [{ key: "backspace", cmd: "backspace" }],
@@ -220,7 +220,7 @@ describe("edit buffer bindings addon", () => {
     const keymap = getKeymap(renderer)
     let submitted = 0
 
-    registerEditBufferCommands(keymap)
+    registerEditBufferCommands(renderer)
     keymap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
@@ -246,8 +246,8 @@ describe("edit buffer bindings addon", () => {
     const keymap = getKeymap(renderer)
     let submitted = 0
 
-    const offFirst = registerEditBufferCommands(keymap)
-    const offSecond = registerEditBufferCommands(keymap)
+    const offFirst = registerEditBufferCommands(renderer)
+    const offSecond = registerEditBufferCommands(renderer)
     keymap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
@@ -291,7 +291,7 @@ describe("edit buffer bindings addon", () => {
       bindings: [{ key: "x", cmd: "fallback" }],
     })
 
-    registerEditBufferCommands(keymap)
+    registerEditBufferCommands(renderer)
     keymap.registerLayer({
       scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
@@ -325,7 +325,7 @@ describe("edit buffer bindings addon", () => {
   test("registerManagedTextareaLayer combines commands, suspension, defaults, and overrides", () => {
     const keymap = getKeymap(renderer)
 
-    const off = registerManagedTextareaLayer(keymap, {
+    const off = registerManagedTextareaLayer(renderer, {
       scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
@@ -372,7 +372,7 @@ describe("edit buffer bindings addon", () => {
       ],
     })
 
-    const off = registerManagedTextareaLayer(keymap, {
+    const off = registerManagedTextareaLayer(renderer, {
       scope: "global",
       bindings: [{ key: "left", cmd: "custom-left" }],
     })
@@ -399,7 +399,7 @@ describe("edit buffer bindings addon", () => {
     const keymap = getKeymap(renderer)
 
     registerMetadataFields(keymap)
-    registerEditBufferCommands(keymap, {
+    registerEditBufferCommands(renderer, {
       descriptions: {
         "delete-line": "Supprimer la ligne",
       },
@@ -420,7 +420,7 @@ describe("edit buffer bindings addon", () => {
 
     registerMetadataFields(keymap)
     const off = registerManagedTextareaLayer(
-      keymap,
+      renderer,
       {
         scope: "global",
       },
@@ -444,14 +444,14 @@ describe("edit buffer bindings addon", () => {
   test("shared edit buffer command registrations ignore later description overrides", () => {
     const keymap = getKeymap(renderer)
 
-    registerEditBufferCommands(keymap, {
+    registerEditBufferCommands(renderer, {
       descriptions: {
         "move-left": "Cursor left",
       },
     })
 
     expect(() => {
-      registerEditBufferCommands(keymap, {
+      registerEditBufferCommands(renderer, {
         descriptions: {
           "move-left": "Curseur gauche",
         },
@@ -467,7 +467,7 @@ describe("edit buffer bindings addon", () => {
       bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
     })
 
-    const off = registerEditBufferCommands(keymap)
+    const off = registerEditBufferCommands(renderer)
 
     expect(keymap.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
       true,
@@ -480,7 +480,7 @@ describe("edit buffer bindings addon", () => {
       false,
     )
 
-    registerEditBufferCommands(keymap)
+    registerEditBufferCommands(renderer)
 
     expect(keymap.getActiveKeys().some((candidate) => candidate.stroke.name === "d" && candidate.stroke.ctrl)).toBe(
       true,
@@ -515,8 +515,8 @@ describe("edit buffer bindings addon", () => {
     })
     renderer.root.add(textarea)
 
-    const offFirst = registerEditBufferCommands(keymap)
-    const offSecond = registerEditBufferCommands(keymap)
+    const offFirst = registerEditBufferCommands(renderer)
+    const offSecond = registerEditBufferCommands(renderer)
 
     textarea.focus()
     textarea.gotoLine(1)
@@ -553,7 +553,7 @@ describe("edit buffer bindings addon", () => {
     })
 
     expect(() => {
-      registerEditBufferCommands(keymap)
+      registerEditBufferCommands(renderer)
     }).not.toThrow()
 
     expect(errors).toEqual([])

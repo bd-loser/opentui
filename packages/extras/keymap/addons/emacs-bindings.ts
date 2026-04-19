@@ -1,4 +1,4 @@
-import type { BindingParser, Keymap, BindingParserContext, KeySequencePart } from "../types.js"
+import type { BindingParser, BindingParserContext, Keymap, KeymapEvent, KeySequencePart } from "../types.js"
 
 function parseEmacsStroke(
   input: string,
@@ -83,7 +83,9 @@ function parseEmacsSequence(
   return strokes.map((stroke) => parseEmacsStroke(stroke, input, parseObjectKey))
 }
 
-export function registerEmacsBindings(keymap: Keymap): () => void {
+export function registerEmacsBindings<TTarget extends object, TEvent extends KeymapEvent>(
+  keymap: Keymap<TTarget, TEvent>,
+): () => void {
   const parseEmacsBinding: BindingParser = ({ input, index, parseObjectKey }) => {
     const parsed = parseEmacsSequence(input, parseObjectKey)
     if (!parsed || index !== 0) {

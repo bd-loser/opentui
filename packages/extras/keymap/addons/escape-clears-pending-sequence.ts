@@ -1,4 +1,4 @@
-import type { Keymap } from "../types.js"
+import type { Keymap, KeymapEvent } from "../types.js"
 
 export interface EscapeClearsPendingSequenceOptions {
   /**
@@ -9,8 +9,8 @@ export interface EscapeClearsPendingSequenceOptions {
   priority?: number
 }
 
-export function registerEscapeClearsPendingSequence(
-  keymap: Keymap,
+export function registerEscapeClearsPendingSequence<TTarget extends object, TEvent extends KeymapEvent>(
+  keymap: Keymap<TTarget, TEvent>,
   options?: EscapeClearsPendingSequenceOptions,
 ): () => void {
   const shouldPreventDefault = options?.preventDefault ?? true

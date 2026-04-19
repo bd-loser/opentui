@@ -1,4 +1,3 @@
-import { KeyEvent, type Renderable } from "@opentui/core"
 import type { Keymap } from "../keymap.js"
 import type { Emitter } from "../lib/emitter.js"
 import { RESERVED_COMMAND_FIELDS } from "../schema.js"
@@ -26,6 +25,7 @@ import type {
   CommandResult,
   CompiledBinding,
   Hooks,
+  KeymapEvent,
   RegisteredCommand,
   RegisteredLayer,
   ResolvedBindingCommand,
@@ -37,8 +37,8 @@ import type { ProjectionService } from "./projection.js"
 import type { RuntimeService } from "./runtime.js"
 import type { State } from "./state.js"
 
-interface ResolvedCommandLookup {
-  resolved?: ResolvedBindingCommand
+interface ResolvedCommandLookup<TTarget extends object, TEvent extends KeymapEvent> {
+  resolved?: ResolvedBindingCommand<TTarget, TEvent>
   hadError: boolean
 }
 
@@ -47,42 +47,28 @@ interface CommandExecutionResult {
   result: RunCommandResult
 }
 
-interface CommandsOptions {
-  keymap: Keymap
+interface CommandsOptions<TTarget extends object, TEvent extends KeymapEvent> {
+  keymap: Keymap<TTarget, TEvent>
+  createCommandEvent: () => TEvent
 }
 
-interface NormalizeRegisteredCommandsOptions {
-  commands: readonly CommandDefinition[]
+interface NormalizeRegisteredCommandsOptions<TTarget extends object, TEvent extends KeymapEvent> {
+  commands: readonly CommandDefinition<TTarget, TEvent>[]
   commandFields: ReadonlyMap<string, CommandFieldCompiler>
   onError(code: string, error: unknown, message: string): void
 }
 
-function createSyntheticCommandEvent(): KeyEvent {
-  return new KeyEvent({
-    name: "command",
-    ctrl: false,
-    meta: false,
-    shift: false,
-    option: false,
-    sequence: "",
-    number: false,
-    raw: "",
-    eventType: "press",
-    source: "raw",
-  })
-}
-
-export class CommandService {
+export class CommandService<TTarget extends object, TEvent extends KeymapEvent> {
   constructor(
-    private readonly state: State,
-    private readonly notify: NotificationService,
-    private readonly runtime: RuntimeService,
-    private readonly projection: ProjectionService,
-    private readonly hooks: Emitter<Hooks>,
-    private readonly options: CommandsOptions,
+    private readonly state: State<TTarget, TEvent>,
+    private readonly notify: NotificationService<TTarget, TEvent>,
+    private readonly runtime: RuntimeService<TTarget, TEvent>,
+    private readonly projection: ProjectionService<TTarget, TEvent>,
+    private readonly hooks: Emitter<Hooks<TTarget, TEvent>>,
+    private readonly options: CommandsOptions<TTarget, TEvent>,
   ) {}
 
-  public normalizeCommands(commands: readonly CommandDefinition[]): RegisteredCommand[] {
+  public normalizeCommands(commands: readonly CommandDefinition<TTarget, TEvent>[]): RegisteredCommand<TTarget, TEvent>[] {
     return normalizeRegisteredCommands({
       commands,
       commandFields: this.state.config.commandFields,
@@ -92,11 +78,11 @@ export class CommandService {
     })
   }
 
-  public prependCommandResolver(resolver: CommandResolver): () => void {
+  public prependCommandResolver(resolver: CommandResolver<TTarget, TEvent>): () => void {
     return this.mutateCommandResolvers(() => this.state.config.commandResolvers.prepend(resolver), resolver)
   }
 
-  public appendCommandResolver(resolver: CommandResolver): () => void {
+  public appendCommandResolver(resolver: CommandResolver<TTarget, TEvent>): () => void {
     return this.mutateCommandResolvers(() => this.state.config.commandResolvers.append(resolver), resolver)
   }
 
@@ -113,7 +99,7 @@ export class CommandService {
     })
   }
 
-  private mutateCommandResolvers(register: () => () => void, resolver: CommandResolver): () => void {
+  private mutateCommandResolvers(register: () => () => void, resolver: CommandResolver<TTarget, TEvent>): () => void {
     return this.notify.runWithStateChangeBatch(() => {
       const off = register()
       this.state.commands.commandMetadataVersion += 1
@@ -135,8 +121,8 @@ export class CommandService {
     })
   }
 
-  public runCommand(cmd: string, options?: RunCommandOptions): RunCommandResult {
-    let normalized: BindingCommand | undefined
+  public runCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult {
+    let normalized: BindingCommand<TTarget, TEvent> | undefined
 
     try {
       normalized = normalizeBindingCommand(cmd)
@@ -149,8 +135,8 @@ export class CommandService {
     }
 
     const includeRecord = options?.includeCommand === true
-    const focused = options?.focused ?? this.projection.getFocusedRenderableIfAvailable()
-    const event = options?.event ?? createSyntheticCommandEvent()
+    const focused = options?.focused ?? this.projection.getFocusedTargetIfAvailable()
+    const event = options?.event ?? this.options.createCommandEvent()
     const data = this.runtime.getReadonlyData()
     const chainLookup = this.projection.getResolvedCommandChain(normalized, focused, includeRecord)
     const chain = chainLookup.entries
@@ -158,7 +144,7 @@ export class CommandService {
 
     if (chain) {
       for (const entry of chain) {
-        const context: CommandContext = {
+        const context: CommandContext<TTarget, TEvent> = {
           keymap: this.options.keymap,
           event,
           focused,
@@ -183,10 +169,10 @@ export class CommandService {
   }
 
   public runBinding(
-    bindingLayer: RegisteredLayer,
-    binding: CompiledBinding,
-    event: KeyEvent,
-    focused: Renderable | null,
+    bindingLayer: RegisteredLayer<TTarget, TEvent>,
+    binding: CompiledBinding<TTarget, TEvent>,
+    event: TEvent,
+    focused: TTarget | null,
   ): boolean {
     const data = this.runtime.getReadonlyData()
 
@@ -218,7 +204,7 @@ export class CommandService {
     const chain = this.projection.getResolvedCommandChain(binding.command, focused, false).entries
     if (chain) {
       for (const entry of chain) {
-        const context: CommandContext = {
+        const context: CommandContext<TTarget, TEvent> = {
           keymap: this.options.keymap,
           event,
           focused,
@@ -240,8 +226,8 @@ export class CommandService {
   }
 
   public warnIfBindingCommandIsCurrentlyUnresolved(
-    binding: CompiledBinding,
-    layerCommands?: ReadonlyMap<string, RegisteredCommand>,
+    binding: CompiledBinding<TTarget, TEvent>,
+    layerCommands?: ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>>,
   ): void {
     const command = binding.command
     if (typeof command !== "string") {
@@ -256,7 +242,7 @@ export class CommandService {
       return
     }
 
-    const focused = this.projection.getFocusedRenderableIfAvailable()
+    const focused = this.projection.getFocusedTargetIfAvailable()
     const lookup = this.resolveCommandWithResolvers(command, focused)
     if (lookup.resolved || lookup.hadError) {
       return
@@ -266,9 +252,9 @@ export class CommandService {
   }
   public resolveCommandWithResolvers(
     command: string,
-    focused: Renderable | null,
+    focused: TTarget | null,
     options?: { includeRecord?: boolean },
-  ): ResolvedCommandLookup {
+  ): ResolvedCommandLookup<TTarget, TEvent> {
     const resolvers = this.state.config.commandResolvers.values()
     if (resolvers.length === 0) {
       return { hadError: false }
@@ -279,7 +265,7 @@ export class CommandService {
     let hadError = false
 
     for (const resolver of resolvers) {
-      let resolved: ResolvedBindingCommand | undefined
+      let resolved: ResolvedBindingCommand<TTarget, TEvent> | undefined
 
       try {
         resolved = resolver(command, context)
@@ -297,7 +283,7 @@ export class CommandService {
     return { hadError }
   }
 
-  private createCommandResolverContext(includeRecord: boolean, focused: Renderable | null): CommandResolverContext {
+  private createCommandResolverContext(includeRecord: boolean, focused: TTarget | null): CommandResolverContext {
     return {
       getCommandAttrs: (name: string) => {
         return this.projection.getCommandAttrs(name, focused)
@@ -314,8 +300,8 @@ export class CommandService {
 
   private executeResolvedCommand(
     commandName: string,
-    resolved: ResolvedBindingCommand,
-    context: CommandContext,
+    resolved: ResolvedBindingCommand<TTarget, TEvent>,
+    context: CommandContext<TTarget, TEvent>,
   ): CommandExecutionResult {
     const command = resolved.record
     let result: CommandResult
@@ -361,7 +347,7 @@ export class CommandService {
     }
   }
 
-  private handleUnresolvedCommand(command: string, binding: CompiledBinding): void {
+  private handleUnresolvedCommand(command: string, binding: CompiledBinding<TTarget, TEvent>): void {
     const sequence = stringifyKeySequence(binding.sourceBinding.sequence, { preferDisplay: true })
     const warningKey = `unresolved:${binding.sourceLayerOrder}:${binding.sourceBindingIndex}:${command}:${sequence}`
 
@@ -390,7 +376,10 @@ export class CommandService {
   }
 }
 
-function applyBindingEventEffects(binding: CompiledBinding, event: KeyEvent): void {
+function applyBindingEventEffects<TTarget extends object, TEvent extends KeymapEvent>(
+  binding: CompiledBinding<TTarget, TEvent>,
+  event: TEvent,
+): void {
   if (!binding.preventDefault) {
     return
   }
@@ -399,12 +388,14 @@ function applyBindingEventEffects(binding: CompiledBinding, event: KeyEvent): vo
   event.stopPropagation()
 }
 
-function normalizeRegisteredCommands(options: NormalizeRegisteredCommandsOptions): RegisteredCommand[] {
-  const normalizedCommands: RegisteredCommand[] = []
+function normalizeRegisteredCommands<TTarget extends object, TEvent extends KeymapEvent>(
+  options: NormalizeRegisteredCommandsOptions<TTarget, TEvent>,
+): RegisteredCommand<TTarget, TEvent>[] {
+  const normalizedCommands: RegisteredCommand<TTarget, TEvent>[] = []
   const seen = new Set<string>()
 
   for (const command of options.commands) {
-    let normalizedCommand: RegisteredCommand | undefined
+    let normalizedCommand: RegisteredCommand<TTarget, TEvent> | undefined
 
     try {
       const mergedAttrs: Attributes = {}
@@ -412,7 +403,11 @@ function normalizeRegisteredCommands(options: NormalizeRegisteredCommandsOptions
       const normalizedName = normalizeCommandName(command.name)
 
       if (seen.has(normalizedName)) {
-        options.onError(`Duplicate keymap command "${normalizedName}" in the same layer`)
+        options.onError(
+          "duplicate-command",
+          { command: normalizedName },
+          `Duplicate keymap command "${normalizedName}" in the same layer`,
+        )
         continue
       }
 

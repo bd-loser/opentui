@@ -1,4 +1,4 @@
-import type { Keymap } from "../types.js"
+import type { Keymap, KeymapEvent } from "../types.js"
 
 function normalizeMetadataText(fieldName: string, value: unknown): string {
   if (typeof value !== "string") {
@@ -13,7 +13,9 @@ function normalizeMetadataText(fieldName: string, value: unknown): string {
   return trimmed
 }
 
-export function registerMetadataFields(keymap: Keymap): () => void {
+export function registerMetadataFields<TTarget extends object, TEvent extends KeymapEvent>(
+  keymap: Keymap<TTarget, TEvent>,
+): () => void {
   const offBindingFields = keymap.registerBindingFields({
     desc(value, ctx) {
       ctx.attr("desc", normalizeMetadataText("desc", value))

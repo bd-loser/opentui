@@ -1,14 +1,14 @@
-import type { Events, HookName, Hooks } from "../types.js"
+import type { Events, HookName, Hooks, KeymapEvent } from "../types.js"
 import type { State } from "./state.js"
 import { Emitter } from "../lib/emitter.js"
 
-type DiagnosticEvents = Pick<Events, "warning" | "error">
+type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<Events<TTarget, TEvent>, "warning" | "error">
 
-export class NotificationService {
+export class NotificationService<TTarget extends object, TEvent extends KeymapEvent> {
   constructor(
-    private readonly state: State,
-    private readonly events: Emitter<DiagnosticEvents>,
-    private readonly hooks: Emitter<Hooks>,
+    private readonly state: State<TTarget, TEvent>,
+    private readonly events: Emitter<DiagnosticEvents<TTarget, TEvent>>,
+    private readonly hooks: Emitter<Hooks<TTarget, TEvent>>,
   ) {}
 
   public runWithStateChangeBatch<T>(fn: () => T): T {

@@ -1,5 +1,4 @@
 export { registerAliasesField } from "./aliases.js"
-export { registerBaseLayoutFallback } from "./base-layout.js"
 export { registerBackspacePopsPendingSequence } from "./backspace-pops-pending-sequence.js"
 export { registerCommaBindings } from "./comma-bindings.js"
 export { registerDeadBindingWarnings } from "./dead-bindings.js"
@@ -7,12 +6,6 @@ export { registerEscapeClearsPendingSequence } from "./escape-clears-pending-seq
 export { registerEnabledField } from "./enabled.js"
 export { registerEmacsBindings } from "./emacs-bindings.js"
 export { registerExCommands } from "./ex-commands.js"
-export {
-  createTextareaBindings,
-  registerEditBufferCommands,
-  registerManagedTextareaLayer,
-  registerTextareaMappingSuspension,
-} from "./edit-buffer-bindings.js"
 export { registerLeader } from "./leader.js"
 export { registerMetadataFields } from "./metadata.js"
 export { registerTimedLeader } from "./timed-leader.js"
@@ -22,6 +15,5 @@ export type { BackspacePopsPendingSequenceOptions } from "./backspace-pops-pendi
 export type { EscapeClearsPendingSequenceOptions } from "./escape-clears-pending-sequence.js"
 export type { Enabled } from "./enabled.js"
 export type { ExCommand } from "./ex-commands.js"
-export type { EditBufferCommandName, EditBufferCommandOptions, ManagedTextareaLayer } from "./edit-buffer-bindings.js"
 export type { LeaderOptions } from "./leader.js"
 export type { TimedLeaderOptions } from "./timed-leader.js"

@@ -1,8 +1,18 @@
-import type { Keymap, CompiledBinding, LayerAnalysisContext, KeySequencePart, SequenceNode } from "../types.js"
+import type {
+  CompiledBinding,
+  Keymap,
+  KeymapEvent,
+  KeySequencePart,
+  LayerAnalysisContext,
+  SequenceNode,
+} from "../types.js"
 import { stringifyKeySequence, stringifyKeyStroke } from "../index.js"
 
-function getSequenceNode(root: SequenceNode, sequence: readonly KeySequencePart[]): SequenceNode | undefined {
-  let node: SequenceNode | undefined = root
+function getSequenceNode<TTarget extends object, TEvent extends KeymapEvent>(
+  root: SequenceNode<TTarget, TEvent>,
+  sequence: readonly KeySequencePart[],
+): SequenceNode<TTarget, TEvent> | undefined {
+  let node: SequenceNode<TTarget, TEvent> | undefined = root
 
   for (const part of sequence) {
     node = node.children.get(part.matchKey)
@@ -14,7 +24,10 @@ function getSequenceNode(root: SequenceNode, sequence: readonly KeySequencePart[
   return node
 }
 
-function isDeadMetadataOnlyBinding(ctx: LayerAnalysisContext, binding: CompiledBinding): boolean {
+function isDeadMetadataOnlyBinding<TTarget extends object, TEvent extends KeymapEvent>(
+  ctx: LayerAnalysisContext<TTarget, TEvent>,
+  binding: CompiledBinding<TTarget, TEvent>,
+): boolean {
   if (binding.command !== undefined) {
     return false
   }
@@ -39,7 +52,10 @@ function isDeadMetadataOnlyBinding(ctx: LayerAnalysisContext, binding: CompiledB
   return true
 }
 
-function warnDeadMetadataOnlyBinding(ctx: LayerAnalysisContext, binding: CompiledBinding): void {
+function warnDeadMetadataOnlyBinding<TTarget extends object, TEvent extends KeymapEvent>(
+  ctx: LayerAnalysisContext<TTarget, TEvent>,
+  binding: CompiledBinding<TTarget, TEvent>,
+): void {
   const sequence = stringifyKeySequence(binding.sourceBinding.sequence, { preferDisplay: true })
   const sourceKey =
     typeof binding.sourceBinding.key === "string"
@@ -59,7 +75,9 @@ function warnDeadMetadataOnlyBinding(ctx: LayerAnalysisContext, binding: Compile
   )
 }
 
-export function registerDeadBindingWarnings(keymap: Keymap): () => void {
+export function registerDeadBindingWarnings<TTarget extends object, TEvent extends KeymapEvent>(
+  keymap: Keymap<TTarget, TEvent>,
+): () => void {
   return keymap.appendLayerAnalyzer((ctx) => {
     for (const binding of ctx.compiledBindings) {
       if (!isDeadMetadataOnlyBinding(ctx, binding)) {

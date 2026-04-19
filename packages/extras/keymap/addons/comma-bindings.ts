@@ -1,4 +1,4 @@
-import type { BindingExpander, Keymap } from "../types.js"
+import type { BindingExpander, Keymap, KeymapEvent } from "../types.js"
 
 const commaBindingExpander: BindingExpander = ({ input }) => {
   if (!input.includes(",")) {
@@ -13,6 +13,8 @@ const commaBindingExpander: BindingExpander = ({ input }) => {
   return parts
 }
 
-export function registerCommaBindings(keymap: Keymap): () => void {
+export function registerCommaBindings<TTarget extends object, TEvent extends KeymapEvent>(
+  keymap: Keymap<TTarget, TEvent>,
+): () => void {
   return keymap.appendBindingExpander(commaBindingExpander)
 }

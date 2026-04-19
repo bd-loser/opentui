@@ -15,6 +15,7 @@ import {
   type KeymapCommandDefinition,
   type KeymapCommandRecord,
 } from "@opentui/extras/keymap"
+import { registerManagedTextareaLayer } from "@opentui/extras/keymap/opentui"
 import { useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/extras/keymap/react"
 import { createRoot, useRenderer } from "@opentui/react"
 import {
@@ -736,7 +737,7 @@ export const App = () => {
   const managedTextareaLayer = useMemo(
     () => ({
       scope: "global" as const,
-      enabled: () => !commandPromptVisibleRef.current && manager.renderer.currentFocusedEditor !== null,
+      enabled: () => !commandPromptVisibleRef.current && renderer.currentFocusedEditor !== null,
       bindings: [
         { key: "left", cmd: "move-left", desc: "Cursor left" },
         { key: "right", cmd: "move-right", desc: "Cursor right" },
@@ -751,12 +752,12 @@ export const App = () => {
         { key: "dd", cmd: "delete-line", desc: "Delete line" },
       ] satisfies KeymapBindingInput[],
     }),
-    [manager.renderer],
+    [renderer],
   )
 
   useEffect(() => {
-    return addons.registerManagedTextareaLayer(manager, managedTextareaLayer)
-  }, [managedTextareaLayer, manager])
+    return registerManagedTextareaLayer(renderer, managedTextareaLayer)
+  }, [managedTextareaLayer, renderer])
 
   useBindings(() => ({
     scope: "global" as const,

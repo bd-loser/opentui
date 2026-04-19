@@ -248,9 +248,16 @@ function applySuggestion(delta: number): void {
   renderPrompt()
 }
 
-function completeSuggestion(): void {
+function completeSuggestion(direction?: 1 | -1): void {
   const suggestions = getCommandSuggestions()
-  const suggestion = suggestions[selectedSuggestion]
+  if (suggestions.length === 0) {
+    return
+  }
+
+  const nextSelection = direction
+    ? (selectedSuggestion + direction + suggestions.length) % suggestions.length
+    : Math.min(selectedSuggestion, suggestions.length - 1)
+  const suggestion = suggestions[nextSelection]
   if (!suggestion) {
     return
   }
@@ -261,6 +268,7 @@ function completeSuggestion(): void {
   const nextValue = rest ? `${suggestion.insert} ${rest}` : suggestion.expectsArgs ? `${suggestion.insert} ` : suggestion.insert
 
   commandInput.value = nextValue
+  selectedSuggestion = nextSelection
   commandInput.setSelectionRange(commandInput.value.length, commandInput.value.length)
   renderPrompt()
 }
@@ -320,10 +328,13 @@ function runPromptCommand(): void {
 
   debug("run prompt command", {
     command: parsed.raw,
-    focused: getCurrentFocusedTarget()?.id ?? "none",
+    focused: (promptRestoreTarget && document.contains(promptRestoreTarget)
+      ? promptRestoreTarget
+      : getCurrentFocusedTarget())?.id ?? "none",
   })
 
-  const result = keymap.runCommand(parsed.raw)
+  const focused = promptRestoreTarget && document.contains(promptRestoreTarget) ? promptRestoreTarget : getCurrentFocusedTarget()
+  const result = keymap.runCommand(parsed.raw, { focused })
   if (result.ok) {
     appendLog(`Ran ${parsed.raw}`)
     closePrompt()
@@ -593,6 +604,14 @@ function disposers(): void {
       { name: "prompt-next", title: "Next Suggestion", desc: "Move to the next ex suggestion", run() { applySuggestion(1) } },
       { name: "prompt-prev", title: "Previous Suggestion", desc: "Move to the previous ex suggestion", run() { applySuggestion(-1) } },
       { name: "prompt-complete", title: "Complete Suggestion", desc: "Insert the selected ex suggestion", run() { completeSuggestion() } },
+      {
+        name: "prompt-complete-prev",
+        title: "Previous Completion",
+        desc: "Insert the previous ex suggestion",
+        run() {
+          completeSuggestion(-1)
+        },
+      },
       { name: "save-session", title: "Save Session", desc: "Log a synthetic write snapshot", run() { saveSnapshot("leader") } },
       { name: "alpha-up", title: "Alpha Up", desc: "Increment the Alpha counter", run() { incrementAlpha(1) } },
       { name: "alpha-down", title: "Alpha Down", desc: "Decrement the Alpha counter", run() { incrementAlpha(-1) } },
@@ -659,6 +678,7 @@ function disposers(): void {
       { key: "escape", cmd: "prompt-close", desc: "Close prompt" },
       { key: "return", cmd: "prompt-submit", desc: "Run ex command" },
       { key: "tab", cmd: "prompt-complete", desc: "Complete suggestion" },
+      { key: "shift+tab", cmd: "prompt-complete-prev", desc: "Previous completion" },
       { key: "up", cmd: "prompt-prev", desc: "Previous suggestion" },
       { key: "down", cmd: "prompt-next", desc: "Next suggestion" },
     ],

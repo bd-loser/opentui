@@ -59,6 +59,7 @@ jobs:
           bun run build:lib
           cd ../solid && bun run build
           cd ../react && bun run build
+          cd ../extras && bun run build
 
       - name: Publish packages
         run: bun run publish

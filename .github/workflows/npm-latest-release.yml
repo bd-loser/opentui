@@ -72,6 +72,11 @@ jobs:
             echo "Copied solid dist"
           fi
 
+          if [ -d "npm-packages/extras-dist" ]; then
+            cp -r npm-packages/extras-dist packages/extras/dist
+            echo "Copied extras dist"
+          fi
+
           echo "Package extraction complete"
 
       - name: Publish packages (dry-run)
@@ -98,6 +103,10 @@ jobs:
           echo ""
           echo "📦 Checking @opentui/solid..."
           cd ../../solid/dist && npm pack --dry-run
+
+          echo ""
+          echo "📦 Checking @opentui/extras..."
+          cd ../../extras/dist && npm pack --dry-run
 
           echo ""
           echo "=========================================="

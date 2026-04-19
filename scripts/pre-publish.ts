@@ -48,6 +48,11 @@ const ALL_PACKAGES: PackageConfig[] = [
     distDir: join(rootDir, "packages", "solid", "dist"),
     requiresCore: true,
   },
+  {
+    name: "@opentui/extras",
+    rootDir: join(rootDir, "packages", "extras"),
+    distDir: join(rootDir, "packages", "extras", "dist"),
+  },
 ]
 
 const PACKAGES = ALL_PACKAGES

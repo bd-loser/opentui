@@ -47,6 +47,8 @@ jobs:
           bun run build
           cd ../solid
           bun run build
+          cd ../extras
+          bun run build
 
       - name: Verify build outputs
         run: |
@@ -69,6 +71,12 @@ jobs:
           echo "Verifying dist packages exist..."
           test -d packages/core/dist || (echo "❌ core dist missing!" && exit 1)
           test -f packages/core/dist/package.json || (echo "❌ core dist/package.json missing!" && exit 1)
+          test -d packages/react/dist || (echo "❌ react dist missing!" && exit 1)
+          test -f packages/react/dist/package.json || (echo "❌ react dist/package.json missing!" && exit 1)
+          test -d packages/solid/dist || (echo "❌ solid dist missing!" && exit 1)
+          test -f packages/solid/dist/package.json || (echo "❌ solid dist/package.json missing!" && exit 1)
+          test -d packages/extras/dist || (echo "❌ extras dist missing!" && exit 1)
+          test -f packages/extras/dist/package.json || (echo "❌ extras dist/package.json missing!" && exit 1)
 
           echo "✅ All required build outputs verified (6 platforms)"
 
@@ -167,6 +175,13 @@ jobs:
             echo "✅ Solid dist packaged"
           else
             echo "⚠️  Solid dist not found (skipping)"
+          fi
+
+          if [ -d packages/extras/dist ]; then
+            cp -r packages/extras/dist artifacts/npm-packages/extras-dist
+            echo "✅ Extras dist packaged"
+          else
+            echo "⚠️  Extras dist not found (skipping)"
           fi
 
           cd artifacts

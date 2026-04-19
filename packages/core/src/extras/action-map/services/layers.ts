@@ -6,9 +6,11 @@ import type { ProjectionService } from "./projection.js"
 import type {
   BindingInput,
   CommandDefinition,
+  CompiledBinding,
   CompiledBindingsResult,
   EventData,
   Layer,
+  LayerAnalysisContext,
   Scope,
   ParsedKeyToken,
   RegisteredCommand,
@@ -75,6 +77,16 @@ interface LayersOptions {
   warnUnknownField: (kind: "binding" | "layer", fieldName: string) => void
 }
 
+interface AnalyzeLayerOptions {
+  scope: Scope
+  target?: Renderable
+  order: number
+  bindingInputs: readonly BindingInput[]
+  compiledBindings: readonly CompiledBinding[]
+  root: RegisteredLayer["root"]
+  hasTokenBindings: boolean
+}
+
 export class LayerService {
   constructor(
     private readonly state: State,
@@ -130,6 +142,16 @@ export class LayerService {
       if (compiledBindings.bindings.length === 0 && !compiledBindings.hasTokenBindings && commands.length === 0) {
         return NOOP
       }
+
+      this.runLayerAnalyzers({
+        scope,
+        target,
+        order,
+        bindingInputs,
+        compiledBindings: compiledBindings.bindings,
+        root: compiledBindings.root,
+        hasTokenBindings: compiledBindings.hasTokenBindings,
+      })
 
       const registeredLayer: RegisteredLayer = {
         order,
@@ -218,6 +240,16 @@ export class LayerService {
 
       let shouldClearPending = false
       for (const [layer, compilation] of nextCompilations) {
+        this.runLayerAnalyzers({
+          scope: layer.scope,
+          target: layer.target,
+          order: layer.order,
+          bindingInputs: layer.bindingInputs,
+          compiledBindings: compilation.bindings,
+          root: compilation.root,
+          hasTokenBindings: compilation.hasTokenBindings,
+        })
+
         for (const binding of layer.compiledBindings) {
           this.conditions.unregisterRuntimeMatchable(binding)
         }
@@ -272,6 +304,40 @@ export class LayerService {
     }
 
     return this.options.commands.normalizeCommands(commands)
+  }
+
+  private runLayerAnalyzers(options: AnalyzeLayerOptions): void {
+    const analyzers = this.state.config.layerAnalyzers.values()
+    if (analyzers.length === 0) {
+      return
+    }
+
+    const ctx: LayerAnalysisContext = {
+      scope: options.scope,
+      target: options.target,
+      order: options.order,
+      bindingInputs: options.bindingInputs,
+      compiledBindings: options.compiledBindings,
+      root: options.root,
+      hasTokenBindings: options.hasTokenBindings,
+      warn: (message) => {
+        this.notify.emitWarning(message)
+      },
+      warnOnce: (key, message) => {
+        this.notify.warnOnce(key, message)
+      },
+      error: (message, cause) => {
+        this.notify.emitError(message, cause)
+      },
+    }
+
+    for (const analyzer of analyzers) {
+      try {
+        analyzer(ctx)
+      } catch (error) {
+        this.notify.emitError("[ActionMap] Error in layer analyzer:", error)
+      }
+    }
   }
 
   private compileLayerRuntimeState(layer: Layer): CompileLayerRuntimeStateResult {

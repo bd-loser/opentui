@@ -4,7 +4,6 @@ import { InputRenderable } from "../../../renderables/Input.js"
 import { TextareaRenderable, defaultTextareaKeyBindings, type TextareaAction } from "../../../renderables/Textarea.js"
 import type { EditBufferRenderable } from "../../../renderables/EditBufferRenderable.js"
 import type { BindingInput, Bindings, CommandDefinition, CommandContext, Layer, ActionMap } from "../types.js"
-import { snapshotBindingInputs } from "../lib/utils.js"
 
 const editBufferCommandNames = [
   "move-left",
@@ -155,15 +154,15 @@ function createDefaultTextareaBindings(descriptions: Readonly<Record<EditBufferC
  * take precedence. Prefer `registerManagedTextareaLayer` unless you are
  * composing a custom textarea integration.
  */
-export function createTextareaBindings(overrides?: Bindings): BindingInput[] {
+export function createTextareaBindings(overrides?: readonly BindingInput[]): BindingInput[] {
   return createTextareaBindingsWithDescriptions(overrides, editBufferCommandDescriptions)
 }
 
 function createTextareaBindingsWithDescriptions(
-  overrides: Bindings | undefined,
+  overrides: readonly BindingInput[] | undefined,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
 ): BindingInput[] {
-  const overrideBindings = overrides ? snapshotBindingInputs(overrides) : []
+  const overrideBindings = overrides ?? []
   return [...overrideBindings, ...createDefaultTextareaBindings(descriptions)]
 }
 
@@ -429,7 +428,10 @@ export function registerManagedTextareaLayer(
     const { bindings, ...rest } = layer
     const offLayer = actionMap.registerLayer({
       ...rest,
-      bindings: createTextareaBindingsWithDescriptions(bindings, descriptions),
+      bindings: createTextareaBindingsWithDescriptions(
+        bindings ? actionMap.normalizeBindings(bindings) : undefined,
+        descriptions,
+      ),
     })
 
     return () => {

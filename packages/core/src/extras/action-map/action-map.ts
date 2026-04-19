@@ -4,16 +4,19 @@ import { KeyEvent } from "../../lib/KeyHandler.js"
 import type {
   ActiveKey,
   ActiveKeyOptions,
+  BindingInput,
   BindingExpander,
   BindingParser,
   BindingSyntax,
   BindingFieldCompiler,
+  Bindings,
   BindingTransformer,
   Events,
   Hooks,
   CommandFieldCompiler,
   CommandQuery,
   CommandRecord,
+  LayerAnalyzer,
   Listener,
   RunCommandOptions,
   RunCommandResult,
@@ -31,7 +34,7 @@ import type {
   ParsedKeyPart,
   ParsedKeyToken,
 } from "./types.js"
-import { buildBindingKey, getErrorMessage } from "./lib/utils.js"
+import { buildBindingKey, getErrorMessage, normalizeBindingInputs, normalizeKeyStroke } from "./lib/utils.js"
 import { RESERVED_BINDING_FIELDS, RESERVED_COMMAND_FIELDS, RESERVED_LAYER_FIELDS } from "./schema.js"
 import { CommandService } from "./services/commands.js"
 import { CompilerService } from "./services/compiler.js"
@@ -61,7 +64,7 @@ function getKeyMatchKey(input: StringifiableKey): string {
     return buildBindingKey(input.stroke)
   }
 
-  return buildBindingKey(input)
+  return buildBindingKey(normalizeKeyStroke(input))
 }
 
 function registerFieldCompilers<T>(
@@ -291,6 +294,10 @@ export class ActionMap {
     return this.commands.normalizeCommandName(name)
   }
 
+  public normalizeBindings(bindings: Bindings): BindingInput[] {
+    return normalizeBindingInputs(bindings)
+  }
+
   public runCommand(cmd: string, options?: RunCommandOptions): RunCommandResult {
     return this.commands.runCommand(cmd, options)
   }
@@ -469,6 +476,10 @@ export class ActionMap {
 
   public registerCommandResolver(resolver: CommandResolver): () => void {
     return this.commands.registerCommandResolver(resolver)
+  }
+
+  public registerLayerAnalyzer(analyzer: LayerAnalyzer): () => void {
+    return this.state.config.layerAnalyzers.append(analyzer)
   }
 
   public registerEventMatchResolver(resolver: EventMatchResolver): () => void {

@@ -1,6 +1,7 @@
 export { registerAliasesField } from "./aliases.js"
 export { registerBaseLayoutFallback } from "./base-layout.js"
 export { registerCommaBindings } from "./comma-bindings.js"
+export { registerDeadBindingWarnings } from "./dead-bindings.js"
 export { registerEscapeClearsPendingSequence } from "./escape-clears-pending-sequence.js"
 export { registerEnabledField } from "./enabled.js"
 export { registerEmacsBindings } from "./emacs-bindings.js"

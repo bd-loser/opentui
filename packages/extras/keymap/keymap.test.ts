@@ -11,8 +11,10 @@ import {
   type ActiveKey,
   type ActiveKeyOptions,
   type CommandRecord,
+  type ErrorEvent,
   type Keymap,
   type ReactiveMatcher,
+  type WarningEvent,
 } from "./index.js"
 
 let renderer: TestRenderer
@@ -46,18 +48,27 @@ function getActiveKeyDisplay(keymap: Keymap, display: string, options?: ActiveKe
   return keymap.getActiveKeys(options).find((candidate) => candidate.display === display)
 }
 
-function captureDiagnostics(keymap: Keymap): { warnings: string[]; errors: string[] } {
+function captureDiagnostics(keymap: Keymap): {
+  warningEvents: WarningEvent[]
+  errorEvents: ErrorEvent[]
+  warnings: string[]
+  errors: string[]
+} {
+  const warningEvents: WarningEvent[] = []
+  const errorEvents: ErrorEvent[] = []
   const warnings: string[] = []
   const errors: string[] = []
 
   keymap.on("warning", (event) => {
+    warningEvents.push(event)
     warnings.push(event.message)
   })
   keymap.on("error", (event) => {
+    errorEvents.push(event)
     errors.push(event.message)
   })
 
-  return { warnings, errors }
+  return { warningEvents, errorEvents, warnings, errors }
 }
 
 function getMatchKeyForEventName(event: KeyEvent, name: string): string {
@@ -2792,7 +2803,7 @@ describe("keymap", () => {
     const causes: unknown[] = []
     keymap.on("error", (event) => {
       errors.push(event.message)
-      causes.push(event.cause)
+      causes.push(event.error)
     })
 
     const badMatcher: ReactiveMatcher = {
@@ -2860,9 +2871,9 @@ describe("keymap", () => {
 
   test("reactive matchers: errors in get are routed to error channel and evaluate to false", () => {
     const keymap = getKeymap(renderer)
-    const errors: { message: string; cause?: unknown }[] = []
+    const errors: { code: string; message: string; error: unknown }[] = []
     keymap.on("error", (event) => {
-      errors.push({ message: event.message, cause: event.cause })
+      errors.push({ code: event.code, message: event.message, error: event.error })
     })
 
     const cause = new Error("get boom")
@@ -2887,7 +2898,14 @@ describe("keymap", () => {
     })
 
     expect(getActiveKeyNames(keymap)).toEqual([])
-    expect(errors.some((e) => e.message.includes("Error evaluating runtime matcher") && e.cause === cause)).toBe(true)
+    expect(
+      errors.some(
+        (event) =>
+          event.code === "runtime-matcher-error" &&
+          event.message.includes("Error evaluating runtime matcher") &&
+          event.error === cause,
+      ),
+    ).toBe(true)
   })
 
   test("reactive matchers: coexist with require()-based data dependencies on the same layer", () => {
@@ -4571,7 +4589,7 @@ describe("keymap", () => {
 
   test("emits unknown token warnings", () => {
     const keymap = getKeymap(renderer)
-    const { warnings } = captureDiagnostics(keymap)
+    const { warningEvents, warnings } = captureDiagnostics(keymap)
 
     keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
     keymap.registerLayer({
@@ -4583,11 +4601,18 @@ describe("keymap", () => {
     })
 
     expect(warnings).toEqual(['[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored'])
+    expect(warningEvents).toEqual([
+      {
+        code: "unknown-token",
+        message: '[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored',
+        warning: { token: "<leader>", sequence: "<leader>x" },
+      },
+    ])
   })
 
   test("emits unresolved string command warnings", () => {
     const keymap = getKeymap(renderer)
-    const { warnings } = captureDiagnostics(keymap)
+    const { warningEvents, warnings } = captureDiagnostics(keymap)
 
     keymap.registerLayer({
       scope: "global",
@@ -4595,6 +4620,19 @@ describe("keymap", () => {
     })
 
     expect(warnings).toEqual(['[Keymap] Unresolved command "missing-command" for binding "x" in global layer'])
+    expect(warningEvents).toHaveLength(1)
+    expect(warningEvents[0]).toMatchObject({
+      code: "unresolved-command",
+      warning: {
+        command: "missing-command",
+        scope: "global",
+        target: undefined,
+        binding: {
+          cmd: "missing-command",
+          key: "x",
+        },
+      },
+    })
   })
 
   test("does not warn about dead metadata-only bindings by default", () => {
@@ -4690,10 +4728,10 @@ describe("keymap", () => {
 
   test("registerLayerAnalyzer warnings flow through warning events", () => {
     const keymap = getKeymap(renderer)
-    const { warnings } = captureDiagnostics(keymap)
+    const { warningEvents, warnings } = captureDiagnostics(keymap)
 
     keymap.appendLayerAnalyzer((ctx) => {
-      ctx.warnOnce(`layer:${ctx.order}`, `layer ${ctx.order} warning`)
+      ctx.warnOnce(`layer:${ctx.order}`, "layer-warning", { order: ctx.order }, `layer ${ctx.order} warning`)
     })
 
     keymap.registerLayer({
@@ -4702,11 +4740,12 @@ describe("keymap", () => {
     })
 
     expect(warnings).toEqual(["layer 0 warning"])
+    expect(warningEvents).toEqual([{ code: "layer-warning", message: "layer 0 warning", warning: { order: 0 } }])
   })
 
   test("registerLayerAnalyzer errors flow through error events", () => {
     const keymap = getKeymap(renderer)
-    const { errors } = captureDiagnostics(keymap)
+    const { errorEvents, errors } = captureDiagnostics(keymap)
 
     keymap.appendLayerAnalyzer(() => {
       throw new Error("analysis boom")
@@ -4718,6 +4757,9 @@ describe("keymap", () => {
     })
 
     expect(errors).toEqual(["[Keymap] Error in layer analyzer:"])
+    expect(errorEvents).toHaveLength(1)
+    expect(errorEvents[0]?.code).toBe("layer-analyzer-error")
+    expect(errorEvents[0]?.error).toBeInstanceOf(Error)
   })
 
   test("notifies unresolved command listeners with command, binding, scope, and target context", () => {

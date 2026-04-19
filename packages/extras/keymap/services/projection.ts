@@ -228,7 +228,7 @@ export class ProjectionService {
       query,
       getCommandRecord: (command) => getRegisteredCommandRecord(command),
       onFilterError: (error) => {
-        this.notify.emitError("[Keymap] Error in command query filter:", error)
+        this.notify.emitError("command-query-filter-error", error, "[Keymap] Error in command query filter:")
       },
     })
   }
@@ -945,7 +945,7 @@ export class ProjectionService {
         resolved = resolver(command, context)
       } catch (error) {
         hadError = true
-        this.notify.emitError(`[Keymap] Error in command resolver for "${command}":`, error)
+        this.notify.emitError("command-resolver-error", error, `[Keymap] Error in command resolver for "${command}":`)
         continue
       }
 

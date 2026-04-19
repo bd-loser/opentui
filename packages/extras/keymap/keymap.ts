@@ -71,7 +71,7 @@ function registerFieldCompilers<T>(
     kind: FieldKind
     reservedFields: ReadonlySet<string>
     registeredFields: Map<string, T>
-    emitError(message: string): void
+    emitError(code: string, error: unknown, message: string): void
   },
 ): () => void {
   const { kind, reservedFields, registeredFields, emitError } = options
@@ -80,12 +80,16 @@ function registerFieldCompilers<T>(
 
   for (const [name] of entries) {
     if (reservedFields.has(name)) {
-      emitError(`Keymap ${kind} field "${name}" is reserved`)
+      emitError(`reserved-${kind}-field`, { field: name, kind }, `Keymap ${kind} field "${name}" is reserved`)
       continue
     }
 
     if (registeredFields.has(name)) {
-      emitError(`Keymap ${kind} field "${name}" is already registered`)
+      emitError(
+        `duplicate-${kind}-field`,
+        { field: name, kind },
+        `Keymap ${kind} field "${name}" is already registered`,
+      )
     }
   }
 
@@ -382,8 +386,8 @@ export class Keymap {
       kind: "layer",
       reservedFields: RESERVED_LAYER_FIELDS,
       registeredFields: this.state.config.layerFields,
-      emitError: (message) => {
-        this.emitError(message)
+      emitError: (code, error, message) => {
+        this.emitError(code, error, message)
       },
     })
   }
@@ -426,12 +430,16 @@ export class Keymap {
     try {
       normalizedToken = this.compiler.normalizeTokenName(token.name)
     } catch (error) {
-      this.emitError(getErrorMessage(error, "Failed to register keymap token"), error)
+      this.emitError("token-name-normalize-error", error, getErrorMessage(error, "Failed to register keymap token"))
       return NOOP
     }
 
     if (this.state.config.tokens.has(normalizedToken)) {
-      this.emitError(`Keymap token "${normalizedToken}" is already registered`)
+      this.emitError(
+        "duplicate-token",
+        { token: normalizedToken },
+        `Keymap token "${normalizedToken}" is already registered`,
+      )
       return NOOP
     }
 
@@ -440,7 +448,11 @@ export class Keymap {
     try {
       parsedToken = this.compiler.parseTokenKey(token.key)
     } catch (error) {
-      this.emitError(getErrorMessage(error, `Failed to register keymap token "${normalizedToken}"`), error)
+      this.emitError(
+        "token-parse-error",
+        error,
+        getErrorMessage(error, `Failed to register keymap token "${normalizedToken}"`),
+      )
       return NOOP
     }
 
@@ -455,7 +467,11 @@ export class Keymap {
     try {
       this.applyTokenState(nextTokens)
     } catch (error) {
-      this.emitError(getErrorMessage(error, `Failed to register keymap token "${normalizedToken}"`), error)
+      this.emitError(
+        "token-register-error",
+        error,
+        getErrorMessage(error, `Failed to register keymap token "${normalizedToken}"`),
+      )
       return NOOP
     }
 
@@ -468,7 +484,11 @@ export class Keymap {
         try {
           this.applyTokenState(nextTokens)
         } catch (error) {
-          this.emitError(getErrorMessage(error, `Failed to unregister keymap token "${normalizedToken}"`), error)
+          this.emitError(
+            "token-unregister-error",
+            error,
+            getErrorMessage(error, `Failed to unregister keymap token "${normalizedToken}"`),
+          )
         }
       }
     }
@@ -491,8 +511,8 @@ export class Keymap {
       kind: "binding",
       reservedFields: RESERVED_BINDING_FIELDS,
       registeredFields: this.state.config.bindingFields,
-      emitError: (message) => {
-        this.emitError(message)
+      emitError: (code, error, message) => {
+        this.emitError(code, error, message)
       },
     })
   }
@@ -502,8 +522,8 @@ export class Keymap {
       kind: "command",
       reservedFields: RESERVED_COMMAND_FIELDS,
       registeredFields: this.state.config.commandFields,
-      emitError: (message) => {
-        this.emitError(message)
+      emitError: (code, error, message) => {
+        this.emitError(code, error, message)
       },
     })
   }
@@ -562,24 +582,34 @@ export class Keymap {
     this.notify.queueStateChange()
   }
 
-  private emitError(message: string, cause?: unknown): void {
-    this.notify.emitError(message, cause)
+  private emitError(code: string, error: unknown, message: string): void {
+    this.notify.emitError(code, error, message)
   }
 
   private applyTokenState(nextTokens: Map<string, ResolvedKeyToken>): void {
     this.layers.applyTokenState(nextTokens)
   }
 
-  private warnOnce(key: string, message: string): void {
-    this.notify.warnOnce(key, message)
+  private warnOnce(key: string, code: string, warning: unknown, message: string): void {
+    this.notify.warnOnce(key, code, warning, message)
   }
 
   private warnUnknownField(kind: "binding" | "layer", fieldName: string): void {
-    this.warnOnce(`${kind}:${fieldName}`, `[Keymap] Unknown ${kind} field "${fieldName}" was ignored`)
+    this.warnOnce(
+      `${kind}:${fieldName}`,
+      `unknown-${kind}-field`,
+      { field: fieldName, kind },
+      `[Keymap] Unknown ${kind} field "${fieldName}" was ignored`,
+    )
   }
 
   private warnUnknownToken(token: string, sequence: string): void {
-    this.warnOnce(`token:${token}`, `[Keymap] Unknown token "${token}" in key sequence "${sequence}" was ignored`)
+    this.warnOnce(
+      `token:${token}`,
+      "unknown-token",
+      { token, sequence },
+      `[Keymap] Unknown token "${token}" in key sequence "${sequence}" was ignored`,
+    )
   }
 
   private releaseResource(key: symbol, resource: { count: number; dispose: () => void }): void {

@@ -56,8 +56,9 @@ export class ConditionService {
         })
       } catch (error) {
         this.notify.emitError(
-          getErrorMessage(error, `Failed to subscribe to reactive matcher from ${matcher.source}`),
+          "reactive-matcher-subscribe-error",
           error,
+          getErrorMessage(error, `Failed to subscribe to reactive matcher from ${matcher.source}`),
         )
       }
     }
@@ -89,8 +90,9 @@ export class ConditionService {
         matcher.dispose()
       } catch (error) {
         this.notify.emitError(
-          getErrorMessage(error, `Failed to dispose reactive matcher from ${matcher.source}`),
+          "reactive-matcher-dispose-error",
           error,
+          getErrorMessage(error, `Failed to dispose reactive matcher from ${matcher.source}`),
         )
       }
 
@@ -182,7 +184,11 @@ export class ConditionService {
     try {
       return matcher.match()
     } catch (error) {
-      this.notify.emitError(`[Keymap] Error evaluating runtime matcher from ${matcher.source}:`, error)
+      this.notify.emitError(
+        "runtime-matcher-error",
+        error,
+        `[Keymap] Error evaluating runtime matcher from ${matcher.source}:`,
+      )
       return false
     }
   }

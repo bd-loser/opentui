@@ -54,7 +54,7 @@ interface CommandsOptions {
 interface NormalizeRegisteredCommandsOptions {
   commands: readonly CommandDefinition[]
   commandFields: ReadonlyMap<string, CommandFieldCompiler>
-  onError(message: string, cause?: unknown): void
+  onError(code: string, error: unknown, message: string): void
 }
 
 function createSyntheticCommandEvent(): KeyEvent {
@@ -90,8 +90,8 @@ export class CommandService {
     return normalizeRegisteredCommands({
       commands,
       commandFields: this.state.config.commandFields,
-      onError: (message, cause) => {
-        this.notify.emitError(message, cause)
+      onError: (code, error, message) => {
+        this.notify.emitError(code, error, message)
       },
     })
   }
@@ -294,7 +294,7 @@ export class CommandService {
         resolved = resolver(command, context)
       } catch (error) {
         hadError = true
-        this.notify.emitError(`[Keymap] Error in command resolver for "${command}":`, error)
+        this.notify.emitError("command-resolver-error", error, `[Keymap] Error in command resolver for "${command}":`)
         continue
       }
 
@@ -332,7 +332,7 @@ export class CommandService {
     try {
       result = resolved.run(context)
     } catch (error) {
-      this.notify.emitError(`[Keymap] Error running command "${commandName}":`, error)
+      this.notify.emitError("command-execution-error", error, `[Keymap] Error running command "${commandName}":`)
       return {
         status: "error",
         result: { ok: false, reason: "error", command },
@@ -341,7 +341,7 @@ export class CommandService {
 
     if (isPromiseLike(result)) {
       result.catch((error) => {
-        this.notify.emitError(`[Keymap] Async error in command "${commandName}":`, error)
+        this.notify.emitError("async-command-error", error, `[Keymap] Async error in command "${commandName}":`)
       })
 
       return {
@@ -376,6 +376,13 @@ export class CommandService {
 
     this.notify.warnOnce(
       warningKey,
+      "unresolved-command",
+      {
+        binding: snapshotParsedBindingInput(binding.sourceBinding),
+        command,
+        scope: binding.sourceScope,
+        target: binding.sourceTarget,
+      },
       `[Keymap] Unresolved command "${command}" for binding "${sequence}" in ${binding.sourceScope} layer`,
     )
 
@@ -450,7 +457,11 @@ function normalizeRegisteredCommands(options: NormalizeRegisteredCommandsOptions
         normalizedCommand.attrs = attrs
       }
     } catch (error) {
-      options.onError(getErrorMessage(error, `Failed to register keymap command "${String(command.name)}"`), error)
+      options.onError(
+        "register-command-failed",
+        error,
+        getErrorMessage(error, `Failed to register keymap command "${String(command.name)}"`),
+      )
       continue
     }
 

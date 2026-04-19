@@ -1,16 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { addons, getKeymap, type Keymap } from "../index.js"
+import { addons, getKeymap, type Keymap, type WarningEvent } from "../index.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
 
-function captureWarnings(keymap: Keymap): string[] {
+function captureWarnings(keymap: Keymap): { events: WarningEvent[]; warnings: string[] } {
+  const events: WarningEvent[] = []
   const warnings: string[] = []
   keymap.on("warning", (event) => {
+    events.push(event)
     warnings.push(event.message)
   })
-  return warnings
+  return { events, warnings }
 }
 
 describe("dead binding warnings addon", () => {
@@ -26,7 +28,7 @@ describe("dead binding warnings addon", () => {
 
   test("warns when an exact binding has no command and no reachable continuations", () => {
     const keymap = getKeymap(renderer)
-    const warnings = captureWarnings(keymap)
+    const { events, warnings } = captureWarnings(keymap)
     addons.registerDeadBindingWarnings(keymap)
 
     keymap.registerLayer({
@@ -37,11 +39,20 @@ describe("dead binding warnings addon", () => {
     expect(warnings).toEqual([
       '[Keymap] Binding "x" in global layer has no command and no reachable continuations; it will never trigger',
     ])
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      code: "dead-binding",
+      warning: {
+        binding: { key: "x" },
+        scope: "global",
+        target: undefined,
+      },
+    })
   })
 
   test("does not warn for metadata-only prefix bindings", () => {
     const keymap = getKeymap(renderer)
-    const warnings = captureWarnings(keymap)
+    const { warnings } = captureWarnings(keymap)
     addons.registerDeadBindingWarnings(keymap)
 
     keymap.registerLayer({
@@ -54,7 +65,7 @@ describe("dead binding warnings addon", () => {
 
   test("warns for release bindings without commands", () => {
     const keymap = getKeymap(renderer)
-    const warnings = captureWarnings(keymap)
+    const { warnings } = captureWarnings(keymap)
     addons.registerDeadBindingWarnings(keymap)
 
     keymap.registerLayer({
@@ -69,7 +80,7 @@ describe("dead binding warnings addon", () => {
 
   test("deduplicates warnings across token recompilation", () => {
     const keymap = getKeymap(renderer)
-    const warnings = captureWarnings(keymap)
+    const { warnings } = captureWarnings(keymap)
     addons.registerDeadBindingWarnings(keymap)
 
     keymap.registerLayer({
@@ -87,7 +98,7 @@ describe("dead binding warnings addon", () => {
 
   test("does not affect dispatch for real command bindings", () => {
     const keymap = getKeymap(renderer)
-    const warnings = captureWarnings(keymap)
+    const { warnings } = captureWarnings(keymap)
     const calls: string[] = []
 
     addons.registerDeadBindingWarnings(keymap)

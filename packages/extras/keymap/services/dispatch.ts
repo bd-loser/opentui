@@ -54,7 +54,7 @@ export class DispatchService {
       try {
         hook.listener(context)
       } catch (error) {
-        this.notify.emitError("[Keymap] Error in raw intercept listener:", error)
+        this.notify.emitError("raw-intercept-error", error, "[Keymap] Error in raw intercept listener:")
       }
 
       if (stopped) {
@@ -97,7 +97,7 @@ export class DispatchService {
       try {
         hook.listener(context)
       } catch (error) {
-        this.notify.emitError("[Keymap] Error in key intercept listener:", error)
+        this.notify.emitError("key-intercept-error", error, "[Keymap] Error in key intercept listener:")
       }
 
       if (event.propagationStopped) {
@@ -248,7 +248,7 @@ export class DispatchService {
       try {
         resolved = resolver(event, this.eventMatchResolverContext)
       } catch (error) {
-        this.notify.emitError("[Keymap] Error in event match resolver:", error)
+        this.notify.emitError("event-match-resolver-error", error, "[Keymap] Error in event match resolver:")
         continue
       }
 
@@ -258,7 +258,11 @@ export class DispatchService {
 
       for (const candidate of resolved) {
         if (typeof candidate !== "string") {
-          this.notify.emitError("[Keymap] Invalid event match resolver candidate:", candidate)
+          this.notify.emitError(
+            "invalid-event-match-resolver-candidate",
+            candidate,
+            "[Keymap] Invalid event match resolver candidate:",
+          )
           continue
         }
 
@@ -365,7 +369,7 @@ function resolveSingleEventMatchKeys(
   try {
     resolved = resolver(event, ctx)
   } catch (error) {
-    notify.emitError("[Keymap] Error in event match resolver:", error)
+    notify.emitError("event-match-resolver-error", error, "[Keymap] Error in event match resolver:")
     return []
   }
 
@@ -376,7 +380,11 @@ function resolveSingleEventMatchKeys(
   if (resolved.length === 1) {
     const [candidate] = resolved
     if (typeof candidate !== "string" || !candidate) {
-      notify.emitError("[Keymap] Invalid event match resolver candidate:", candidate)
+      notify.emitError(
+        "invalid-event-match-resolver-candidate",
+        candidate,
+        "[Keymap] Invalid event match resolver candidate:",
+      )
       return []
     }
 
@@ -387,7 +395,11 @@ function resolveSingleEventMatchKeys(
   const seen = new Set<string>()
   for (const candidate of resolved) {
     if (typeof candidate !== "string") {
-      notify.emitError("[Keymap] Invalid event match resolver candidate:", candidate)
+      notify.emitError(
+        "invalid-event-match-resolver-candidate",
+        candidate,
+        "[Keymap] Invalid event match resolver candidate:",
+      )
       continue
     }
 

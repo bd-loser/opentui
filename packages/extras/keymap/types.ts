@@ -266,9 +266,9 @@ export interface LayerAnalysisContext {
   compiledBindings: readonly CompiledBinding[]
   root: SequenceNode
   hasTokenBindings: boolean
-  warn(message: string): void
-  warnOnce(key: string, message: string): void
-  error(message: string, cause?: unknown): void
+  warn(code: string, warning: unknown, message: string): void
+  warnOnce(key: string, code: string, warning: unknown, message: string): void
+  error(code: string, error: unknown, message: string): void
 }
 
 export type LayerAnalyzer = (ctx: LayerAnalysisContext) => void
@@ -364,12 +364,15 @@ export type HookName = keyof Hooks
 export type Listener<TValue> = [TValue] extends [void] ? () => void : (value: TValue) => void
 
 export interface WarningEvent {
+  code: string
   message: string
+  warning: unknown
 }
 
 export interface ErrorEvent {
+  code: string
   message: string
-  cause?: unknown
+  error: unknown
 }
 
 /**

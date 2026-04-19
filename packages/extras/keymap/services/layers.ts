@@ -102,7 +102,11 @@ export class LayerService {
     return this.notify.runWithStateChangeBatch(() => {
       const target = layer.target
       if (target && target.isDestroyed) {
-        this.notify.emitError("Cannot register a keymap layer for a destroyed renderable")
+        this.notify.emitError(
+          "destroyed-layer-target",
+          { target },
+          "Cannot register a keymap layer for a destroyed renderable",
+        )
         return NOOP
       }
 
@@ -126,7 +130,7 @@ export class LayerService {
         ;({ requires, matchers, conditionKeys, hasUnkeyedMatchers, compileFields } =
           this.compileLayerRuntimeState(layer))
       } catch (error) {
-        this.notify.emitError(getErrorMessage(error, "Failed to register keymap layer"), error)
+        this.notify.emitError("register-layer-failed", error, getErrorMessage(error, "Failed to register keymap layer"))
         return NOOP
       }
 
@@ -320,14 +324,14 @@ export class LayerService {
       compiledBindings: options.compiledBindings,
       root: options.root,
       hasTokenBindings: options.hasTokenBindings,
-      warn: (message) => {
-        this.notify.emitWarning(message)
+      warn: (code, warning, message) => {
+        this.notify.emitWarning(code, warning, message)
       },
-      warnOnce: (key, message) => {
-        this.notify.warnOnce(key, message)
+      warnOnce: (key, code, warning, message) => {
+        this.notify.warnOnce(key, code, warning, message)
       },
-      error: (message, cause) => {
-        this.notify.emitError(message, cause)
+      error: (code, error, message) => {
+        this.notify.emitError(code, error, message)
       },
     }
 
@@ -335,7 +339,7 @@ export class LayerService {
       try {
         analyzer(ctx)
       } catch (error) {
-        this.notify.emitError("[Keymap] Error in layer analyzer:", error)
+        this.notify.emitError("layer-analyzer-error", error, "[Keymap] Error in layer analyzer:")
       }
     }
   }

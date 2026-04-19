@@ -110,7 +110,7 @@ export class CompilerService {
           layer: compileFields,
         })
       } catch (error) {
-        this.notify.emitError(getErrorMessage(error, "Failed to expand keymap binding"), error)
+        this.notify.emitError("binding-expand-error", error, getErrorMessage(error, "Failed to expand keymap binding"))
         continue
       }
 
@@ -132,7 +132,7 @@ export class CompilerService {
                   hasTokenBindings: false,
                 }
         } catch (error) {
-          this.notify.emitError(getErrorMessage(error, "Failed to parse keymap binding"), error)
+          this.notify.emitError("binding-parse-error", error, getErrorMessage(error, "Failed to parse keymap binding"))
           continue
         }
 
@@ -257,7 +257,11 @@ export class CompilerService {
 
             compiledBindings.push(compiledBinding)
           } catch (error) {
-            this.notify.emitError(getErrorMessage(error, "Failed to compile keymap binding"), error)
+            this.notify.emitError(
+              "binding-compile-error",
+              error,
+              getErrorMessage(error, "Failed to compile keymap binding"),
+            )
           }
         }
       }
@@ -338,7 +342,7 @@ export class CompilerService {
           },
         })
       } catch (error) {
-        this.notify.emitError("[Keymap] Error in binding transformer:", error)
+        this.notify.emitError("binding-transformer-error", error, "[Keymap] Error in binding transformer:")
       }
     }
 

@@ -37,49 +37,55 @@ export class NotificationService {
     }
   }
 
-  public emitWarning(message: string): void {
+  public emitWarning(code: string, warning: unknown, message: string): void {
     if (!this.events.has("warning")) {
-      console.warn(message)
+      if (warning instanceof Error) {
+        console.warn(message, warning)
+      } else {
+        console.warn(message)
+      }
+
       return
     }
 
-    this.events.emit("warning", { message })
+    this.events.emit("warning", { code, message, warning })
   }
 
-  public emitError(message: string, cause?: unknown): void {
+  public emitError(code: string, error: unknown, message: string): void {
     if (!this.events.has("error")) {
-      if (cause === undefined) {
-        console.error(message)
+      if (error instanceof Error) {
+        console.error(message, error)
       } else {
-        console.error(message, cause)
+        console.error(message)
       }
+
       return
     }
 
-    this.events.emit("error", cause === undefined ? { message } : { message, cause })
+    this.events.emit("error", { code, message, error })
   }
 
   public reportListenerError(name: HookName, error: unknown): void {
     if (name === "state") {
-      this.emitError("[Keymap] Error in state listener:", error)
+      this.emitError("state-listener-error", error, "[Keymap] Error in state listener:")
       return
     }
 
     if (name === "pendingSequence") {
-      this.emitError("[Keymap] Error in pending sequence listener:", error)
+      this.emitError("pending-sequence-listener-error", error, "[Keymap] Error in pending sequence listener:")
       return
     }
 
-    this.emitError("[Keymap] Error in unresolved command listener:", error)
+    this.emitError("unresolved-command-listener-error", error, "[Keymap] Error in unresolved command listener:")
   }
 
-  public warnOnce(key: string, message: string): void {
+  public warnOnce(key: string, code: string, warning: unknown, message: string): void {
     if (this.state.notify.usedWarningKeys.has(key)) {
       return
     }
 
     this.state.notify.usedWarningKeys.add(key)
-    this.emitWarning(message)
+    this.emitWarning(code, warning, message)
   }
 
   private flushStateChange(): void {

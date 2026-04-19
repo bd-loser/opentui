@@ -254,6 +254,82 @@ describe("action map", () => {
     )
   })
 
+  test("normalizeBindings exposes binding shorthand normalization on the public facade", () => {
+    const actionMap = getActionMap(renderer)
+
+    expect(actionMap.normalizeBindings({ x: "save-file", y: () => {} })).toEqual([
+      { key: "x", cmd: "save-file" },
+      { key: "y", cmd: expect.any(Function) },
+    ])
+  })
+
+  test("acquireResource shares setup and disposes on last release", () => {
+    const actionMap = getActionMap(renderer)
+    const resource = Symbol("test-resource")
+    const calls: string[] = []
+
+    const offFirst = actionMap.acquireResource(resource, () => {
+      calls.push("setup")
+      return () => {
+        calls.push("dispose")
+      }
+    })
+    const offSecond = actionMap.acquireResource(resource, () => {
+      calls.push("setup-again")
+      return () => {
+        calls.push("dispose-again")
+      }
+    })
+
+    expect(calls).toEqual(["setup"])
+
+    offFirst()
+    expect(calls).toEqual(["setup"])
+
+    offSecond()
+    expect(calls).toEqual(["setup", "dispose"])
+  })
+
+  test("acquireResource disposes active resources when the renderer is destroyed", () => {
+    const actionMap = getActionMap(renderer)
+    const resource = Symbol("destroyed-resource")
+    let disposeCalls = 0
+
+    const off = actionMap.acquireResource(resource, () => {
+      return () => {
+        disposeCalls += 1
+      }
+    })
+
+    renderer.destroy()
+
+    expect(disposeCalls).toBe(1)
+
+    off()
+    expect(disposeCalls).toBe(1)
+  })
+
+  test("acquireResource does not retain failed setup attempts", () => {
+    const actionMap = getActionMap(renderer)
+    const resource = Symbol("failing-resource")
+    let attempts = 0
+
+    expect(() => {
+      actionMap.acquireResource(resource, () => {
+        attempts += 1
+        throw new Error("boom")
+      })
+    }).toThrow("boom")
+
+    const off = actionMap.acquireResource(resource, () => {
+      attempts += 1
+      return () => {}
+    })
+
+    expect(attempts).toBe(2)
+    off()
+  })
+
   test("active layered commands take precedence over command resolvers", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []

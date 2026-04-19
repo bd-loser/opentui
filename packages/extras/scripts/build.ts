@@ -68,6 +68,7 @@ const externalDeps: string[] = [
 
 const keymapEntrypoints = [
   join(rootDir, "keymap/index.ts"),
+  join(rootDir, "keymap/opentui.ts"),
   join(rootDir, "keymap/react/index.ts"),
   join(rootDir, "keymap/solid/index.ts"),
 ]
@@ -114,6 +115,11 @@ const exports = {
     types: "./keymap/index.d.ts",
     import: "./keymap/index.js",
     require: "./keymap/index.js",
+  },
+  "./keymap/opentui": {
+    types: "./keymap/opentui.d.ts",
+    import: "./keymap/opentui.js",
+    require: "./keymap/opentui.js",
   },
   "./keymap/react": {
     types: "./keymap/react/index.d.ts",

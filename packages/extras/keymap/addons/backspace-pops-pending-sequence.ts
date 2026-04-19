@@ -1,16 +1,16 @@
-import type { Keymap } from "../types.js"
+import type { Keymap, KeymapEvent } from "../types.js"
 
 export interface BackspacePopsPendingSequenceOptions {
   /**
    * When true, consume Backspace after popping the sequence so it does not
-   * reach the focused renderable or lower-priority listeners. Default: `true`.
+   * reach the focused target or lower-priority listeners. Default: `true`.
    */
   preventDefault?: boolean
   priority?: number
 }
 
-export function registerBackspacePopsPendingSequence(
-  keymap: Keymap,
+export function registerBackspacePopsPendingSequence<TTarget extends object, TEvent extends KeymapEvent>(
+  keymap: Keymap<TTarget, TEvent>,
   options?: BackspacePopsPendingSequenceOptions,
 ): () => void {
   const shouldPreventDefault = options?.preventDefault ?? true

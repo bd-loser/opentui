@@ -16,13 +16,13 @@ import {
 } from "../index.js"
 import {
   addons,
-  getKeymap,
   type ActiveKey,
   type CommandRecord,
   type Keymap,
   stringifyKeySequence,
   stringifyKeyStroke,
 } from "@opentui/extras/keymap"
+import { getKeymap, registerManagedTextareaLayer } from "@opentui/extras/keymap/opentui"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const P = {
@@ -973,9 +973,9 @@ function registerCommandLayers(renderer: CliRenderer): void {
   }
 
   disposers.push(
-    addons.registerManagedTextareaLayer(keymapInstance, {
+    registerManagedTextareaLayer(renderer, {
       scope: "global",
-      enabled: () => !commandPromptVisible && keymapInstance.renderer.currentFocusedEditor !== null,
+      enabled: () => !commandPromptVisible && renderer.currentFocusedEditor !== null,
       bindings: [
         { key: "left", cmd: "move-left", desc: "Cursor left" },
         { key: "right", cmd: "move-right", desc: "Cursor right" },

@@ -1,16 +1,16 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
-import { BoxRenderable } from "@opentui/core"
+import { BoxRenderable, type KeyEvent, type Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import {
   addons,
   defaultBindingParser,
-  getKeymap,
   type BindingParser,
   type Keymap,
   type ReactiveMatcher,
 } from "./index.js"
+import { getKeymap } from "./opentui.js"
 
 const DEFAULT_ITERATIONS = 20_000
 const DEFAULT_WARMUP = 2_000
@@ -30,7 +30,7 @@ interface BenchmarkArgs {
 interface ScenarioResources {
   renderer: TestRenderer
   mockInput: MockInput
-  keymap: Keymap
+  keymap: OpenTuiKeymap
 }
 
 interface ScenarioInstance {
@@ -38,6 +38,8 @@ interface ScenarioInstance {
   runIteration: () => void
   cleanup: () => void
 }
+
+type OpenTuiKeymap = Keymap<Renderable, KeyEvent>
 
 interface BenchmarkScenario {
   name: string
@@ -219,7 +221,7 @@ function createBracketTokenParser(): BindingParser {
   }
 }
 
-function registerGlobalLayers(keymap: Keymap, count: number, cmd = "noop"): void {
+function registerGlobalLayers(keymap: OpenTuiKeymap, count: number, cmd = "noop"): void {
   for (let index = 0; index < count; index += 1) {
     keymap.registerLayer({
       scope: "global",
@@ -230,7 +232,7 @@ function registerGlobalLayers(keymap: Keymap, count: number, cmd = "noop"): void
 }
 
 function registerTargetLayer(
-  keymap: Keymap,
+  keymap: OpenTuiKeymap,
   target: BoxRenderable,
   index: number,
   key = createKey(index),
@@ -244,7 +246,7 @@ function registerTargetLayer(
   })
 }
 
-function registerModeBindingFields(keymap: Keymap): void {
+function registerModeBindingFields(keymap: OpenTuiKeymap): void {
   keymap.registerBindingFields({
     mode(value, ctx) {
       ctx.require("vim.mode", value)
@@ -255,7 +257,7 @@ function registerModeBindingFields(keymap: Keymap): void {
   })
 }
 
-function registerModeLayerFields(keymap: Keymap): void {
+function registerModeLayerFields(keymap: OpenTuiKeymap): void {
   keymap.registerLayerFields({
     mode(value, ctx) {
       ctx.require("vim.mode", value)
@@ -279,7 +281,7 @@ function normalizeFlagKey(value: unknown, source: string): string {
   return trimmed
 }
 
-function registerNamedBindingFields(keymap: Keymap): void {
+function registerNamedBindingFields(keymap: OpenTuiKeymap): void {
   keymap.registerBindingFields({
     activeWhen(value, ctx) {
       ctx.require(normalizeFlagKey(value, "binding field activeWhen"), true)
@@ -287,7 +289,7 @@ function registerNamedBindingFields(keymap: Keymap): void {
   })
 }
 
-function registerNamedLayerFields(keymap: Keymap): void {
+function registerNamedLayerFields(keymap: OpenTuiKeymap): void {
   keymap.registerLayerFields({
     activeWhen(value, ctx) {
       ctx.require(normalizeFlagKey(value, "layer field activeWhen"), true)
@@ -354,7 +356,7 @@ function createFlagMatcher(store: FlagStore, key: string): ReactiveMatcher {
   }
 }
 
-function registerExternalBindingFields(keymap: Keymap, store: FlagStore): void {
+function registerExternalBindingFields(keymap: OpenTuiKeymap, store: FlagStore): void {
   keymap.registerBindingFields({
     activeExternally(value, ctx) {
       const key = normalizeFlagKey(value, "binding field activeExternally")
@@ -363,7 +365,7 @@ function registerExternalBindingFields(keymap: Keymap, store: FlagStore): void {
   })
 }
 
-function registerStateChangeNoopListener(keymap: Keymap): () => void {
+function registerStateChangeNoopListener(keymap: OpenTuiKeymap): () => void {
   let events = 0
 
   return keymap.on("state", () => {
@@ -371,7 +373,7 @@ function registerStateChangeNoopListener(keymap: Keymap): () => void {
   })
 }
 
-function registerStateChangeReadListeners(keymap: Keymap): () => void {
+function registerStateChangeReadListeners(keymap: OpenTuiKeymap): () => void {
   let sink = 0
 
   const offActiveKeys = keymap.on("state", () => {
@@ -388,7 +390,7 @@ function registerStateChangeReadListeners(keymap: Keymap): () => void {
   }
 }
 
-function registerStateChangeMetadataListeners(keymap: Keymap): () => void {
+function registerStateChangeMetadataListeners(keymap: OpenTuiKeymap): () => void {
   let sink = 0
 
   const offActiveKeys = keymap.on("state", () => {
@@ -405,7 +407,7 @@ function registerStateChangeMetadataListeners(keymap: Keymap): () => void {
   }
 }
 
-function registerStateChangeBindingListeners(keymap: Keymap): () => void {
+function registerStateChangeBindingListeners(keymap: OpenTuiKeymap): () => void {
   let sink = 0
 
   const offActiveKeys = keymap.on("state", () => {
@@ -422,25 +424,25 @@ function registerStateChangeBindingListeners(keymap: Keymap): () => void {
   }
 }
 
-function readActiveKeysRepeatedly(keymap: Keymap, count: number): void {
+function readActiveKeysRepeatedly(keymap: OpenTuiKeymap, count: number): void {
   for (let index = 0; index < count; index += 1) {
     keymap.getActiveKeys()
   }
 }
 
-function readActiveKeysWithMetadataRepeatedly(keymap: Keymap, count: number): void {
+function readActiveKeysWithMetadataRepeatedly(keymap: OpenTuiKeymap, count: number): void {
   for (let index = 0; index < count; index += 1) {
     keymap.getActiveKeys({ includeMetadata: true })
   }
 }
 
-function readActiveKeysWithBindingsRepeatedly(keymap: Keymap, count: number): void {
+function readActiveKeysWithBindingsRepeatedly(keymap: OpenTuiKeymap, count: number): void {
   for (let index = 0; index < count; index += 1) {
     keymap.getActiveKeys({ includeBindings: true })
   }
 }
 
-function readPendingSequencePartsRepeatedly(keymap: Keymap, count: number): void {
+function readPendingSequencePartsRepeatedly(keymap: OpenTuiKeymap, count: number): void {
   for (let index = 0; index < count; index += 1) {
     keymap.getPendingSequence()
   }

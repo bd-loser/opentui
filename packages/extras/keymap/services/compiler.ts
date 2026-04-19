@@ -1,4 +1,3 @@
-import type { Renderable } from "@opentui/core"
 import type { CommandService } from "./commands.js"
 import type { ConditionService } from "./conditions.js"
 import type { State } from "./state.js"
@@ -21,6 +20,7 @@ import type {
   CompiledBinding,
   CompiledBindingsResult,
   KeyLike,
+  KeymapEvent,
   KeyStrokeInput,
   KeySequencePart,
   ResolvedKeyToken,
@@ -56,12 +56,12 @@ export interface CompilerOptions {
   warnUnknownToken: (token: string, sequence: string) => void
 }
 
-export class CompilerService {
+export class CompilerService<TTarget extends object, TEvent extends KeymapEvent> {
   constructor(
-    private readonly state: State,
-    private readonly notify: NotificationService,
-    private readonly commands: CommandService,
-    private readonly conditions: ConditionService,
+    private readonly state: State<TTarget, TEvent>,
+    private readonly notify: NotificationService<TTarget, TEvent>,
+    private readonly commands: CommandService<TTarget, TEvent>,
+    private readonly conditions: ConditionService<TTarget, TEvent>,
     private readonly options: CompilerOptions,
   ) {}
 
@@ -83,16 +83,16 @@ export class CompilerService {
   }
 
   public compileBindings(
-    bindings: readonly BindingInput[],
+    bindings: readonly BindingInput<TTarget, TEvent>[],
     tokens: ReadonlyMap<string, ResolvedKeyToken>,
     sourceScope: Scope,
-    sourceTarget: Renderable | undefined,
+    sourceTarget: TTarget | undefined,
     sourceLayerOrder: number,
     compileFields?: Readonly<Record<string, unknown>>,
-    commandLookup?: ReadonlyMap<string, RegisteredCommand>,
-  ): CompiledBindingsResult {
-    const root = createSequenceNode(null, null, null)
-    const compiledBindings: CompiledBinding[] = []
+    commandLookup?: ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>>,
+  ): CompiledBindingsResult<TTarget, TEvent> {
+    const root = createSequenceNode<TTarget, TEvent>(null, null, null)
+    const compiledBindings: CompiledBinding<TTarget, TEvent>[] = []
     let hasTokenBindings = false
     const bindingExpanders = this.state.config.bindingExpanders.values()
     const bindingParsers = this.state.config.bindingParsers.values()
@@ -215,7 +215,7 @@ export class CompilerService {
 
             const attrs = mergedAttrs ? snapshotAttributes(mergedAttrs) : undefined
             const command = normalizeBindingCommand(compiledInput.cmd)
-            const compiledBinding: CompiledBinding = {
+            const compiledBinding: CompiledBinding<TTarget, TEvent> = {
               sequence: compiledSequence,
               command,
               event,
@@ -301,12 +301,12 @@ export class CompilerService {
   }
 
   private applyBindingTransformers(
-    binding: BindingInput,
+    binding: BindingInput<TTarget, TEvent>,
     sequence: KeySequencePart[],
     tokens: ReadonlyMap<string, ResolvedKeyToken>,
     bindingParsers: readonly BindingParser[],
     compileFields?: Readonly<Record<string, unknown>>,
-  ): ParsedBindingInput[] {
+  ): ParsedBindingInput<TTarget, TEvent>[] {
     const bindingTransformers = this.state.config.bindingTransformers.values()
 
     if (bindingTransformers.length === 0) {
@@ -315,11 +315,11 @@ export class CompilerService {
       ]
     }
 
-    const parsedBinding: ParsedBindingInput = {
+    const parsedBinding: ParsedBindingInput<TTarget, TEvent> = {
       ...binding,
       sequence: sequence.map((part) => createParsedKeyPart(part.stroke, part.display, part.matchKey)),
     }
-    const extraBindings: ParsedBindingInput[] = []
+    const extraBindings: ParsedBindingInput<TTarget, TEvent>[] = []
     let keepOriginal = true
     const layer = compileFields ?? EMPTY_COMPILE_FIELDS
 
@@ -357,10 +357,10 @@ export class CompilerService {
     return [parsedBinding, ...extraBindings]
   }
 
-  private insertBinding(root: SequenceNode, binding: CompiledBinding): void {
+  private insertBinding(root: SequenceNode<TTarget, TEvent>, binding: CompiledBinding<TTarget, TEvent>): void {
     let node = root
-    const touchedNodes: SequenceNode[] = []
-    const createdNodes: Array<{ parent: SequenceNode; key: string }> = []
+    const touchedNodes: SequenceNode<TTarget, TEvent>[] = []
+    const createdNodes: Array<{ parent: SequenceNode<TTarget, TEvent>; key: string }> = []
 
     try {
       for (const part of binding.sequence) {
@@ -373,7 +373,7 @@ export class CompilerService {
         const bindingKey = part.matchKey
         let child = node.children.get(bindingKey)
         if (!child) {
-          child = createSequenceNode(node, part.stroke, part.matchKey)
+          child = createSequenceNode<TTarget, TEvent>(node, part.stroke, part.matchKey)
           node.children.set(bindingKey, child)
           createdNodes.push({ parent: node, key: bindingKey })
         }

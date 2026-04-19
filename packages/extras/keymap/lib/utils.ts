@@ -1,4 +1,3 @@
-import type { KeyEvent } from "@opentui/core"
 import type {
   Attributes,
   BindingCommand,
@@ -8,6 +7,7 @@ import type {
   CommandHandler,
   CommandRecord,
   EventData,
+  KeymapEvent,
   KeyStrokeInput,
   KeySequencePart,
   ParsedBindingInput,
@@ -137,11 +137,11 @@ export function buildBindingKey(stroke: NormalizedKeyStroke): string {
   return `${stroke.name}:${stroke.ctrl ? 1 : 0}:${stroke.shift ? 1 : 0}:${stroke.meta ? 1 : 0}:${stroke.super ? 1 : 0}:${stroke.hyper ? 1 : 0}`
 }
 
-export function createSequenceNode(
-  parent: SequenceNode | null,
+export function createSequenceNode<TTarget extends object, TEvent extends KeymapEvent>(
+  parent: SequenceNode<TTarget, TEvent> | null,
   stroke: NormalizedKeyStroke | null,
   matchKey: string | null,
-): SequenceNode {
+): SequenceNode<TTarget, TEvent> {
   return {
     parent,
     depth: parent ? parent.depth + 1 : 0,
@@ -177,21 +177,27 @@ export function snapshotAttributes(attrs: Attributes): Readonly<Attributes> | un
   return snapshotDataValue(attrs, { freeze: true }) as Readonly<Attributes>
 }
 
-export function snapshotBindingInput(binding: BindingInput): BindingInput {
+export function snapshotBindingInput<TTarget extends object, TEvent extends KeymapEvent>(
+  binding: BindingInput<TTarget, TEvent>,
+): BindingInput<TTarget, TEvent> {
   return {
     ...binding,
     key: typeof binding.key === "string" ? binding.key : { ...binding.key },
   }
 }
 
-export function snapshotParsedBindingInput(binding: ParsedBindingInput): ParsedBindingInput {
+export function snapshotParsedBindingInput<TTarget extends object, TEvent extends KeymapEvent>(
+  binding: ParsedBindingInput<TTarget, TEvent>,
+): ParsedBindingInput<TTarget, TEvent> {
   return {
     ...binding,
     sequence: binding.sequence.map((part) => createParsedKeyPart(part.stroke, part.display, part.matchKey)),
   }
 }
 
-export function normalizeBindingCommand(command: BindingCommand | undefined): BindingCommand | undefined {
+export function normalizeBindingCommand<TTarget extends object, TEvent extends KeymapEvent>(
+  command: BindingCommand<TTarget, TEvent> | undefined,
+): BindingCommand<TTarget, TEvent> | undefined {
   if (command === undefined || typeof command === "function") {
     return command
   }
@@ -204,7 +210,9 @@ export function normalizeBindingCommand(command: BindingCommand | undefined): Bi
   return trimmed
 }
 
-export function snapshotBindingInputs(bindings: Bindings): BindingInput[] {
+export function snapshotBindingInputs<TTarget extends object, TEvent extends KeymapEvent>(
+  bindings: Bindings<TTarget, TEvent>,
+): BindingInput<TTarget, TEvent>[] {
   return normalizeBindingInputs(bindings).map((binding) => snapshotBindingInput(binding))
 }
 
@@ -281,7 +289,7 @@ export function normalizeKeyStroke(input: KeyStrokeInput): NormalizedKeyStroke {
   }
 }
 
-export function normalizeEventKeyStroke(event: KeyEvent): NormalizedKeyStroke {
+export function normalizeEventKeyStroke(event: KeymapEvent): NormalizedKeyStroke {
   return {
     name: normalizeKeyName(event.name),
     ctrl: event.ctrl,
@@ -305,7 +313,9 @@ export function normalizeCommandName(name: string): string {
   return trimmed
 }
 
-export function getRegisteredCommandRecord(command: RegisteredCommand): CommandRecord {
+export function getRegisteredCommandRecord<TTarget extends object, TEvent extends KeymapEvent>(
+  command: RegisteredCommand<TTarget, TEvent>,
+): CommandRecord {
   if (command.record) {
     return command.record
   }
@@ -332,10 +342,10 @@ export function getRegisteredCommandRecord(command: RegisteredCommand): CommandR
   return record
 }
 
-export function resolveRegisteredCommand(
-  command: RegisteredCommand,
+export function resolveRegisteredCommand<TTarget extends object, TEvent extends KeymapEvent>(
+  command: RegisteredCommand<TTarget, TEvent>,
   options?: { includeRecord?: boolean },
-): ResolvedBindingCommand {
+): ResolvedBindingCommand<TTarget, TEvent> {
   const includeRecord = options?.includeRecord === true
   if (includeRecord) {
     const existing = command.resolvedWithRecord
@@ -343,7 +353,7 @@ export function resolveRegisteredCommand(
       return existing
     }
 
-    const resolved: ResolvedBindingCommand = {
+      const resolved: ResolvedBindingCommand<TTarget, TEvent> = {
       run: createRegisteredCommandRunner(command),
     }
 
@@ -361,7 +371,7 @@ export function resolveRegisteredCommand(
     return existing
   }
 
-  const resolved: ResolvedBindingCommand = {
+  const resolved: ResolvedBindingCommand<TTarget, TEvent> = {
     run: createRegisteredCommandRunner(command),
   }
 
@@ -373,12 +383,14 @@ export function resolveRegisteredCommand(
   return resolved
 }
 
-export function normalizeBindingInputs(bindings: Bindings): BindingInput[] {
+export function normalizeBindingInputs<TTarget extends object, TEvent extends KeymapEvent>(
+  bindings: Bindings<TTarget, TEvent>,
+): BindingInput<TTarget, TEvent>[] {
   if (Array.isArray(bindings)) {
     return bindings
   }
 
-  const normalized: BindingInput[] = []
+  const normalized: BindingInput<TTarget, TEvent>[] = []
   for (const [key, cmd] of Object.entries(bindings)) {
     if (typeof cmd !== "string" && typeof cmd !== "function") {
       throw new Error(`Invalid keymap binding for "${key}": shorthand bindings must map to string or function commands`)
@@ -390,12 +402,14 @@ export function normalizeBindingInputs(bindings: Bindings): BindingInput[] {
   return normalized
 }
 
-function createRegisteredCommandRunner(command: RegisteredCommand): CommandHandler {
+function createRegisteredCommandRunner<TTarget extends object, TEvent extends KeymapEvent>(
+  command: RegisteredCommand<TTarget, TEvent>,
+): CommandHandler<TTarget, TEvent> {
   if (command.runner) {
     return command.runner
   }
 
-  const runner: CommandHandler = (ctx: CommandContext) => {
+  const runner: CommandHandler<TTarget, TEvent> = (ctx: CommandContext<TTarget, TEvent>) => {
     return command.run({
       ...ctx,
       command: getRegisteredCommandRecord(command),

@@ -1,16 +1,19 @@
-import type { CommandDefinition, CommandContext, CommandRecord, Keymap, ParsedCommand } from "../types.js"
+import type { CommandDefinition, CommandContext, CommandRecord, Keymap, KeymapEvent, ParsedCommand } from "../types.js"
 
 const EMPTY_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 
-export interface ExCommand {
+export interface ExCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   name: string
   aliases?: string[]
   nargs?: "0" | "1" | "?" | "*" | "+"
-  run: (ctx: CommandContext & { raw: string; args: string[] }) => void | Promise<void>
+  run: (ctx: CommandContext<TTarget, TEvent> & { raw: string; args: string[] }) => void | Promise<void>
   [key: string]: unknown
 }
 
-function normalizeExCommandName(keymap: Keymap, name: string): string {
+function normalizeExCommandName<TTarget extends object, TEvent extends KeymapEvent>(
+  keymap: Keymap<TTarget, TEvent>,
+  name: string,
+): string {
   const normalized = keymap.normalizeCommandName(name)
   if (normalized.startsWith(":")) {
     return normalized
@@ -38,7 +41,10 @@ function parseCommandInput(input: string): ParsedCommand {
   }
 }
 
-function validateCommandArgs(command: ExCommand, args: string[]): boolean {
+function validateCommandArgs<TTarget extends object, TEvent extends KeymapEvent>(
+  command: ExCommand<TTarget, TEvent>,
+  args: string[],
+): boolean {
   if (!command.nargs) {
     return true
   }
@@ -67,9 +73,12 @@ function validateCommandArgs(command: ExCommand, args: string[]): boolean {
   return true
 }
 
-export function registerExCommands(keymap: Keymap, commands: ExCommand[]): () => void {
-  const registrations: CommandDefinition[] = []
-  const commandMap = new Map<string, ExCommand>()
+export function registerExCommands<TTarget extends object, TEvent extends KeymapEvent>(
+  keymap: Keymap<TTarget, TEvent>,
+  commands: ExCommand<TTarget, TEvent>[],
+): () => void {
+  const registrations: CommandDefinition<TTarget, TEvent>[] = []
+  const commandMap = new Map<string, ExCommand<TTarget, TEvent>>()
 
   for (const command of commands) {
     const { name, aliases, run, ...fields } = command

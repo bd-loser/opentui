@@ -1,4 +1,4 @@
-import type { Keymap, KeySequencePart } from "../types.js"
+import type { Keymap, KeymapEvent, KeySequencePart } from "../types.js"
 import { registerLeader, type LeaderOptions } from "./leader.js"
 
 export interface TimedLeaderOptions extends LeaderOptions {
@@ -7,7 +7,10 @@ export interface TimedLeaderOptions extends LeaderOptions {
   onDisarm?: () => void
 }
 
-export function registerTimedLeader(keymap: Keymap, options: TimedLeaderOptions): () => void {
+export function registerTimedLeader<TTarget extends object, TEvent extends KeymapEvent>(
+  keymap: Keymap<TTarget, TEvent>,
+  options: TimedLeaderOptions,
+): () => void {
   const matchesTrigger = keymap.createKeyMatcher(options.trigger)
   const timeoutMs = options.timeoutMs ?? 1500
 

@@ -2,6 +2,7 @@ import type {
   BindingParser,
   BindingSyntax,
   EventMatchResolver,
+  KeymapEvent,
   KeyLike,
   KeyStrokeInput,
   KeySequencePart,
@@ -280,6 +281,6 @@ export function parseKeySequenceLike(
   return parseKeySequenceWithDefaultParser(key, tokens, extraNames)
 }
 
-export const defaultEventMatchResolver: EventMatchResolver = (event) => {
+export const defaultEventMatchResolver: EventMatchResolver<KeymapEvent> = (event) => {
   return [buildBindingKey(normalizeEventKeyStroke(event))]
 }

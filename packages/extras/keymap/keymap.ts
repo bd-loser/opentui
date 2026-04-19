@@ -1,4 +1,3 @@
-import { CliRenderEvents, KeyEvent, type CliRenderer, type Renderable } from "@opentui/core"
 import type {
   ActiveKey,
   ActiveKeyOptions,
@@ -14,6 +13,8 @@ import type {
   CommandFieldCompiler,
   CommandQuery,
   CommandRecord,
+  KeymapEvent,
+  KeymapHost,
   LayerAnalyzer,
   Listener,
   RunCommandOptions,
@@ -52,10 +53,9 @@ import { ProjectionService } from "./services/projection.js"
 import { RuntimeService } from "./services/runtime.js"
 import { createKeymapState } from "./services/state.js"
 
-const keymapsByRenderer = new WeakMap<CliRenderer, Keymap>()
 const NOOP = (): void => {}
 
-type DiagnosticEvents = Pick<Events, "warning" | "error">
+type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<Events<TTarget, TEvent>, "warning" | "error">
 
 type FieldKind = "layer" | "binding" | "command"
 
@@ -118,45 +118,44 @@ function registerFieldCompilers<T>(
   }
 }
 
-export class Keymap {
-  public readonly renderer: CliRenderer
-
-  private readonly state = createKeymapState()
+export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapEvent> {
+  private readonly state = createKeymapState<TTarget, TEvent>()
   private cleanedUp = false
   private readonly resources = new Map<symbol, { count: number; dispose: () => void }>()
+  private readonly cleanupListeners: Array<() => void> = []
   // Reuse `Emitter`, but keep its `onError` hook as a no-op so throwing error
   // listeners cannot re-enter `emitError` and loop forever.
-  private events = new Emitter<DiagnosticEvents>(() => {})
-  private hooks: Emitter<Hooks>
-  private readonly notify: NotificationService
-  private readonly runtime: RuntimeService
-  private readonly conditions: ConditionService
-  private readonly commands: CommandService
-  private readonly projection: ProjectionService
-  private readonly compiler: CompilerService
-  private readonly dispatch: DispatchService
-  private readonly layers: LayerService
+  private events = new Emitter<DiagnosticEvents<TTarget, TEvent>>(() => {})
+  private hooks: Emitter<Hooks<TTarget, TEvent>>
+  private readonly notify: NotificationService<TTarget, TEvent>
+  private readonly runtime: RuntimeService<TTarget, TEvent>
+  private readonly conditions: ConditionService<TTarget, TEvent>
+  private readonly commands: CommandService<TTarget, TEvent>
+  private readonly projection: ProjectionService<TTarget, TEvent>
+  private readonly compiler: CompilerService<TTarget, TEvent>
+  private readonly dispatch: DispatchService<TTarget, TEvent>
+  private readonly layers: LayerService<TTarget, TEvent>
 
-  private readonly keypressListener: (event: KeyEvent) => void
-  private readonly keyreleaseListener: (event: KeyEvent) => void
+  private readonly keypressListener: (event: TEvent) => void
+  private readonly keyreleaseListener: (event: TEvent) => void
   private readonly rawListener: (sequence: string) => boolean
-  private readonly focusedRenderableListener: (focused: Renderable | null) => void
+  private readonly focusedTargetListener: (focused: TTarget | null) => void
 
-  constructor(renderer: CliRenderer) {
-    if (renderer.isDestroyed) {
-      throw new Error("Cannot create a keymap for a destroyed renderer")
+  constructor(private readonly host: KeymapHost<TTarget, TEvent>) {
+    if (host.isDestroyed) {
+      throw new Error("Cannot create a keymap for a destroyed host")
     }
 
-    this.renderer = renderer
-    this.hooks = new Emitter<Hooks>((name, error) => {
+    this.hooks = new Emitter<Hooks<TTarget, TEvent>>((name, error) => {
       this.notify.reportListenerError(name, error)
     })
     this.notify = new NotificationService(this.state, this.events, this.hooks)
     this.conditions = new ConditionService(this.state, this.notify)
-    this.projection = new ProjectionService(this.state, this.renderer, this.hooks, this.notify, this.conditions)
+    this.projection = new ProjectionService(this.state, this.host, this.hooks, this.notify, this.conditions)
     this.runtime = new RuntimeService(this.state, this.notify, this.conditions, this.projection)
     this.commands = new CommandService(this.state, this.notify, this.runtime, this.projection, this.hooks, {
       keymap: this,
+      createCommandEvent: () => this.host.createCommandEvent(),
     })
     this.compiler = new CompilerService(this.state, this.notify, this.commands, this.conditions, {
       warnUnknownField: (kind, fieldName) => {
@@ -169,7 +168,7 @@ export class Keymap {
     this.layers = new LayerService(this.state, this.notify, this.conditions, this.projection, {
       compiler: this.compiler,
       commands: this.commands,
-      rootTarget: this.renderer.root,
+      host: this.host,
       warnUnknownField: (kind, fieldName) => {
         this.warnUnknownField(kind, fieldName)
       },
@@ -195,17 +194,19 @@ export class Keymap {
     this.rawListener = (sequence) => {
       return this.dispatch.handleRawSequence(sequence)
     }
-    this.focusedRenderableListener = (focused) => {
-      this.handleFocusedRenderableChange(focused)
+    this.focusedTargetListener = (focused) => {
+      this.handleFocusedTargetChange(focused)
     }
 
-    this.renderer.keyInput.prependListener("keypress", this.keypressListener)
-    this.renderer.keyInput.prependListener("keyrelease", this.keyreleaseListener)
-    this.renderer.prependInputHandler(this.rawListener)
-    this.renderer.on(CliRenderEvents.FOCUSED_RENDERABLE, this.focusedRenderableListener)
-    this.renderer.once(CliRenderEvents.DESTROY, () => {
+    this.cleanupListeners.push(this.host.onKeyPress(this.keypressListener))
+    this.cleanupListeners.push(this.host.onKeyRelease(this.keyreleaseListener))
+    if (this.host.onRawInput) {
+      this.cleanupListeners.push(this.host.onRawInput(this.rawListener))
+    }
+    this.cleanupListeners.push(this.host.onFocusChange(this.focusedTargetListener))
+    this.cleanupListeners.push(this.host.onDestroy(() => {
       this.cleanup()
-    })
+    }))
   }
 
   private cleanup(): void {
@@ -234,10 +235,9 @@ export class Keymap {
       layer.bucket = undefined
     }
 
-    this.renderer.keyInput.off("keypress", this.keypressListener)
-    this.renderer.keyInput.off("keyrelease", this.keyreleaseListener)
-    this.renderer.removeInputHandler(this.rawListener)
-    this.renderer.off(CliRenderEvents.FOCUSED_RENDERABLE, this.focusedRenderableListener)
+    for (const cleanupListener of this.cleanupListeners.splice(0)) {
+      cleanupListener()
+    }
   }
 
   public setData(name: string, value: unknown): void {
@@ -296,11 +296,11 @@ export class Keymap {
     return true
   }
 
-  public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey[] {
+  public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey<TTarget, TEvent>[] {
     return this.projection.getActiveKeys(options)
   }
 
-  public getCommands(query?: CommandQuery): readonly CommandRecord[] {
+  public getCommands(query?: CommandQuery<TTarget>): readonly CommandRecord[] {
     return this.projection.getCommands(query)
   }
 
@@ -308,13 +308,13 @@ export class Keymap {
     return normalizeCommandName(name)
   }
 
-  public normalizeBindings(bindings: Bindings): BindingInput[] {
+  public normalizeBindings(bindings: Bindings<TTarget, TEvent>): BindingInput<TTarget, TEvent>[] {
     return normalizeBindingInputs(bindings)
   }
 
   public acquireResource(key: symbol, setup: () => () => void): () => void {
-    if (this.cleanedUp || this.renderer.isDestroyed) {
-      throw new Error("Cannot use a keymap after its renderer was destroyed")
+    if (this.cleanedUp || this.host.isDestroyed) {
+      throw new Error("Cannot use a keymap after its host was destroyed")
     }
 
     const existing = this.resources.get(key)
@@ -334,44 +334,47 @@ export class Keymap {
     }
   }
 
-  public runCommand(cmd: string, options?: RunCommandOptions): RunCommandResult {
+  public runCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult {
     return this.commands.runCommand(cmd, options)
   }
 
-  public on(name: "state", fn: Listener<Events["state"]>): () => void
+  public on(name: "state", fn: Listener<Events<TTarget, TEvent>["state"]>): () => void
 
-  public on(name: "pendingSequence", fn: Listener<Events["pendingSequence"]>): () => void
+  public on(name: "pendingSequence", fn: Listener<Events<TTarget, TEvent>["pendingSequence"]>): () => void
 
-  public on(name: "unresolvedCommand", fn: Listener<Events["unresolvedCommand"]>): () => void
+  public on(name: "unresolvedCommand", fn: Listener<Events<TTarget, TEvent>["unresolvedCommand"]>): () => void
 
-  public on(name: "warning", fn: Listener<Events["warning"]>): () => void
+  public on(name: "warning", fn: Listener<Events<TTarget, TEvent>["warning"]>): () => void
 
-  public on(name: "error", fn: Listener<Events["error"]>): () => void
+  public on(name: "error", fn: Listener<Events<TTarget, TEvent>["error"]>): () => void
 
-  public on(name: keyof Events, fn: (() => void) | ((value: Events[keyof Events]) => void)): () => void {
+  public on(
+    name: keyof Events<TTarget, TEvent>,
+    fn: (() => void) | ((value: Events<TTarget, TEvent>[keyof Events<TTarget, TEvent>]) => void),
+  ): () => void {
     if (name === "warning") {
-      return this.events.hook(name, fn as EmitterListener<Events["warning"]>)
+      return this.events.hook(name, fn as EmitterListener<Events<TTarget, TEvent>["warning"]>)
     }
 
     if (name === "error") {
-      return this.events.hook(name, fn as EmitterListener<Events["error"]>)
+      return this.events.hook(name, fn as EmitterListener<Events<TTarget, TEvent>["error"]>)
     }
 
-    return this.hooks.hook(name, fn as Listener<Hooks[typeof name]>)
+    return this.hooks.hook(name, fn as Listener<Hooks<TTarget, TEvent>[typeof name]>)
   }
 
-  public intercept(name: "key", fn: (ctx: KeyInputContext) => void, options?: KeyInterceptOptions): () => void
+  public intercept(name: "key", fn: (ctx: KeyInputContext<TEvent>) => void, options?: KeyInterceptOptions): () => void
 
   public intercept(name: "raw", fn: (ctx: RawInputContext) => void, options?: RawInterceptOptions): () => void
 
   public intercept(
     name: "key" | "raw",
-    fn: ((ctx: KeyInputContext) => void) | ((ctx: RawInputContext) => void),
+    fn: ((ctx: KeyInputContext<TEvent>) => void) | ((ctx: RawInputContext) => void),
     options?: KeyInterceptOptions | RawInterceptOptions,
   ): () => void {
     if (name === "key") {
       const keyOptions = options as KeyInterceptOptions | undefined
-      return this.state.config.keyHooks.register(fn as (ctx: KeyInputContext) => void, {
+      return this.state.config.keyHooks.register(fn as (ctx: KeyInputContext<TEvent>) => void, {
         priority: keyOptions?.priority ?? 0,
         release: keyOptions?.release ?? false,
       })
@@ -383,7 +386,7 @@ export class Keymap {
     })
   }
 
-  public registerLayer(layer: Layer): () => void {
+  public registerLayer(layer: Layer<TTarget, TEvent>): () => void {
     return this.layers.registerLayer(layer)
   }
 
@@ -398,11 +401,11 @@ export class Keymap {
     })
   }
 
-  public prependBindingTransformer(transformer: BindingTransformer): () => void {
+  public prependBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {
     return this.state.config.bindingTransformers.prepend(transformer)
   }
 
-  public appendBindingTransformer(transformer: BindingTransformer): () => void {
+  public appendBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {
     return this.state.config.bindingTransformers.append(transformer)
   }
 
@@ -538,11 +541,11 @@ export class Keymap {
     })
   }
 
-  public prependCommandResolver(resolver: CommandResolver): () => void {
+  public prependCommandResolver(resolver: CommandResolver<TTarget, TEvent>): () => void {
     return this.commands.prependCommandResolver(resolver)
   }
 
-  public appendCommandResolver(resolver: CommandResolver): () => void {
+  public appendCommandResolver(resolver: CommandResolver<TTarget, TEvent>): () => void {
     return this.commands.appendCommandResolver(resolver)
   }
 
@@ -550,11 +553,11 @@ export class Keymap {
     this.commands.clearCommandResolvers()
   }
 
-  public prependLayerAnalyzer(analyzer: LayerAnalyzer): () => void {
+  public prependLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
     return this.state.config.layerAnalyzers.prepend(analyzer)
   }
 
-  public appendLayerAnalyzer(analyzer: LayerAnalyzer): () => void {
+  public appendLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
     return this.state.config.layerAnalyzers.append(analyzer)
   }
 
@@ -562,11 +565,11 @@ export class Keymap {
     this.state.config.layerAnalyzers.clear()
   }
 
-  public prependEventMatchResolver(resolver: EventMatchResolver): () => void {
+  public prependEventMatchResolver(resolver: EventMatchResolver<TEvent>): () => void {
     return this.state.config.eventMatchResolvers.prepend(resolver)
   }
 
-  public appendEventMatchResolver(resolver: EventMatchResolver): () => void {
+  public appendEventMatchResolver(resolver: EventMatchResolver<TEvent>): () => void {
     return this.state.config.eventMatchResolvers.append(resolver)
   }
 
@@ -574,7 +577,7 @@ export class Keymap {
     this.state.config.eventMatchResolvers.clear()
   }
 
-  private handleFocusedRenderableChange(_focused: Renderable | null): void {
+  private handleFocusedTargetChange(_focused: TTarget | null): void {
     this.notify.runWithStateChangeBatch(() => {
       // Any focus change breaks a pending sequence. Prefix dispatch is captured
       // against the state that started it, and changing focus can change the
@@ -616,24 +619,4 @@ export class Keymap {
     resource.dispose()
     this.resources.delete(key)
   }
-}
-
-export function getKeymap(renderer: CliRenderer): Keymap {
-  if (renderer.isDestroyed) {
-    throw new Error("Cannot create a keymap for a destroyed renderer")
-  }
-
-  const existing = keymapsByRenderer.get(renderer)
-  if (existing) {
-    return existing
-  }
-
-  const keymap = new Keymap(renderer)
-  keymapsByRenderer.set(renderer, keymap)
-
-  renderer.once(CliRenderEvents.DESTROY, () => {
-    keymapsByRenderer.delete(renderer)
-  })
-
-  return keymap
 }

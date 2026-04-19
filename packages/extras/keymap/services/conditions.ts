@@ -1,6 +1,6 @@
 import type { NotificationService } from "./notify.js"
 import type { State } from "./state.js"
-import type { ReactiveMatcher, RegisteredLayer, RuntimeMatchable, RuntimeMatcher } from "../types.js"
+import type { KeymapEvent, ReactiveMatcher, RegisteredLayer, RuntimeMatchable, RuntimeMatcher } from "../types.js"
 import { getErrorMessage } from "../lib/utils.js"
 
 function isReactiveMatcher(value: unknown): value is ReactiveMatcher {
@@ -12,10 +12,10 @@ function isReactiveMatcher(value: unknown): value is ReactiveMatcher {
   return typeof candidate.get === "function" && typeof candidate.subscribe === "function"
 }
 
-export class ConditionService {
+export class ConditionService<TTarget extends object, TEvent extends KeymapEvent> {
   constructor(
-    private readonly state: State,
-    private readonly notify: NotificationService,
+    private readonly state: State<TTarget, TEvent>,
+    private readonly notify: NotificationService<TTarget, TEvent>,
   ) {}
 
   public buildRuntimeMatcher(matcher: (() => boolean) | ReactiveMatcher, source: string): RuntimeMatcher {
@@ -141,7 +141,7 @@ export class ConditionService {
     return matched
   }
 
-  public layerMatchesRuntimeState(layer: RegisteredLayer): boolean {
+  public layerMatchesRuntimeState(layer: RegisteredLayer<TTarget, TEvent>): boolean {
     if (this.state.layers.layersWithConditions === 0 || this.hasNoConditions(layer)) {
       return true
     }

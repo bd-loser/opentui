@@ -1,3 +1,4 @@
+import type { KeyEvent, Renderable } from "@opentui/core"
 import type { Keymap } from "../types.js"
 
 function getBaseLayoutKeyName(baseCode: number | undefined): string | undefined {
@@ -18,7 +19,7 @@ function getBaseLayoutKeyName(baseCode: number | undefined): string | undefined 
   }
 }
 
-export function registerBaseLayoutFallback(keymap: Keymap): () => void {
+export function registerBaseLayoutFallback(keymap: Keymap<Renderable, KeyEvent>): () => void {
   return keymap.appendEventMatchResolver((event, ctx) => {
     const name = getBaseLayoutKeyName(event.baseCode)
     if (!name) {

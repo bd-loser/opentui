@@ -1,4 +1,3 @@
-import type { CliRenderer, Renderable } from "@opentui/core"
 import type { Emitter } from "../lib/emitter.js"
 import {
   createParsedKeyPart,
@@ -20,6 +19,8 @@ import type {
   CommandResolverContext,
   CompiledBinding,
   Hooks,
+  KeymapEvent,
+  KeymapHost,
   KeySequencePart,
   NormalizedKeyStroke,
   PendingSequenceState,
@@ -34,27 +35,30 @@ import type { ActiveCommandView, LayerCommandEntry, ResolvedCommandEntry, State 
 
 const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const
 
-interface ResolvedCommandLookup {
-  resolved?: ResolvedBindingCommand
+interface ResolvedCommandLookup<TTarget extends object, TEvent extends KeymapEvent> {
+  resolved?: ResolvedBindingCommand<TTarget, TEvent>
   hadError: boolean
 }
 
-interface QueryRegisteredCommandsOptions {
-  commands: Iterable<RegisteredCommand>
-  query?: CommandQuery
-  getCommandRecord(command: RegisteredCommand): CommandRecord
+interface QueryRegisteredCommandsOptions<TTarget extends object, TEvent extends KeymapEvent> {
+  commands: Iterable<RegisteredCommand<TTarget, TEvent>>
+  query?: CommandQuery<TTarget>
+  getCommandRecord(command: RegisteredCommand<TTarget, TEvent>): CommandRecord
   onFilterError(error: unknown): void
 }
 
-function getLiveRenderer(renderer: CliRenderer): CliRenderer {
-  if (renderer.isDestroyed) {
-    throw new Error("Cannot use a keymap after its renderer was destroyed")
+function getLiveHost<TTarget extends object, TEvent extends KeymapEvent>(host: KeymapHost<TTarget, TEvent>): KeymapHost<TTarget, TEvent> {
+  if (host.isDestroyed) {
+    throw new Error("Cannot use a keymap after its host was destroyed")
   }
 
-  return renderer
+  return host
 }
 
-function isSamePendingSequence(current: PendingSequenceState | null, next: PendingSequenceState | null): boolean {
+function isSamePendingSequence<TTarget extends object, TEvent extends KeymapEvent>(
+  current: PendingSequenceState<TTarget, TEvent> | null,
+  next: PendingSequenceState<TTarget, TEvent> | null,
+): boolean {
   if (current === next) {
     return true
   }
@@ -66,33 +70,28 @@ function isSamePendingSequence(current: PendingSequenceState | null, next: Pendi
   return current.layer === next.layer && current.node === next.node
 }
 
-export class ProjectionService {
+export class ProjectionService<TTarget extends object, TEvent extends KeymapEvent> {
   constructor(
-    private readonly state: State,
-    private readonly renderer: CliRenderer,
-    private readonly hooks: Emitter<Hooks>,
-    private readonly notify: NotificationService,
-    private readonly conditions: ConditionService,
+    private readonly state: State<TTarget, TEvent>,
+    private readonly host: KeymapHost<TTarget, TEvent>,
+    private readonly hooks: Emitter<Hooks<TTarget, TEvent>>,
+    private readonly notify: NotificationService<TTarget, TEvent>,
+    private readonly conditions: ConditionService<TTarget, TEvent>,
   ) {}
 
-  public getFocusedRenderable(): Renderable | null {
-    const focused = getLiveRenderer(this.renderer).currentFocusedRenderable
-    if (!focused || focused.isDestroyed || !focused.focused) {
+  public getFocusedTarget(): TTarget | null {
+    return getLiveHost(this.host).getFocusedTarget()
+  }
+
+  public getFocusedTargetIfAvailable(): TTarget | null {
+    if (this.host.isDestroyed) {
       return null
     }
 
-    return focused
+    return this.getFocusedTarget()
   }
 
-  public getFocusedRenderableIfAvailable(): Renderable | null {
-    if (this.renderer.isDestroyed) {
-      return null
-    }
-
-    return this.getFocusedRenderable()
-  }
-
-  public setPendingSequence(next: PendingSequenceState | null): void {
+  public setPendingSequence(next: PendingSequenceState<TTarget, TEvent> | null): void {
     if (isSamePendingSequence(this.state.projection.pendingSequence, next)) {
       return
     }
@@ -103,13 +102,13 @@ export class ProjectionService {
     this.notify.queueStateChange()
   }
 
-  public ensureValidPendingSequence(): PendingSequenceState | undefined {
+  public ensureValidPendingSequence(): PendingSequenceState<TTarget, TEvent> | undefined {
     const pending = this.state.projection.pendingSequence
     if (!pending) {
       return undefined
     }
 
-    const focused = this.getFocusedRenderable()
+    const focused = this.getFocusedTarget()
     if (!this.state.layers.layers.has(pending.layer) || !this.isLayerActiveForFocused(pending.layer, focused)) {
       this.setPendingSequence(null)
       return undefined
@@ -148,7 +147,7 @@ export class ProjectionService {
     return sequence
   }
 
-  public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey[] {
+  public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey<TTarget, TEvent>[] {
     const projections = this.state.projection
     const derivedStateVersion = this.state.notify.derivedStateVersion
     const includeBindings = options?.includeBindings === true
@@ -170,7 +169,7 @@ export class ProjectionService {
       return projections.activeKeysPlainCache
     }
 
-    const focused = this.getFocusedRenderable()
+    const focused = this.getFocusedTarget()
     const activeView = this.getActiveCommandView(focused)
     const pending = this.ensureValidPendingSequence()
     const activeLayers = pending ? [] : this.getActiveLayers(focused)
@@ -205,14 +204,14 @@ export class ProjectionService {
     return activeKeys
   }
 
-  public getCommands(query?: CommandQuery): readonly CommandRecord[] {
+  public getCommands(query?: CommandQuery<TTarget>): readonly CommandRecord[] {
     const visibility = query?.visibility ?? "reachable"
     const focused =
       query && Object.prototype.hasOwnProperty.call(query, "focused")
         ? (query.focused ?? null)
-        : this.getFocusedRenderableIfAvailable()
+        : this.getFocusedTargetIfAvailable()
 
-    let commands: readonly RegisteredCommand[]
+    let commands: readonly RegisteredCommand<TTarget, TEvent>[]
     if (visibility === "registered") {
       commands = this.getRegisteredCommands()
     } else {
@@ -235,9 +234,9 @@ export class ProjectionService {
 
   public getResolvedCommandChain(
     command: string,
-    focused: Renderable | null,
+    focused: TTarget | null,
     includeRecord: boolean,
-  ): { entries?: readonly ResolvedCommandEntry[]; hadError: boolean } {
+  ): { entries?: readonly ResolvedCommandEntry<TTarget, TEvent>[]; hadError: boolean } {
     const view = this.getActiveCommandView(focused)
     const entries = this.getResolvedCommandChainFromView(view, command, focused, includeRecord)
     const hadError = (includeRecord ? view.fallbackWithRecordErrors : view.fallbackWithoutRecordErrors).has(command)
@@ -245,22 +244,22 @@ export class ProjectionService {
     return { entries, hadError }
   }
 
-  public getCommandAttrs(command: string, focused: Renderable | null): Readonly<Attributes> | undefined {
+  public getCommandAttrs(command: string, focused: TTarget | null): Readonly<Attributes> | undefined {
     const top = this.getTopResolvedCommand(command, focused, false)
     return top?.resolved.attrs
   }
 
-  public getTopCommandRecord(command: string, focused: Renderable | null): CommandRecord | undefined {
+  public getTopCommandRecord(command: string, focused: TTarget | null): CommandRecord | undefined {
     const top = this.getTopResolvedCommand(command, focused, true)
     return top?.resolved.record
   }
 
-  public nodeHasReachableBindings(node: SequenceNode, focused: Renderable | null): boolean {
+  public nodeHasReachableBindings(node: SequenceNode<TTarget, TEvent>, focused: TTarget | null): boolean {
     return this.hasMatchingBindings(node.reachableBindings, focused, this.getActiveCommandView(focused))
   }
 
-  public getActiveLayers(focused: Renderable | null): RegisteredLayer[] {
-    const activeLayers: RegisteredLayer[] = []
+  public getActiveLayers(focused: TTarget | null): RegisteredLayer<TTarget, TEvent>[] {
+    const activeLayers: RegisteredLayer<TTarget, TEvent>[] = []
 
     this.forEachActivationTarget(focused, (current, isFocusedTarget) => {
       const bucket = this.state.layers.targetLayers.get(current)
@@ -276,9 +275,9 @@ export class ProjectionService {
     return activeLayers
   }
 
-  public isLayerActiveForFocused(layer: RegisteredLayer, focused: Renderable | null): boolean {
+  public isLayerActiveForFocused(layer: RegisteredLayer<TTarget, TEvent>, focused: TTarget | null): boolean {
     const target = layer.indexTarget
-    if (target.isDestroyed) {
+    if (this.host.isTargetDestroyed(target)) {
       return false
     }
 
@@ -299,11 +298,11 @@ export class ProjectionService {
     return isActive
   }
 
-  public layerCanCacheActiveKeys(layer: RegisteredLayer): boolean {
+  public layerCanCacheActiveKeys(layer: RegisteredLayer<TTarget, TEvent>): boolean {
     return !layer.hasUnkeyedMatchers && !layer.hasUnkeyedBindings
   }
 
-  public activeLayersCanCacheActiveKeys(activeLayers: readonly RegisteredLayer[]): boolean {
+  public activeLayersCanCacheActiveKeys(activeLayers: readonly RegisteredLayer<TTarget, TEvent>[]): boolean {
     for (const layer of activeLayers) {
       if (!this.layerCanCacheActiveKeys(layer)) {
         return false
@@ -314,10 +313,10 @@ export class ProjectionService {
   }
 
   private forEachActivationTarget(
-    focused: Renderable | null,
-    visit: (target: Renderable, isFocusedTarget: boolean) => boolean | void,
+    focused: TTarget | null,
+    visit: (target: TTarget, isFocusedTarget: boolean) => boolean | void,
   ): void {
-    let current: Renderable | null = focused ?? this.renderer.root
+    let current: TTarget | null = focused ?? this.host.rootTarget
     let isFocusedTarget = focused !== null
 
     while (current) {
@@ -326,14 +325,14 @@ export class ProjectionService {
         return
       }
 
-      current = current.parent
+      current = this.host.getParentTarget(current)
       isFocusedTarget = false
     }
   }
 
-  private collectSequencePartsFromNode(node: SequenceNode): KeySequencePart[] {
-    const nodes: SequenceNode[] = []
-    let current: SequenceNode | null = node
+  private collectSequencePartsFromNode(node: SequenceNode<TTarget, TEvent>): KeySequencePart[] {
+    const nodes: SequenceNode<TTarget, TEvent>[] = []
+    let current: SequenceNode<TTarget, TEvent> | null = node
 
     while (current && current.stroke) {
       nodes.push(current)
@@ -342,7 +341,7 @@ export class ProjectionService {
 
     nodes.reverse()
 
-    const focused = this.getFocusedRenderable()
+    const focused = this.getFocusedTarget()
     const activeView = this.getActiveCommandView(focused)
 
     return nodes.map((candidate) => {
@@ -355,11 +354,11 @@ export class ProjectionService {
   }
 
   private getMatchingBindings(
-    bindings: readonly CompiledBinding[],
-    focused: Renderable | null,
-    activeView: ActiveCommandView,
-  ): CompiledBinding[] {
-    const matches: CompiledBinding[] = []
+    bindings: readonly CompiledBinding<TTarget, TEvent>[],
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): CompiledBinding<TTarget, TEvent>[] {
+    const matches: CompiledBinding<TTarget, TEvent>[] = []
 
     for (const binding of bindings) {
       if (this.conditions.matchesConditions(binding) && this.isVisibleBinding(binding, focused, activeView)) {
@@ -371,9 +370,9 @@ export class ProjectionService {
   }
 
   private hasMatchingBindings(
-    bindings: readonly CompiledBinding[],
-    focused: Renderable | null,
-    activeView: ActiveCommandView,
+    bindings: readonly CompiledBinding<TTarget, TEvent>[],
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
   ): boolean {
     for (const binding of bindings) {
       if (this.conditions.matchesConditions(binding) && this.isVisibleBinding(binding, focused, activeView)) {
@@ -385,9 +384,9 @@ export class ProjectionService {
   }
 
   private isVisibleBinding(
-    binding: CompiledBinding,
-    focused: Renderable | null,
-    activeView: ActiveCommandView,
+    binding: CompiledBinding<TTarget, TEvent>,
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
   ): boolean {
     if (binding.command === undefined || binding.run) {
       return true
@@ -405,10 +404,10 @@ export class ProjectionService {
   }
 
   private getNodeDisplay(
-    node: SequenceNode,
-    focused: Renderable | null,
-    activeView: ActiveCommandView,
-    reachableBindings: readonly CompiledBinding[] = this.getMatchingBindings(
+    node: SequenceNode<TTarget, TEvent>,
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+    reachableBindings: readonly CompiledBinding<TTarget, TEvent>[] = this.getMatchingBindings(
       node.reachableBindings,
       focused,
       activeView,
@@ -441,10 +440,10 @@ export class ProjectionService {
   }
 
   private toActiveBinding(
-    binding: CompiledBinding,
-    focused: Renderable | null,
-    activeView: ActiveCommandView,
-  ): ActiveBinding {
+    binding: CompiledBinding<TTarget, TEvent>,
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): ActiveBinding<TTarget, TEvent> {
     return {
       sequence: binding.sequence,
       command: binding.command,
@@ -457,17 +456,17 @@ export class ProjectionService {
   }
 
   private collectActiveBindings(
-    bindings: readonly CompiledBinding[],
-    focused: Renderable | null,
-    activeView: ActiveCommandView,
-  ): ActiveBinding[] {
+    bindings: readonly CompiledBinding<TTarget, TEvent>[],
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): ActiveBinding<TTarget, TEvent>[] {
     return bindings.map((binding) => this.toActiveBinding(binding, focused, activeView))
   }
 
   private getActiveCommandAttrs(
-    binding: CompiledBinding,
-    focused: Renderable | null,
-    activeView: ActiveCommandView,
+    binding: CompiledBinding<TTarget, TEvent>,
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
   ): Readonly<Attributes> | undefined {
     if (typeof binding.command !== "string") {
       return undefined
@@ -483,13 +482,13 @@ export class ProjectionService {
   }
 
   private collectActiveKeysAtRoot(
-    activeLayers: RegisteredLayer[],
+    activeLayers: RegisteredLayer<TTarget, TEvent>[],
     includeBindings: boolean,
     includeMetadata: boolean,
-    focused: Renderable | null,
-    activeView: ActiveCommandView,
-  ): readonly ActiveKey[] {
-    const activeKeys = new Map<string, ActiveKeyState>()
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): readonly ActiveKey<TTarget, TEvent>[] {
+    const activeKeys = new Map<string, ActiveKeyState<TTarget, TEvent>>()
     const stopped = new Set<string>()
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
 
@@ -525,7 +524,7 @@ export class ProjectionService {
       }
     }
 
-    const materialized: ActiveKey[] = []
+    const materialized: ActiveKey<TTarget, TEvent>[] = []
     for (const state of activeKeys.values()) {
       const activeKey = this.materializeActiveKey(state, includeBindings, includeMetadata, focused, activeView)
       if (activeKey) {
@@ -537,13 +536,13 @@ export class ProjectionService {
   }
 
   private collectActiveKeysFromChildren(
-    children: ReadonlyMap<string, SequenceNode>,
+    children: ReadonlyMap<string, SequenceNode<TTarget, TEvent>>,
     includeBindings: boolean,
     includeMetadata: boolean,
-    focused: Renderable | null,
-    activeView: ActiveCommandView,
-  ): readonly ActiveKey[] {
-    const activeKeys: ActiveKey[] = []
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): readonly ActiveKey<TTarget, TEvent>[] {
+    const activeKeys: ActiveKey<TTarget, TEvent>[] = []
 
     for (const child of children.values()) {
       const selection = this.selectActiveKey(child, includeBindings, focused, activeView)
@@ -567,22 +566,22 @@ export class ProjectionService {
   }
 
   private selectActiveKey(
-    node: SequenceNode,
+    node: SequenceNode<TTarget, TEvent>,
     includeBindings: boolean,
-    focused: Renderable | null,
-    activeView: ActiveCommandView,
-  ): ActiveKeySelection | undefined {
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): ActiveKeySelection<TTarget, TEvent> | undefined {
     return node.children.size > 0
       ? this.selectPrefixActiveKey(node, includeBindings, focused, activeView)
       : this.selectExactActiveKey(node, includeBindings, focused, activeView)
   }
 
   private selectPrefixActiveKey(
-    node: SequenceNode,
+    node: SequenceNode<TTarget, TEvent>,
     includeBindings: boolean,
-    focused: Renderable | null,
-    activeView: ActiveCommandView,
-  ): ActiveKeySelection | undefined {
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): ActiveKeySelection<TTarget, TEvent> | undefined {
     if (!node.stroke) {
       return undefined
     }
@@ -604,11 +603,11 @@ export class ProjectionService {
   }
 
   private selectExactActiveKey(
-    node: SequenceNode,
+    node: SequenceNode<TTarget, TEvent>,
     includeBindings: boolean,
-    focused: Renderable | null,
-    activeView: ActiveCommandView,
-  ): ActiveKeySelection | undefined {
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): ActiveKeySelection<TTarget, TEvent> | undefined {
     if (!node.stroke) {
       return undefined
     }
@@ -634,12 +633,14 @@ export class ProjectionService {
   }
 
   private selectActiveBindings(
-    bindings: readonly CompiledBinding[],
-    focused: Renderable | null,
-    activeView: ActiveCommandView,
-  ): { bindings: readonly CompiledBinding[]; commandBinding?: CompiledBinding; stop: boolean } | undefined {
-    const selected: CompiledBinding[] = []
-    let commandBinding: CompiledBinding | undefined
+    bindings: readonly CompiledBinding<TTarget, TEvent>[],
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ):
+    | { bindings: readonly CompiledBinding<TTarget, TEvent>[]; commandBinding?: CompiledBinding<TTarget, TEvent>; stop: boolean }
+    | undefined {
+    const selected: CompiledBinding<TTarget, TEvent>[] = []
+    let commandBinding: CompiledBinding<TTarget, TEvent> | undefined
 
     for (const binding of bindings) {
       if (!this.conditions.matchesConditions(binding) || !this.isVisibleBinding(binding, focused, activeView)) {
@@ -666,9 +667,9 @@ export class ProjectionService {
 
   private createActiveKeyState(
     stroke: NormalizedKeyStroke,
-    selection: ActiveKeySelection,
+    selection: ActiveKeySelection<TTarget, TEvent>,
     includeBindings: boolean,
-  ): ActiveKeyState {
+  ): ActiveKeyState<TTarget, TEvent> {
     return {
       stroke,
       display: selection.display,
@@ -679,7 +680,11 @@ export class ProjectionService {
     }
   }
 
-  private updateActiveKeyState(state: ActiveKeyState, selection: ActiveKeySelection, includeBindings: boolean): void {
+  private updateActiveKeyState(
+    state: ActiveKeyState<TTarget, TEvent>,
+    selection: ActiveKeySelection<TTarget, TEvent>,
+    includeBindings: boolean,
+  ): void {
     if (!state.firstBinding && selection.firstBinding) {
       state.firstBinding = selection.firstBinding
     }
@@ -705,17 +710,17 @@ export class ProjectionService {
   }
 
   private materializeActiveKey(
-    state: ActiveKeyState,
+    state: ActiveKeyState<TTarget, TEvent>,
     includeBindings: boolean,
     includeMetadata: boolean,
-    focused: Renderable | null,
-    activeView: ActiveCommandView,
-  ): ActiveKey | undefined {
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): ActiveKey<TTarget, TEvent> | undefined {
     if (!state.commandBinding && !state.continues) {
       return undefined
     }
 
-    const activeKey: ActiveKey = {
+    const activeKey: ActiveKey<TTarget, TEvent> = {
       stroke: snapshotStroke(state.stroke),
       display: state.display,
       continues: state.continues,
@@ -750,9 +755,9 @@ export class ProjectionService {
 
   private getTopResolvedCommand(
     command: string,
-    focused: Renderable | null,
+    focused: TTarget | null,
     includeRecord: boolean,
-  ): ResolvedCommandEntry | undefined {
+  ): ResolvedCommandEntry<TTarget, TEvent> | undefined {
     const activeView = this.getActiveCommandView(focused)
     const active = activeView.reachableByName.get(command)
     if (active) {
@@ -766,11 +771,11 @@ export class ProjectionService {
   }
 
   private getFallbackResolvedCommand(
-    activeView: ActiveCommandView,
+    activeView: ActiveCommandView<TTarget, TEvent>,
     command: string,
-    focused: Renderable | null,
+    focused: TTarget | null,
     includeRecord: boolean,
-  ): ResolvedCommandEntry | undefined {
+  ): ResolvedCommandEntry<TTarget, TEvent> | undefined {
     const cache = includeRecord ? activeView.fallbackWithRecord : activeView.fallbackWithoutRecord
     const errorCache = includeRecord ? activeView.fallbackWithRecordErrors : activeView.fallbackWithoutRecordErrors
     if (cache.has(command)) {
@@ -792,18 +797,18 @@ export class ProjectionService {
   }
 
   private getResolvedCommandChainFromView(
-    activeView: ActiveCommandView,
+    activeView: ActiveCommandView<TTarget, TEvent>,
     command: string,
-    focused: Renderable | null,
+    focused: TTarget | null,
     includeRecord: boolean,
-  ): readonly ResolvedCommandEntry[] | undefined {
+  ): readonly ResolvedCommandEntry<TTarget, TEvent>[] | undefined {
     const cache = includeRecord ? activeView.resolvedWithRecordChains : activeView.resolvedWithoutRecordChains
     const cached = cache.get(command)
     if (cached) {
       return cached.length > 0 ? cached : undefined
     }
 
-    const resolved: ResolvedCommandEntry[] = []
+    const resolved: ResolvedCommandEntry<TTarget, TEvent>[] = []
     const activeChain = activeView.chainsByName.get(command)
     if (activeChain) {
       for (const entry of activeChain) {
@@ -823,8 +828,8 @@ export class ProjectionService {
     return resolved.length > 0 ? resolved : undefined
   }
 
-  private getActiveCommandView(focused: Renderable | null): ActiveCommandView {
-    const currentFocused = this.getFocusedRenderableIfAvailable()
+  private getActiveCommandView(focused: TTarget | null): ActiveCommandView<TTarget, TEvent> {
+    const currentFocused = this.getFocusedTargetIfAvailable()
     const derivedStateVersion = this.state.notify.derivedStateVersion
 
     if (
@@ -835,10 +840,10 @@ export class ProjectionService {
       return this.state.projection.activeCommandView
     }
 
-    const entries: LayerCommandEntry[] = []
-    const reachable: LayerCommandEntry[] = []
-    const reachableByName = new Map<string, LayerCommandEntry>()
-    const chainsByName = new Map<string, LayerCommandEntry[]>()
+    const entries: LayerCommandEntry<TTarget, TEvent>[] = []
+    const reachable: LayerCommandEntry<TTarget, TEvent>[] = []
+    const reachableByName = new Map<string, LayerCommandEntry<TTarget, TEvent>>()
+    const chainsByName = new Map<string, LayerCommandEntry<TTarget, TEvent>[]>()
 
     if (this.state.layers.layersWithCommands > 0) {
       for (const layer of this.getActiveLayers(focused)) {
@@ -847,7 +852,7 @@ export class ProjectionService {
         }
 
         for (const command of layer.commands) {
-          const entry: LayerCommandEntry = { layer, command }
+          const entry: LayerCommandEntry<TTarget, TEvent> = { layer, command }
           entries.push(entry)
 
           const existing = chainsByName.get(command.name)
@@ -865,7 +870,7 @@ export class ProjectionService {
       }
     }
 
-    const view: ActiveCommandView = {
+    const view: ActiveCommandView<TTarget, TEvent> = {
       entries,
       reachable,
       reachableByName,
@@ -886,7 +891,7 @@ export class ProjectionService {
     return view
   }
 
-  private getRegisteredCommands(): readonly RegisteredCommand[] {
+  private getRegisteredCommands(): readonly RegisteredCommand<TTarget, TEvent>[] {
     const cacheVersion = this.state.commands.commandMetadataVersion
     if (this.state.projection.registeredCommandsCacheVersion === cacheVersion) {
       return this.state.projection.registeredCommandsCache
@@ -895,7 +900,7 @@ export class ProjectionService {
     const layers = [...this.state.layers.layers]
     layers.sort((left, right) => left.order - right.order)
 
-    const commands: RegisteredCommand[] = []
+    const commands: RegisteredCommand<TTarget, TEvent>[] = []
     for (const layer of layers) {
       if (layer.commands.length > 0) {
         commands.push(...layer.commands)
@@ -909,9 +914,9 @@ export class ProjectionService {
 
   private resolveCommandWithResolvers(
     command: string,
-    focused: Renderable | null,
+    focused: TTarget | null,
     options?: { includeRecord?: boolean },
-  ): ResolvedCommandLookup {
+  ): ResolvedCommandLookup<TTarget, TEvent> {
     const resolvers = this.state.config.commandResolvers.values()
     if (resolvers.length === 0) {
       return { hadError: false }
@@ -931,7 +936,7 @@ export class ProjectionService {
     let hadError = false
 
     for (const resolver of resolvers) {
-      let resolved: ResolvedBindingCommand | undefined
+      let resolved: ResolvedBindingCommand<TTarget, TEvent> | undefined
 
       try {
         resolved = resolver(command, context)
@@ -971,7 +976,9 @@ export class ProjectionService {
   }
 }
 
-function queryRegisteredCommands(options: QueryRegisteredCommandsOptions): readonly CommandRecord[] {
+function queryRegisteredCommands<TTarget extends object, TEvent extends KeymapEvent>(
+  options: QueryRegisteredCommandsOptions<TTarget, TEvent>,
+): readonly CommandRecord[] {
   const namespace = options.query?.namespace
   const normalizedSearch = options.query?.search?.trim().toLowerCase() ?? ""
   let searchKeys = DEFAULT_COMMAND_SEARCH_FIELDS as readonly string[]
@@ -1027,7 +1034,11 @@ function queryRegisteredCommands(options: QueryRegisteredCommandsOptions): reado
   return results
 }
 
-function commandMatchesSearch(command: RegisteredCommand, search: string, searchKeys: readonly string[]): boolean {
+function commandMatchesSearch<TTarget extends object, TEvent extends KeymapEvent>(
+  command: RegisteredCommand<TTarget, TEvent>,
+  search: string,
+  searchKeys: readonly string[],
+): boolean {
   if (!search) {
     return true
   }
@@ -1041,8 +1052,8 @@ function commandMatchesSearch(command: RegisteredCommand, search: string, search
   return false
 }
 
-function commandMatchesNamespace(
-  command: RegisteredCommand,
+function commandMatchesNamespace<TTarget extends object, TEvent extends KeymapEvent>(
+  command: RegisteredCommand<TTarget, TEvent>,
   namespace: string | readonly string[] | undefined,
 ): boolean {
   if (namespace === undefined) {
@@ -1056,10 +1067,10 @@ function commandMatchesNamespace(
   return commandValueMatchesFilter(command.fields.namespace, namespace)
 }
 
-function commandMatchesFilters(
-  command: RegisteredCommand,
+function commandMatchesFilters<TTarget extends object, TEvent extends KeymapEvent>(
+  command: RegisteredCommand<TTarget, TEvent>,
   filters: readonly [string, CommandQueryValue][] | undefined,
-  options: QueryRegisteredCommandsOptions,
+  options: QueryRegisteredCommandsOptions<TTarget, TEvent>,
 ): boolean {
   if (!filters) {
     return true
@@ -1074,7 +1085,11 @@ function commandMatchesFilters(
   return true
 }
 
-function commandKeyMatchesSearch(command: RegisteredCommand, key: string, search: string): boolean {
+function commandKeyMatchesSearch<TTarget extends object, TEvent extends KeymapEvent>(
+  command: RegisteredCommand<TTarget, TEvent>,
+  key: string,
+  search: string,
+): boolean {
   if (key === "name" && commandValueMatchesSearch(command.name, search)) {
     return true
   }
@@ -1093,11 +1108,11 @@ function commandKeyMatchesSearch(command: RegisteredCommand, key: string, search
   return false
 }
 
-function commandKeyMatchesQuery(
-  command: RegisteredCommand,
+function commandKeyMatchesQuery<TTarget extends object, TEvent extends KeymapEvent>(
+  command: RegisteredCommand<TTarget, TEvent>,
   key: string,
   matcher: CommandQueryValue,
-  options: QueryRegisteredCommandsOptions,
+  options: QueryRegisteredCommandsOptions<TTarget, TEvent>,
 ): boolean {
   if (typeof matcher === "function") {
     let record: CommandRecord | undefined
@@ -1163,8 +1178,8 @@ function commandKeyMatchesQuery(
   return commandKeyMatchesExact(command, key, matcher)
 }
 
-function commandKeyMatchesExact(
-  command: RegisteredCommand,
+function commandKeyMatchesExact<TTarget extends object, TEvent extends KeymapEvent>(
+  command: RegisteredCommand<TTarget, TEvent>,
   key: string,
   matcher: unknown | readonly unknown[],
 ): boolean {

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { getKeymap, stringifyKeyStroke } from "../index.js"
+import { stringifyKeyStroke } from "../index.js"
+import { getKeymap } from "../opentui.js"
 import { registerAliasesField } from "./aliases.js"
 
 let renderer: TestRenderer

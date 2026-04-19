@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import type { KeyEvent, Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { addons, getKeymap, type Keymap, type WarningEvent } from "../index.js"
+import { addons, type Keymap, type WarningEvent } from "../index.js"
+import { getKeymap } from "../opentui.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
 
-function captureWarnings(keymap: Keymap): { events: WarningEvent[]; warnings: string[] } {
+type OpenTuiKeymap = Keymap<Renderable, KeyEvent>
+
+function captureWarnings(keymap: OpenTuiKeymap): { events: WarningEvent[]; warnings: string[] } {
   const events: WarningEvent[] = []
   const warnings: string[] = []
   keymap.on("warning", (event) => {

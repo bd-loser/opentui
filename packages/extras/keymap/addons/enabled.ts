@@ -1,4 +1,4 @@
-import type { Keymap, ReactiveMatcher } from "../types.js"
+import type { Keymap, KeymapEvent, ReactiveMatcher } from "../types.js"
 
 /**
  * Accepted `enabled` values: boolean, raw `() => boolean`, or an
@@ -31,7 +31,9 @@ function normalizeEnabledValue(fieldName: string, value: unknown): Enabled {
   throw new Error(`Keymap enabled field "${fieldName}" must be a boolean, a function, or a reactive matcher`)
 }
 
-export function registerEnabledField(keymap: Keymap): () => void {
+export function registerEnabledField<TTarget extends object, TEvent extends KeymapEvent>(
+  keymap: Keymap<TTarget, TEvent>,
+): () => void {
   return keymap.registerLayerFields({
     enabled(value, ctx) {
       const normalized = normalizeEnabledValue("enabled", value)

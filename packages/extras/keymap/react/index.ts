@@ -1,6 +1,5 @@
-import type { Renderable } from "@opentui/core"
+import type { KeyEvent, Renderable } from "@opentui/core"
 import {
-  getKeymap,
   type ActiveKey,
   type ActiveKeyOptions,
   type Layer,
@@ -11,6 +10,7 @@ import {
 } from "../index.js"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, type DependencyList } from "react"
 import { useRenderer } from "@opentui/react"
+import { getKeymap } from "../opentui.js"
 
 export type UseBindingsTarget<TRenderable extends Renderable = Renderable> =
   | TRenderable
@@ -18,7 +18,7 @@ export type UseBindingsTarget<TRenderable extends Renderable = Renderable> =
   | undefined
   | (() => TRenderable | null | undefined)
 
-type UseBindingsLayerBase = LayerFields
+type UseBindingsLayerBase = LayerFields<Renderable, KeyEvent>
 
 export type BindingsRef<TRenderable extends Renderable = Renderable> = (value: TRenderable | null) => void
 
@@ -61,14 +61,14 @@ function resolveBindingsTarget(target: UseBindingsTarget | undefined): Renderabl
   return target ?? undefined
 }
 
-export const useKeymap = (): Keymap => {
+export const useKeymap = (): Keymap<Renderable, KeyEvent> => {
   const renderer = useRenderer()
   return useMemo(() => getKeymap(renderer), [renderer])
 }
 
 // Use the batched `state` event for derived reads. Pending-sequence changes
 // already flow through `state`, so subscribing to both would duplicate work.
-function useKeymapStateVersion(keymap: Keymap): number {
+function useKeymapStateVersion(keymap: Keymap<Renderable, KeyEvent>): number {
   const [version, bumpVersion] = useReducer((value: number) => value + 1, 0)
 
   useLayoutEffect(() => {
@@ -122,7 +122,7 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
   const refTargetRef = useRef<TRenderable | undefined>(undefined)
   const disposeRef = useRef<(() => void) | undefined>(undefined)
   const mountedRef = useRef(false)
-  const registeredScopeRef = useRef<Layer["scope"] | undefined>(undefined)
+  const registeredScopeRef = useRef<Layer<Renderable, KeyEvent>["scope"] | undefined>(undefined)
   const registeredTargetRef = useRef<Renderable | undefined>(undefined)
 
   layerRef.current = layer
@@ -154,7 +154,7 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
 
     const { scope: _scope, target: _target, ...baseLayer } = currentLayer
 
-    const resolvedLayer: Layer =
+    const resolvedLayer: Layer<Renderable, KeyEvent> =
       resolvedScope === "global"
         ? {
             ...baseLayer,

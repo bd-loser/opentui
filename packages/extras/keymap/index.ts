@@ -1,4 +1,4 @@
-export { getKeymap, Keymap } from "./keymap.js"
+export { Keymap } from "./keymap.js"
 export {
   defaultBindingParser,
   defaultBindingSyntax,
@@ -54,6 +54,8 @@ export type {
   CommandResult,
   EventData,
   KeyInputContext,
+  KeymapEvent,
+  KeymapHost,
   FocusLayer,
   FocusWithinLayer,
   GlobalLayer,

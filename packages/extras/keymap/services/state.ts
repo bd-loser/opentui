@@ -1,4 +1,3 @@
-import type { Renderable } from "@opentui/core"
 import type {
   ActiveKey,
   BindingExpander,
@@ -7,17 +6,17 @@ import type {
   BindingSyntax,
   BindingTransformer,
   CommandFieldCompiler,
-  LayerAnalyzer,
   CommandResolver,
   EventData,
   EventMatchResolver,
+  Hooks,
   KeyInputContext,
-  LayerFieldCompiler,
-  RawInputContext,
   KeySequencePart,
-  NormalizedKeyStroke,
-  ResolvedKeyToken,
+  KeymapEvent,
+  LayerAnalyzer,
+  LayerFieldCompiler,
   PendingSequenceState,
+  RawInputContext,
   RegisteredCommand,
   RegisteredLayer,
   RegisteredLayerBucket,
@@ -32,48 +31,48 @@ export interface CoreState {
   order: number
 }
 
-export interface ConfigState {
-  tokens: Map<string, ResolvedKeyToken>
+export interface ConfigState<TTarget extends object, TEvent extends KeymapEvent> {
+  tokens: Map<string, import("../types.js").ResolvedKeyToken>
   bindingSyntax: BindingSyntax | undefined
   layerFields: Map<string, LayerFieldCompiler>
   bindingExpanders: OrderedRegistry<BindingExpander>
   bindingParsers: OrderedRegistry<BindingParser>
-  bindingTransformers: OrderedRegistry<BindingTransformer>
+  bindingTransformers: OrderedRegistry<BindingTransformer<TTarget, TEvent>>
   bindingFields: Map<string, BindingFieldCompiler>
   commandFields: Map<string, CommandFieldCompiler>
-  layerAnalyzers: OrderedRegistry<LayerAnalyzer>
-  commandResolvers: OrderedRegistry<CommandResolver>
-  eventMatchResolvers: OrderedRegistry<EventMatchResolver>
-  keyHooks: PriorityRegistry<(ctx: KeyInputContext) => void, { priority: number; release: boolean }>
+  layerAnalyzers: OrderedRegistry<LayerAnalyzer<TTarget, TEvent>>
+  commandResolvers: OrderedRegistry<CommandResolver<TTarget, TEvent>>
+  eventMatchResolvers: OrderedRegistry<EventMatchResolver<TEvent>>
+  keyHooks: PriorityRegistry<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>
   rawHooks: PriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>
 }
 
-export interface LayersState {
-  layers: Set<RegisteredLayer>
-  targetLayers: WeakMap<Renderable, RegisteredLayerBucket>
+export interface LayersState<TTarget extends object, TEvent extends KeymapEvent> {
+  layers: Set<RegisteredLayer<TTarget, TEvent>>
+  targetLayers: WeakMap<TTarget, RegisteredLayerBucket<TTarget, TEvent>>
   layersWithConditions: number
   layersWithCommands: number
 }
 
-export interface LayerCommandEntry {
-  layer: RegisteredLayer
-  command: RegisteredCommand
+export interface LayerCommandEntry<TTarget extends object, TEvent extends KeymapEvent> {
+  layer: RegisteredLayer<TTarget, TEvent>
+  command: RegisteredCommand<TTarget, TEvent>
 }
 
-export interface ResolvedCommandEntry {
-  target?: Renderable
-  resolved: ResolvedBindingCommand
+export interface ResolvedCommandEntry<TTarget extends object, TEvent extends KeymapEvent> {
+  target?: TTarget
+  resolved: ResolvedBindingCommand<TTarget, TEvent>
 }
 
-export interface ActiveCommandView {
-  entries: readonly LayerCommandEntry[]
-  reachable: readonly LayerCommandEntry[]
-  reachableByName: ReadonlyMap<string, LayerCommandEntry>
-  chainsByName: ReadonlyMap<string, readonly LayerCommandEntry[]>
-  resolvedWithoutRecordChains: Map<string, readonly ResolvedCommandEntry[]>
-  resolvedWithRecordChains: Map<string, readonly ResolvedCommandEntry[]>
-  fallbackWithoutRecord: Map<string, ResolvedBindingCommand | null>
-  fallbackWithRecord: Map<string, ResolvedBindingCommand | null>
+export interface ActiveCommandView<TTarget extends object, TEvent extends KeymapEvent> {
+  entries: readonly LayerCommandEntry<TTarget, TEvent>[]
+  reachable: readonly LayerCommandEntry<TTarget, TEvent>[]
+  reachableByName: ReadonlyMap<string, LayerCommandEntry<TTarget, TEvent>>
+  chainsByName: ReadonlyMap<string, readonly LayerCommandEntry<TTarget, TEvent>[]>
+  resolvedWithoutRecordChains: Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[]>
+  resolvedWithRecordChains: Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[]>
+  fallbackWithoutRecord: Map<string, ResolvedBindingCommand<TTarget, TEvent> | null>
+  fallbackWithRecord: Map<string, ResolvedBindingCommand<TTarget, TEvent> | null>
   fallbackWithoutRecordErrors: Set<string>
   fallbackWithRecordErrors: Set<string>
 }
@@ -83,22 +82,22 @@ export interface CommandsState {
   registeredNames: Map<string, number>
 }
 
-export interface ProjectionState {
-  pendingSequence: PendingSequenceState | null
+export interface ProjectionState<TTarget extends object, TEvent extends KeymapEvent> {
+  pendingSequence: PendingSequenceState<TTarget, TEvent> | null
   pendingSequenceCacheVersion: number
   pendingSequenceCache: readonly KeySequencePart[]
   activeCommandViewVersion: number
-  activeCommandView?: ActiveCommandView
+  activeCommandView?: ActiveCommandView<TTarget, TEvent>
   registeredCommandsCacheVersion: number
-  registeredCommandsCache: readonly RegisteredCommand[]
+  registeredCommandsCache: readonly RegisteredCommand<TTarget, TEvent>[]
   activeKeysPlainCacheVersion: number
-  activeKeysPlainCache: readonly ActiveKey[]
+  activeKeysPlainCache: readonly ActiveKey<TTarget, TEvent>[]
   activeKeysBindingsCacheVersion: number
-  activeKeysBindingsCache: readonly ActiveKey[]
+  activeKeysBindingsCache: readonly ActiveKey<TTarget, TEvent>[]
   activeKeysMetadataCacheVersion: number
-  activeKeysMetadataCache: readonly ActiveKey[]
+  activeKeysMetadataCache: readonly ActiveKey<TTarget, TEvent>[]
   activeKeysBindingsAndMetadataCacheVersion: number
-  activeKeysBindingsAndMetadataCache: readonly ActiveKey[]
+  activeKeysBindingsAndMetadataCache: readonly ActiveKey<TTarget, TEvent>[]
 }
 
 export interface ConditionsState {
@@ -120,40 +119,40 @@ export interface NotifyState {
   usedWarningKeys: Set<string>
 }
 
-export interface State {
+export interface State<TTarget extends object, TEvent extends KeymapEvent> {
   core: CoreState
-  config: ConfigState
-  layers: LayersState
+  config: ConfigState<TTarget, TEvent>
+  layers: LayersState<TTarget, TEvent>
   commands: CommandsState
-  projection: ProjectionState
+  projection: ProjectionState<TTarget, TEvent>
   conditions: ConditionsState
   runtime: RuntimeState
   notify: NotifyState
 }
 
-export function createKeymapState(): State {
+export function createKeymapState<TTarget extends object, TEvent extends KeymapEvent>(): State<TTarget, TEvent> {
   return {
     core: {
       order: 0,
     },
     config: {
-      tokens: new Map<string, ResolvedKeyToken>(),
+      tokens: new Map<string, import("../types.js").ResolvedKeyToken>(),
       bindingSyntax: undefined,
       layerFields: new Map<string, LayerFieldCompiler>(),
       bindingExpanders: new OrderedRegistry<BindingExpander>(),
       bindingParsers: new OrderedRegistry<BindingParser>(),
-      bindingTransformers: new OrderedRegistry<BindingTransformer>(),
+      bindingTransformers: new OrderedRegistry<BindingTransformer<TTarget, TEvent>>(),
       bindingFields: new Map<string, BindingFieldCompiler>(),
       commandFields: new Map<string, CommandFieldCompiler>(),
-      layerAnalyzers: new OrderedRegistry<LayerAnalyzer>(),
-      commandResolvers: new OrderedRegistry<CommandResolver>(),
-      eventMatchResolvers: new OrderedRegistry<EventMatchResolver>(),
-      keyHooks: new PriorityRegistry<(ctx: KeyInputContext) => void, { priority: number; release: boolean }>(),
+      layerAnalyzers: new OrderedRegistry<LayerAnalyzer<TTarget, TEvent>>(),
+      commandResolvers: new OrderedRegistry<CommandResolver<TTarget, TEvent>>(),
+      eventMatchResolvers: new OrderedRegistry<EventMatchResolver<TEvent>>(),
+      keyHooks: new PriorityRegistry<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>(),
       rawHooks: new PriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>(),
     },
     layers: {
-      layers: new Set<RegisteredLayer>(),
-      targetLayers: new WeakMap<Renderable, RegisteredLayerBucket>(),
+      layers: new Set<RegisteredLayer<TTarget, TEvent>>(),
+      targetLayers: new WeakMap<TTarget, RegisteredLayerBucket<TTarget, TEvent>>(),
       layersWithConditions: 0,
       layersWithCommands: 0,
     },

@@ -1,5 +1,31 @@
-import type { KeyEvent, Renderable } from "@opentui/core"
 import type { Keymap } from "./keymap.js"
+
+export interface KeymapEvent {
+  name: string
+  ctrl: boolean
+  shift: boolean
+  meta: boolean
+  super?: boolean
+  hyper?: boolean
+  preventDefault(): void
+  stopPropagation(): void
+  readonly propagationStopped: boolean
+}
+
+export interface KeymapHost<TTarget extends object, TEvent extends KeymapEvent = KeymapEvent> {
+  readonly rootTarget: TTarget
+  readonly isDestroyed: boolean
+  getFocusedTarget(): TTarget | null
+  getParentTarget(target: TTarget): TTarget | null
+  isTargetDestroyed(target: TTarget): boolean
+  onKeyPress(listener: (event: TEvent) => void): () => void
+  onKeyRelease(listener: (event: TEvent) => void): () => void
+  onFocusChange(listener: (target: TTarget | null) => void): () => void
+  onDestroy(listener: () => void): () => void
+  onTargetDestroy(target: TTarget, listener: () => void): () => void
+  onRawInput?(listener: (sequence: string) => boolean): () => void
+  createCommandEvent(): TEvent
+}
 
 export type EventData = Record<string, unknown>
 
@@ -25,7 +51,10 @@ export interface EventMatchResolverContext {
   matchKey(key: KeyLike): string
 }
 
-export type EventMatchResolver = (event: KeyEvent, ctx: EventMatchResolverContext) => readonly string[] | undefined
+export type EventMatchResolver<TEvent extends KeymapEvent = KeymapEvent> = (
+  event: TEvent,
+  ctx: EventMatchResolverContext,
+) => readonly string[] | undefined
 
 export interface ResolvedKeyToken {
   stroke: NormalizedKeyStroke
@@ -69,19 +98,19 @@ export type CommandQueryValue = unknown | readonly unknown[] | ((value: unknown,
 
 export type CommandFilter = Readonly<Record<string, CommandQueryValue>> | ((command: CommandRecord) => boolean)
 
-export interface CommandQuery {
+export interface CommandQuery<TTarget extends object = object> {
   visibility?: "reachable" | "active" | "registered"
-  focused?: Renderable | null
+  focused?: TTarget | null
   namespace?: string | readonly string[]
   search?: string
   searchIn?: readonly string[]
   filter?: CommandFilter
 }
 
-export interface RunCommandOptions {
-  event?: KeyEvent
-  focused?: Renderable | null
-  target?: Renderable | null
+export interface RunCommandOptions<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  event?: TEvent
+  focused?: TTarget | null
+  target?: TTarget | null
   includeCommand?: boolean
 }
 
@@ -90,34 +119,38 @@ export type RunCommandResult =
   | { ok: false; reason: "not-found" }
   | { ok: false; reason: "invalid-args" | "rejected" | "error"; command?: CommandRecord }
 
-export interface CommandContext {
-  keymap: Keymap
-  event: KeyEvent
-  focused: Renderable | null
-  target: Renderable | null
+export interface CommandContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  keymap: Keymap<TTarget, TEvent>
+  event: TEvent
+  focused: TTarget | null
+  target: TTarget | null
   data: Readonly<EventData>
   command?: CommandRecord
 }
 
 export type CommandResult = boolean | void | Promise<boolean | void>
 
-export type CommandHandler = (ctx: CommandContext) => CommandResult
+export type CommandHandler<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = (
+  ctx: CommandContext<TTarget, TEvent>,
+) => CommandResult
 
-export type BindingCommand = string | CommandHandler
+export type BindingCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
+  | string
+  | CommandHandler<TTarget, TEvent>
 
 export type BindingEvent = "press" | "release"
 
-export interface BindingInput {
+export interface BindingInput<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   key: KeyLike
-  cmd?: BindingCommand
+  cmd?: BindingCommand<TTarget, TEvent>
   event?: BindingEvent
   /**
    * Default `true`. Calls `event.preventDefault()` and
    * `event.stopPropagation()` so the matched key does not reach the focused
-   * renderable or later `renderer.keyInput` listeners. Independent of
-   * `fallthrough`, which only controls dispatch inside the keymap. Set
-   * `preventDefault: false` if you want a fallthrough binding to keep matching
-   * inside the keymap and still let the key escape to later handlers.
+   * target or later host listeners. Independent of `fallthrough`, which only
+   * controls dispatch inside the keymap. Set `preventDefault: false` if you
+   * want a fallthrough binding to keep matching inside the keymap and still let
+   * the key escape to later handlers.
    */
   preventDefault?: boolean
   /**
@@ -129,37 +162,49 @@ export interface BindingInput {
   [key: string]: unknown
 }
 
-export type BindingShorthand = Record<string, BindingCommand>
+export type BindingShorthand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = Record<
+  string,
+  BindingCommand<TTarget, TEvent>
+>
 
-export type Bindings = BindingInput[] | BindingShorthand
+export type Bindings<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
+  | BindingInput<TTarget, TEvent>[]
+  | BindingShorthand<TTarget, TEvent>
 
 export type Scope = "global" | "focus" | "focus-within"
 
-export interface LayerFields {
+export interface LayerFields<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   priority?: number
-  bindings?: Bindings
-  commands?: readonly CommandDefinition[]
+  bindings?: Bindings<TTarget, TEvent>
+  commands?: readonly CommandDefinition<TTarget, TEvent>[]
   [key: string]: unknown
 }
 
-export interface GlobalLayer extends LayerFields {
+export interface GlobalLayer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
+  extends LayerFields<TTarget, TEvent> {
   target?: undefined
   scope?: "global"
 }
 
-export interface FocusWithinLayer extends LayerFields {
-  target: Renderable
+export interface FocusWithinLayer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
+  extends LayerFields<TTarget, TEvent> {
+  target: TTarget
   scope?: "focus-within"
 }
 
-export interface FocusLayer extends LayerFields {
-  target: Renderable
+export interface FocusLayer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
+  extends LayerFields<TTarget, TEvent> {
+  target: TTarget
   scope: "focus"
 }
 
-export type TargetLayer = FocusWithinLayer | FocusLayer
+export type TargetLayer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
+  | FocusWithinLayer<TTarget, TEvent>
+  | FocusLayer<TTarget, TEvent>
 
-export type Layer = GlobalLayer | TargetLayer
+export type Layer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
+  | GlobalLayer<TTarget, TEvent>
+  | TargetLayer<TTarget, TEvent>
 
 export interface ParsedCommand {
   input: string
@@ -176,22 +221,25 @@ export interface CommandResolverContext {
  * Resolver output. `run` executes the command, `attrs` / `record` expose
  * metadata, and `rejectedResult` overrides the default rejected result.
  */
-export interface ResolvedBindingCommand {
-  run: CommandHandler
+export interface ResolvedBindingCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  run: CommandHandler<TTarget, TEvent>
   attrs?: Readonly<Attributes>
   record?: CommandRecord
   rejectedResult?: Extract<RunCommandResult, { ok: false }>
 }
 
-export type CommandResolver = (command: string, ctx: CommandResolverContext) => ResolvedBindingCommand | undefined
+export type CommandResolver<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = (
+  command: string,
+  ctx: CommandResolverContext,
+) => ResolvedBindingCommand<TTarget, TEvent> | undefined
 
 /**
  * Layer command registration input. Extra fields stay on `fields` and can be
  * compiled into `attrs` by command-field addons.
  */
-export interface CommandDefinition {
+export interface CommandDefinition<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   name: string
-  run: CommandHandler
+  run: CommandHandler<TTarget, TEvent>
   [key: string]: unknown
 }
 
@@ -200,9 +248,9 @@ export interface KeyToken {
   key: KeyLike
 }
 
-export interface ActiveBinding {
+export interface ActiveBinding<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   sequence: KeySequencePart[]
-  command?: BindingCommand
+  command?: BindingCommand<TTarget, TEvent>
   commandAttrs?: Readonly<Attributes>
   attrs?: Readonly<Attributes>
   event: BindingEvent
@@ -215,13 +263,13 @@ export interface ActiveKeyOptions {
   includeMetadata?: boolean
 }
 
-export interface ActiveKey {
+export interface ActiveKey<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   stroke: NormalizedKeyStroke
   display: string
-  bindings?: ActiveBinding[]
+  bindings?: ActiveBinding<TTarget, TEvent>[]
   bindingAttrs?: Readonly<Attributes>
   commandAttrs?: Readonly<Attributes>
-  command?: BindingCommand
+  command?: BindingCommand<TTarget, TEvent>
   continues: boolean
 }
 
@@ -258,20 +306,22 @@ export interface LayerFieldContext {
 
 export type LayerFieldCompiler = (value: unknown, ctx: LayerFieldContext) => void
 
-export interface LayerAnalysisContext {
+export interface LayerAnalysisContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   scope: Scope
-  target?: Renderable
+  target?: TTarget
   order: number
-  bindingInputs: readonly BindingInput[]
-  compiledBindings: readonly CompiledBinding[]
-  root: SequenceNode
+  bindingInputs: readonly BindingInput<TTarget, TEvent>[]
+  compiledBindings: readonly CompiledBinding<TTarget, TEvent>[]
+  root: SequenceNode<TTarget, TEvent>
   hasTokenBindings: boolean
   warn(code: string, warning: unknown, message: string): void
   warnOnce(key: string, code: string, warning: unknown, message: string): void
   error(code: string, error: unknown, message: string): void
 }
 
-export type LayerAnalyzer = (ctx: LayerAnalysisContext) => void
+export type LayerAnalyzer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = (
+  ctx: LayerAnalysisContext<TTarget, TEvent>,
+) => void
 
 export interface BindingParserContext {
   input: string
@@ -297,24 +347,27 @@ export type BindingParser = (ctx: BindingParserContext) => BindingParserResult |
 
 export type BindingExpander = (ctx: BindingExpanderContext) => readonly string[] | undefined
 
-export interface ParsedBindingInput {
+export interface ParsedBindingInput<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   key: KeyLike
   sequence: KeySequencePart[]
-  cmd?: BindingCommand
+  cmd?: BindingCommand<TTarget, TEvent>
   event?: BindingEvent
   preventDefault?: boolean
   fallthrough?: boolean
   [key: string]: unknown
 }
 
-export interface BindingTransformerContext {
+export interface BindingTransformerContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   layer: Readonly<Record<string, unknown>>
   parseKey(key: KeyLike): KeySequencePart
-  add(binding: ParsedBindingInput): void
+  add(binding: ParsedBindingInput<TTarget, TEvent>): void
   skipOriginal(): void
 }
 
-export type BindingTransformer = (binding: ParsedBindingInput, ctx: BindingTransformerContext) => void
+export type BindingTransformer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = (
+  binding: ParsedBindingInput<TTarget, TEvent>,
+  ctx: BindingTransformerContext<TTarget, TEvent>,
+) => void
 
 export interface CommandFieldContext {
   attr(name: string, value: unknown): void
@@ -322,8 +375,8 @@ export interface CommandFieldContext {
 
 export type CommandFieldCompiler = (value: unknown, ctx: CommandFieldContext) => void
 
-export interface KeyInputContext {
-  event: KeyEvent
+export interface KeyInputContext<TEvent extends KeymapEvent = KeymapEvent> {
+  event: TEvent
   setData: (name: string, value: unknown) => void
   getData: (name: string) => unknown
   consume: (options?: { preventDefault?: boolean; stopPropagation?: boolean }) => void
@@ -334,14 +387,14 @@ export interface RawInputContext {
   stop: () => void
 }
 
-export interface UnresolvedCommandContext {
+export interface UnresolvedCommandContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   command: string
-  binding: ParsedBindingInput
+  binding: ParsedBindingInput<TTarget, TEvent>
   scope: Scope
-  target?: Renderable
+  target?: TTarget
 }
 
-export type Hooks = {
+export type Hooks<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = {
   /**
    * Batched "derived state may have changed" signal. Re-read through getters;
    * framework adapters should use this event.
@@ -356,7 +409,7 @@ export type Hooks = {
    * One-time diagnostic when a binding references a command name that is not
    * currently resolvable.
    */
-  unresolvedCommand: UnresolvedCommandContext
+  unresolvedCommand: UnresolvedCommandContext<TTarget, TEvent>
 }
 
 export type HookName = keyof Hooks
@@ -380,15 +433,18 @@ export interface ErrorEvent {
  * is synchronous, and `unresolvedCommand` is emitted during layer registration
  * when a string command name cannot be resolved.
  */
-export type Events = Hooks & {
+export type Events<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = Hooks<
+  TTarget,
+  TEvent
+> & {
   warning: WarningEvent
   error: ErrorEvent
 }
 
 export type EventName = keyof Events
 
-export type Intercepts = {
-  key: KeyInputContext
+export type Intercepts<TEvent extends KeymapEvent = KeymapEvent> = {
+  key: KeyInputContext<TEvent>
   raw: RawInputContext
 }
 
@@ -404,9 +460,14 @@ export interface RawInterceptOptions {
 }
 
 export type { Keymap }
-export type KeymapActiveKey = ActiveKey
-export type KeymapBindingInput = BindingInput
-export type KeymapCommandDefinition = CommandDefinition
+export type KeymapActiveKey<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = ActiveKey<
+  TTarget,
+  TEvent
+>
+export type KeymapBindingInput<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
+  BindingInput<TTarget, TEvent>
+export type KeymapCommandDefinition<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
+  CommandDefinition<TTarget, TEvent>
 export type KeymapCommandRecord = CommandRecord
 
 export interface RuntimeMatcher {
@@ -436,61 +497,64 @@ export interface RuntimeMatchable {
   matchCache?: boolean
 }
 
-export interface CompiledBinding extends ActiveBinding, RuntimeMatchable {
-  run?: CommandHandler
-  sourceBinding: ParsedBindingInput
+export interface CompiledBinding<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
+  extends ActiveBinding<TTarget, TEvent>,
+    RuntimeMatchable {
+  run?: CommandHandler<TTarget, TEvent>
+  sourceBinding: ParsedBindingInput<TTarget, TEvent>
   sourceScope: Scope
-  sourceTarget?: Renderable
+  sourceTarget?: TTarget
   sourceLayerOrder: number
   sourceBindingIndex: number
 }
 
-export interface ActiveKeySelection {
+export interface ActiveKeySelection<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   display: string
   continues: boolean
-  firstBinding?: CompiledBinding
-  commandBinding?: CompiledBinding
-  bindings?: readonly CompiledBinding[]
+  firstBinding?: CompiledBinding<TTarget, TEvent>
+  commandBinding?: CompiledBinding<TTarget, TEvent>
+  bindings?: readonly CompiledBinding<TTarget, TEvent>[]
   stop: boolean
 }
 
-export interface ActiveKeyState {
+export interface ActiveKeyState<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   stroke: NormalizedKeyStroke
   display: string
   continues: boolean
-  firstBinding?: CompiledBinding
-  commandBinding?: CompiledBinding
-  bindings?: CompiledBinding[]
+  firstBinding?: CompiledBinding<TTarget, TEvent>
+  commandBinding?: CompiledBinding<TTarget, TEvent>
+  bindings?: CompiledBinding<TTarget, TEvent>[]
 }
 
-export interface RegisteredCommand extends CommandRecord {
-  run: (ctx: CommandContext) => CommandResult
-  runner?: CommandHandler
-  resolved?: ResolvedBindingCommand
-  resolvedWithRecord?: ResolvedBindingCommand
+export interface RegisteredCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
+  extends CommandRecord {
+  run: (ctx: CommandContext<TTarget, TEvent>) => CommandResult
+  runner?: CommandHandler<TTarget, TEvent>
+  resolved?: ResolvedBindingCommand<TTarget, TEvent>
+  resolvedWithRecord?: ResolvedBindingCommand<TTarget, TEvent>
   record?: CommandRecord
 }
 
-export interface CompiledBindingsResult {
-  root: SequenceNode
-  bindings: readonly CompiledBinding[]
+export interface CompiledBindingsResult<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  root: SequenceNode<TTarget, TEvent>
+  bindings: readonly CompiledBinding<TTarget, TEvent>[]
   hasTokenBindings: boolean
 }
 
-export interface SequenceNode {
-  parent: SequenceNode | null
+export interface SequenceNode<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  parent: SequenceNode<TTarget, TEvent> | null
   depth: number
   stroke: NormalizedKeyStroke | null
   matchKey: string | null
-  children: Map<string, SequenceNode>
-  bindings: CompiledBinding[]
-  reachableBindings: CompiledBinding[]
+  children: Map<string, SequenceNode<TTarget, TEvent>>
+  bindings: CompiledBinding<TTarget, TEvent>[]
+  reachableBindings: CompiledBinding<TTarget, TEvent>[]
 }
 
-export interface RegisteredLayer {
+export interface RegisteredLayer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   order: number
-  target?: Renderable
-  indexTarget: Renderable
+  target?: TTarget
+  indexTarget: TTarget
   scope: Scope
   priority: number
   requires: readonly [name: string, value: unknown][]
@@ -500,23 +564,23 @@ export interface RegisteredLayer {
   matchCacheDirty?: boolean
   matchCache?: boolean
   compileFields?: Readonly<Record<string, unknown>>
-  commands: readonly RegisteredCommand[]
-  commandLookup?: ReadonlyMap<string, RegisteredCommand>
-  bindingInputs: readonly BindingInput[]
-  compiledBindings: readonly CompiledBinding[]
+  commands: readonly RegisteredCommand<TTarget, TEvent>[]
+  commandLookup?: ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>>
+  bindingInputs: readonly BindingInput<TTarget, TEvent>[]
+  compiledBindings: readonly CompiledBinding<TTarget, TEvent>[]
   hasUnkeyedBindings: boolean
   hasTokenBindings: boolean
-  root: SequenceNode
+  root: SequenceNode<TTarget, TEvent>
   offTargetDestroy?: () => void
-  bucket?: RegisteredLayerBucket
+  bucket?: RegisteredLayerBucket<TTarget, TEvent>
 }
 
-export interface RegisteredLayerBucket {
-  focusLayers: RegisteredLayer[]
-  focusWithinLayers: RegisteredLayer[]
+export interface RegisteredLayerBucket<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  focusLayers: RegisteredLayer<TTarget, TEvent>[]
+  focusWithinLayers: RegisteredLayer<TTarget, TEvent>[]
 }
 
-export interface PendingSequenceState {
-  layer: RegisteredLayer
-  node: SequenceNode
+export interface PendingSequenceState<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  layer: RegisteredLayer<TTarget, TEvent>
+  node: SequenceNode<TTarget, TEvent>
 }

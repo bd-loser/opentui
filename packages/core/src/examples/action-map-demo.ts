@@ -890,6 +890,8 @@ function registerCommandLayers(renderer: CliRenderer): void {
       },
     }),
   )
+  disposers.push(addons.registerEscapeClearsPendingSequence(actionMapInstance))
+  disposers.push(addons.registerBackspacePopsPendingSequence(actionMapInstance))
 
   disposers.push(
     actionMapInstance.registerLayer({

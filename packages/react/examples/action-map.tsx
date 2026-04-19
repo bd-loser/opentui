@@ -724,6 +724,14 @@ export const App = () => {
     })
   }, [announce, manager])
 
+  useEffect(() => {
+    return addons.registerEscapeClearsPendingSequence(manager)
+  }, [manager])
+
+  useEffect(() => {
+    return addons.registerBackspacePopsPendingSequence(manager)
+  }, [manager])
+
   const managedTextareaLayer = useMemo(
     () => ({
       scope: "global" as const,

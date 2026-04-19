@@ -115,6 +115,7 @@ export class ActionMap {
 
   private readonly state = createActionMapState()
   private cleanedUp = false
+  private readonly resources = new Map<symbol, { count: number; dispose: () => void }>()
   // Reuse `Emitter`, but keep its `onError` hook as a no-op so throwing error
   // listeners cannot re-enter `emitError` and loop forever.
   private events = new Emitter<DiagnosticEvents>(() => {})
@@ -208,6 +209,11 @@ export class ActionMap {
 
     this.projection.setPendingSequence(null)
 
+    for (const resource of this.resources.values()) {
+      resource.dispose()
+    }
+    this.resources.clear()
+
     for (const layer of this.state.layers.layers) {
       // Drop matcher subscriptions before clearing layer state.
       this.conditions.unregisterRuntimeMatchable(layer)
@@ -296,6 +302,28 @@ export class ActionMap {
 
   public normalizeBindings(bindings: Bindings): BindingInput[] {
     return normalizeBindingInputs(bindings)
+  }
+
+  public acquireResource(key: symbol, setup: () => () => void): () => void {
+    if (this.cleanedUp || this.renderer.isDestroyed) {
+      throw new Error("Cannot use an action map after its renderer was destroyed")
+    }
+
+    const existing = this.resources.get(key)
+    if (existing) {
+      existing.count += 1
+      return () => {
+        this.releaseResource(key, existing)
+      }
+    }
+
+    const dispose = setup()
+    const resource = { count: 1, dispose }
+    this.resources.set(key, resource)
+
+    return () => {
+      this.releaseResource(key, resource)
+    }
   }
 
   public runCommand(cmd: string, options?: RunCommandOptions): RunCommandResult {
@@ -554,6 +582,21 @@ export class ActionMap {
 
   private warnUnknownToken(token: string, sequence: string): void {
     this.warnOnce(`token:${token}`, `[ActionMap] Unknown token "${token}" in key sequence "${sequence}" was ignored`)
+  }
+
+  private releaseResource(key: symbol, resource: { count: number; dispose: () => void }): void {
+    const current = this.resources.get(key)
+    if (current !== resource) {
+      return
+    }
+
+    resource.count -= 1
+    if (resource.count > 0) {
+      return
+    }
+
+    resource.dispose()
+    this.resources.delete(key)
   }
 }
 

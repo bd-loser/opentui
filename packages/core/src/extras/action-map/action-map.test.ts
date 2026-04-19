@@ -261,7 +261,7 @@ describe("action map", () => {
       },
     ] })
 
-    actionMap.registerCommandResolver((command) => {
+    actionMap.appendCommandResolver((command) => {
       if (command !== "shared-command") {
         return undefined
       }
@@ -281,6 +281,57 @@ describe("action map", () => {
     mockInput.pressKey("x")
     expect(actionMap.runCommand("shared-command")).toEqual({ ok: true })
     expect(calls).toEqual(["registered", "registered"])
+  })
+
+  test("prependCommandResolver runs before appended resolvers", () => {
+    const actionMap = getActionMap(renderer)
+    const calls: string[] = []
+
+    actionMap.appendCommandResolver((command) => {
+      if (command !== "shared-command") {
+        return undefined
+      }
+
+      return {
+        run() {
+          calls.push("append")
+        },
+      }
+    })
+    actionMap.prependCommandResolver((command) => {
+      if (command !== "shared-command") {
+        return undefined
+      }
+
+      return {
+        run() {
+          calls.push("prepend")
+        },
+      }
+    })
+
+    expect(actionMap.runCommand("shared-command")).toEqual({ ok: true })
+    expect(calls).toEqual(["prepend"])
+  })
+
+  test("clearCommandResolvers removes registered command resolvers", () => {
+    const actionMap = getActionMap(renderer)
+
+    actionMap.appendCommandResolver((command) => {
+      if (command !== "shared-command") {
+        return undefined
+      }
+
+      return {
+        run() {},
+      }
+    })
+
+    expect(actionMap.runCommand("shared-command")).toEqual({ ok: true })
+
+    actionMap.clearCommandResolvers()
+
+    expect(actionMap.runCommand("shared-command")).toEqual({ ok: false, reason: "not-found" })
   })
 
   test("layer commands resolve bindings, shadow globals, and expose local metadata", () => {
@@ -485,7 +536,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const { warnings, errors } = captureDiagnostics(actionMap)
 
-    actionMap.registerCommandResolver(() => {
+    actionMap.appendCommandResolver(() => {
       throw new Error("resolver boom")
     })
 
@@ -507,7 +558,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerEventMatchResolver((event) => {
+    actionMap.appendEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -547,7 +598,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerEventMatchResolver((event) => {
+    actionMap.appendEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -882,7 +933,7 @@ describe("action map", () => {
     mockInput.pressKey("x")
     expect(calls).toEqual([])
 
-    actionMap.registerEventMatchResolver((event) => {
+    actionMap.appendEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -898,7 +949,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    const offResolver = actionMap.registerEventMatchResolver((event) => {
+    const offResolver = actionMap.appendEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -928,6 +979,43 @@ describe("action map", () => {
     expect(calls).toEqual(["fallback"])
   })
 
+  test("prependEventMatchResolver runs before appended resolvers", () => {
+    const actionMap = getActionMap(renderer)
+    const calls: string[] = []
+
+    actionMap.appendEventMatchResolver((event) => {
+      if (event.name !== "x") {
+        return undefined
+      }
+
+      return [getMatchKeyForEventName(event, "y")]
+    })
+    actionMap.prependEventMatchResolver((event) => {
+      if (event.name !== "x") {
+        return undefined
+      }
+
+      return [getMatchKeyForEventName(event, "z")]
+    })
+
+    actionMap.registerLayer({ scope: "global", commands: [
+      {
+        name: "fallback",
+        run() {
+          calls.push("fallback")
+        },
+      },
+    ] })
+    actionMap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "z", cmd: "fallback" }],
+    })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["fallback"])
+  })
+
   test("matches bindings using parser-provided match keys", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
@@ -949,7 +1037,7 @@ describe("action map", () => {
       }
     })
 
-    actionMap.registerEventMatchResolver((event) => {
+    actionMap.appendEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -1053,6 +1141,63 @@ describe("action map", () => {
     mockInput.pressKey("y")
 
     expect(calls).toEqual(["hit", "hit"])
+  })
+
+  test("prependBindingTransformer runs before appended transformers", () => {
+    const actionMap = getActionMap(renderer)
+    const transformerOrder: string[] = []
+
+    actionMap.appendBindingTransformer((binding, ctx) => {
+      transformerOrder.push("append")
+      ctx.add({ ...binding, sequence: [ctx.parseKey("y")] })
+      ctx.skipOriginal()
+    })
+    actionMap.prependBindingTransformer((binding, ctx) => {
+      transformerOrder.push("prepend")
+      ctx.add({ ...binding, sequence: [ctx.parseKey("x")] })
+      ctx.skipOriginal()
+    })
+
+    actionMap.registerLayer({ scope: "global", commands: [
+      { name: "submit", run() {} },
+    ] })
+
+    actionMap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "z", cmd: "submit" }],
+    })
+
+    expect(transformerOrder).toEqual(["prepend", "append"])
+  })
+
+  test("clearBindingTransformers removes registered binding transformers", () => {
+    const actionMap = getActionMap(renderer)
+    const calls: string[] = []
+
+    actionMap.appendBindingTransformer((binding, ctx) => {
+      ctx.add({ ...binding, sequence: [ctx.parseKey("x")] })
+      ctx.skipOriginal()
+    })
+    actionMap.clearBindingTransformers()
+
+    actionMap.registerLayer({ scope: "global", commands: [
+      {
+        name: "submit",
+        run() {
+          calls.push("submit")
+        },
+      },
+    ] })
+
+    actionMap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "z", cmd: "submit" }],
+    })
+
+    mockInput.pressKey("x")
+    mockInput.pressKey("z")
+
+    expect(calls).toEqual(["submit"])
   })
 
   test("binding expanders can use layer fields for optional emacs-style key strings", () => {
@@ -1190,7 +1335,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    const offTransformer = actionMap.registerBindingTransformer((binding, ctx) => {
+    const offTransformer = actionMap.appendBindingTransformer((binding, ctx) => {
       if (binding.blocked !== true) {
         return
       }
@@ -1236,7 +1381,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerBindingTransformer((binding, ctx) => {
+    actionMap.appendBindingTransformer((binding, ctx) => {
       ctx.add({
         ...binding,
         sequence: [ctx.parseKey({ name: " RETURN " })],
@@ -1309,7 +1454,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerBindingTransformer((binding, ctx) => {
+    actionMap.appendBindingTransformer((binding, ctx) => {
       ctx.add({
         ...binding,
         sequence: [ctx.parseKey("[Leader]")],
@@ -1467,7 +1612,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerEventMatchResolver((event) => {
+    actionMap.appendEventMatchResolver((event) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -1512,7 +1657,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerEventMatchResolver((event, ctx) => {
+    actionMap.appendEventMatchResolver((event, ctx) => {
       if (event.name !== "x") {
         return undefined
       }
@@ -1582,7 +1727,7 @@ describe("action map", () => {
       },
     })
 
-    actionMap.registerEventMatchResolver((event, ctx) => {
+    actionMap.appendEventMatchResolver((event, ctx) => {
       if (event.name !== "x" || !event.ctrl) {
         return undefined
       }
@@ -1982,7 +2127,7 @@ describe("action map", () => {
 
     expect(getActiveKey(actionMap, "x")?.command).toBeUndefined()
 
-    const offResolver = actionMap.registerCommandResolver((command) => {
+    const offResolver = actionMap.appendCommandResolver((command) => {
       if (command !== "external-run") {
         return undefined
       }
@@ -4173,7 +4318,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    const off = actionMap.registerLayerAnalyzer((ctx) => {
+    const off = actionMap.appendLayerAnalyzer((ctx) => {
       calls.push(`${ctx.scope}:${ctx.order}:${ctx.compiledBindings.length}:${ctx.hasTokenBindings ? "tokens" : "plain"}`)
     })
 
@@ -4192,11 +4337,47 @@ describe("action map", () => {
     expect(calls).toEqual(["global:0:1:plain"])
   })
 
+  test("prependLayerAnalyzer runs before appended analyzers", () => {
+    const actionMap = getActionMap(renderer)
+    const calls: string[] = []
+
+    actionMap.appendLayerAnalyzer(() => {
+      calls.push("append")
+    })
+    actionMap.prependLayerAnalyzer(() => {
+      calls.push("prepend")
+    })
+
+    actionMap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: () => {} }],
+    })
+
+    expect(calls).toEqual(["prepend", "append"])
+  })
+
+  test("clearLayerAnalyzers removes registered analyzers", () => {
+    const actionMap = getActionMap(renderer)
+    const calls: string[] = []
+
+    actionMap.appendLayerAnalyzer(() => {
+      calls.push("analyzed")
+    })
+    actionMap.clearLayerAnalyzers()
+
+    actionMap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: () => {} }],
+    })
+
+    expect(calls).toEqual([])
+  })
+
   test("registerLayerAnalyzer reruns on token-driven recompilation", () => {
     const actionMap = getActionMap(renderer)
     const calls: string[] = []
 
-    actionMap.registerLayerAnalyzer((ctx) => {
+    actionMap.appendLayerAnalyzer((ctx) => {
       calls.push(`${ctx.order}:${ctx.compiledBindings[0]?.sequence[0]?.display ?? "missing"}`)
     })
 
@@ -4214,7 +4395,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const { warnings } = captureDiagnostics(actionMap)
 
-    actionMap.registerLayerAnalyzer((ctx) => {
+    actionMap.appendLayerAnalyzer((ctx) => {
       ctx.warnOnce(`layer:${ctx.order}`, `layer ${ctx.order} warning`)
     })
 
@@ -4230,7 +4411,7 @@ describe("action map", () => {
     const actionMap = getActionMap(renderer)
     const { errors } = captureDiagnostics(actionMap)
 
-    actionMap.registerLayerAnalyzer(() => {
+    actionMap.appendLayerAnalyzer(() => {
       throw new Error("analysis boom")
     })
 

@@ -54,7 +54,7 @@ function warnDeadMetadataOnlyBinding(ctx: LayerAnalysisContext, binding: Compile
 }
 
 export function registerDeadBindingWarnings(actionMap: ActionMap): () => void {
-  return actionMap.registerLayerAnalyzer((ctx) => {
+  return actionMap.appendLayerAnalyzer((ctx) => {
     for (const binding of ctx.compiledBindings) {
       if (!isDeadMetadataOnlyBinding(ctx, binding)) {
         continue

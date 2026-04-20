@@ -9,8 +9,10 @@ import type {
   EventMatchResolverContext,
   EventMatchResolver,
   KeyMatch,
+  KeyInterceptOptions,
   KeyInputContext,
   KeymapEvent,
+  RawInterceptOptions,
   RawInputContext,
   CompiledBinding,
   PendingSequenceState,
@@ -37,8 +39,43 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     }
   }
 
+  public intercept(name: "key", fn: (ctx: KeyInputContext<TEvent>) => void, options?: KeyInterceptOptions): () => void
+
+  public intercept(name: "raw", fn: (ctx: RawInputContext) => void, options?: RawInterceptOptions): () => void
+
+  public intercept(
+    name: "key" | "raw",
+    fn: ((ctx: KeyInputContext<TEvent>) => void) | ((ctx: RawInputContext) => void),
+    options?: KeyInterceptOptions | RawInterceptOptions,
+  ): () => void {
+    if (name === "key") {
+      const keyOptions = options as KeyInterceptOptions | undefined
+      return this.state.dispatch.keyHooks.register(fn as (ctx: KeyInputContext<TEvent>) => void, {
+        priority: keyOptions?.priority ?? 0,
+        release: keyOptions?.release ?? false,
+      })
+    }
+
+    const rawOptions = options as RawInterceptOptions | undefined
+    return this.state.dispatch.rawHooks.register(fn as (ctx: RawInputContext) => void, {
+      priority: rawOptions?.priority ?? 0,
+    })
+  }
+
+  public prependEventMatchResolver(resolver: EventMatchResolver<TEvent>): () => void {
+    return this.state.dispatch.eventMatchResolvers.prepend(resolver)
+  }
+
+  public appendEventMatchResolver(resolver: EventMatchResolver<TEvent>): () => void {
+    return this.state.dispatch.eventMatchResolvers.append(resolver)
+  }
+
+  public clearEventMatchResolvers(): void {
+    this.state.dispatch.eventMatchResolvers.clear()
+  }
+
   public handleRawSequence(sequence: string): boolean {
-    const hooks = this.state.config.rawHooks.entries()
+    const hooks = this.state.dispatch.rawHooks.entries()
     if (hooks.length === 0) {
       return false
     }
@@ -67,7 +104,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   }
 
   public handleKeyEvent(event: TEvent, release: boolean): void {
-    const hooks = this.state.config.keyHooks.entries()
+    const hooks = this.state.dispatch.keyHooks.entries()
     const context: KeyInputContext<TEvent> = {
       event,
       setData: (name, value) => {
@@ -230,7 +267,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   }
 
   private resolveEventMatchKeys(event: TEvent): KeyMatch[] {
-    const resolvers = this.state.config.eventMatchResolvers.values()
+    const resolvers = this.state.dispatch.eventMatchResolvers.values()
 
     if (resolvers.length === 0) {
       return []

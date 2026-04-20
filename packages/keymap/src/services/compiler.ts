@@ -113,18 +113,9 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     private readonly options: CompilerOptions,
   ) {}
 
-  public normalizeTokenName(token: string): string {
-    const normalized = normalizeBindingTokenName(token)
-    if (!normalized) {
-      throw new Error("Invalid keymap token: token cannot be empty")
-    }
-
-    return normalized
-  }
-
   public parseTokenKey(key: KeyLike): KeySequencePart {
-    return parseSingleKeyPartWithParsers(key, this.state.config.bindingParsers.values(), {
-      tokens: this.state.config.tokens,
+    return parseSingleKeyPartWithParsers(key, this.state.environment.bindingParsers.values(), {
+      tokens: this.state.environment.tokens,
       layer: EMPTY_COMPILE_FIELDS,
       parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
     })
@@ -142,9 +133,9 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     const root = createSequenceNode<TTarget, TEvent>(null, null, null)
     const compiledBindings: CompiledBinding<TTarget, TEvent>[] = []
     let hasTokenBindings = false
-    const bindingExpanders = this.state.config.bindingExpanders.values()
-    const bindingParsers = this.state.config.bindingParsers.values()
-    const bindingFieldCompilers = this.state.config.bindingFields
+    const bindingExpanders = this.state.environment.bindingExpanders.values()
+    const bindingParsers = this.state.environment.bindingParsers.values()
+    const bindingFieldCompilers = this.state.environment.bindingFields
     const warnUnknownField = this.options.warnUnknownField
     const warnUnknownToken = this.options.warnUnknownToken
     const conditions = this.conditions
@@ -351,7 +342,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     bindingParsers: readonly BindingParser[],
     compileFields?: Readonly<Record<string, unknown>>,
   ): ParsedBindingInput<TTarget, TEvent>[] {
-    const bindingTransformers = this.state.config.bindingTransformers.values()
+    const bindingTransformers = this.state.environment.bindingTransformers.values()
 
     if (bindingTransformers.length === 0) {
       return [{ ...binding, sequence: cloneKeySequence(sequence) }]

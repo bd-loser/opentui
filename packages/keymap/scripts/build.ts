@@ -67,6 +67,9 @@ const externalDeps: string[] = [
 ]
 
 const keymapEntrypoints = [
+  join(rootDir, packageJson.module),
+  join(rootDir, "src/addons/index.ts"),
+  join(rootDir, "src/addons/opentui/index.ts"),
   join(rootDir, "src/html.ts"),
   join(rootDir, "src/opentui.ts"),
   join(rootDir, "src/react/index.ts"),
@@ -104,7 +107,7 @@ function verifyHtmlBundleIsolation(bundlePath: string): void {
 }
 
 const buildResult = await Bun.build({
-  entrypoints: [join(rootDir, packageJson.module), ...keymapEntrypoints],
+  entrypoints: keymapEntrypoints,
   target: "bun",
   format: "esm",
   outdir: distDir,
@@ -142,6 +145,16 @@ const exports = {
     types: "./src/index.d.ts",
     import: "./index.js",
     require: "./index.js",
+  },
+  "./addons": {
+    types: "./src/addons/index.d.ts",
+    import: "./addons/index.js",
+    require: "./addons/index.js",
+  },
+  "./addons/opentui": {
+    types: "./src/addons/opentui/index.d.ts",
+    import: "./addons/opentui/index.js",
+    require: "./addons/opentui/index.js",
   },
   "./html": {
     types: "./src/html.d.ts",

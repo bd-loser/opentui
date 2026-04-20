@@ -30,7 +30,7 @@ export interface CoreState {
   order: number
 }
 
-export interface ConfigState<TTarget extends object, TEvent extends KeymapEvent> {
+export interface EnvironmentState<TTarget extends object, TEvent extends KeymapEvent> {
   tokens: Map<string, import("../types.js").ResolvedKeyToken>
   layerFields: Map<string, LayerFieldCompiler>
   bindingExpanders: OrderedRegistry<BindingExpander>
@@ -38,8 +38,9 @@ export interface ConfigState<TTarget extends object, TEvent extends KeymapEvent>
   bindingTransformers: OrderedRegistry<BindingTransformer<TTarget, TEvent>>
   bindingFields: Map<string, BindingFieldCompiler>
   commandFields: Map<string, CommandFieldCompiler>
-  layerAnalyzers: OrderedRegistry<LayerAnalyzer<TTarget, TEvent>>
-  commandResolvers: OrderedRegistry<CommandResolver<TTarget, TEvent>>
+}
+
+export interface DispatchState<TEvent extends KeymapEvent> {
   eventMatchResolvers: OrderedRegistry<EventMatchResolver<TEvent>>
   keyHooks: PriorityRegistry<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>
   rawHooks: PriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>
@@ -50,6 +51,7 @@ export interface LayersState<TTarget extends object, TEvent extends KeymapEvent>
   targetLayers: WeakMap<TTarget, RegisteredLayerBucket<TTarget, TEvent>>
   layersWithConditions: number
   layersWithCommands: number
+  layerAnalyzers: OrderedRegistry<LayerAnalyzer<TTarget, TEvent>>
 }
 
 export interface LayerCommandEntry<TTarget extends object, TEvent extends KeymapEvent> {
@@ -75,9 +77,10 @@ export interface ActiveCommandView<TTarget extends object, TEvent extends Keymap
   fallbackWithRecordErrors: Set<string>
 }
 
-export interface CommandsState {
+export interface CommandsState<TTarget extends object, TEvent extends KeymapEvent> {
   commandMetadataVersion: number
   registeredNames: Map<string, number>
+  commandResolvers: OrderedRegistry<CommandResolver<TTarget, TEvent>>
 }
 
 export interface ProjectionState<TTarget extends object, TEvent extends KeymapEvent> {
@@ -119,9 +122,10 @@ export interface NotifyState {
 
 export interface State<TTarget extends object, TEvent extends KeymapEvent> {
   core: CoreState
-  config: ConfigState<TTarget, TEvent>
+  environment: EnvironmentState<TTarget, TEvent>
+  dispatch: DispatchState<TEvent>
   layers: LayersState<TTarget, TEvent>
-  commands: CommandsState
+  commands: CommandsState<TTarget, TEvent>
   projection: ProjectionState<TTarget, TEvent>
   conditions: ConditionsState
   runtime: RuntimeState
@@ -133,7 +137,7 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     core: {
       order: 0,
     },
-    config: {
+    environment: {
       tokens: new Map<string, import("../types.js").ResolvedKeyToken>(),
       layerFields: new Map<string, LayerFieldCompiler>(),
       bindingExpanders: new OrderedRegistry<BindingExpander>(),
@@ -141,8 +145,8 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
       bindingTransformers: new OrderedRegistry<BindingTransformer<TTarget, TEvent>>(),
       bindingFields: new Map<string, BindingFieldCompiler>(),
       commandFields: new Map<string, CommandFieldCompiler>(),
-      layerAnalyzers: new OrderedRegistry<LayerAnalyzer<TTarget, TEvent>>(),
-      commandResolvers: new OrderedRegistry<CommandResolver<TTarget, TEvent>>(),
+    },
+    dispatch: {
       eventMatchResolvers: new OrderedRegistry<EventMatchResolver<TEvent>>(),
       keyHooks: new PriorityRegistry<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>(),
       rawHooks: new PriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>(),
@@ -152,10 +156,12 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
       targetLayers: new WeakMap<TTarget, RegisteredLayerBucket<TTarget, TEvent>>(),
       layersWithConditions: 0,
       layersWithCommands: 0,
+      layerAnalyzers: new OrderedRegistry<LayerAnalyzer<TTarget, TEvent>>(),
     },
     commands: {
       commandMetadataVersion: 0,
       registeredNames: new Map<string, number>(),
+      commandResolvers: new OrderedRegistry<CommandResolver<TTarget, TEvent>>(),
     },
     projection: {
       pendingSequence: null,

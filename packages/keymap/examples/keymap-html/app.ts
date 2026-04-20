@@ -1,10 +1,10 @@
 import {
-  addons,
   createHtmlKeymapEvent,
   getKeymap,
   stringifyKeySequence,
   type ActiveKey,
 } from "/dist/html.js"
+import * as addons from "/dist/addons/index.js"
 
 const app = document.getElementById("app") as HTMLElement | null
 const alphaPanel = document.getElementById("alpha-panel") as HTMLElement | null

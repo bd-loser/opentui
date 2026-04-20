@@ -121,7 +121,7 @@ export class CommandService<TTarget extends object, TEvent extends KeymapEvent> 
   ): RegisteredCommand<TTarget, TEvent>[] {
     return normalizeRegisteredCommands({
       commands,
-      commandFields: this.state.config.commandFields,
+      commandFields: this.state.environment.commandFields,
       onError: (code, error, message) => {
         this.notify.emitError(code, error, message)
       },
@@ -129,20 +129,20 @@ export class CommandService<TTarget extends object, TEvent extends KeymapEvent> 
   }
 
   public prependCommandResolver(resolver: CommandResolver<TTarget, TEvent>): () => void {
-    return this.mutateCommandResolvers(() => this.state.config.commandResolvers.prepend(resolver), resolver)
+    return this.mutateCommandResolvers(() => this.state.commands.commandResolvers.prepend(resolver), resolver)
   }
 
   public appendCommandResolver(resolver: CommandResolver<TTarget, TEvent>): () => void {
-    return this.mutateCommandResolvers(() => this.state.config.commandResolvers.append(resolver), resolver)
+    return this.mutateCommandResolvers(() => this.state.commands.commandResolvers.append(resolver), resolver)
   }
 
   public clearCommandResolvers(): void {
-    if (!this.state.config.commandResolvers.has()) {
+    if (!this.state.commands.commandResolvers.has()) {
       return
     }
 
     this.notify.runWithStateChangeBatch(() => {
-      this.state.config.commandResolvers.clear()
+      this.state.commands.commandResolvers.clear()
       this.state.commands.commandMetadataVersion += 1
       this.projection.ensureValidPendingSequence()
       this.notify.queueStateChange()
@@ -159,7 +159,7 @@ export class CommandService<TTarget extends object, TEvent extends KeymapEvent> 
       return () => {
         this.notify.runWithStateChangeBatch(() => {
           off()
-          if (this.state.config.commandResolvers.values().includes(resolver)) {
+          if (this.state.commands.commandResolvers.values().includes(resolver)) {
             return
           }
 
@@ -305,7 +305,7 @@ export class CommandService<TTarget extends object, TEvent extends KeymapEvent> 
     focused: TTarget | null,
     options?: { includeRecord?: boolean },
   ): ResolvedCommandLookup<TTarget, TEvent> {
-    const resolvers = this.state.config.commandResolvers.values()
+    const resolvers = this.state.commands.commandResolvers.values()
     if (resolvers.length === 0) {
       return { hadError: false }
     }

@@ -31,13 +31,12 @@ import type {
   KeyToken,
   KeyLike,
   KeySequencePart,
-  ResolvedKeyToken,
 } from "./types.js"
-import { RESERVED_BINDING_FIELDS, RESERVED_COMMAND_FIELDS, RESERVED_LAYER_FIELDS } from "./schema.js"
 import { CommandService, normalizeCommandName } from "./services/commands.js"
 import { CompilerService } from "./services/compiler.js"
 import { ConditionService } from "./services/conditions.js"
 import { DispatchService } from "./services/dispatch.js"
+import { EnvironmentService } from "./services/environment.js"
 import { LayerService } from "./services/layers.js"
 import { Emitter, type EmitterListener } from "./lib/emitter.js"
 import { NotificationService } from "./services/notify.js"
@@ -45,16 +44,11 @@ import { ProjectionService } from "./services/projection.js"
 import { resolveKeyMatch } from "./services/keys.js"
 import { RuntimeService } from "./services/runtime.js"
 import { createKeymapState } from "./services/state.js"
-import { getErrorMessage } from "./services/values.js"
-
-const NOOP = (): void => {}
 
 type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<
   Events<TTarget, TEvent>,
   "warning" | "error"
 >
-
-type FieldKind = "layer" | "binding" | "command"
 
 function getKeyMatchKey(input: KeyStringifyInput): KeyMatch {
   return resolveKeyMatch(input)
@@ -79,53 +73,6 @@ function normalizeBindingInputs<TTarget extends object, TEvent extends KeymapEve
   return normalized
 }
 
-function registerFieldCompilers<T>(
-  fields: Record<string, T>,
-  options: {
-    kind: FieldKind
-    reservedFields: ReadonlySet<string>
-    registeredFields: Map<string, T>
-    emitError(code: string, error: unknown, message: string): void
-  },
-): () => void {
-  const { kind, reservedFields, registeredFields, emitError } = options
-  const entries = Object.entries(fields)
-  const registered: Array<[string, T]> = []
-
-  for (const [name] of entries) {
-    if (reservedFields.has(name)) {
-      emitError(`reserved-${kind}-field`, { field: name, kind }, `Keymap ${kind} field "${name}" is reserved`)
-      continue
-    }
-
-    if (registeredFields.has(name)) {
-      emitError(
-        `duplicate-${kind}-field`,
-        { field: name, kind },
-        `Keymap ${kind} field "${name}" is already registered`,
-      )
-    }
-  }
-
-  for (const [name, compiler] of entries) {
-    if (reservedFields.has(name) || registeredFields.has(name)) {
-      continue
-    }
-
-    registeredFields.set(name, compiler)
-    registered.push([name, compiler])
-  }
-
-  return () => {
-    for (const [name, compiler] of registered) {
-      const current = registeredFields.get(name)
-      if (current === compiler) {
-        registeredFields.delete(name)
-      }
-    }
-  }
-}
-
 export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapEvent> {
   private readonly state = createKeymapState<TTarget, TEvent>()
   private cleanedUp = false
@@ -143,6 +90,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
   private readonly compiler: CompilerService<TTarget, TEvent>
   private readonly dispatch: DispatchService<TTarget, TEvent>
   private readonly layers: LayerService<TTarget, TEvent>
+  private readonly environment: EnvironmentService<TTarget, TEvent>
 
   private readonly keypressListener: (event: TEvent) => void
   private readonly keyreleaseListener: (event: TEvent) => void
@@ -181,6 +129,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
         this.warnUnknownField(kind, fieldName)
       },
     })
+    this.environment = new EnvironmentService(this.state, this.notify, this.compiler, this.layers)
     this.dispatch = new DispatchService(
       this.state,
       this.notify,
@@ -380,17 +329,10 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     options?: KeyInterceptOptions | RawInterceptOptions,
   ): () => void {
     if (name === "key") {
-      const keyOptions = options as KeyInterceptOptions | undefined
-      return this.state.config.keyHooks.register(fn as (ctx: KeyInputContext<TEvent>) => void, {
-        priority: keyOptions?.priority ?? 0,
-        release: keyOptions?.release ?? false,
-      })
+      return this.dispatch.intercept(name, fn as (ctx: KeyInputContext<TEvent>) => void, options as KeyInterceptOptions)
     }
 
-    const rawOptions = options as RawInterceptOptions | undefined
-    return this.state.config.rawHooks.register(fn as (ctx: RawInputContext) => void, {
-      priority: rawOptions?.priority ?? 0,
-    })
+    return this.dispatch.intercept(name, fn as (ctx: RawInputContext) => void, options as RawInterceptOptions)
   }
 
   public registerLayer(layer: Layer<TTarget, TEvent>): () => void {
@@ -398,146 +340,55 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
   }
 
   public registerLayerFields(fields: Record<string, LayerFieldCompiler>): () => void {
-    return registerFieldCompilers(fields, {
-      kind: "layer",
-      reservedFields: RESERVED_LAYER_FIELDS,
-      registeredFields: this.state.config.layerFields,
-      emitError: (code, error, message) => {
-        this.notify.emitError(code, error, message)
-      },
-    })
+    return this.environment.registerLayerFields(fields)
   }
 
   public prependBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {
-    return this.state.config.bindingTransformers.prepend(transformer)
+    return this.environment.prependBindingTransformer(transformer)
   }
 
   public appendBindingTransformer(transformer: BindingTransformer<TTarget, TEvent>): () => void {
-    return this.state.config.bindingTransformers.append(transformer)
+    return this.environment.appendBindingTransformer(transformer)
   }
 
   public clearBindingTransformers(): void {
-    this.state.config.bindingTransformers.clear()
+    this.environment.clearBindingTransformers()
   }
 
   public prependBindingParser(parser: BindingParser): () => void {
-    return this.state.config.bindingParsers.prepend(parser)
+    return this.environment.prependBindingParser(parser)
   }
 
   public appendBindingParser(parser: BindingParser): () => void {
-    return this.state.config.bindingParsers.append(parser)
+    return this.environment.appendBindingParser(parser)
   }
 
   public clearBindingParsers(): void {
-    this.state.config.bindingParsers.clear()
+    this.environment.clearBindingParsers()
   }
 
   public registerToken(token: KeyToken): () => void {
-    let normalizedToken: string
-
-    try {
-      normalizedToken = this.compiler.normalizeTokenName(token.name)
-    } catch (error) {
-      this.notify.emitError(
-        "token-name-normalize-error",
-        error,
-        getErrorMessage(error, "Failed to register keymap token"),
-      )
-      return NOOP
-    }
-
-    if (this.state.config.tokens.has(normalizedToken)) {
-      this.notify.emitError(
-        "duplicate-token",
-        { token: normalizedToken },
-        `Keymap token "${normalizedToken}" is already registered`,
-      )
-      return NOOP
-    }
-
-    let parsedToken: KeySequencePart
-
-    try {
-      parsedToken = this.compiler.parseTokenKey(token.key)
-    } catch (error) {
-      this.notify.emitError(
-        "token-parse-error",
-        error,
-        getErrorMessage(error, `Failed to register keymap token "${normalizedToken}"`),
-      )
-      return NOOP
-    }
-
-    const registeredToken: ResolvedKeyToken = {
-      stroke: parsedToken.stroke,
-      match: parsedToken.match,
-    }
-
-    const nextTokens = new Map(this.state.config.tokens)
-    nextTokens.set(normalizedToken, registeredToken)
-
-    try {
-      this.layers.applyTokenState(nextTokens)
-    } catch (error) {
-      this.notify.emitError(
-        "token-register-error",
-        error,
-        getErrorMessage(error, `Failed to register keymap token "${normalizedToken}"`),
-      )
-      return NOOP
-    }
-
-    return () => {
-      const current = this.state.config.tokens.get(normalizedToken)
-      if (current === registeredToken) {
-        const nextTokens = new Map(this.state.config.tokens)
-        nextTokens.delete(normalizedToken)
-
-        try {
-          this.layers.applyTokenState(nextTokens)
-        } catch (error) {
-          this.notify.emitError(
-            "token-unregister-error",
-            error,
-            getErrorMessage(error, `Failed to unregister keymap token "${normalizedToken}"`),
-          )
-        }
-      }
-    }
+    return this.environment.registerToken(token)
   }
 
   public prependBindingExpander(expander: BindingExpander): () => void {
-    return this.state.config.bindingExpanders.prepend(expander)
+    return this.environment.prependBindingExpander(expander)
   }
 
   public appendBindingExpander(expander: BindingExpander): () => void {
-    return this.state.config.bindingExpanders.append(expander)
+    return this.environment.appendBindingExpander(expander)
   }
 
   public clearBindingExpanders(): void {
-    this.state.config.bindingExpanders.clear()
+    this.environment.clearBindingExpanders()
   }
 
   public registerBindingFields(fields: Record<string, BindingFieldCompiler>): () => void {
-    return registerFieldCompilers(fields, {
-      kind: "binding",
-      reservedFields: RESERVED_BINDING_FIELDS,
-      registeredFields: this.state.config.bindingFields,
-      emitError: (code, error, message) => {
-        this.notify.emitError(code, error, message)
-      },
-    })
+    return this.environment.registerBindingFields(fields)
   }
 
   public registerCommandFields(fields: Record<string, CommandFieldCompiler>): () => void {
-    return registerFieldCompilers(fields, {
-      kind: "command",
-      reservedFields: RESERVED_COMMAND_FIELDS,
-      registeredFields: this.state.config.commandFields,
-      emitError: (code, error, message) => {
-        this.notify.emitError(code, error, message)
-      },
-    })
+    return this.environment.registerCommandFields(fields)
   }
 
   public prependCommandResolver(resolver: CommandResolver<TTarget, TEvent>): () => void {
@@ -553,27 +404,27 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
   }
 
   public prependLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
-    return this.state.config.layerAnalyzers.prepend(analyzer)
+    return this.layers.prependLayerAnalyzer(analyzer)
   }
 
   public appendLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
-    return this.state.config.layerAnalyzers.append(analyzer)
+    return this.layers.appendLayerAnalyzer(analyzer)
   }
 
   public clearLayerAnalyzers(): void {
-    this.state.config.layerAnalyzers.clear()
+    this.layers.clearLayerAnalyzers()
   }
 
   public prependEventMatchResolver(resolver: EventMatchResolver<TEvent>): () => void {
-    return this.state.config.eventMatchResolvers.prepend(resolver)
+    return this.dispatch.prependEventMatchResolver(resolver)
   }
 
   public appendEventMatchResolver(resolver: EventMatchResolver<TEvent>): () => void {
-    return this.state.config.eventMatchResolvers.append(resolver)
+    return this.dispatch.appendEventMatchResolver(resolver)
   }
 
   public clearEventMatchResolvers(): void {
-    this.state.config.eventMatchResolvers.clear()
+    this.dispatch.clearEventMatchResolvers()
   }
 
   private handleFocusedTargetChange(_focused: TTarget | null): void {

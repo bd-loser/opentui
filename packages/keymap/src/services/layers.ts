@@ -12,6 +12,7 @@ import type {
   KeymapHost,
   KeySequencePart,
   Layer,
+  LayerAnalyzer,
   LayerAnalysisContext,
   LayerBindingAnalysis,
   ParsedBindingInput,
@@ -239,7 +240,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       const order = this.state.core.order++
       const compiledBindings = this.options.compiler.compileBindings(
         bindingInputs,
-        this.state.config.tokens,
+        this.state.environment.tokens,
         scope,
         target,
         order,
@@ -341,7 +342,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         )
       }
 
-      this.state.config.tokens = nextTokens
+      this.state.environment.tokens = nextTokens
 
       let shouldClearPending = false
       for (const [layer, compilation] of nextCompilations) {
@@ -381,6 +382,18 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     })
   }
 
+  public prependLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
+    return this.state.layers.layerAnalyzers.prepend(analyzer)
+  }
+
+  public appendLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
+    return this.state.layers.layerAnalyzers.append(analyzer)
+  }
+
+  public clearLayerAnalyzers(): void {
+    this.state.layers.layerAnalyzers.clear()
+  }
+
   private normalizeScope(layer: Layer<TTarget, TEvent>): Scope {
     if (layer.scope) {
       if (layer.scope !== "global" && !layer.target) {
@@ -397,7 +410,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     return "global"
   }
   private runLayerAnalyzers(options: AnalyzeLayerOptions<TTarget, TEvent>): void {
-    const analyzers = this.state.config.layerAnalyzers.values()
+    const analyzers = this.state.layers.layerAnalyzers.values()
     if (analyzers.length === 0) {
       return
     }
@@ -449,7 +462,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
 
       compileFields[fieldName] = snapshotDataValue(value)
 
-      const compiler = this.state.config.layerFields.get(fieldName)
+      const compiler = this.state.environment.layerFields.get(fieldName)
       if (!compiler) {
         this.options.warnUnknownField("layer", fieldName)
         continue

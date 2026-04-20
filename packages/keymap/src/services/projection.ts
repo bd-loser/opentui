@@ -918,7 +918,7 @@ export class ProjectionService<TTarget extends object, TEvent extends KeymapEven
     focused: TTarget | null,
     options?: { includeRecord?: boolean },
   ): ResolvedCommandLookup<TTarget, TEvent> {
-    const resolvers = this.state.config.commandResolvers.values()
+    const resolvers = this.state.commands.commandResolvers.values()
     if (resolvers.length === 0) {
       return { hadError: false }
     }

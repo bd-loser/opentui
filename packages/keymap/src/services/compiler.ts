@@ -11,7 +11,6 @@ import type {
   BindingInput,
   BindingParser,
   BindingParserContext,
-  BindingSyntax,
   EventData,
   ParsedBindingInput,
   ReactiveMatcher,
@@ -27,6 +26,7 @@ import type {
   RuntimeMatcher,
   SequenceNode,
 } from "../types.js"
+import { normalizeBindingTokenName, parseObjectKeyInput } from "../lib/default-parser.js"
 import { RESERVED_BINDING_FIELDS } from "../schema.js"
 import {
   createParsedKeyPart,
@@ -66,7 +66,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
   ) {}
 
   public normalizeTokenName(token: string): string {
-    const normalized = this.getBindingSyntax().normalizeTokenName(token)
+    const normalized = normalizeBindingTokenName(token)
     if (!normalized) {
       throw new Error("Invalid keymap token: token cannot be empty")
     }
@@ -274,17 +274,8 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     }
   }
 
-  private getBindingSyntax(): BindingSyntax {
-    const syntax = this.state.config.bindingSyntax
-    if (!syntax) {
-      throw new Error("No keymap binding syntax is registered")
-    }
-
-    return syntax
-  }
-
   private parseObjectKeyPart(key: KeyStrokeInput): KeySequencePart {
-    const parsed = this.getBindingSyntax().parseObjectKey(key)
+    const parsed = parseObjectKeyInput(key)
     return createParsedKeyPart(parsed.stroke, parsed.display, parsed.matchKey)
   }
 

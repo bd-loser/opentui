@@ -4,7 +4,6 @@ import { BoxRenderable, KeyEvent, type Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import {
   defaultBindingParser,
-  defaultBindingSyntax,
   stringifyKeySequence,
   stringifyKeyStroke,
   type ActiveKey,
@@ -847,131 +846,6 @@ describe("keymap", () => {
     expect(calls).toEqual(["leader"])
   })
 
-  test("clearBindingSyntax disables object keys and token registration until syntax is restored", () => {
-    const keymap = getKeymap(renderer)
-    const calls: string[] = []
-    const { errors } = captureDiagnostics(keymap)
-
-    keymap.clearBindingSyntax()
-
-    expect(() => {
-      keymap.registerLayer({
-        scope: "global",
-        bindings: [{ key: { name: "x" }, cmd: "object" }],
-      })
-    }).not.toThrow()
-
-    expect(() => {
-      keymap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
-    }).not.toThrow()
-
-    expect(errors).toEqual(["No keymap binding syntax is registered", "No keymap binding syntax is registered"])
-
-    expect(getActiveKey(keymap, "x")).toBeUndefined()
-
-    keymap.setBindingSyntax(defaultBindingSyntax)
-
-    keymap.registerLayer({
-      scope: "global",
-      commands: [
-        {
-          name: "object",
-          run() {
-            calls.push("object")
-          },
-        },
-        {
-          name: "token",
-          run() {
-            calls.push("token")
-          },
-        },
-      ],
-    })
-    keymap.registerLayer({
-      scope: "global",
-      bindings: [{ key: { name: "x" }, cmd: "object" }],
-    })
-    keymap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
-    keymap.registerLayer({
-      scope: "global",
-      bindings: [{ key: "<leader>", cmd: "token" }],
-    })
-
-    mockInput.pressKey("x")
-    mockInput.pressKey("x", { ctrl: true })
-
-    expect(calls).toEqual(["object", "token"])
-  })
-
-  test("supports case-sensitive token names when parser and binding syntax are case-sensitive", () => {
-    const keymap = getKeymap(renderer)
-    const calls: string[] = []
-
-    keymap.clearBindingParsers()
-    keymap.appendBindingParser(({ input, index, tokens }) => {
-      if (input[index] !== "[") {
-        return undefined
-      }
-
-      const end = input.indexOf("]", index)
-      if (end === -1) {
-        throw new Error(`Invalid key sequence "${input}": unterminated token`)
-      }
-
-      const tokenName = input.slice(index, end + 1).trim()
-      const token = tokens.get(tokenName)
-      if (!token) {
-        return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
-      }
-
-      return {
-        parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
-        nextIndex: end + 1,
-        usedTokens: [tokenName],
-      }
-    })
-    keymap.appendBindingParser(defaultBindingParser)
-
-    keymap.clearBindingSyntax()
-    keymap.setBindingSyntax({
-      normalizeTokenName(token) {
-        const normalized = token.trim()
-        if (!normalized) {
-          throw new Error("Invalid keymap token: token cannot be empty")
-        }
-
-        return normalized
-      },
-      parseObjectKey(key) {
-        return defaultBindingSyntax.parseObjectKey(key)
-      },
-    })
-
-    keymap.registerLayer({
-      scope: "global",
-      commands: [
-        {
-          name: "case-token",
-          run() {
-            calls.push("case-token")
-          },
-        },
-      ],
-    })
-    keymap.registerLayer({
-      scope: "global",
-      bindings: [{ key: "[Leader]d", cmd: "case-token" }],
-    })
-
-    keymap.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
-
-    mockInput.pressKey("x", { ctrl: true })
-    mockInput.pressKey("d")
-
-    expect(calls).toEqual(["case-token"])
-  })
-
   test("createKeyMatcher uses the keymap's current parser and token configuration", () => {
     const keymap = getKeymap(renderer)
 
@@ -987,33 +861,19 @@ describe("keymap", () => {
       }
 
       const tokenName = input.slice(index, end + 1).trim()
-      const token = tokens.get(tokenName)
+      const normalizedTokenName = tokenName.toLowerCase()
+      const token = tokens.get(normalizedTokenName)
       if (!token) {
-        return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
+        return { parts: [], nextIndex: end + 1, unknownTokens: [normalizedTokenName] }
       }
 
       return {
         parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
         nextIndex: end + 1,
-        usedTokens: [tokenName],
+        usedTokens: [normalizedTokenName],
       }
     })
     keymap.appendBindingParser(defaultBindingParser)
-
-    keymap.clearBindingSyntax()
-    keymap.setBindingSyntax({
-      normalizeTokenName(token) {
-        const normalized = token.trim()
-        if (!normalized) {
-          throw new Error("Invalid keymap token: token cannot be empty")
-        }
-
-        return normalized
-      },
-      parseObjectKey(key) {
-        return defaultBindingSyntax.parseObjectKey(key)
-      },
-    })
 
     keymap.registerLayer({
       scope: "global",
@@ -1584,33 +1444,19 @@ describe("keymap", () => {
       }
 
       const tokenName = input.slice(index, end + 1).trim()
-      const token = tokens.get(tokenName)
+      const normalizedTokenName = tokenName.toLowerCase()
+      const token = tokens.get(normalizedTokenName)
       if (!token) {
-        return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
+        return { parts: [], nextIndex: end + 1, unknownTokens: [normalizedTokenName] }
       }
 
       return {
         parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
         nextIndex: end + 1,
-        usedTokens: [tokenName],
+        usedTokens: [normalizedTokenName],
       }
     })
     keymap.appendBindingParser(defaultBindingParser)
-
-    keymap.clearBindingSyntax()
-    keymap.setBindingSyntax({
-      normalizeTokenName(token) {
-        const normalized = token.trim()
-        if (!normalized) {
-          throw new Error("Invalid keymap token: token cannot be empty")
-        }
-
-        return normalized
-      },
-      parseObjectKey(key) {
-        return defaultBindingSyntax.parseObjectKey(key)
-      },
-    })
 
     keymap.appendBindingTransformer((binding, ctx) => {
       ctx.add({
@@ -1678,62 +1524,6 @@ describe("keymap", () => {
 
     expect(calls).toEqual(["submit"])
     expect(getActiveKey(keymap, "return")?.display).toBe("enter")
-  })
-
-  test("binding parser ctx.parseObjectKey uses the current binding syntax", () => {
-    const keymap = getKeymap(renderer)
-    const calls: string[] = []
-
-    keymap.clearBindingSyntax()
-    keymap.setBindingSyntax({
-      normalizeTokenName(token) {
-        const normalized = token.trim().toLowerCase()
-        if (!normalized) {
-          throw new Error("Invalid keymap token: token cannot be empty")
-        }
-
-        return normalized
-      },
-      parseObjectKey(key) {
-        const parsed = defaultBindingSyntax.parseObjectKey(key)
-        return {
-          ...parsed,
-          display: `custom:${parsed.display}`,
-        }
-      },
-    })
-
-    keymap.prependBindingParser(({ input, index, parseObjectKey }) => {
-      if (index !== 0 || input !== "@") {
-        return undefined
-      }
-
-      return {
-        parts: [parseObjectKey({ name: "x" })],
-        nextIndex: input.length,
-      }
-    })
-
-    keymap.registerLayer({
-      scope: "global",
-      commands: [
-        {
-          name: "submit",
-          run() {
-            calls.push("submit")
-          },
-        },
-      ],
-    })
-    keymap.registerLayer({
-      scope: "global",
-      bindings: [{ key: "@", cmd: "submit" }],
-    })
-
-    mockInput.pressKey("x")
-
-    expect(calls).toEqual(["submit"])
-    expect(getActiveKey(keymap, "x")?.display).toBe("custom:x")
   })
 
   test("skips bindings when a binding expander returns an empty expansion", () => {
@@ -1872,33 +1662,19 @@ describe("keymap", () => {
       }
 
       const tokenName = input.slice(index, end + 1).trim()
-      const token = tokens.get(tokenName)
+      const normalizedTokenName = tokenName.toLowerCase()
+      const token = tokens.get(normalizedTokenName)
       if (!token) {
-        return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
+        return { parts: [], nextIndex: end + 1, unknownTokens: [normalizedTokenName] }
       }
 
       return {
         parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
         nextIndex: end + 1,
-        usedTokens: [tokenName],
+        usedTokens: [normalizedTokenName],
       }
     })
     keymap.appendBindingParser(defaultBindingParser)
-
-    keymap.clearBindingSyntax()
-    keymap.setBindingSyntax({
-      normalizeTokenName(token) {
-        const normalized = token.trim()
-        if (!normalized) {
-          throw new Error("Invalid keymap token: token cannot be empty")
-        }
-
-        return normalized
-      },
-      parseObjectKey(key) {
-        return defaultBindingSyntax.parseObjectKey(key)
-      },
-    })
 
     keymap.appendEventMatchResolver((event, ctx) => {
       if (event.name !== "x" || !event.ctrl) {

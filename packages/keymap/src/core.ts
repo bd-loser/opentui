@@ -1,7 +1,6 @@
 export { Keymap } from "./keymap.js"
 export {
   defaultBindingParser,
-  defaultBindingSyntax,
   defaultEventMatchResolver,
   parseKeySequenceLike,
 } from "./lib/default-parser.js"
@@ -15,7 +14,6 @@ export type {
   Attributes,
   BindingCommand,
   BindingParser,
-  BindingSyntax,
   BindingParserContext,
   BindingParserResult,
   BindingExpander,

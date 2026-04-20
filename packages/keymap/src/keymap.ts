@@ -4,7 +4,6 @@ import type {
   BindingInput,
   BindingExpander,
   BindingParser,
-  BindingSyntax,
   BindingFieldCompiler,
   Bindings,
   BindingTransformer,
@@ -46,7 +45,7 @@ import { CompilerService } from "./services/compiler.js"
 import { ConditionService } from "./services/conditions.js"
 import { DispatchService } from "./services/dispatch.js"
 import { LayerService } from "./services/layers.js"
-import { defaultBindingParser, defaultBindingSyntax, defaultEventMatchResolver } from "./lib/default-parser.js"
+import { defaultBindingParser, defaultEventMatchResolver } from "./lib/default-parser.js"
 import { Emitter, type EmitterListener } from "./lib/emitter.js"
 import { NotificationService } from "./services/notify.js"
 import { ProjectionService } from "./services/projection.js"
@@ -182,7 +181,6 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
       this.commands,
       this.compiler,
     )
-    this.state.config.bindingSyntax = defaultBindingSyntax
     this.state.config.bindingParsers.append(defaultBindingParser)
     this.state.config.eventMatchResolvers.append(defaultEventMatchResolver)
     this.keypressListener = (event) => {
@@ -423,14 +421,6 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
   public clearBindingParsers(): void {
     this.state.config.bindingParsers.clear()
-  }
-
-  public setBindingSyntax(syntax: BindingSyntax): void {
-    this.state.config.bindingSyntax = syntax
-  }
-
-  public clearBindingSyntax(): void {
-    this.state.config.bindingSyntax = undefined
   }
 
   public registerToken(token: KeyToken): () => void {

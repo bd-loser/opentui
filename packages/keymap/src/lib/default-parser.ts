@@ -1,6 +1,5 @@
 import type {
   BindingParser,
-  BindingSyntax,
   EventMatchResolver,
   KeymapEvent,
   KeyLike,
@@ -21,18 +20,17 @@ import { namedSingleStrokeKeys } from "./named-keys.js"
 
 const emptyTokens = new Map<string, ResolvedKeyToken>()
 
-export const defaultBindingSyntax: BindingSyntax = {
-  normalizeTokenName(token) {
-    const normalized = token.trim().toLowerCase()
-    if (!normalized) {
-      throw new Error("Invalid keymap token: token cannot be empty")
-    }
+export function normalizeBindingTokenName(token: string): string {
+  const normalized = token.trim().toLowerCase()
+  if (!normalized) {
+    throw new Error("Invalid keymap token: token cannot be empty")
+  }
 
-    return normalized
-  },
-  parseObjectKey(key: KeyStrokeInput) {
-    return createParsedKeyPart(normalizeKeyStroke(key))
-  },
+  return normalized
+}
+
+export function parseObjectKeyInput(key: KeyStrokeInput): KeySequencePart {
+  return createParsedKeyPart(normalizeKeyStroke(key))
 }
 
 function isNamedSingleStrokeKey(input: string, extraNames?: ReadonlySet<string>): boolean {
@@ -165,7 +163,7 @@ function parseKeySequenceWithDefaultParser(
   extraNames?: ReadonlySet<string>,
 ): KeySequencePart[] {
   if (typeof key !== "string") {
-    return [defaultBindingSyntax.parseObjectKey(key)]
+    return [parseObjectKeyInput(key)]
   }
 
   if (key.length === 0) {
@@ -173,7 +171,11 @@ function parseKeySequenceWithDefaultParser(
   }
 
   if (isSingleStrokeString(key, tokens, extraNames)) {
-    const normalizedToken = key.trim().toLowerCase()
+    if (key === " " || key === "+") {
+      return [parseStringKeyPart(key)]
+    }
+
+    const normalizedToken = normalizeBindingTokenName(key)
     const token = tokens.get(normalizedToken)
     if (token) {
       return [createParsedKeyPart(token.stroke, normalizedToken, token.matchKey)]
@@ -191,7 +193,7 @@ function parseKeySequenceWithDefaultParser(
       index,
       layer: Object.freeze({}),
       tokens,
-      parseObjectKey: defaultBindingSyntax.parseObjectKey,
+      parseObjectKey: parseObjectKeyInput,
     })
     if (!result || result.nextIndex <= index) {
       throw new Error(`Default keymap binding parser must advance the input for "${key}" at index ${index}`)
@@ -206,7 +208,14 @@ function parseKeySequenceWithDefaultParser(
 
 export const defaultBindingParser: BindingParser = ({ input, index, tokens }) => {
   if (index === 0 && isSingleStrokeString(input, tokens)) {
-    const normalizedToken = input.trim().toLowerCase()
+    if (input === " " || input === "+") {
+      return {
+        parts: [parseStringKeyPart(input)],
+        nextIndex: input.length,
+      }
+    }
+
+    const normalizedToken = normalizeBindingTokenName(input)
     const token = tokens.get(normalizedToken)
     if (token) {
       return {
@@ -233,10 +242,7 @@ export const defaultBindingParser: BindingParser = ({ input, index, tokens }) =>
       throw new Error(`Invalid key sequence "${input}": unterminated token`)
     }
 
-    const tokenName = input
-      .slice(index, end + 1)
-      .trim()
-      .toLowerCase()
+    const tokenName = normalizeBindingTokenName(input.slice(index, end + 1))
     const token = tokens.get(tokenName)
     if (!token) {
       return {

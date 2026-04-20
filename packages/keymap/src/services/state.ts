@@ -3,7 +3,6 @@ import type {
   BindingExpander,
   BindingFieldCompiler,
   BindingParser,
-  BindingSyntax,
   BindingTransformer,
   CommandFieldCompiler,
   CommandResolver,
@@ -33,7 +32,6 @@ export interface CoreState {
 
 export interface ConfigState<TTarget extends object, TEvent extends KeymapEvent> {
   tokens: Map<string, import("../types.js").ResolvedKeyToken>
-  bindingSyntax: BindingSyntax | undefined
   layerFields: Map<string, LayerFieldCompiler>
   bindingExpanders: OrderedRegistry<BindingExpander>
   bindingParsers: OrderedRegistry<BindingParser>
@@ -137,7 +135,6 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     },
     config: {
       tokens: new Map<string, import("../types.js").ResolvedKeyToken>(),
-      bindingSyntax: undefined,
       layerFields: new Map<string, LayerFieldCompiler>(),
       bindingExpanders: new OrderedRegistry<BindingExpander>(),
       bindingParsers: new OrderedRegistry<BindingParser>(),

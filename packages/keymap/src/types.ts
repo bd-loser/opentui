@@ -79,11 +79,6 @@ export type KeyStringifyInput =
 
 export type KeyLike = string | KeyStrokeInput
 
-export interface BindingSyntax {
-  normalizeTokenName(token: string): string
-  parseObjectKey(key: KeyStrokeInput): KeySequencePart
-}
-
 /**
  * Read-only view of a registered command. `fields` is raw registration
  * metadata; `attrs` is compiled command-field metadata.

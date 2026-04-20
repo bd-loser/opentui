@@ -1002,8 +1002,8 @@ function registerCommandLayers(renderer: CliRenderer): void {
       keymapInstance.registerLayer({
         target: alphaPanel,
         bindings: [
-          { key: "j", cmd: "alpha-up", desc: "Alpha +1" },
-          { key: "k", cmd: "alpha-down", desc: "Alpha -1" },
+          { key: "j", cmd: "alpha-down", desc: "Alpha -1" },
+          { key: "k", cmd: "alpha-up", desc: "Alpha +1" },
           { key: "return", cmd: ":w alpha-panel.txt", desc: "Write alpha panel" },
         ],
       }),
@@ -1015,8 +1015,8 @@ function registerCommandLayers(renderer: CliRenderer): void {
       keymapInstance.registerLayer({
         target: betaPanel,
         bindings: [
-          { key: "j", cmd: "beta-up", desc: "Beta +5" },
-          { key: "k", cmd: "beta-down", desc: "Beta -5" },
+          { key: "j", cmd: "beta-down", desc: "Beta -5" },
+          { key: "k", cmd: "beta-up", desc: "Beta +5" },
           { key: "return", cmd: ":w beta-panel.txt", desc: "Write beta panel" },
         ],
       }),

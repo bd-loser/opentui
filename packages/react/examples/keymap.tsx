@@ -324,8 +324,8 @@ function CounterPanel(props: {
   const bindingsRef = useBindings(
     () => ({
       bindings: [
-        { key: "j", cmd: incrementCommand, desc: `${props.label} +${props.step}` },
-        { key: "k", cmd: decrementCommand, desc: `${props.label} -${props.step}` },
+        { key: "j", cmd: decrementCommand, desc: `${props.label} -${props.step}` },
+        { key: "k", cmd: incrementCommand, desc: `${props.label} +${props.step}` },
         { key: "return", cmd: `:w ${props.saveTarget}`, desc: `Write ${props.label.toLowerCase()} panel` },
       ] satisfies KeymapBindingInput[],
     }),

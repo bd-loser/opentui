@@ -1,4 +1,4 @@
-name: Build Extras
+name: Build Keymap
 
 on:
   push:
@@ -29,16 +29,16 @@ jobs:
 
       - name: Build
         run: |
-          cd packages/extras
+          cd packages/keymap
           bun run build --ci
 
       - name: Run tests
         run: |
-          cd packages/extras
+          cd packages/keymap
           bun run test
 
   build-complete:
-    name: Extras - Build and Test
+    name: Keymap - Build and Test
     needs: [test]
     runs-on: ubuntu-latest
     if: always()

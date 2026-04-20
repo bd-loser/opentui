@@ -1,42 +1,38 @@
 {
-  "name": "@opentui/extras",
+  "name": "@opentui/keymap",
   "version": "0.1.99",
-  "description": "Standalone extras package for OpenTUI",
+  "description": "Standalone keymap package for OpenTUI",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/anomalyco/opentui",
-    "directory": "packages/extras"
+    "directory": "packages/keymap"
   },
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "private": true,
-  "main": "index.ts",
-  "types": "index.ts",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "exports": {
     ".": {
-      "import": "./index.ts",
-      "types": "./index.ts"
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
     },
-    "./keymap": {
-      "import": "./keymap/index.ts",
-      "types": "./keymap/index.ts"
+    "./html": {
+      "import": "./src/html.ts",
+      "types": "./src/html.ts"
     },
-    "./keymap/html": {
-      "import": "./keymap/html.ts",
-      "types": "./keymap/html.ts"
+    "./opentui": {
+      "import": "./src/opentui.ts",
+      "types": "./src/opentui.ts"
     },
-    "./keymap/opentui": {
-      "import": "./keymap/opentui.ts",
-      "types": "./keymap/opentui.ts"
+    "./react": {
+      "import": "./src/react/index.ts",
+      "types": "./src/react/index.ts"
     },
-    "./keymap/react": {
-      "import": "./keymap/react/index.ts",
-      "types": "./keymap/react/index.ts"
-    },
-    "./keymap/solid": {
-      "import": "./keymap/solid/index.ts",
-      "types": "./keymap/solid/index.ts"
+    "./solid": {
+      "import": "./src/solid/index.ts",
+      "types": "./src/solid/index.ts"
     }
   },
   "scripts": {

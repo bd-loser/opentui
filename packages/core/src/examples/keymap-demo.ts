@@ -21,8 +21,8 @@ import {
   type Keymap,
   stringifyKeySequence,
   stringifyKeyStroke,
-} from "@opentui/extras/keymap"
-import { getKeymap, registerManagedTextareaLayer } from "@opentui/extras/keymap/opentui"
+} from "@opentui/keymap"
+import { getKeymap, registerManagedTextareaLayer } from "@opentui/keymap/opentui"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const P = {

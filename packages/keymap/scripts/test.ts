@@ -12,16 +12,15 @@ const testRuns = [
     cwd: rootDir,
     args: [
       "test",
-      "./tests",
-      "./keymap/keymap.test.ts",
-      "./keymap/keymap.host.test.ts",
-      "./keymap/html.test.ts",
-      "./keymap/addons",
-      "./keymap/react",
+      "./src/keymap.test.ts",
+      "./src/keymap.host.test.ts",
+      "./src/html.test.ts",
+      "./src/addons",
+      "./src/react",
     ],
   },
   {
-    cwd: resolve(rootDir, "keymap/solid"),
+    cwd: resolve(rootDir, "src/solid"),
     args: ["test", "./index.test.tsx"],
   },
 ] as const

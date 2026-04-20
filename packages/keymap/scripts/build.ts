@@ -55,7 +55,7 @@ if (!packageJson.module) {
   process.exit(1)
 }
 
-console.log("Building @opentui/extras library...")
+console.log("Building @opentui/keymap library...")
 
 const distDir = join(rootDir, "dist")
 rmSync(distDir, { recursive: true, force: true })
@@ -67,11 +67,10 @@ const externalDeps: string[] = [
 ]
 
 const keymapEntrypoints = [
-  join(rootDir, "keymap/index.ts"),
-  join(rootDir, "keymap/html.ts"),
-  join(rootDir, "keymap/opentui.ts"),
-  join(rootDir, "keymap/react/index.ts"),
-  join(rootDir, "keymap/solid/index.ts"),
+  join(rootDir, "src/html.ts"),
+  join(rootDir, "src/opentui.ts"),
+  join(rootDir, "src/react/index.ts"),
+  join(rootDir, "src/solid/index.ts"),
 ]
 
 const buildResult = await Bun.build({
@@ -108,35 +107,42 @@ if (tscResult.status !== 0) {
 
 const exports = {
   ".": {
-    types: "./index.d.ts",
+    types: "./src/index.d.ts",
     import: "./index.js",
     require: "./index.js",
   },
-  "./keymap": {
-    types: "./keymap/index.d.ts",
-    import: "./keymap/index.js",
-    require: "./keymap/index.js",
+  "./html": {
+    types: "./src/html.d.ts",
+    import: "./html.js",
+    require: "./html.js",
   },
-  "./keymap/html": {
-    types: "./keymap/html.d.ts",
-    import: "./keymap/html.js",
-    require: "./keymap/html.js",
+  "./opentui": {
+    types: "./src/opentui.d.ts",
+    import: "./opentui.js",
+    require: "./opentui.js",
   },
-  "./keymap/opentui": {
-    types: "./keymap/opentui.d.ts",
-    import: "./keymap/opentui.js",
-    require: "./keymap/opentui.js",
+  "./react": {
+    types: "./src/react/index.d.ts",
+    import: "./react/index.js",
+    require: "./react/index.js",
   },
-  "./keymap/react": {
-    types: "./keymap/react/index.d.ts",
-    import: "./keymap/react/index.js",
-    require: "./keymap/react/index.js",
+  "./solid": {
+    types: "./src/solid/index.d.ts",
+    import: "./solid/index.js",
+    require: "./solid/index.js",
   },
-  "./keymap/solid": {
-    types: "./keymap/solid/index.d.ts",
-    import: "./keymap/solid/index.js",
-    require: "./keymap/solid/index.js",
-  },
+}
+
+const processedDependencies = { ...packageJson.dependencies }
+if (processedDependencies["@opentui/core"] === "workspace:*") {
+  processedDependencies["@opentui/core"] = packageJson.version
+}
+
+const processedPeerDependencies = { ...packageJson.peerDependencies }
+for (const dependencyName of ["@opentui/react", "@opentui/solid"]) {
+  if (processedPeerDependencies[dependencyName] === "workspace:*") {
+    processedPeerDependencies[dependencyName] = packageJson.version
+  }
 }
 
 writeFileSync(
@@ -146,7 +152,7 @@ writeFileSync(
       name: packageJson.name,
       module: "index.js",
       main: "index.js",
-      types: "index.d.ts",
+      types: "src/index.d.ts",
       type: packageJson.type,
       version: packageJson.version,
       description: packageJson.description,
@@ -157,9 +163,9 @@ writeFileSync(
       repository: packageJson.repository,
       bugs: packageJson.bugs,
       exports,
-      dependencies: packageJson.dependencies,
+      dependencies: processedDependencies,
       devDependencies: packageJson.devDependencies,
-      peerDependencies: packageJson.peerDependencies,
+      peerDependencies: processedPeerDependencies,
       peerDependenciesMeta: packageJson.peerDependenciesMeta,
     },
     null,
@@ -171,7 +177,7 @@ const readmePath = join(rootDir, "README.md")
 if (existsSync(readmePath)) {
   writeFileSync(join(distDir, "README.md"), replaceLinks(readFileSync(readmePath, "utf8")))
 } else {
-  console.warn("Warning: README.md not found in extras package")
+  console.warn("Warning: README.md not found in keymap package")
 }
 
 if (existsSync(licensePath)) {

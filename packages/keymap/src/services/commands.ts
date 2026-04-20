@@ -1,18 +1,6 @@
 import type { Keymap } from "../keymap.js"
 import type { Emitter } from "../lib/emitter.js"
 import { RESERVED_COMMAND_FIELDS } from "../schema.js"
-import {
-  EMPTY_COMMAND_FIELDS,
-  getErrorMessage,
-  isPromiseLike,
-  mergeAttribute,
-  normalizeBindingCommand,
-  normalizeCommandName,
-  SNAPSHOT_COMMAND_METADATA_OPTIONS,
-  snapshotDataValue,
-  snapshotParsedBindingInput,
-  stringifyKeySequence,
-} from "../lib/utils.js"
 import type {
   Attributes,
   BindingCommand,
@@ -33,9 +21,69 @@ import type {
   RunCommandResult,
 } from "../types.js"
 import type { NotificationService } from "./notify.js"
+import { cloneKeySequence, stringifyKeySequence } from "./keys.js"
 import type { ProjectionService } from "./projection.js"
 import type { RuntimeService } from "./runtime.js"
 import type { State } from "./state.js"
+import { getErrorMessage, isPromiseLike, snapshotDataValue } from "./values.js"
+
+const SNAPSHOT_COMMAND_METADATA_OPTIONS = Object.freeze({
+  deep: true,
+  preserveNonPlainObjects: true,
+})
+
+const SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS = Object.freeze({
+  deep: true,
+  freeze: true,
+  preserveNonPlainObjects: true,
+})
+
+const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
+
+function mergeAttribute(target: Attributes, name: string, value: unknown, source: string): void {
+  if (Object.prototype.hasOwnProperty.call(target, name) && !Object.is(target[name], value)) {
+    throw new Error(`Conflicting keymap attribute for "${name}" from ${source}`)
+  }
+
+  target[name] = value
+}
+
+export function normalizeBindingCommand<TTarget extends object, TEvent extends KeymapEvent>(
+  command: BindingCommand<TTarget, TEvent> | undefined,
+): BindingCommand<TTarget, TEvent> | undefined {
+  if (command === undefined || typeof command === "function") {
+    return command
+  }
+
+  const trimmed = command.trim()
+  if (!trimmed) {
+    throw new Error("Invalid keymap command: command cannot be empty")
+  }
+
+  return trimmed
+}
+
+export function normalizeCommandName(name: string): string {
+  const trimmed = name.trim()
+  if (!trimmed) {
+    throw new Error("Invalid keymap command name: name cannot be empty")
+  }
+
+  if (/\s/.test(trimmed)) {
+    throw new Error(`Invalid keymap command name "${name}": command names cannot contain whitespace`)
+  }
+
+  return trimmed
+}
+
+function snapshotParsedBindingInput<TTarget extends object, TEvent extends KeymapEvent>(
+  binding: import("../types.js").ParsedBindingInput<TTarget, TEvent>,
+): import("../types.js").ParsedBindingInput<TTarget, TEvent> {
+  return {
+    ...binding,
+    sequence: cloneKeySequence(binding.sequence),
+  }
+}
 
 interface ResolvedCommandLookup<TTarget extends object, TEvent extends KeymapEvent> {
   resolved?: ResolvedBindingCommand<TTarget, TEvent>
@@ -68,7 +116,9 @@ export class CommandService<TTarget extends object, TEvent extends KeymapEvent> 
     private readonly options: CommandsOptions<TTarget, TEvent>,
   ) {}
 
-  public normalizeCommands(commands: readonly CommandDefinition<TTarget, TEvent>[]): RegisteredCommand<TTarget, TEvent>[] {
+  public normalizeCommands(
+    commands: readonly CommandDefinition<TTarget, TEvent>[],
+  ): RegisteredCommand<TTarget, TEvent>[] {
     return normalizeRegisteredCommands({
       commands,
       commandFields: this.state.config.commandFields,
@@ -376,6 +426,76 @@ export class CommandService<TTarget extends object, TEvent extends KeymapEvent> 
   }
 }
 
+export function getRegisteredCommandRecord<TTarget extends object, TEvent extends KeymapEvent>(
+  command: RegisteredCommand<TTarget, TEvent>,
+): import("../types.js").CommandRecord {
+  if (command.record) {
+    return command.record
+  }
+
+  let fields = EMPTY_COMMAND_FIELDS
+  if (command.fields !== EMPTY_COMMAND_FIELDS && Object.keys(command.fields).length > 0) {
+    fields = snapshotDataValue(command.fields, SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS) as Readonly<
+      Record<string, unknown>
+    >
+  }
+
+  const record = command.attrs
+    ? Object.freeze({
+        name: command.name,
+        fields,
+        attrs: snapshotDataValue(command.attrs, SNAPSHOT_FROZEN_COMMAND_METADATA_OPTIONS) as Readonly<Attributes>,
+      })
+    : Object.freeze({
+        name: command.name,
+        fields,
+      })
+
+  command.record = record
+  return record
+}
+
+export function resolveRegisteredCommand<TTarget extends object, TEvent extends KeymapEvent>(
+  command: RegisteredCommand<TTarget, TEvent>,
+  options?: { includeRecord?: boolean },
+): ResolvedBindingCommand<TTarget, TEvent> {
+  const includeRecord = options?.includeRecord === true
+  if (includeRecord) {
+    const existing = command.resolvedWithRecord
+    if (existing) {
+      return existing
+    }
+
+    const resolved: ResolvedBindingCommand<TTarget, TEvent> = {
+      run: createRegisteredCommandRunner(command),
+    }
+
+    if (command.attrs) {
+      resolved.attrs = command.attrs
+    }
+
+    resolved.record = getRegisteredCommandRecord(command)
+    command.resolvedWithRecord = resolved
+    return resolved
+  }
+
+  const existing = command.resolved
+  if (existing) {
+    return existing
+  }
+
+  const resolved: ResolvedBindingCommand<TTarget, TEvent> = {
+    run: createRegisteredCommandRunner(command),
+  }
+
+  if (command.attrs) {
+    resolved.attrs = command.attrs
+  }
+
+  command.resolved = resolved
+  return resolved
+}
+
 function applyBindingEventEffects<TTarget extends object, TEvent extends KeymapEvent>(
   binding: CompiledBinding<TTarget, TEvent>,
   event: TEvent,
@@ -469,4 +589,22 @@ function createCommandFieldContext(mergedAttrs: Attributes, fieldName: string): 
       )
     },
   }
+}
+
+function createRegisteredCommandRunner<TTarget extends object, TEvent extends KeymapEvent>(
+  command: RegisteredCommand<TTarget, TEvent>,
+): (ctx: CommandContext<TTarget, TEvent>) => CommandResult {
+  if (command.runner) {
+    return command.runner
+  }
+
+  const runner = (ctx: CommandContext<TTarget, TEvent>) => {
+    return command.run({
+      ...ctx,
+      command: getRegisteredCommandRecord(command),
+    })
+  }
+
+  command.runner = runner
+  return runner
 }

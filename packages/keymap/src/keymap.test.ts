@@ -3,13 +3,15 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BoxRenderable, KeyEvent, type Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import {
-  defaultBindingParser,
+  addons,
   stringifyKeySequence,
   stringifyKeyStroke,
   type ActiveKey,
   type ActiveKeyOptions,
+  type BindingParser,
   type CommandRecord,
   type ErrorEvent,
+  type EventMatchResolverContext,
   type Keymap,
   type ReactiveMatcher,
   type WarningEvent,
@@ -45,7 +47,11 @@ function getCommand(keymap: OpenTuiKeymap, name: string) {
   return keymap.getCommands().find((candidate) => candidate.name === name)
 }
 
-function getActiveKeyDisplay(keymap: OpenTuiKeymap, display: string, options?: ActiveKeyOptions): ActiveKey | undefined {
+function getActiveKeyDisplay(
+  keymap: OpenTuiKeymap,
+  display: string,
+  options?: ActiveKeyOptions,
+): ActiveKey | undefined {
   return keymap.getActiveKeys(options).find((candidate) => candidate.display === display)
 }
 
@@ -72,13 +78,50 @@ function captureDiagnostics(keymap: OpenTuiKeymap): {
   return { warningEvents, errorEvents, warnings, errors }
 }
 
-function getMatchKeyForEventName(event: KeyEvent, name: string): string {
-  const normalizedName = name === " " ? "space" : name.trim().toLowerCase()
-  if (!normalizedName) {
-    throw new Error("Expected non-empty key name")
-  }
+function matchEventAs(ctx: EventMatchResolverContext, event: KeyEvent, name: string): symbol {
+  return ctx.match({
+    name,
+    ctrl: event.ctrl,
+    shift: event.shift,
+    meta: event.meta,
+    super: event.super ?? false,
+    hyper: event.hyper || undefined,
+  })
+}
 
-  return `${normalizedName}:${event.ctrl ? 1 : 0}:${event.shift ? 1 : 0}:${event.meta ? 1 : 0}:${event.super ? 1 : 0}:${event.hyper ? 1 : 0}`
+function createBracketTokenParser(options?: { preserveDisplayCase?: boolean }): BindingParser {
+  return ({ input, index, tokens, normalizeTokenName, parseObjectKey }) => {
+    if (input[index] !== "[") {
+      return undefined
+    }
+
+    const end = input.indexOf("]", index)
+    if (end === -1) {
+      throw new Error(`Invalid key sequence "${input}": unterminated token`)
+    }
+
+    const tokenName = input.slice(index, end + 1).trim()
+    const normalizedTokenName = normalizeTokenName(tokenName)
+    const token = tokens.get(normalizedTokenName)
+    if (!token) {
+      return {
+        parts: [],
+        nextIndex: end + 1,
+        unknownTokens: [normalizedTokenName],
+      }
+    }
+
+    return {
+      parts: [
+        parseObjectKey(token.stroke, {
+          display: options?.preserveDisplayCase ? tokenName : normalizedTokenName,
+          match: token.match,
+        }),
+      ],
+      nextIndex: end + 1,
+      usedTokens: [normalizedTokenName],
+    }
+  }
 }
 
 // Tiny reactive-matcher test helper that exposes subscription counts.
@@ -663,12 +706,12 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
-    keymap.appendEventMatchResolver((event) => {
+    keymap.appendEventMatchResolver((event, ctx) => {
       if (event.name !== "x") {
         return undefined
       }
 
-      return [getMatchKeyForEventName(event, "y")]
+      return [matchEventAs(ctx, event, "y")]
     })
 
     keymap.registerLayer({
@@ -706,12 +749,12 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
-    keymap.appendEventMatchResolver((event) => {
+    keymap.appendEventMatchResolver((event, ctx) => {
       if (event.name !== "x") {
         return undefined
       }
 
-      return [getMatchKeyForEventName(event, "g")]
+      return [matchEventAs(ctx, event, "g")]
     })
 
     keymap.registerLayer({
@@ -744,31 +787,7 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
-    keymap.prependBindingParser(({ input, index, tokens }) => {
-      if (input[index] !== "[") {
-        return undefined
-      }
-
-      const end = input.indexOf("]", index)
-      if (end === -1) {
-        throw new Error(`Invalid key sequence "${input}": unterminated token`)
-      }
-
-      const tokenName = input
-        .slice(index, end + 1)
-        .trim()
-        .toLowerCase()
-      const token = tokens.get(tokenName)
-      if (!token) {
-        return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
-      }
-
-      return {
-        parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
-        nextIndex: end + 1,
-        usedTokens: [tokenName],
-      }
-    })
+    keymap.prependBindingParser(createBracketTokenParser())
 
     keymap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
     keymap.registerLayer({
@@ -798,31 +817,7 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.clearBindingParsers()
-    keymap.appendBindingParser(({ input, index, tokens }) => {
-      if (input[index] !== "[") {
-        return undefined
-      }
-
-      const end = input.indexOf("]", index)
-      if (end === -1) {
-        throw new Error(`Invalid key sequence "${input}": unterminated token`)
-      }
-
-      const tokenName = input
-        .slice(index, end + 1)
-        .trim()
-        .toLowerCase()
-      const token = tokens.get(tokenName)
-      if (!token) {
-        return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
-      }
-
-      return {
-        parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
-        nextIndex: end + 1,
-        usedTokens: [tokenName],
-      }
-    })
+    keymap.appendBindingParser(createBracketTokenParser())
 
     keymap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
     keymap.registerLayer({
@@ -850,30 +845,8 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
 
     keymap.clearBindingParsers()
-    keymap.appendBindingParser(({ input, index, tokens }) => {
-      if (input[index] !== "[") {
-        return undefined
-      }
-
-      const end = input.indexOf("]", index)
-      if (end === -1) {
-        throw new Error(`Invalid key sequence "${input}": unterminated token`)
-      }
-
-      const tokenName = input.slice(index, end + 1).trim()
-      const normalizedTokenName = tokenName.toLowerCase()
-      const token = tokens.get(normalizedTokenName)
-      if (!token) {
-        return { parts: [], nextIndex: end + 1, unknownTokens: [normalizedTokenName] }
-      }
-
-      return {
-        parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
-        nextIndex: end + 1,
-        usedTokens: [normalizedTokenName],
-      }
-    })
-    keymap.appendBindingParser(defaultBindingParser)
+    keymap.appendBindingParser(createBracketTokenParser({ preserveDisplayCase: true }))
+    keymap.appendBindingParser(addons.defaultBindingParser)
 
     keymap.registerLayer({
       scope: "global",
@@ -923,12 +896,12 @@ describe("keymap", () => {
     mockInput.pressKey("x")
     expect(calls).toEqual([])
 
-    keymap.appendEventMatchResolver((event) => {
+    keymap.appendEventMatchResolver((event, ctx) => {
       if (event.name !== "x") {
         return undefined
       }
 
-      return [getMatchKeyForEventName(event, "x")]
+      return [matchEventAs(ctx, event, "x")]
     })
 
     mockInput.pressKey("x")
@@ -939,12 +912,12 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
-    const offResolver = keymap.appendEventMatchResolver((event) => {
+    const offResolver = keymap.appendEventMatchResolver((event, ctx) => {
       if (event.name !== "x") {
         return undefined
       }
 
-      return [getMatchKeyForEventName(event, "y")]
+      return [matchEventAs(ctx, event, "y")]
     })
 
     keymap.registerLayer({
@@ -976,19 +949,19 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
-    keymap.appendEventMatchResolver((event) => {
+    keymap.appendEventMatchResolver((event, ctx) => {
       if (event.name !== "x") {
         return undefined
       }
 
-      return [getMatchKeyForEventName(event, "y")]
+      return [matchEventAs(ctx, event, "y")]
     })
-    keymap.prependEventMatchResolver((event) => {
+    keymap.prependEventMatchResolver((event, ctx) => {
       if (event.name !== "x") {
         return undefined
       }
 
-      return [getMatchKeyForEventName(event, "z")]
+      return [matchEventAs(ctx, event, "z")]
     })
 
     keymap.registerLayer({
@@ -1012,33 +985,32 @@ describe("keymap", () => {
     expect(calls).toEqual(["fallback"])
   })
 
-  test("matches bindings using parser-provided match keys", () => {
+  test("matches bindings using parser-provided opaque parser matches", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
-    keymap.prependBindingParser(({ input, index }) => {
+    keymap.prependBindingParser(({ input, index, createMatch, parseObjectKey }) => {
       if (index !== 0 || input !== "@") {
         return undefined
       }
 
       return {
         parts: [
-          {
-            stroke: { name: "custom-visible", ctrl: false, shift: false, meta: false, super: false },
-            display: "custom-visible",
-            matchKey: "custom:stroke",
-          },
+          parseObjectKey(
+            { name: "custom-visible", ctrl: false, shift: false, meta: false, super: false },
+            { display: "custom-visible", match: createMatch("custom:stroke") },
+          ),
         ],
         nextIndex: input.length,
       }
     })
 
-    keymap.appendEventMatchResolver((event) => {
+    keymap.appendEventMatchResolver((event, ctx) => {
       if (event.name !== "x") {
         return undefined
       }
 
-      return ["custom:stroke"]
+      return [ctx.match("@")]
     })
 
     keymap.registerLayer({
@@ -1433,30 +1405,8 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.clearBindingParsers()
-    keymap.appendBindingParser(({ input, index, tokens }) => {
-      if (input[index] !== "[") {
-        return undefined
-      }
-
-      const end = input.indexOf("]", index)
-      if (end === -1) {
-        throw new Error(`Invalid key sequence "${input}": unterminated token`)
-      }
-
-      const tokenName = input.slice(index, end + 1).trim()
-      const normalizedTokenName = tokenName.toLowerCase()
-      const token = tokens.get(normalizedTokenName)
-      if (!token) {
-        return { parts: [], nextIndex: end + 1, unknownTokens: [normalizedTokenName] }
-      }
-
-      return {
-        parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
-        nextIndex: end + 1,
-        usedTokens: [normalizedTokenName],
-      }
-    })
-    keymap.appendBindingParser(defaultBindingParser)
+    keymap.appendBindingParser(createBracketTokenParser({ preserveDisplayCase: true }))
+    keymap.appendBindingParser(addons.defaultBindingParser)
 
     keymap.appendBindingTransformer((binding, ctx) => {
       ctx.add({
@@ -1569,12 +1519,12 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
-    keymap.appendEventMatchResolver((event) => {
+    keymap.appendEventMatchResolver((event, ctx) => {
       if (event.name !== "x") {
         return undefined
       }
 
-      return [getMatchKeyForEventName(event, "y")]
+      return [matchEventAs(ctx, event, "y")]
     })
 
     keymap.registerLayer({
@@ -1613,7 +1563,7 @@ describe("keymap", () => {
     expect(calls).toEqual(["release"])
   })
 
-  test("event match resolver ctx.matchKey normalizes object keys", () => {
+  test("event match resolver ctx.match normalizes object keys", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
@@ -1622,7 +1572,7 @@ describe("keymap", () => {
         return undefined
       }
 
-      return [ctx.matchKey({ name: " RETURN " })]
+      return [ctx.match({ name: " RETURN " })]
     })
 
     keymap.registerLayer({
@@ -1646,42 +1596,20 @@ describe("keymap", () => {
     expect(calls).toEqual(["submit"])
   })
 
-  test("event match resolver ctx.matchKey uses the current parser and token configuration", () => {
+  test("event match resolver ctx.match uses the current parser and token configuration", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
     keymap.clearBindingParsers()
-    keymap.appendBindingParser(({ input, index, tokens }) => {
-      if (input[index] !== "[") {
-        return undefined
-      }
-
-      const end = input.indexOf("]", index)
-      if (end === -1) {
-        throw new Error(`Invalid key sequence "${input}": unterminated token`)
-      }
-
-      const tokenName = input.slice(index, end + 1).trim()
-      const normalizedTokenName = tokenName.toLowerCase()
-      const token = tokens.get(normalizedTokenName)
-      if (!token) {
-        return { parts: [], nextIndex: end + 1, unknownTokens: [normalizedTokenName] }
-      }
-
-      return {
-        parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
-        nextIndex: end + 1,
-        usedTokens: [normalizedTokenName],
-      }
-    })
-    keymap.appendBindingParser(defaultBindingParser)
+    keymap.appendBindingParser(createBracketTokenParser({ preserveDisplayCase: true }))
+    keymap.appendBindingParser(addons.defaultBindingParser)
 
     keymap.appendEventMatchResolver((event, ctx) => {
       if (event.name !== "x" || !event.ctrl) {
         return undefined
       }
 
-      return [ctx.matchKey("[Leader]")]
+      return [ctx.match("[Leader]")]
     })
 
     keymap.registerToken({ name: "[Leader]", key: { name: "z" } })
@@ -3500,11 +3428,10 @@ describe("keymap", () => {
 
     mockInput.pressKey("d")
 
-    expect(keymap.getPendingSequence()).toEqual([
+    expect(keymap.getPendingSequence()).toMatchObject([
       {
         stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
         display: "d",
-        matchKey: "d:0:0:0:0:0",
       },
     ])
     expect(getActiveKeyNames(keymap)).toEqual(["d"])
@@ -3887,11 +3814,10 @@ describe("keymap", () => {
 
     expect(getActiveKeyNames(keymap)).toEqual(["g"])
     expect(getActiveKeyDisplay(keymap, "g")?.command).toBeUndefined()
-    expect(keymap.getPendingSequence()).toEqual([
+    expect(keymap.getPendingSequence()).toMatchObject([
       {
         stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false },
         display: "<leader>",
-        matchKey: "x:1:0:0:0:0",
       },
     ])
     expect(getActiveKey(keymap, "g")?.command).toBeUndefined()
@@ -4071,26 +3997,23 @@ describe("keymap", () => {
     mockInput.pressKey("d")
     mockInput.pressKey("c")
 
-    expect(keymap.getPendingSequence()).toEqual([
+    expect(keymap.getPendingSequence()).toMatchObject([
       {
         stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
         display: "d",
-        matchKey: "d:0:0:0:0:0",
       },
       {
         stroke: { name: "c", ctrl: false, shift: false, meta: false, super: false },
         display: "c",
-        matchKey: "c:0:0:0:0:0",
       },
     ])
 
     mockInput.pressBackspace()
 
-    expect(keymap.getPendingSequence()).toEqual([
+    expect(keymap.getPendingSequence()).toMatchObject([
       {
         stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
         display: "d",
-        matchKey: "d:0:0:0:0:0",
       },
     ])
     expect(getActiveKeyNames(keymap)).toEqual(["c"])
@@ -4430,9 +4353,7 @@ describe("keymap", () => {
     const calls: string[] = []
 
     const off = keymap.appendLayerAnalyzer((ctx) => {
-      calls.push(
-        `${ctx.scope}:${ctx.order}:${ctx.compiledBindings.length}:${ctx.hasTokenBindings ? "tokens" : "plain"}`,
-      )
+      calls.push(`${ctx.scope}:${ctx.order}:${ctx.bindings.length}:${ctx.hasTokenBindings ? "tokens" : "plain"}`)
     })
 
     keymap.registerLayer({
@@ -4491,7 +4412,7 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.appendLayerAnalyzer((ctx) => {
-      calls.push(`${ctx.order}:${ctx.compiledBindings[0]?.sequence[0]?.display ?? "missing"}`)
+      calls.push(`${ctx.order}:${ctx.bindings[0]?.sequence[0]?.display ?? "missing"}`)
     })
 
     keymap.registerLayer({
@@ -5636,11 +5557,10 @@ describe("keymap", () => {
 
     mockInput.pressKey("a")
 
-    expect(keymap.getPendingSequence()).toEqual([
+    expect(keymap.getPendingSequence()).toMatchObject([
       {
         stroke: { name: "a", ctrl: false, shift: false, meta: false, super: false },
         display: "a",
-        matchKey: "a:0:0:0:0:0",
       },
     ])
 

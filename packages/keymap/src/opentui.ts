@@ -1,4 +1,5 @@
 import { CliRenderEvents, KeyEvent, RenderableEvents, type CliRenderer, type Renderable } from "@opentui/core"
+import { registerDefaultKeys } from "./addons/universal/default-parser.js"
 import { Keymap } from "./keymap.js"
 import type { KeymapHost } from "./types.js"
 
@@ -95,6 +96,7 @@ export function getKeymap(renderer: CliRenderer): Keymap<Renderable, KeyEvent> {
   }
 
   const keymap = new Keymap(createOpenTuiKeymapHost(renderer))
+  registerDefaultKeys(keymap)
   keymapsByRenderer.set(renderer, keymap)
 
   renderer.once(CliRenderEvents.DESTROY, () => {

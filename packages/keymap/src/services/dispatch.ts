@@ -8,6 +8,7 @@ import type { State } from "./state.js"
 import type {
   EventMatchResolverContext,
   EventMatchResolver,
+  KeyMatch,
   KeyInputContext,
   KeymapEvent,
   RawInputContext,
@@ -30,8 +31,8 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     private readonly compiler: CompilerService<TTarget, TEvent>,
   ) {
     this.eventMatchResolverContext = {
-      matchKey: (key) => {
-        return this.compiler.parseTokenKey(key).matchKey
+      match: (key) => {
+        return this.compiler.parseTokenKey(key).match
       },
     }
   }
@@ -159,7 +160,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
   private dispatchPendingSequence(
     pending: PendingSequenceState<TTarget, TEvent>,
-    matchKeys: readonly string[],
+    matchKeys: readonly KeyMatch[],
     event: TEvent,
     focused: TTarget | null,
   ): void {
@@ -185,7 +186,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
   private dispatchFromRoot(
     activeLayers: RegisteredLayer<TTarget, TEvent>[],
-    matchKeys: readonly string[],
+    matchKeys: readonly KeyMatch[],
     event: TEvent,
     focused: TTarget | null,
   ): void {
@@ -228,7 +229,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     }
   }
 
-  private resolveEventMatchKeys(event: TEvent): string[] {
+  private resolveEventMatchKeys(event: TEvent): KeyMatch[] {
     const resolvers = this.state.config.eventMatchResolvers.values()
 
     if (resolvers.length === 0) {
@@ -239,11 +240,11 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       return resolveSingleEventMatchKeys(resolvers[0]!, event, this.eventMatchResolverContext, this.notify)
     }
 
-    const keys: string[] = []
-    const seen = new Set<string>()
+    const keys: KeyMatch[] = []
+    const seen = new Set<KeyMatch>()
 
     for (const resolver of resolvers) {
-      let resolved: readonly string[] | undefined
+      let resolved: readonly KeyMatch[] | undefined
 
       try {
         resolved = resolver(event, this.eventMatchResolverContext)
@@ -257,7 +258,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       }
 
       for (const candidate of resolved) {
-        if (typeof candidate !== "string") {
+        if (typeof candidate !== "symbol") {
           this.notify.emitError(
             "invalid-event-match-resolver-candidate",
             candidate,
@@ -266,7 +267,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
           continue
         }
 
-        if (!candidate || seen.has(candidate)) {
+        if (seen.has(candidate)) {
           continue
         }
 
@@ -280,7 +281,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
   private runReleaseBindings(
     layer: RegisteredLayer<TTarget, TEvent>,
-    strokeKey: string,
+    strokeKey: KeyMatch,
     event: TEvent,
     focused: TTarget | null,
   ): { handled: boolean; stop: boolean } {
@@ -292,7 +293,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       }
 
       const firstPart = binding.sequence[0]
-      if (!firstPart || firstPart.matchKey !== strokeKey) {
+      if (!firstPart || firstPart.match !== strokeKey) {
         continue
       }
 
@@ -316,7 +317,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
   private getReachableChild(
     node: SequenceNode<TTarget, TEvent>,
-    matchKeys: readonly string[],
+    matchKeys: readonly KeyMatch[],
     focused: TTarget | null,
   ): SequenceNode<TTarget, TEvent> | undefined {
     for (const strokeKey of matchKeys) {
@@ -364,8 +365,8 @@ function resolveSingleEventMatchKeys<TTarget extends object, TEvent extends Keym
   event: TEvent,
   ctx: EventMatchResolverContext,
   notify: NotificationService<TTarget, TEvent>,
-): string[] {
-  let resolved: readonly string[] | undefined
+): KeyMatch[] {
+  let resolved: readonly KeyMatch[] | undefined
   try {
     resolved = resolver(event, ctx)
   } catch (error) {
@@ -379,7 +380,7 @@ function resolveSingleEventMatchKeys<TTarget extends object, TEvent extends Keym
 
   if (resolved.length === 1) {
     const [candidate] = resolved
-    if (typeof candidate !== "string" || !candidate) {
+    if (typeof candidate !== "symbol") {
       notify.emitError(
         "invalid-event-match-resolver-candidate",
         candidate,
@@ -391,10 +392,10 @@ function resolveSingleEventMatchKeys<TTarget extends object, TEvent extends Keym
     return [candidate]
   }
 
-  const keys: string[] = []
-  const seen = new Set<string>()
+  const keys: KeyMatch[] = []
+  const seen = new Set<KeyMatch>()
   for (const candidate of resolved) {
-    if (typeof candidate !== "string") {
+    if (typeof candidate !== "symbol") {
       notify.emitError(
         "invalid-event-match-resolver-candidate",
         candidate,
@@ -403,7 +404,7 @@ function resolveSingleEventMatchKeys<TTarget extends object, TEvent extends Keym
       continue
     }
 
-    if (!candidate || seen.has(candidate)) {
+    if (seen.has(candidate)) {
       continue
     }
 

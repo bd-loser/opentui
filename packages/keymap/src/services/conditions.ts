@@ -1,7 +1,7 @@
 import type { NotificationService } from "./notify.js"
 import type { State } from "./state.js"
 import type { KeymapEvent, ReactiveMatcher, RegisteredLayer, RuntimeMatchable, RuntimeMatcher } from "../types.js"
-import { getErrorMessage } from "../lib/utils.js"
+import { getErrorMessage } from "./values.js"
 
 function isReactiveMatcher(value: unknown): value is ReactiveMatcher {
   if (!value || typeof value !== "object") {

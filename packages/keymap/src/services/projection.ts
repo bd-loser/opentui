@@ -1,11 +1,4 @@
 import type { Emitter } from "../lib/emitter.js"
-import {
-  createParsedKeyPart,
-  getRegisteredCommandRecord,
-  resolveRegisteredCommand,
-  snapshotStroke,
-  stringifyKeyStroke,
-} from "../lib/utils.js"
 import type {
   ActiveBinding,
   ActiveKey,
@@ -29,6 +22,8 @@ import type {
   ResolvedBindingCommand,
   SequenceNode,
 } from "../types.js"
+import { getRegisteredCommandRecord, resolveRegisteredCommand } from "./commands.js"
+import { cloneKeyStroke, createKeySequencePart, stringifyKeyStroke } from "./keys.js"
 import type { ConditionService } from "./conditions.js"
 import type { NotificationService } from "./notify.js"
 import type { ActiveCommandView, LayerCommandEntry, ResolvedCommandEntry, State } from "./state.js"
@@ -47,7 +42,9 @@ interface QueryRegisteredCommandsOptions<TTarget extends object, TEvent extends 
   onFilterError(error: unknown): void
 }
 
-function getLiveHost<TTarget extends object, TEvent extends KeymapEvent>(host: KeymapHost<TTarget, TEvent>): KeymapHost<TTarget, TEvent> {
+function getLiveHost<TTarget extends object, TEvent extends KeymapEvent>(
+  host: KeymapHost<TTarget, TEvent>,
+): KeymapHost<TTarget, TEvent> {
   if (host.isDestroyed) {
     throw new Error("Cannot use a keymap after its host was destroyed")
   }
@@ -345,11 +342,10 @@ export class ProjectionService<TTarget extends object, TEvent extends KeymapEven
     const activeView = this.getActiveCommandView(focused)
 
     return nodes.map((candidate) => {
-      return createParsedKeyPart(
-        candidate.stroke!,
-        this.getNodeDisplay(candidate, focused, activeView),
-        candidate.matchKey!,
-      )
+      return createKeySequencePart(candidate.stroke!, {
+        display: this.getNodeDisplay(candidate, focused, activeView),
+        match: candidate.match!,
+      })
     })
   }
 
@@ -637,7 +633,11 @@ export class ProjectionService<TTarget extends object, TEvent extends KeymapEven
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
   ):
-    | { bindings: readonly CompiledBinding<TTarget, TEvent>[]; commandBinding?: CompiledBinding<TTarget, TEvent>; stop: boolean }
+    | {
+        bindings: readonly CompiledBinding<TTarget, TEvent>[]
+        commandBinding?: CompiledBinding<TTarget, TEvent>
+        stop: boolean
+      }
     | undefined {
     const selected: CompiledBinding<TTarget, TEvent>[] = []
     let commandBinding: CompiledBinding<TTarget, TEvent> | undefined
@@ -721,7 +721,7 @@ export class ProjectionService<TTarget extends object, TEvent extends KeymapEven
     }
 
     const activeKey: ActiveKey<TTarget, TEvent> = {
-      stroke: snapshotStroke(state.stroke),
+      stroke: cloneKeyStroke(state.stroke),
       display: state.display,
       continues: state.continues,
     }

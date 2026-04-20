@@ -1,13 +1,8 @@
 export { Keymap } from "./keymap.js"
-export {
-  defaultBindingParser,
-  defaultEventMatchResolver,
-  parseKeySequenceLike,
-} from "./lib/default-parser.js"
-export { namedSingleStrokeKeyNames, namedSingleStrokeKeys } from "./lib/named-keys.js"
-export { stringifyKeySequence, stringifyKeyStroke } from "./lib/utils.js"
+export { stringifyKeySequence, stringifyKeyStroke } from "./services/keys.js"
 export type {
   KeyLike,
+  KeyMatch,
   ActiveBinding,
   KeyStringifyInput,
   StringifyOptions,
@@ -57,6 +52,7 @@ export type {
   FocusWithinLayer,
   GlobalLayer,
   LayerAnalysisContext,
+  LayerBindingAnalysis,
   LayerAnalyzer,
   LayerFieldCompiler,
   LayerFieldContext,

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test"
-import { Keymap, type KeymapEvent, type KeymapHost } from "./index.js"
+import { Keymap, addons, type KeymapEvent, type KeymapHost } from "./index.js"
 
 class FakeTarget {
   public parent: FakeTarget | null = null
@@ -183,6 +183,7 @@ describe("generic keymap host", () => {
   beforeEach(() => {
     host = new FakeHost()
     keymap = new Keymap(host)
+    addons.registerDefaultKeys(keymap)
   })
 
   test("dispatches bindings through a host without OpenTUI types", () => {
@@ -243,7 +244,14 @@ describe("generic keymap host", () => {
     keymap.registerLayer({
       scope: "focus-within",
       target,
-      commands: [{ name: "run", run() { calls.push("run") } }],
+      commands: [
+        {
+          name: "run",
+          run() {
+            calls.push("run")
+          },
+        },
+      ],
       bindings: [{ key: "x", cmd: "run" }],
     })
 

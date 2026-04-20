@@ -1,4 +1,4 @@
-import type { Keymap, KeymapEvent } from "../../types.js"
+import type { Keymap, KeymapEvent } from "../../core.js"
 
 export interface EscapeClearsPendingSequenceOptions {
   /**

@@ -2,6 +2,7 @@ import type { CommandService } from "./commands.js"
 import type { ConditionService } from "./conditions.js"
 import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
+import { normalizeBindingCommand } from "./commands.js"
 import type {
   Attributes,
   BindingCommand,
@@ -19,6 +20,7 @@ import type {
   CompiledBinding,
   CompiledBindingsResult,
   KeyLike,
+  KeyMatch,
   KeymapEvent,
   KeyStrokeInput,
   KeySequencePart,
@@ -26,23 +28,69 @@ import type {
   RuntimeMatcher,
   SequenceNode,
 } from "../types.js"
-import { normalizeBindingTokenName, parseObjectKeyInput } from "../lib/default-parser.js"
 import { RESERVED_BINDING_FIELDS } from "../schema.js"
 import {
-  createParsedKeyPart,
-  createSequenceNode,
-  getErrorMessage,
-  mergeAttribute,
-  mergeRequirement,
-  normalizeBindingCommand,
-  snapshotAttributes,
-  snapshotParsedBindingInput,
-} from "../lib/utils.js"
+  cloneKeySequence,
+  cloneKeySequencePart,
+  createKeySequencePart,
+  createTextKeyMatch,
+  normalizeBindingTokenName,
+} from "./keys.js"
+import { getErrorMessage, snapshotDataValue } from "./values.js"
 
 const EMPTY_COMPILE_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 const EMPTY_REQUIRES: readonly [name: string, value: unknown][] = []
 const EMPTY_MATCHERS: readonly RuntimeMatcher[] = []
 const EMPTY_CONDITION_KEYS: readonly string[] = []
+
+function createSequenceNode<TTarget extends object, TEvent extends KeymapEvent>(
+  parent: SequenceNode<TTarget, TEvent> | null,
+  stroke: KeySequencePart["stroke"] | null,
+  match: KeySequencePart["match"] | null,
+): SequenceNode<TTarget, TEvent> {
+  return {
+    parent,
+    depth: parent ? parent.depth + 1 : 0,
+    stroke,
+    match,
+    children: new Map(),
+    bindings: [],
+    reachableBindings: [],
+  }
+}
+
+function mergeRequirement(target: EventData, name: string, value: unknown, source: string): void {
+  if (Object.prototype.hasOwnProperty.call(target, name) && !Object.is(target[name], value)) {
+    throw new Error(`Conflicting keymap requirement for "${name}" from ${source}`)
+  }
+
+  target[name] = value
+}
+
+function mergeAttribute(target: Attributes, name: string, value: unknown, source: string): void {
+  if (Object.prototype.hasOwnProperty.call(target, name) && !Object.is(target[name], value)) {
+    throw new Error(`Conflicting keymap attribute for "${name}" from ${source}`)
+  }
+
+  target[name] = value
+}
+
+function snapshotAttributes(attrs: Attributes): Readonly<Attributes> | undefined {
+  if (Object.keys(attrs).length === 0) {
+    return undefined
+  }
+
+  return snapshotDataValue(attrs, { freeze: true }) as Readonly<Attributes>
+}
+
+function snapshotParsedBindingInput<TTarget extends object, TEvent extends KeymapEvent>(
+  binding: ParsedBindingInput<TTarget, TEvent>,
+): ParsedBindingInput<TTarget, TEvent> {
+  return {
+    ...binding,
+    sequence: cloneKeySequence(binding.sequence),
+  }
+}
 
 interface ParsedBindingSequenceResult {
   parts: KeySequencePart[]
@@ -78,7 +126,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     return parseSingleKeyPartWithParsers(key, this.state.config.bindingParsers.values(), {
       tokens: this.state.config.tokens,
       layer: EMPTY_COMPILE_FIELDS,
-      parseObjectKey: (value) => this.parseObjectKeyPart(value),
+      parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
     })
   }
 
@@ -123,7 +171,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
               ? parseBindingSequenceWithParsers(expandedBindingKey, bindingParsers, {
                   tokens,
                   layer: compileFields,
-                  parseObjectKey: (value) => this.parseObjectKeyPart(value),
+                  parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
                 })
               : {
                   parts: [this.parseObjectKeyPart(expandedBindingKey)],
@@ -274,9 +322,14 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     }
   }
 
-  private parseObjectKeyPart(key: KeyStrokeInput): KeySequencePart {
-    const parsed = parseObjectKeyInput(key)
-    return createParsedKeyPart(parsed.stroke, parsed.display, parsed.matchKey)
+  private parseObjectKeyPart(
+    key: KeyStrokeInput,
+    options?: {
+      display?: string
+      match?: KeyMatch
+    },
+  ): KeySequencePart {
+    return createKeySequencePart(key, options)
   }
 
   private normalizeBindingEvent(event: unknown): BindingEvent {
@@ -301,14 +354,12 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     const bindingTransformers = this.state.config.bindingTransformers.values()
 
     if (bindingTransformers.length === 0) {
-      return [
-        { ...binding, sequence: sequence.map((part) => createParsedKeyPart(part.stroke, part.display, part.matchKey)) },
-      ]
+      return [{ ...binding, sequence: cloneKeySequence(sequence) }]
     }
 
     const parsedBinding: ParsedBindingInput<TTarget, TEvent> = {
       ...binding,
-      sequence: sequence.map((part) => createParsedKeyPart(part.stroke, part.display, part.matchKey)),
+      sequence: cloneKeySequence(sequence),
     }
     const extraBindings: ParsedBindingInput<TTarget, TEvent>[] = []
     let keepOriginal = true
@@ -322,7 +373,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
             return parseSingleKeyPartWithParsers(key, bindingParsers, {
               tokens,
               layer,
-              parseObjectKey: (value) => this.parseObjectKeyPart(value),
+              parseObjectKey: (value, options) => this.parseObjectKeyPart(value, options),
             })
           },
           add: (nextBinding) => {
@@ -351,7 +402,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
   private insertBinding(root: SequenceNode<TTarget, TEvent>, binding: CompiledBinding<TTarget, TEvent>): void {
     let node = root
     const touchedNodes: SequenceNode<TTarget, TEvent>[] = []
-    const createdNodes: Array<{ parent: SequenceNode<TTarget, TEvent>; key: string }> = []
+    const createdNodes: Array<{ parent: SequenceNode<TTarget, TEvent>; key: KeyMatch }> = []
 
     try {
       for (const part of binding.sequence) {
@@ -361,10 +412,10 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
           )
         }
 
-        const bindingKey = part.matchKey
+        const bindingKey = part.match
         let child = node.children.get(bindingKey)
         if (!child) {
-          child = createSequenceNode<TTarget, TEvent>(node, part.stroke, part.matchKey)
+          child = createSequenceNode<TTarget, TEvent>(node, cloneKeySequencePart(part).stroke, part.match)
           node.children.set(bindingKey, child)
           createdNodes.push({ parent: node, key: bindingKey })
         }
@@ -468,7 +519,7 @@ function parseBindingSequenceWithParsers(
   options: {
     tokens?: ReadonlyMap<string, ResolvedKeyToken>
     layer?: Readonly<Record<string, unknown>>
-    parseObjectKey: (key: KeyStrokeInput) => KeySequencePart
+    parseObjectKey: (key: KeyStrokeInput, options?: { display?: string; match?: KeyMatch }) => KeySequencePart
   },
 ): ParsedBindingSequenceResult {
   if (key.length === 0) {
@@ -496,6 +547,8 @@ function parseBindingSequenceWithParsers(
         index,
         layer,
         tokens,
+        normalizeTokenName: normalizeBindingTokenName,
+        createMatch: createTextKeyMatch,
         parseObjectKey,
       } satisfies BindingParserContext)
       if (!result) {
@@ -538,7 +591,7 @@ function parseSingleKeyPartWithParsers(
   options: {
     tokens?: ReadonlyMap<string, ResolvedKeyToken>
     layer?: Readonly<Record<string, unknown>>
-    parseObjectKey: (key: KeyStrokeInput) => KeySequencePart
+    parseObjectKey: (key: KeyStrokeInput, options?: { display?: string; match?: KeyMatch }) => KeySequencePart
   },
 ): KeySequencePart {
   if (typeof key !== "string") {

@@ -1,4 +1,4 @@
-import type { BindingExpander, Keymap, KeymapEvent } from "../../types.js"
+import type { BindingExpander, Keymap, KeymapEvent } from "../../core.js"
 
 const commaBindingExpander: BindingExpander = ({ input }) => {
   if (!input.includes(",")) {

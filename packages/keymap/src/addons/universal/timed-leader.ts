@@ -1,4 +1,4 @@
-import type { Keymap, KeymapEvent, KeySequencePart } from "../../types.js"
+import type { Keymap, KeymapEvent, KeySequencePart } from "../../core.js"
 import { registerLeader, type LeaderOptions } from "./leader.js"
 
 export interface TimedLeaderOptions extends LeaderOptions {

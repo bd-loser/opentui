@@ -5,7 +5,7 @@ import type {
   Keymap,
   KeymapEvent,
   ParsedCommand,
-} from "../../types.js"
+} from "../../core.js"
 
 const EMPTY_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({})
 

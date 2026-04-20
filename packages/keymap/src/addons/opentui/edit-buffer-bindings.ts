@@ -9,8 +9,8 @@ import {
   type Renderable,
   type TextareaAction,
 } from "@opentui/core"
+import type { BindingInput, Bindings, CommandDefinition, CommandContext, Layer } from "../../core.js"
 import { getKeymap } from "../../opentui.js"
-import type { BindingInput, Bindings, CommandDefinition, CommandContext, Layer } from "../../types.js"
 
 interface KeyBindingLike {
   name: string
@@ -304,13 +304,28 @@ function createEditBufferCommands(
     createEditBufferCommand(renderer, "move-up", (editor) => editor.moveCursorUp(), descriptions),
     createEditBufferCommand(renderer, "move-down", (editor) => editor.moveCursorDown(), descriptions),
     createEditBufferCommand(renderer, "select-left", (editor) => editor.moveCursorLeft({ select: true }), descriptions),
-    createEditBufferCommand(renderer, "select-right", (editor) => editor.moveCursorRight({ select: true }), descriptions),
+    createEditBufferCommand(
+      renderer,
+      "select-right",
+      (editor) => editor.moveCursorRight({ select: true }),
+      descriptions,
+    ),
     createEditBufferCommand(renderer, "select-up", (editor) => editor.moveCursorUp({ select: true }), descriptions),
     createEditBufferCommand(renderer, "select-down", (editor) => editor.moveCursorDown({ select: true }), descriptions),
     createEditBufferCommand(renderer, "line-home", (editor) => editor.gotoLineHome(), descriptions),
     createEditBufferCommand(renderer, "line-end", (editor) => editor.gotoLineEnd(), descriptions),
-    createEditBufferCommand(renderer, "select-line-home", (editor) => editor.gotoLineHome({ select: true }), descriptions),
-    createEditBufferCommand(renderer, "select-line-end", (editor) => editor.gotoLineEnd({ select: true }), descriptions),
+    createEditBufferCommand(
+      renderer,
+      "select-line-home",
+      (editor) => editor.gotoLineHome({ select: true }),
+      descriptions,
+    ),
+    createEditBufferCommand(
+      renderer,
+      "select-line-end",
+      (editor) => editor.gotoLineEnd({ select: true }),
+      descriptions,
+    ),
     createEditBufferCommand(renderer, "visual-line-home", (editor) => editor.gotoVisualLineHome(), descriptions),
     createEditBufferCommand(renderer, "visual-line-end", (editor) => editor.gotoVisualLineEnd(), descriptions),
     createEditBufferCommand(
@@ -333,7 +348,12 @@ function createEditBufferCommands(
       (editor) => editor.gotoBufferHome({ select: true }),
       descriptions,
     ),
-    createEditBufferCommand(renderer, "select-buffer-end", (editor) => editor.gotoBufferEnd({ select: true }), descriptions),
+    createEditBufferCommand(
+      renderer,
+      "select-buffer-end",
+      (editor) => editor.gotoBufferEnd({ select: true }),
+      descriptions,
+    ),
     createEditBufferCommand(renderer, "delete-line", (editor) => editor.deleteLine(), descriptions),
     createEditBufferCommand(renderer, "delete-to-line-end", (editor) => editor.deleteToLineEnd(), descriptions),
     createEditBufferCommand(renderer, "delete-to-line-start", (editor) => editor.deleteToLineStart(), descriptions),

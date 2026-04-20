@@ -47,24 +47,26 @@ export interface NormalizedKeyStroke extends KeyStrokeInput {
   super: boolean
 }
 
+export type KeyMatch = symbol
+
 export interface EventMatchResolverContext {
-  matchKey(key: KeyLike): string
+  match(key: KeyLike): KeyMatch
 }
 
 export type EventMatchResolver<TEvent extends KeymapEvent = KeymapEvent> = (
   event: TEvent,
   ctx: EventMatchResolverContext,
-) => readonly string[] | undefined
+) => readonly KeyMatch[] | undefined
 
 export interface ResolvedKeyToken {
   stroke: NormalizedKeyStroke
-  matchKey: string
+  match: KeyMatch
 }
 
 export interface KeySequencePart {
   stroke: NormalizedKeyStroke
   display: string
-  matchKey: string
+  match: KeyMatch
 }
 
 export interface StringifyOptions {
@@ -175,20 +177,26 @@ export interface LayerFields<TTarget extends object = object, TEvent extends Key
   [key: string]: unknown
 }
 
-export interface GlobalLayer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
-  extends LayerFields<TTarget, TEvent> {
+export interface GlobalLayer<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+> extends LayerFields<TTarget, TEvent> {
   target?: undefined
   scope?: "global"
 }
 
-export interface FocusWithinLayer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
-  extends LayerFields<TTarget, TEvent> {
+export interface FocusWithinLayer<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+> extends LayerFields<TTarget, TEvent> {
   target: TTarget
   scope?: "focus-within"
 }
 
-export interface FocusLayer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
-  extends LayerFields<TTarget, TEvent> {
+export interface FocusLayer<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+> extends LayerFields<TTarget, TEvent> {
   target: TTarget
   scope: "focus"
 }
@@ -306,12 +314,27 @@ export interface LayerAnalysisContext<TTarget extends object = object, TEvent ex
   target?: TTarget
   order: number
   bindingInputs: readonly BindingInput<TTarget, TEvent>[]
-  compiledBindings: readonly CompiledBinding<TTarget, TEvent>[]
-  root: SequenceNode<TTarget, TEvent>
+  bindings: readonly LayerBindingAnalysis<TTarget, TEvent>[]
   hasTokenBindings: boolean
   warn(code: string, warning: unknown, message: string): void
   warnOnce(key: string, code: string, warning: unknown, message: string): void
   error(code: string, error: unknown, message: string): void
+}
+
+export interface LayerBindingAnalysis<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  sequence: KeySequencePart[]
+  command?: BindingCommand<TTarget, TEvent>
+  attrs?: Readonly<Attributes>
+  event: BindingEvent
+  preventDefault: boolean
+  fallthrough: boolean
+  sourceBinding: ParsedBindingInput<TTarget, TEvent>
+  sourceScope: Scope
+  sourceTarget?: TTarget
+  sourceLayerOrder: number
+  sourceBindingIndex: number
+  hasCommandAtSequence: boolean
+  hasContinuations: boolean
 }
 
 export type LayerAnalyzer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = (
@@ -323,7 +346,15 @@ export interface BindingParserContext {
   index: number
   layer: Readonly<Record<string, unknown>>
   tokens: ReadonlyMap<string, ResolvedKeyToken>
-  parseObjectKey(key: KeyStrokeInput): KeySequencePart
+  normalizeTokenName(token: string): string
+  createMatch(id: string): KeyMatch
+  parseObjectKey(
+    key: KeyStrokeInput,
+    options?: {
+      display?: string
+      match?: KeyMatch
+    },
+  ): KeySequencePart
 }
 
 export interface BindingExpanderContext {
@@ -459,10 +490,14 @@ export type KeymapActiveKey<TTarget extends object = object, TEvent extends Keym
   TTarget,
   TEvent
 >
-export type KeymapBindingInput<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
-  BindingInput<TTarget, TEvent>
-export type KeymapCommandDefinition<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
-  CommandDefinition<TTarget, TEvent>
+export type KeymapBindingInput<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+> = BindingInput<TTarget, TEvent>
+export type KeymapCommandDefinition<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+> = CommandDefinition<TTarget, TEvent>
 export type KeymapCommandRecord = CommandRecord
 
 export interface RuntimeMatcher {
@@ -493,8 +528,7 @@ export interface RuntimeMatchable {
 }
 
 export interface CompiledBinding<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
-  extends ActiveBinding<TTarget, TEvent>,
-    RuntimeMatchable {
+  extends ActiveBinding<TTarget, TEvent>, RuntimeMatchable {
   run?: CommandHandler<TTarget, TEvent>
   sourceBinding: ParsedBindingInput<TTarget, TEvent>
   sourceScope: Scope
@@ -521,8 +555,10 @@ export interface ActiveKeyState<TTarget extends object = object, TEvent extends 
   bindings?: CompiledBinding<TTarget, TEvent>[]
 }
 
-export interface RegisteredCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
-  extends CommandRecord {
+export interface RegisteredCommand<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+> extends CommandRecord {
   run: (ctx: CommandContext<TTarget, TEvent>) => CommandResult
   runner?: CommandHandler<TTarget, TEvent>
   resolved?: ResolvedBindingCommand<TTarget, TEvent>
@@ -540,8 +576,8 @@ export interface SequenceNode<TTarget extends object = object, TEvent extends Ke
   parent: SequenceNode<TTarget, TEvent> | null
   depth: number
   stroke: NormalizedKeyStroke | null
-  matchKey: string | null
-  children: Map<string, SequenceNode<TTarget, TEvent>>
+  match: KeyMatch | null
+  children: Map<KeyMatch, SequenceNode<TTarget, TEvent>>
   bindings: CompiledBinding<TTarget, TEvent>[]
   reachableBindings: CompiledBinding<TTarget, TEvent>[]
 }

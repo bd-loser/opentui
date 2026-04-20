@@ -4,32 +4,77 @@ import type { ConditionService } from "./conditions.js"
 import type { ProjectionService } from "./projection.js"
 import type {
   BindingInput,
+  Bindings,
   CompiledBinding,
   CompiledBindingsResult,
   EventData,
   KeymapEvent,
   KeymapHost,
+  KeySequencePart,
   Layer,
   LayerAnalysisContext,
+  LayerBindingAnalysis,
+  ParsedBindingInput,
   Scope,
   ResolvedKeyToken,
   RegisteredCommand,
   RegisteredLayer,
   RegisteredLayerBucket,
   RuntimeMatcher,
+  SequenceNode,
 } from "../types.js"
 import { RESERVED_LAYER_FIELDS } from "../schema.js"
 import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
-import {
-  getErrorMessage,
-  mergeRequirement,
-  snapshotBindingInputs,
-  snapshotDataValue,
-  sortByPriorityAndOrder,
-} from "../lib/utils.js"
+import { cloneKeySequence } from "./keys.js"
+import { getErrorMessage, snapshotDataValue } from "./values.js"
 
 const NOOP = (): void => {}
+
+function mergeRequirement(target: EventData, name: string, value: unknown, source: string): void {
+  if (Object.prototype.hasOwnProperty.call(target, name) && !Object.is(target[name], value)) {
+    throw new Error(`Conflicting keymap requirement for "${name}" from ${source}`)
+  }
+
+  target[name] = value
+}
+
+function snapshotBindingInputs<TTarget extends object, TEvent extends KeymapEvent>(
+  bindings: Bindings<TTarget, TEvent>,
+): BindingInput<TTarget, TEvent>[] {
+  const normalized = Array.isArray(bindings)
+    ? bindings
+    : Object.entries(bindings).map(([key, cmd]) => {
+        if (typeof cmd !== "string" && typeof cmd !== "function") {
+          throw new Error(
+            `Invalid keymap binding for "${key}": shorthand bindings must map to string or function commands`,
+          )
+        }
+
+        return { key, cmd }
+      })
+
+  return normalized.map((binding) => ({
+    ...binding,
+    key: typeof binding.key === "string" ? binding.key : { ...binding.key },
+  }))
+}
+
+function sortByPriorityAndOrder<T extends { priority: number; order: number }>(
+  items: T[],
+  options?: { order?: "asc" | "desc" },
+): T[] {
+  const orderDirection = options?.order ?? "asc"
+
+  return [...items].sort((a, b) => {
+    const priorityDiff = b.priority - a.priority
+    if (priorityDiff !== 0) {
+      return priorityDiff
+    }
+
+    return orderDirection === "desc" ? b.order - a.order : a.order - b.order
+  })
+}
 
 function createCommandLookup<TTarget extends object, TEvent extends KeymapEvent>(
   commands: readonly RegisteredCommand<TTarget, TEvent>[],
@@ -93,6 +138,56 @@ interface AnalyzeLayerOptions<TTarget extends object, TEvent extends KeymapEvent
   compiledBindings: readonly CompiledBinding<TTarget, TEvent>[]
   root: RegisteredLayer<TTarget, TEvent>["root"]
   hasTokenBindings: boolean
+}
+
+function cloneParsedBindingInput<TTarget extends object, TEvent extends KeymapEvent>(
+  binding: ParsedBindingInput<TTarget, TEvent>,
+): ParsedBindingInput<TTarget, TEvent> {
+  return {
+    ...binding,
+    sequence: cloneKeySequence(binding.sequence),
+  }
+}
+
+function getSequenceNode<TTarget extends object, TEvent extends KeymapEvent>(
+  root: SequenceNode<TTarget, TEvent>,
+  sequence: readonly KeySequencePart[],
+): SequenceNode<TTarget, TEvent> | undefined {
+  let node: SequenceNode<TTarget, TEvent> | undefined = root
+
+  for (const part of sequence) {
+    node = node.children.get(part.match)
+    if (!node) {
+      return undefined
+    }
+  }
+
+  return node
+}
+
+function buildLayerBindingAnalyses<TTarget extends object, TEvent extends KeymapEvent>(
+  root: SequenceNode<TTarget, TEvent>,
+  compiledBindings: readonly CompiledBinding<TTarget, TEvent>[],
+): LayerBindingAnalysis<TTarget, TEvent>[] {
+  return compiledBindings.map((binding) => {
+    const node = binding.event === "press" ? getSequenceNode(root, binding.sequence) : undefined
+
+    return {
+      sequence: cloneKeySequence(binding.sequence),
+      command: binding.command,
+      attrs: binding.attrs,
+      event: binding.event,
+      preventDefault: binding.preventDefault,
+      fallthrough: binding.fallthrough,
+      sourceBinding: cloneParsedBindingInput(binding.sourceBinding),
+      sourceScope: binding.sourceScope,
+      sourceTarget: binding.sourceTarget,
+      sourceLayerOrder: binding.sourceLayerOrder,
+      sourceBindingIndex: binding.sourceBindingIndex,
+      hasCommandAtSequence: node ? node.bindings.some((candidate) => candidate.command !== undefined) : false,
+      hasContinuations: node ? node.children.size > 0 : false,
+    }
+  })
 }
 
 export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
@@ -208,8 +303,8 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
           this.unregisterLayer(registeredLayer)
         }
 
-          registeredLayer.offTargetDestroy = this.options.host.onTargetDestroy(target, onTargetDestroy)
-        }
+        registeredLayer.offTargetDestroy = this.options.host.onTargetDestroy(target, onTargetDestroy)
+      }
 
       if (registeredLayer.commands.length > 0) {
         this.projection.ensureValidPendingSequence()
@@ -307,13 +402,14 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       return
     }
 
+    const bindings = buildLayerBindingAnalyses(options.root, options.compiledBindings)
+
     const ctx: LayerAnalysisContext<TTarget, TEvent> = {
       scope: options.scope,
       target: options.target,
       order: options.order,
       bindingInputs: options.bindingInputs,
-      compiledBindings: options.compiledBindings,
-      root: options.root,
+      bindings,
       hasTokenBindings: options.hasTokenBindings,
       warn: (code, warning, message) => {
         this.notify.emitWarning(code, warning, message)

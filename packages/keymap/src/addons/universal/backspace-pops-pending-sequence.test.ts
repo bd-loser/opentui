@@ -51,26 +51,23 @@ describe("backspace pops pending sequence addon", () => {
 
     mockInput.pressKey("d")
     mockInput.pressKey("c")
-    expect(keymap.getPendingSequence()).toEqual([
+    expect(keymap.getPendingSequence()).toMatchObject([
       {
         stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
         display: "d",
-        matchKey: "d:0:0:0:0:0",
       },
       {
         stroke: { name: "c", ctrl: false, shift: false, meta: false, super: false },
         display: "c",
-        matchKey: "c:0:0:0:0:0",
       },
     ])
 
     mockInput.pressBackspace()
 
-    expect(keymap.getPendingSequence()).toEqual([
+    expect(keymap.getPendingSequence()).toMatchObject([
       {
         stroke: { name: "d", ctrl: false, shift: false, meta: false, super: false },
         display: "d",
-        matchKey: "d:0:0:0:0:0",
       },
     ])
     expect(calls).toEqual([])

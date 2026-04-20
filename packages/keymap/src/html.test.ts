@@ -149,7 +149,9 @@ describe("html keymap adapter", () => {
     expect(normalizeHtmlKeyName("A")).toBe("a")
     expect(normalizeHtmlKeyName("F12")).toBe("f12")
 
-    const event = createHtmlKeymapEvent(new FakeKeyboardEvent("Enter", true, false, true, true) as unknown as KeyboardEvent)
+    const event = createHtmlKeymapEvent(
+      new FakeKeyboardEvent("Enter", true, false, true, true) as unknown as KeyboardEvent,
+    )
     expect(event.name).toBe("return")
     expect(event.ctrl).toBe(true)
     expect(event.meta).toBe(true)
@@ -197,8 +199,18 @@ describe("html keymap adapter", () => {
     keymap.registerLayer({
       scope: "global",
       commands: [
-        { name: "prompt-open", run() { calls.push(":") } },
-        { name: "toggle-help", run() { calls.push("?") } },
+        {
+          name: "prompt-open",
+          run() {
+            calls.push(":")
+          },
+        },
+        {
+          name: "toggle-help",
+          run() {
+            calls.push("?")
+          },
+        },
       ],
       bindings: [
         { key: ":", cmd: "prompt-open" },

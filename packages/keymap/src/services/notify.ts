@@ -2,7 +2,10 @@ import type { Events, HookName, Hooks, KeymapEvent } from "../types.js"
 import type { State } from "./state.js"
 import { Emitter } from "../lib/emitter.js"
 
-type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<Events<TTarget, TEvent>, "warning" | "error">
+type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<
+  Events<TTarget, TEvent>,
+  "warning" | "error"
+>
 
 export class NotificationService<TTarget extends object, TEvent extends KeymapEvent> {
   constructor(

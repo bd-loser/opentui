@@ -26,48 +26,57 @@ import type {
   RawInterceptOptions,
   RawInputContext,
   EventMatchResolver,
+  KeyMatch,
   KeyStringifyInput,
   KeyToken,
   KeyLike,
   KeySequencePart,
   ResolvedKeyToken,
 } from "./types.js"
-import {
-  buildBindingKey,
-  getErrorMessage,
-  normalizeBindingInputs,
-  normalizeCommandName,
-  normalizeKeyStroke,
-} from "./lib/utils.js"
 import { RESERVED_BINDING_FIELDS, RESERVED_COMMAND_FIELDS, RESERVED_LAYER_FIELDS } from "./schema.js"
-import { CommandService } from "./services/commands.js"
+import { CommandService, normalizeCommandName } from "./services/commands.js"
 import { CompilerService } from "./services/compiler.js"
 import { ConditionService } from "./services/conditions.js"
 import { DispatchService } from "./services/dispatch.js"
 import { LayerService } from "./services/layers.js"
-import { defaultBindingParser, defaultEventMatchResolver } from "./lib/default-parser.js"
 import { Emitter, type EmitterListener } from "./lib/emitter.js"
 import { NotificationService } from "./services/notify.js"
 import { ProjectionService } from "./services/projection.js"
+import { resolveKeyMatch } from "./services/keys.js"
 import { RuntimeService } from "./services/runtime.js"
 import { createKeymapState } from "./services/state.js"
+import { getErrorMessage } from "./services/values.js"
 
 const NOOP = (): void => {}
 
-type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<Events<TTarget, TEvent>, "warning" | "error">
+type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick<
+  Events<TTarget, TEvent>,
+  "warning" | "error"
+>
 
 type FieldKind = "layer" | "binding" | "command"
 
-function getKeyMatchKey(input: KeyStringifyInput): string {
-  if ("matchKey" in input) {
-    return input.matchKey
+function getKeyMatchKey(input: KeyStringifyInput): KeyMatch {
+  return resolveKeyMatch(input)
+}
+
+function normalizeBindingInputs<TTarget extends object, TEvent extends KeymapEvent>(
+  bindings: Bindings<TTarget, TEvent>,
+): BindingInput<TTarget, TEvent>[] {
+  if (Array.isArray(bindings)) {
+    return bindings
   }
 
-  if ("stroke" in input) {
-    return buildBindingKey(input.stroke)
+  const normalized: BindingInput<TTarget, TEvent>[] = []
+  for (const [key, cmd] of Object.entries(bindings)) {
+    if (typeof cmd !== "string" && typeof cmd !== "function") {
+      throw new Error(`Invalid keymap binding for "${key}": shorthand bindings must map to string or function commands`)
+    }
+
+    normalized.push({ key, cmd })
   }
 
-  return buildBindingKey(normalizeKeyStroke(input))
+  return normalized
 }
 
 function registerFieldCompilers<T>(
@@ -181,8 +190,6 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
       this.commands,
       this.compiler,
     )
-    this.state.config.bindingParsers.append(defaultBindingParser)
-    this.state.config.eventMatchResolvers.append(defaultEventMatchResolver)
     this.keypressListener = (event) => {
       this.dispatch.handleKeyEvent(event, false)
     }
@@ -202,9 +209,11 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
       this.cleanupListeners.push(this.host.onRawInput(this.rawListener))
     }
     this.cleanupListeners.push(this.host.onFocusChange(this.focusedTargetListener))
-    this.cleanupListeners.push(this.host.onDestroy(() => {
-      this.cleanup()
-    }))
+    this.cleanupListeners.push(
+      this.host.onDestroy(() => {
+        this.cleanup()
+      }),
+    )
   }
 
   private cleanup(): void {
@@ -255,14 +264,14 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
   }
 
   public createKeyMatcher(key: KeyLike): (input: KeyStringifyInput | null | undefined) => boolean {
-    const matchKey = this.compiler.parseTokenKey(key).matchKey
+    const match = this.compiler.parseTokenKey(key).match
 
     return (input) => {
       if (!input) {
         return false
       }
 
-      return getKeyMatchKey(input) === matchKey
+      return getKeyMatchKey(input) === match
     }
   }
 
@@ -461,7 +470,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
     const registeredToken: ResolvedKeyToken = {
       stroke: parsedToken.stroke,
-      matchKey: parsedToken.matchKey,
+      match: parsedToken.match,
     }
 
     const nextTokens = new Map(this.state.config.tokens)

@@ -1,4 +1,4 @@
-import type { Keymap, KeymapEvent, ReactiveMatcher } from "../../types.js"
+import type { Keymap, KeymapEvent, ReactiveMatcher } from "../../core.js"
 
 /**
  * Accepted `enabled` values: boolean, raw `() => boolean`, or an

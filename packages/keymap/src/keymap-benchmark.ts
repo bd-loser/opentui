@@ -3,13 +3,7 @@ import path from "node:path"
 
 import { BoxRenderable, type KeyEvent, type Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import {
-  addons,
-  defaultBindingParser,
-  type BindingParser,
-  type Keymap,
-  type ReactiveMatcher,
-} from "./index.js"
+import { addons, type BindingParser, type Keymap, type ReactiveMatcher } from "./index.js"
 import { getKeymap } from "./opentui.js"
 
 const DEFAULT_ITERATIONS = 20_000
@@ -194,7 +188,7 @@ function createKey(index: number): string {
 const noopBindingParser: BindingParser = () => undefined
 
 function createBracketTokenParser(): BindingParser {
-  return ({ input, index, tokens }) => {
+  return ({ input, index, tokens, normalizeTokenName, parseObjectKey }) => {
     if (input[index] !== "[") {
       return undefined
     }
@@ -204,17 +198,14 @@ function createBracketTokenParser(): BindingParser {
       throw new Error(`Invalid key sequence "${input}": unterminated token`)
     }
 
-    const tokenName = input
-      .slice(index, end + 1)
-      .trim()
-      .toLowerCase()
+    const tokenName = normalizeTokenName(input.slice(index, end + 1))
     const token = tokens.get(tokenName)
     if (!token) {
       return { parts: [], nextIndex: end + 1, unknownTokens: [tokenName] }
     }
 
     return {
-      parts: [{ stroke: token.stroke, display: tokenName, matchKey: token.matchKey }],
+      parts: [parseObjectKey(token.stroke, { display: tokenName, match: token.match })],
       nextIndex: end + 1,
       usedTokens: [tokenName],
     }
@@ -666,7 +657,7 @@ const scenarios: BenchmarkScenario[] = [
 
       resources.keymap.clearBindingParsers()
       resources.keymap.appendBindingParser(createBracketTokenParser())
-      resources.keymap.appendBindingParser(defaultBindingParser)
+      resources.keymap.appendBindingParser(addons.defaultBindingParser)
       resources.keymap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
 
       return {

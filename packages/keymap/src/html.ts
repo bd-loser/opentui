@@ -1,6 +1,6 @@
+import { registerDefaultKeys } from "./addons/universal/default-parser.js"
 import { Keymap } from "./keymap.js"
-import { buildBindingKey, normalizeEventKeyStroke } from "./lib/utils.js"
-import type { KeymapEvent, KeymapHost } from "./types.js"
+import type { KeyStrokeInput, KeymapEvent, KeymapHost } from "./types.js"
 
 export * from "./core.js"
 export * as addons from "./addons/universal/index.js"
@@ -63,20 +63,26 @@ function isPrintableSymbol(name: string): boolean {
   return name.length === 1 && !/^[a-z0-9]$/i.test(name)
 }
 
-function getHtmlEventMatchKeys(event: HtmlKeymapEvent): string[] {
-  const normalized = normalizeEventKeyStroke(event)
-  const primary = buildBindingKey(normalized)
+function getHtmlEventMatchInputs(event: HtmlKeymapEvent): KeyStrokeInput[] {
+  const primary: KeyStrokeInput = {
+    name: event.name,
+    ctrl: event.ctrl,
+    shift: event.shift,
+    meta: event.meta,
+    super: event.super ?? false,
+    hyper: event.hyper || undefined,
+  }
 
-  if (!normalized.shift || !isPrintableSymbol(normalized.name)) {
+  if (!primary.shift || !isPrintableSymbol(primary.name)) {
     return [primary]
   }
 
   return [
     primary,
-    buildBindingKey({
-      ...normalized,
+    {
+      ...primary,
       shift: false,
-    }),
+    },
   ]
 }
 
@@ -310,8 +316,9 @@ export function getKeymap(root: HTMLElement): Keymap<HTMLElement, HtmlKeymapEven
   }
 
   const keymap = new Keymap(createHtmlKeymapHost(root))
-  keymap.prependEventMatchResolver((event) => {
-    return getHtmlEventMatchKeys(event)
+  registerDefaultKeys(keymap)
+  keymap.prependEventMatchResolver((event, ctx) => {
+    return getHtmlEventMatchInputs(event).map((candidate) => ctx.match(candidate))
   })
   keymapsByRoot.set(root, keymap)
   return keymap

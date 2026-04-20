@@ -1,3 +1,10 @@
+export {
+  defaultBindingParser,
+  defaultEventMatchResolver,
+  registerDefaultBindingParser,
+  registerDefaultEventMatchResolver,
+  registerDefaultKeys,
+} from "./default-parser.js"
 export { registerAliasesField } from "./aliases.js"
 export { registerBackspacePopsPendingSequence } from "./backspace-pops-pending-sequence.js"
 export { registerCommaBindings } from "./comma-bindings.js"

@@ -31,12 +31,12 @@ Browser                          Server (Bun)
 
 ## Controls
 
-| Key | Action |
-|---|---|
-| `Up` / `k` | Increment counter |
-| `Down` / `j` | Decrement counter |
-| `r` | Reset counter |
-| `q` / `Ctrl+C` | Quit session |
+| Key            | Action            |
+| -------------- | ----------------- |
+| `Up` / `k`     | Increment counter |
+| `Down` / `j`   | Decrement counter |
+| `r`            | Reset counter     |
+| `q` / `Ctrl+C` | Quit session      |
 
 ## Configuration
 

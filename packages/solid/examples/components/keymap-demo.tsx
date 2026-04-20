@@ -7,13 +7,12 @@ import {
   type TextareaRenderable,
 } from "@opentui/core"
 import {
-  addons,
   stringifyKeySequence,
   stringifyKeyStroke,
   type KeymapActiveKey,
   type KeymapCommandRecord,
 } from "@opentui/keymap"
-import { registerManagedTextareaLayer } from "@opentui/keymap/opentui"
+import { addons } from "@opentui/keymap/opentui"
 import { useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/solid"
 import { render, useRenderer } from "@opentui/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
@@ -664,7 +663,7 @@ export default function KeymapDemo() {
   const offEscapePending = addons.registerEscapeClearsPendingSequence(manager)
   const offBackspacePending = addons.registerBackspacePopsPendingSequence(manager)
 
-  const offManagedTextareas = registerManagedTextareaLayer(renderer, {
+  const offManagedTextareas = addons.registerManagedTextareaLayer(renderer, {
     scope: "global",
     enabled: () => !commandPromptVisible() && renderer.currentFocusedEditor !== null,
     bindings: [

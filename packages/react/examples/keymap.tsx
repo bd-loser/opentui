@@ -7,7 +7,6 @@ import {
   type TextareaRenderable,
 } from "@opentui/core"
 import {
-  addons,
   stringifyKeySequence,
   stringifyKeyStroke,
   type KeymapActiveKey,
@@ -15,7 +14,7 @@ import {
   type KeymapCommandDefinition,
   type KeymapCommandRecord,
 } from "@opentui/keymap"
-import { registerManagedTextareaLayer } from "@opentui/keymap/opentui"
+import { addons } from "@opentui/keymap/opentui"
 import { useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/react"
 import { createRoot, useRenderer } from "@opentui/react"
 import {
@@ -756,7 +755,7 @@ export const App = () => {
   )
 
   useEffect(() => {
-    return registerManagedTextareaLayer(renderer, managedTextareaLayer)
+    return addons.registerManagedTextareaLayer(renderer, managedTextareaLayer)
   }, [managedTextareaLayer, renderer])
 
   useBindings(() => ({

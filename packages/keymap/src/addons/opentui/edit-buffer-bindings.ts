@@ -9,8 +9,8 @@ import {
   type Renderable,
   type TextareaAction,
 } from "@opentui/core"
-import { getKeymap } from "../opentui-host.js"
-import type { BindingInput, Bindings, CommandDefinition, CommandContext, Layer } from "../types.js"
+import { getKeymap } from "../../opentui-host.js"
+import type { BindingInput, Bindings, CommandDefinition, CommandContext, Layer } from "../../types.js"
 
 interface KeyBindingLike {
   name: string

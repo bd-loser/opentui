@@ -2,7 +2,8 @@ import { Keymap } from "./keymap.js"
 import { buildBindingKey, normalizeEventKeyStroke } from "./lib/utils.js"
 import type { KeymapEvent, KeymapHost } from "./types.js"
 
-export * from "./index.js"
+export * from "./core.js"
+export * as addons from "./addons/universal/index.js"
 
 export interface HtmlKeymapEvent extends KeymapEvent {
   readonly originalEvent?: KeyboardEvent

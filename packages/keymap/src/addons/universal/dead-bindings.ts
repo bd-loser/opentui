@@ -5,8 +5,8 @@ import type {
   KeySequencePart,
   LayerAnalysisContext,
   SequenceNode,
-} from "../types.js"
-import { stringifyKeySequence, stringifyKeyStroke } from "../index.js"
+} from "../../types.js"
+import { stringifyKeySequence, stringifyKeyStroke } from "../../core.js"
 
 function getSequenceNode<TTarget extends object, TEvent extends KeymapEvent>(
   root: SequenceNode<TTarget, TEvent>,

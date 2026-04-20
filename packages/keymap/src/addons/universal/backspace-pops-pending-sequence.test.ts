@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { getKeymap } from "../opentui.js"
+import { getKeymap } from "../../opentui.js"
 import { registerBackspacePopsPendingSequence } from "./backspace-pops-pending-sequence.js"
 
 let renderer: TestRenderer

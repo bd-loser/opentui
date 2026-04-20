@@ -1,4 +1,4 @@
-import type { KeyLike, Keymap, KeymapEvent } from "../types.js"
+import type { KeyLike, Keymap, KeymapEvent } from "../../types.js"
 
 export interface LeaderOptions {
   trigger: KeyLike

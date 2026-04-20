@@ -1,4 +1,4 @@
-import type { Keymap, KeymapEvent } from "../types.js"
+import type { Keymap, KeymapEvent } from "../../types.js"
 
 export interface BackspacePopsPendingSequenceOptions {
   /**

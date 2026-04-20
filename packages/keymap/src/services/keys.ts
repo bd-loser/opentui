@@ -20,10 +20,6 @@ export function normalizeBindingTokenName(token: string): string {
 }
 
 export function normalizeKeyName(name: string): string {
-  if (name === " ") {
-    return "space"
-  }
-
   const normalized = name.trim().toLowerCase()
   if (!normalized) {
     throw new Error("Invalid key name: key name cannot be empty")

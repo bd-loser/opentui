@@ -73,6 +73,36 @@ const keymapEntrypoints = [
   join(rootDir, "src/solid/index.ts"),
 ]
 
+function verifyHtmlBundleIsolation(bundlePath: string): void {
+  if (!existsSync(bundlePath)) {
+    console.warn("Warning: html.js bundle not found, skipping browser bundle isolation check")
+    return
+  }
+
+  const htmlBundle = readFileSync(bundlePath, "utf8")
+  const forbiddenMarkers = [
+    "@opentui/core",
+    "@opentui/react",
+    "@opentui/solid",
+    "createOpenTuiKeymapHost",
+    "registerManagedTextareaLayer",
+    "registerEditBufferCommands",
+    "createTextareaBindings",
+    "registerTextareaMappingSuspension",
+    "registerBaseLayoutFallback",
+  ]
+  const foundMarkers = forbiddenMarkers.filter((marker) => htmlBundle.includes(marker))
+
+  if (foundMarkers.length > 0) {
+    console.error(
+      `Error: dist/html.js must stay isolated from OpenTUI runtime entrypoints. Found: ${foundMarkers.join(", ")}`,
+    )
+    process.exit(1)
+  }
+
+  console.log("Verified html bundle stays isolated from OpenTUI runtime entrypoints")
+}
+
 const buildResult = await Bun.build({
   entrypoints: [join(rootDir, packageJson.module), ...keymapEntrypoints],
   target: "bun",
@@ -85,6 +115,8 @@ if (!buildResult.success) {
   console.error("Build failed:", buildResult.logs)
   process.exit(1)
 }
+
+verifyHtmlBundleIsolation(join(distDir, "html.js"))
 
 console.log("Generating TypeScript declarations...")
 

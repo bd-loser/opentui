@@ -120,14 +120,27 @@ test("CliRenderer flushes captured output when leaving split-footer for alternat
 
   renderer = result.renderer
   ;(renderer as any)._terminalIsSetup = true
-  ;(renderer as any).lib.suspendRenderer = () => {}
-  ;(renderer as any).lib.setupTerminal = () => {}
 
-  capture.write("stdout", "pending output\n")
-  renderer.externalOutputMode = "passthrough"
-  renderer.screenMode = "alternate-screen"
+  // The lib object is a shared singleton across all renderers in the
+  // process. Save the originals before overriding so subsequent tests get
+  // the real methods back (otherwise tests that depend on real
+  // setupTerminal/suspendRenderer behavior will silently fail).
+  const libRef = (renderer as any).lib
+  const originalSuspend = libRef.suspendRenderer
+  const originalSetup = libRef.setupTerminal
+  libRef.suspendRenderer = () => {}
+  libRef.setupTerminal = () => {}
 
-  expect(capture.size).toBe(0)
+  try {
+    capture.write("stdout", "pending output\n")
+    renderer.externalOutputMode = "passthrough"
+    renderer.screenMode = "alternate-screen"
+
+    expect(capture.size).toBe(0)
+  } finally {
+    libRef.suspendRenderer = originalSuspend
+    libRef.setupTerminal = originalSetup
+  }
 })
 
 test("CliRenderer allows env to force main-screen mode", async () => {

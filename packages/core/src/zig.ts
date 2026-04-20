@@ -135,7 +135,7 @@ function getOpenTUILib(libPath?: string) {
     },
     // Renderer management
     createRenderer: {
-      args: ["u32", "u32", "bool", "bool"],
+      args: ["u32", "u32", "bool", "bool", "ptr"],
       returns: "ptr",
     },
     setTerminalEnvVar: {
@@ -435,7 +435,7 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "i64"],
       returns: "void",
     },
-    dumpStdoutBuffer: {
+    dumpOutputBuffer: {
       args: ["ptr", "i64"],
       returns: "void",
     },
@@ -1547,7 +1547,7 @@ export interface RenderLib {
   getHitGridDirty: (renderer: Pointer) => boolean
   dumpHitGrid: (renderer: Pointer) => void
   dumpBuffers: (renderer: Pointer, timestamp?: number) => void
-  dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
+  dumpOutputBuffer: (renderer: Pointer, timestamp?: number) => void
   restoreTerminalModes: (renderer: Pointer) => void
   enableMouse: (renderer: Pointer, enableMovement: boolean) => void
   disableMouse: (renderer: Pointer) => void
@@ -2000,10 +2000,19 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setEventCallback(callbackPtr)
   }
 
-  public createRenderer(width: number, height: number, options: { testing?: boolean; remote?: boolean } = {}) {
+  public createRenderer(
+    width: number,
+    height: number,
+    options: { testing?: boolean; remote?: boolean; feedPtr?: Pointer | null } = {},
+  ) {
     const testing = options.testing ?? false
     const remote = options.remote ?? false
-    return this.opentui.symbols.createRenderer(width, height, testing, remote)
+    // `feedPtr` is an internal wiring detail: null selects the stdout backend,
+    // non-null selects the feed backend (used when piping to a non-process
+    // Writable). Public callers pass their stdout stream; `createCliRenderer`
+    // decides which backend to wire.
+    const feedPtr = options.feedPtr ?? null
+    return this.opentui.symbols.createRenderer(width, height, testing, remote, feedPtr)
   }
 
   public setTerminalEnvVar(renderer: Pointer, key: string, value: string): boolean {
@@ -2538,9 +2547,9 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.dumpBuffers(renderer, ts)
   }
 
-  public dumpStdoutBuffer(renderer: Pointer, timestamp?: number): void {
+  public dumpOutputBuffer(renderer: Pointer, timestamp?: number): void {
     const ts = timestamp ?? Date.now()
-    this.opentui.symbols.dumpStdoutBuffer(renderer, ts)
+    this.opentui.symbols.dumpOutputBuffer(renderer, ts)
   }
 
   public restoreTerminalModes(renderer: Pointer): void {

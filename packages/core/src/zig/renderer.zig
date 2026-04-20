@@ -6,18 +6,23 @@ const gp = @import("grapheme.zig");
 const link = @import("link.zig");
 const Terminal = @import("terminal.zig");
 const logger = @import("logger.zig");
+const NativeSpanFeed = @import("native-span-feed.zig");
+const output = @import("renderer-output.zig");
 
 pub const RGBA = ansi.RGBA;
 pub const OptimizedBuffer = buf.OptimizedBuffer;
 pub const TextAttributes = ansi.TextAttributes;
 pub const CursorStyle = Terminal.CursorStyle;
+pub const OutputBackend = output.OutputBackend;
+pub const StdoutBackend = output.StdoutBackend;
+pub const FeedBackend = output.FeedBackend;
+pub const OUTPUT_BUFFER_SIZE = output.OUTPUT_BUFFER_SIZE;
 
 const CLEAR_CHAR = '\u{0a00}';
 const MAX_STAT_SAMPLES = 30;
 const STAT_SAMPLE_CAPACITY = 30;
 
 const COLOR_EPSILON_DEFAULT: f32 = 0.00001;
-const OUTPUT_BUFFER_SIZE = 1024 * 1024 * 2; // 2MB
 
 pub const RendererError = error{
     OutOfMemory,
@@ -40,6 +45,7 @@ pub const DebugOverlayCorner = enum {
     bottomRight,
 };
 
+
 pub const CliRenderer = struct {
     width: u32,
     height: u32,
@@ -52,6 +58,9 @@ pub const CliRenderer = struct {
     testing: bool = false,
     useAlternateScreen: bool = true,
     terminalSetup: bool = false,
+
+    /// Output transport. Owned by the renderer; destroyed in `destroy()`.
+    backend: OutputBackend,
 
     renderStats: struct {
         lastFrameTime: f64,
@@ -79,8 +88,6 @@ pub const CliRenderer = struct {
     },
     lastRenderTime: i64,
     allocator: Allocator,
-    renderThread: ?std.Thread = null,
-    stdoutBuffer: [4096]u8,
     writeOutBuf: [1024]u8 = undefined,
     debugOverlay: struct {
         enabled: bool,
@@ -89,15 +96,6 @@ pub const CliRenderer = struct {
         .enabled = false,
         .corner = .bottomRight,
     },
-    // Threading
-    useThread: bool = false,
-    renderMutex: std.Thread.Mutex = .{},
-    renderCondition: std.Thread.Condition = .{},
-    renderRequested: bool = false,
-    shouldTerminate: bool = false,
-    renderInProgress: bool = false,
-    currentOutputBuffer: []u8 = &[_]u8{},
-    currentOutputLen: usize = 0,
 
     // Hit grid for mouse event dispatch.
     //
@@ -129,48 +127,33 @@ pub const CliRenderer = struct {
     lastCursorColorRGB: ?[3]u8 = null,
     lastMousePointerStyle: Terminal.MousePointerStyle = .default,
 
-    // Preallocated output buffer
-    var outputBuffer: [OUTPUT_BUFFER_SIZE]u8 = undefined;
-    var outputBufferLen: usize = 0;
-    var outputBufferB: [OUTPUT_BUFFER_SIZE]u8 = undefined;
-    var outputBufferBLen: usize = 0;
-    var activeBuffer: enum { A, B } = .A;
-
-    const OutputBufferWriter = struct {
-        pub fn write(_: void, data: []const u8) !usize {
-            const bufferLen = if (activeBuffer == .A) &outputBufferLen else &outputBufferBLen;
-            const buffer = if (activeBuffer == .A) &outputBuffer else &outputBufferB;
-
-            if (bufferLen.* + data.len > buffer.len) {
-                // TODO: Resize buffer when necessary
-                return error.BufferFull;
-            }
-
-            @memcpy(buffer.*[bufferLen.*..][0..data.len], data);
-            bufferLen.* += data.len;
-
-            return data.len;
-        }
-
-        // TODO: std.io.GenericWriter is deprecated, however the "correct" option seems to be much more involved
-        // So I have simply used GenericWriter here, and then the proper migration can be done later
-        pub fn writer() std.io.GenericWriter(void, error{BufferFull}, write) {
-            return .{ .context = {} };
-        }
+    /// Full set of options for `createWithFullOptions`. Presence of `feed_ptr`
+    /// determines the backend variant: non-null selects FeedBackend, null
+    /// selects StdoutBackend.
+    pub const CreateOptions = struct {
+        testing: bool = false,
+        remote: bool = false,
+        feed_ptr: ?*NativeSpanFeed.Stream = null,
     };
 
     pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool, testing: bool) !*CliRenderer {
-        return createWithOptions(allocator, width, height, pool, testing, false);
+        return createWithFullOptions(allocator, width, height, pool, .{ .testing = testing });
     }
 
-    pub fn createWithOptions(
+    pub fn createWithFullOptions(
         allocator: Allocator,
         width: u32,
         height: u32,
         pool: *gp.GraphemePool,
-        testing: bool,
-        remote: bool,
+        opts: CreateOptions,
     ) !*CliRenderer {
+        const testing = opts.testing;
+        // Trust the caller's `remote` value verbatim. The TS side
+        // (`createCliRenderer`) already computes the appropriate default
+        // (`remote = config.remote ?? !usesProcessStdout`); Zig should not
+        // second-guess that decision.
+        const remote = opts.remote;
+
         const self = try allocator.create(CliRenderer);
         errdefer allocator.destroy(self);
 
@@ -212,6 +195,13 @@ pub const CliRenderer = struct {
         @memset(nextHitGrid, 0);
         const hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect) = .{};
 
+        // Backend variant selected once by opts.feed_ptr.
+        var backend: OutputBackend = if (opts.feed_ptr) |feed_ptr|
+            .{ .feed = FeedBackend.create(feed_ptr) }
+        else
+            .{ .stdout = try StdoutBackend.create(allocator, testing) };
+        errdefer backend.deinit(allocator);
+
         self.* = .{
             .width = width,
             .height = height,
@@ -222,6 +212,7 @@ pub const CliRenderer = struct {
             .renderOffset = 0,
             .terminal = Terminal.init(.{ .remote = remote }),
             .testing = testing,
+            .backend = backend,
             .lastCursorStyleTag = null,
             .lastCursorBlinking = null,
             .lastCursorColorRGB = null,
@@ -252,7 +243,6 @@ pub const CliRenderer = struct {
             },
             .lastRenderTime = std.time.microTimestamp(),
             .allocator = allocator,
-            .stdoutBuffer = undefined,
             .currentHitGrid = currentHitGrid,
             .nextHitGrid = nextHitGrid,
             .hitGridWidth = width,
@@ -269,21 +259,13 @@ pub const CliRenderer = struct {
     }
 
     pub fn destroy(self: *CliRenderer) void {
-        self.renderMutex.lock();
-        while (self.renderInProgress) {
-            self.renderCondition.wait(&self.renderMutex);
-        }
-
-        self.shouldTerminate = true;
-        self.renderRequested = true;
-        self.renderCondition.signal();
-        self.renderMutex.unlock();
-
-        if (self.renderThread) |thread| {
-            thread.join();
-        }
-
+        // Order matters: performShutdownSequence writes cleanup ANSI through
+        // the backend. backend.deinit then joins the render thread using a
+        // terminate-only signal (no renderRequested) so the thread exits
+        // without replaying the stale last-frame buffer on top of the
+        // freshly-restored terminal.
         self.performShutdownSequence();
+        self.backend.deinit(self.allocator);
         self.terminal.deinit();
 
         self.currentRenderBuffer.deinit();
@@ -309,20 +291,22 @@ pub const CliRenderer = struct {
         self.useAlternateScreen = useAlternateScreen;
         self.terminalSetup = true;
 
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const writer = &stdoutWriter.interface;
-
-        self.terminal.queryTerminalSend(writer) catch {
+        // Build capability query into a stack buffer, then emit via backend.
+        // Buffer sized to accommodate all capability-query sequences with margin.
+        var queryBuf: [4096]u8 = undefined;
+        var stream = std.io.fixedBufferStream(&queryBuf);
+        self.terminal.queryTerminalSend(stream.writer()) catch {
             logger.warn("Failed to query terminal capabilities", .{});
         };
-        writer.flush() catch {};
+        self.backend.writeOut(stream.getWritten());
 
         self.setupTerminalWithoutDetection(useAlternateScreen);
     }
 
     fn setupTerminalWithoutDetection(self: *CliRenderer, useAlternateScreen: bool) void {
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const writer = &stdoutWriter.interface;
+        var setupBuf: [4096]u8 = undefined;
+        var stream = std.io.fixedBufferStream(&setupBuf);
+        const writer = stream.writer();
 
         writer.writeAll(ansi.ANSI.saveCursorState) catch {};
 
@@ -336,7 +320,7 @@ pub const CliRenderer = struct {
         const useKitty = self.terminal.opts.kitty_keyboard_flags > 0;
         self.terminal.enableDetectedFeatures(writer, useKitty) catch {};
 
-        writer.flush() catch {};
+        self.backend.writeOut(stream.getWritten());
     }
 
     pub fn suspendRenderer(self: *CliRenderer) void {
@@ -352,36 +336,32 @@ pub const CliRenderer = struct {
     pub fn performShutdownSequence(self: *CliRenderer) void {
         if (!self.terminalSetup) return;
 
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const direct = &stdoutWriter.interface;
-        self.terminal.resetState(direct) catch {
+        // Build the shutdown ANSI sequence into a stack buffer, then emit.
+        var shutdownBuf: [4096]u8 = undefined;
+        var stream = std.io.fixedBufferStream(&shutdownBuf);
+        const writer = stream.writer();
+
+        self.terminal.resetState(writer) catch {
             logger.warn("Failed to reset terminal state", .{});
         };
 
-        if (self.useAlternateScreen) {
-            direct.flush() catch {};
-        } else if (self.renderOffset == 0) {
-            direct.writeAll("\x1b[H\x1b[J") catch {};
-            direct.flush() catch {};
-        } else if (self.renderOffset > 0) {
-            // Currently still handled in typescript
-            // const consoleEndLine = self.height - self.renderOffset;
-            // ansi.ANSI.moveToOutput(direct, 1, consoleEndLine) catch {};
+        if (!self.useAlternateScreen and self.renderOffset == 0) {
+            writer.writeAll("\x1b[H\x1b[J") catch {};
         }
+        // renderOffset > 0: handled in typescript, same as before.
 
         // NOTE: This messes up state after shutdown, but might be necessary for windows?
-        // direct.writeAll(ansi.ANSI.restoreCursorState) catch {};
+        // writer.writeAll(ansi.ANSI.restoreCursorState) catch {};
 
-        direct.writeAll(ansi.ANSI.resetCursorColorFallback) catch {};
-        direct.writeAll(ansi.ANSI.resetCursorColor) catch {};
-        direct.writeAll(ansi.ANSI.defaultCursorStyle) catch {};
-        // Workaround for Ghostty not showing the cursor after shutdown for some reason
-        direct.writeAll(ansi.ANSI.showCursor) catch {};
-        direct.flush() catch {};
-        std.Thread.sleep(10 * std.time.ns_per_ms);
-        direct.writeAll(ansi.ANSI.showCursor) catch {};
-        direct.flush() catch {};
-        std.Thread.sleep(10 * std.time.ns_per_ms);
+        writer.writeAll(ansi.ANSI.resetCursorColorFallback) catch {};
+        writer.writeAll(ansi.ANSI.resetCursorColor) catch {};
+        writer.writeAll(ansi.ANSI.defaultCursorStyle) catch {};
+        writer.writeAll(ansi.ANSI.showCursor) catch {};
+
+        self.backend.writeOut(stream.getWritten());
+
+        // Backend-specific trailing behavior (e.g. stdout's cursor-reshow sleep).
+        self.backend.performShutdownExtras();
     }
 
     fn addStatSample(self: *CliRenderer, comptime T: type, samples: *std.ArrayListUnmanaged(T), value: T) void {
@@ -410,37 +390,13 @@ pub const CliRenderer = struct {
     }
 
     pub fn setUseThread(self: *CliRenderer, useThread: bool) void {
-        if (self.useThread == useThread) return;
+        if (!self.backend.supportsThreading() and useThread) return;
+        self.backend.setUseThread(useThread);
+    }
 
-        if (useThread) {
-            if (self.renderThread == null) {
-                self.renderThread = std.Thread.spawn(.{}, renderThreadFn, .{self}) catch |err| {
-                    std.log.warn("Failed to spawn render thread: {}, falling back to non-threaded mode", .{err});
-                    self.useThread = false;
-                    return;
-                };
-            }
-        } else {
-            if (self.renderThread) |thread| {
-                // Signal the render thread to terminate (same pattern as destroy)
-                self.renderMutex.lock();
-                while (self.renderInProgress) {
-                    self.renderCondition.wait(&self.renderMutex);
-                }
-                self.shouldTerminate = true;
-                self.renderRequested = true;
-                self.renderCondition.signal();
-                self.renderMutex.unlock();
-
-                thread.join();
-                self.renderThread = null;
-
-                // Reset termination flag so thread can be re-enabled later
-                self.shouldTerminate = false;
-            }
-        }
-
-        self.useThread = useThread;
+    /// Whether the backend is currently running a write thread (for debug overlay).
+    pub fn isUseThread(self: *CliRenderer) bool {
+        return self.backend.isUseThread();
     }
 
     pub fn updateStats(self: *CliRenderer, time: f64, fps: u32, frameCallbackTime: f64) void {
@@ -504,13 +460,13 @@ pub const CliRenderer = struct {
         // Emit OSC 11 to sync terminal background color with the renderer background.
         // Skip if alpha is 0 (fully transparent — let terminal use its own default).
         if (rgba[3] > 0 and !self.testing) {
-            var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-            const writer = &stdoutWriter.interface;
+            var colorBuf: [64]u8 = undefined;
+            var stream = std.io.fixedBufferStream(&colorBuf);
             const r: u8 = @intFromFloat(@round(@min(rgba[0] * 255.0, 255.0)));
             const g: u8 = @intFromFloat(@round(@min(rgba[1] * 255.0, 255.0)));
             const b: u8 = @intFromFloat(@round(@min(rgba[2] * 255.0, 255.0)));
-            ansi.ANSI.setTerminalBgColorOutput(writer, r, g, b) catch {};
-            writer.flush() catch {};
+            ansi.ANSI.setTerminalBgColorOutput(stream.writer(), r, g, b) catch {};
+            self.backend.writeOut(stream.getWritten());
         }
     }
 
@@ -518,80 +474,34 @@ pub const CliRenderer = struct {
         self.renderOffset = offset;
     }
 
-    fn renderThreadFn(self: *CliRenderer) void {
-        while (true) {
-            self.renderMutex.lock();
-            while (!self.renderRequested and !self.shouldTerminate) {
-                self.renderCondition.wait(&self.renderMutex);
-            }
-
-            if (self.shouldTerminate and !self.renderRequested) {
-                self.renderMutex.unlock();
-                break;
-            }
-
-            self.renderRequested = false;
-
-            const outputData = self.currentOutputBuffer;
-            const outputLen = self.currentOutputLen;
-
-            const writeStart = std.time.microTimestamp();
-
-            if (outputLen > 0 and !self.testing) {
-                var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-                const w = &stdoutWriter.interface;
-                w.writeAll(outputData[0..outputLen]) catch {};
-                w.flush() catch {};
-            }
-
-            // Signal that rendering is complete
-            self.renderStats.stdoutWriteTime = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
-            self.renderInProgress = false;
-            self.renderCondition.signal();
-            self.renderMutex.unlock();
-        }
-    }
-
-    // Render once with current state
+    // One code path; backend selects writer type at compile time.
     pub fn render(self: *CliRenderer, force: bool) void {
+        // Backpressure: skipping must NOT update lastRenderTime so the next
+        // successful render sees the full accumulated delta (catch-up).
+        if (self.backend.shouldSkipFrame()) return;
+
         const now = std.time.microTimestamp();
         const deltaTimeMs = @as(f64, @floatFromInt(now - self.lastRenderTime));
-        const deltaTime = deltaTimeMs / 1000.0; // Convert to seconds
+        const deltaTime = deltaTimeMs / 1000.0;
 
         self.lastRenderTime = now;
         self.renderDebugOverlay();
 
-        self.prepareRenderFrame(force);
+        // `inline else` monomorphizes the writer type per variant — one
+        // dispatch site, zero vtable cost.
+        switch (self.backend) {
+            inline else => |*b| {
+                b.beginFrame();
+                var w = b.writer();
+                self.prepareRenderFrameWithWriter(&w, force);
+                b.endFrame();
+            },
+        }
 
-        if (self.useThread) {
-            self.renderMutex.lock();
-            while (self.renderInProgress) {
-                self.renderCondition.wait(&self.renderMutex);
-            }
-
-            if (activeBuffer == .A) {
-                activeBuffer = .B;
-                self.currentOutputBuffer = &outputBuffer;
-                self.currentOutputLen = outputBufferLen;
-            } else {
-                activeBuffer = .A;
-                self.currentOutputBuffer = &outputBufferB;
-                self.currentOutputLen = outputBufferBLen;
-            }
-
-            self.renderRequested = true;
-            self.renderInProgress = true;
-            self.renderCondition.signal();
-            self.renderMutex.unlock();
-        } else {
-            const writeStart = std.time.microTimestamp();
-            if (!self.testing) {
-                var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-                const w = &stdoutWriter.interface;
-                w.writeAll(outputBuffer[0..outputBufferLen]) catch {};
-                w.flush() catch {};
-            }
-            self.renderStats.stdoutWriteTime = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
+        // Propagate backend's measured write time into renderStats for the
+        // stats overlay / FFI stats readers.
+        if (self.backend.getLastWriteTimeUs()) |wt| {
+            self.renderStats.stdoutWriteTime = wt;
         }
 
         self.renderStats.lastFrameTime = deltaTime * 1000.0;
@@ -618,17 +528,12 @@ pub const CliRenderer = struct {
         return self.currentRenderBuffer;
     }
 
-    fn prepareRenderFrame(self: *CliRenderer, force: bool) void {
+    /// Generic over the writer type so each backend can provide its own writer
+    /// (stdout: buffered-append, feed: streaming) without any dispatch in the
+    /// render path.
+    pub fn prepareRenderFrameWithWriter(self: *CliRenderer, writer: anytype, force: bool) void {
         const renderStartTime = std.time.microTimestamp();
         var cellsUpdated: u32 = 0;
-
-        if (activeBuffer == .A) {
-            outputBufferLen = 0;
-        } else {
-            outputBufferBLen = 0;
-        }
-
-        var writer = OutputBufferWriter.writer();
 
         writer.writeAll(ansi.ANSI.syncSet) catch {};
         writer.writeAll(ansi.ANSI.hideCursor) catch {};
@@ -878,47 +783,11 @@ pub const CliRenderer = struct {
     }
 
     pub fn writeOut(self: *CliRenderer, data: []const u8) void {
-        if (data.len == 0) return;
-        if (self.testing) return;
-
-        if (self.useThread) {
-            self.renderMutex.lock();
-            while (self.renderInProgress) {
-                self.renderCondition.wait(&self.renderMutex);
-            }
-            self.renderMutex.unlock();
-        }
-
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const w = &stdoutWriter.interface;
-        w.writeAll(data) catch {};
-        w.flush() catch {};
+        self.backend.writeOut(data);
     }
 
     pub fn writeOutMultiple(self: *CliRenderer, data_slices: []const []const u8) void {
-        if (self.testing) return;
-
-        if (self.useThread) {
-            self.renderMutex.lock();
-            while (self.renderInProgress) {
-                self.renderCondition.wait(&self.renderMutex);
-            }
-            self.renderMutex.unlock();
-        }
-
-        var totalLen: usize = 0;
-        for (data_slices) |slice| {
-            totalLen += slice.len;
-        }
-
-        if (totalLen == 0) return;
-
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
-        const w = &stdoutWriter.interface;
-        for (data_slices) |slice| {
-            w.writeAll(slice) catch {};
-        }
-        w.flush() catch {};
+        self.backend.writeOutMultiple(data_slices);
     }
 
     /// Write a renderable's bounds to nextHitGrid for the upcoming frame.
@@ -1153,23 +1022,22 @@ pub const CliRenderer = struct {
         writer.flush() catch {};
     }
 
-    pub fn getLastOutputForTest(_: *CliRenderer) []const u8 {
-        // In non-threaded mode, we want the current active buffer
-        // In threaded mode, we want the previously rendered buffer
-        const currentBuffer = if (activeBuffer == .A) &outputBuffer else &outputBufferB;
-        const currentLen = if (activeBuffer == .A) outputBufferLen else outputBufferBLen;
-        return currentBuffer.*[0..currentLen];
+    /// Return the most recently rendered frame's bytes. Only meaningful for the
+    /// stdout backend; other backends return an empty slice.
+    pub fn getLastOutputForTest(self: *CliRenderer) []const u8 {
+        return self.backend.getLastOutputForTest();
     }
 
-    pub fn dumpStdoutBuffer(self: *CliRenderer, timestamp: i64) void {
-        _ = self;
+    /// Dump the last rendered output to a file. Backend-specific formatting
+    /// is delegated to `backend.dumpTo(writer)` — no tag inspection here.
+    pub fn dumpOutputBuffer(self: *CliRenderer, timestamp: i64) void {
         std.fs.cwd().makeDir("buffer_dump") catch |err| switch (err) {
             error.PathAlreadyExists => {},
             else => return,
         };
 
         var filename_buf: [128]u8 = undefined;
-        const filename = std.fmt.bufPrint(&filename_buf, "buffer_dump/stdout_buffer_{d}.txt", .{timestamp}) catch return;
+        const filename = std.fmt.bufPrint(&filename_buf, "buffer_dump/output_buffer_{d}.txt", .{timestamp}) catch return;
 
         const file = std.fs.cwd().createFile(filename, .{}) catch return;
         defer file.close();
@@ -1178,29 +1046,19 @@ pub const CliRenderer = struct {
         var fileWriter = file.writer(&fileBuffer);
         const writer = &fileWriter.interface;
 
-        writer.print("Stdout Buffer Output (timestamp: {d}):\n", .{timestamp}) catch return;
+        writer.print("Output Buffer Dump (timestamp: {d}):\n", .{timestamp}) catch return;
         writer.writeAll("Last Rendered ANSI Output:\n") catch return;
         writer.writeAll("================\n") catch return;
 
-        const lastBuffer = if (activeBuffer == .A) &outputBufferB else &outputBuffer;
-        const lastLen = if (activeBuffer == .A) outputBufferBLen else outputBufferLen;
+        self.backend.dumpTo(writer);
 
-        if (lastLen > 0) {
-            writer.writeAll(lastBuffer.*[0..lastLen]) catch return;
-        } else {
-            writer.writeAll("(no output rendered yet)\n") catch return;
-        }
-
-        writer.writeAll("\n================\n") catch return;
-        writer.print("Buffer size: {d} bytes\n", .{lastLen}) catch return;
-        writer.print("Active buffer: {s}\n", .{if (activeBuffer == .A) "A" else "B"}) catch return;
         writer.flush() catch {};
     }
 
     pub fn dumpBuffers(self: *CliRenderer, timestamp: i64) void {
         self.dumpSingleBuffer(self.currentRenderBuffer, "current", timestamp);
         self.dumpSingleBuffer(self.nextRenderBuffer, "next", timestamp);
-        self.dumpStdoutBuffer(timestamp);
+        self.dumpOutputBuffer(timestamp);
     }
 
     pub fn restoreTerminalModes(self: *CliRenderer) void {
@@ -1398,7 +1256,7 @@ pub const CliRenderer = struct {
 
         // Is threaded?
         var isThreadedText: [64]u8 = undefined;
-        const isThreadedLen = std.fmt.bufPrint(&isThreadedText, "Threaded: {s}", .{if (self.useThread) "Yes" else "No"}) catch return;
+        const isThreadedLen = std.fmt.bufPrint(&isThreadedText, "Threaded: {s}", .{if (self.backend.isUseThread()) "Yes" else "No"}) catch return;
         self.nextRenderBuffer.drawText(isThreadedLen, x + 1, y + row, fg, bg, 0) catch {};
         row += 1;
     }

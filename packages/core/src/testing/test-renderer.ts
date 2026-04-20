@@ -1,6 +1,5 @@
 import { Readable, Writable } from "stream"
 import { CliRenderer, type CliRendererConfig } from "../renderer.js"
-import { resolveRenderLib } from "../zig.js"
 import { createMockKeys } from "./mock-keys.js"
 import { createMockMouse } from "./mock-mouse.js"
 import type { CapturedFrame } from "../types.js"
@@ -102,31 +101,9 @@ async function setupTestRenderer(config: TestRendererOptions) {
   const width = config.width || config.stdout?.columns || process.stdout.columns || 80
   const height = config.height || config.stdout?.rows || process.stdout.rows || 24
   const stdout = config.stdout || (new TestWriteStream(width, height) as unknown as NodeJS.WriteStream)
-  const renderHeight = config.screenMode === "split-footer" ? (config.footerHeight ?? 12) : height
 
-  const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, renderHeight, {
-    testing: true,
-    remote: config.remote ?? false,
-  })
-  if (!rendererPtr) {
-    throw new Error("Failed to create test renderer")
-  }
-  if (config.useThread === undefined) {
-    config.useThread = true
-  }
-
-  if (process.platform === "linux") {
-    config.useThread = false
-  }
-  ziglib.setUseThread(rendererPtr, config.useThread)
-
-  const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
-
-  process.off("SIGWINCH", renderer["sigwinchHandler"])
-
-  // Do not setup the terminal for testing as we will not actually output anything to the terminal
-  // await renderer.setupTerminal()
-
-  return renderer
+  // CliRenderer handles everything: testing=true short-circuits I/O, skips
+  // feed allocation, and (via identity-based SIGWINCH gating) never registers
+  // a SIGWINCH listener since TestWriteStream !== process.stdout.
+  return new CliRenderer(stdin, stdout, width, height, { ...config, testing: true })
 }

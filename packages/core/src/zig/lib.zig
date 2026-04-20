@@ -185,7 +185,23 @@ export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
     };
 }
 
-export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?*renderer.CliRenderer {
+/// Create a renderer.
+///
+/// `feedPtr` selects the output transport:
+///   - null: writes go to process.stdout (StdoutBackend)
+///   - non-null: writes go to the provided NativeSpanFeed stream (FeedBackend),
+///     which the TS side pipes onward to a user-supplied Writable
+///
+/// `remote` and `feedPtr` are orthogonal from Zig's perspective; the TS side
+/// is responsible for defaulting `remote = !usesProcessStdout` when wiring a
+/// feed. Zig trusts the caller's `remote` value verbatim.
+export fn createRenderer(
+    width: u32,
+    height: u32,
+    testing: bool,
+    remote: bool,
+    feedPtr: ?*native_span_feed.Stream,
+) ?*renderer.CliRenderer {
     if (width == 0 or height == 0) {
         logger.warn("Invalid renderer dimensions: {}x{}", .{ width, height });
         return null;
@@ -193,7 +209,11 @@ export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?
 
     const pool = gp.initGlobalPool(globalArena);
     _ = link.initGlobalLinkPool(globalArena);
-    return renderer.CliRenderer.createWithOptions(globalAllocator, width, height, pool, testing, remote) catch |err| {
+    return renderer.CliRenderer.createWithFullOptions(globalAllocator, width, height, pool, .{
+        .testing = testing,
+        .remote = remote,
+        .feed_ptr = feedPtr,
+    }) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return null;
     };
@@ -747,8 +767,8 @@ export fn dumpBuffers(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
     rendererPtr.dumpBuffers(timestamp);
 }
 
-export fn dumpStdoutBuffer(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
-    rendererPtr.dumpStdoutBuffer(timestamp);
+export fn dumpOutputBuffer(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
+    rendererPtr.dumpOutputBuffer(timestamp);
 }
 
 export fn restoreTerminalModes(rendererPtr: *renderer.CliRenderer) void {

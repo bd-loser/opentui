@@ -14,19 +14,22 @@ const TextBufferView = text_buffer_view.TextBufferView;
 const OptimizedBuffer = buffer.OptimizedBuffer;
 const RGBA = text_buffer.RGBA;
 
-fn createWithOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) !void {
+fn createWithFullOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) !void {
     const pool = gp.initGlobalPool(allocator);
     defer gp.deinitGlobalPool();
     defer link.deinitGlobalLinkPool();
 
-    var cli_renderer = try CliRenderer.createWithOptions(allocator, width, height, pool, true, false);
+    var cli_renderer = try CliRenderer.createWithFullOptions(allocator, width, height, pool, .{
+        .testing = true,
+        .remote = false,
+    });
     cli_renderer.destroy();
 }
 
-test "renderer - createWithOptions late allocation failure cleans up" {
+test "renderer - createWithFullOptions late allocation failure cleans up" {
     const allocation_count = blk: {
         var counting_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
-        try createWithOptionsOnce(counting_allocator.allocator(), 80, 24);
+        try createWithFullOptionsOnce(counting_allocator.allocator(), 80, 24);
         break :blk counting_allocator.alloc_index;
     };
 
@@ -36,7 +39,7 @@ test "renderer - createWithOptions late allocation failure cleans up" {
         .fail_index = allocation_count - 1,
     });
 
-    try std.testing.expectError(error.OutOfMemory, createWithOptionsOnce(failing_allocator.allocator(), 80, 24));
+    try std.testing.expectError(error.OutOfMemory, createWithFullOptionsOnce(failing_allocator.allocator(), 80, 24));
     try std.testing.expect(failing_allocator.has_induced_failure);
     try std.testing.expectEqual(failing_allocator.allocated_bytes, failing_allocator.freed_bytes);
 }
@@ -1014,4 +1017,174 @@ test "renderer - explicit_cursor_positioning with CJK characters" {
     const output = cli_renderer.getLastOutputForTest();
 
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[1;3H") != null);
+}
+
+// ---- FeedBackend tests (Phase 2) ----
+
+const native_span_feed = @import("../native-span-feed.zig");
+
+test "FeedBackend - renderer writes through feed" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    _ = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    const feed = try native_span_feed.Stream.create(std.testing.allocator, null);
+    var cli_renderer = try CliRenderer.createWithFullOptions(std.testing.allocator, 80, 24, pool, .{
+        .testing = false,
+        .remote = true,
+        .feed_ptr = feed,
+    });
+    // Defer order matters (LIFO): renderer.destroy() must run first so its
+    // shutdown sequence can still reference the feed.
+    defer cli_renderer.destroy();
+    defer feed.destroy();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawText("Hello", 0, 0, fg, bg, 0);
+
+    cli_renderer.render(false);
+
+    var span_out: [32]native_span_feed.SpanInfo = undefined;
+    const count = feed.drainSpans(&span_out);
+    try std.testing.expect(count > 0);
+
+    var total_bytes: usize = 0;
+    var found_hello = false;
+    for (span_out[0..count]) |span| {
+        total_bytes += span.len;
+        const slice = span.slice();
+        if (std.mem.indexOf(u8, slice, "Hello") != null) {
+            found_hello = true;
+        }
+    }
+    try std.testing.expect(total_bytes > 0);
+    try std.testing.expect(found_hello);
+}
+
+test "FeedBackend - shouldSkipFrame when span queue saturated" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    _ = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    // Create a feed with a very small span queue so we can saturate it easily.
+    var opts = native_span_feed.defaultOptions();
+    opts.span_queue_capacity = 2;
+    const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
+    var cli_renderer = try CliRenderer.createWithFullOptions(std.testing.allocator, 80, 24, pool, .{
+        .testing = false,
+        .remote = true,
+        .feed_ptr = feed,
+    });
+    // LIFO: renderer destroys first.
+    defer cli_renderer.destroy();
+    defer feed.destroy();
+
+    // Render a few frames to build up pending spans. Each render commits one
+    // span, so after 2 renders without draining we should be at capacity.
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawText("A", 0, 0, fg, bg, 0);
+    cli_renderer.render(false);
+
+    try next_buffer.drawText("B", 0, 0, fg, bg, 0);
+    cli_renderer.render(false);
+
+    try std.testing.expect(cli_renderer.backend.shouldSkipFrame());
+
+    // Catch-up semantics: a skipped render must NOT advance lastRenderTime,
+    // so the next non-skipped frame sees the full accumulated delta.
+    const before = cli_renderer.lastRenderTime;
+    cli_renderer.render(false);
+    try std.testing.expectEqual(before, cli_renderer.lastRenderTime);
+}
+
+test "FeedBackend - supportsThreading is false" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    _ = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    const feed = try native_span_feed.Stream.create(std.testing.allocator, null);
+    var cli_renderer = try CliRenderer.createWithFullOptions(std.testing.allocator, 80, 24, pool, .{
+        .testing = false,
+        .remote = true,
+        .feed_ptr = feed,
+    });
+    // LIFO: renderer destroys first.
+    defer cli_renderer.destroy();
+    defer feed.destroy();
+
+    try std.testing.expect(!cli_renderer.backend.supportsThreading());
+    cli_renderer.setUseThread(true); // no-op on feed backend
+    try std.testing.expect(!cli_renderer.backend.isUseThread());
+}
+
+test "two renderers on stdout backend have independent buffers" {
+    // This verifies the Phase 1 fix: per-instance output buffers rather than
+    // file-scope statics. Without the fix, two renderers would clobber each
+    // other's output.
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    _ = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var r1 = try CliRenderer.create(std.testing.allocator, 80, 24, pool, true);
+    defer r1.destroy();
+    var r2 = try CliRenderer.create(std.testing.allocator, 80, 24, pool, true);
+    defer r2.destroy();
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    const b1 = r1.getNextBuffer();
+    try b1.drawText("AAA", 0, 0, fg, bg, 0);
+    r1.render(false);
+
+    const b2 = r2.getNextBuffer();
+    try b2.drawText("BBB", 0, 0, fg, bg, 0);
+    r2.render(false);
+
+    const out1 = r1.getLastOutputForTest();
+    const out2 = r2.getLastOutputForTest();
+
+    try std.testing.expect(std.mem.indexOf(u8, out1, "AAA") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out1, "BBB") == null);
+    try std.testing.expect(std.mem.indexOf(u8, out2, "BBB") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out2, "AAA") == null);
+}
+
+test "threaded stdout destroy: no stale write after shutdown ANSI" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    _ = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var cli_renderer = try CliRenderer.create(std.testing.allocator, 80, 24, pool, true);
+    defer cli_renderer.destroy();
+
+    cli_renderer.setUseThread(true);
+    try std.testing.expect(cli_renderer.backend.isUseThread());
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const nb = cli_renderer.getNextBuffer();
+    try nb.drawText("STALE", 0, 0, fg, bg, 0);
+    cli_renderer.render(false);
+
+    // Toggle threading off and back on — flags must be reset so the new
+    // thread waits for a real renderRequested rather than replaying the
+    // stale currentOutputBuffer from the prior thread era.
+    cli_renderer.setUseThread(false);
+    try std.testing.expect(!cli_renderer.backend.isUseThread());
+
+    cli_renderer.setUseThread(true);
+    try std.testing.expect(cli_renderer.backend.isUseThread());
+
+    // The protocol invariant we assert: setUseThread toggles do not panic
+    // or deadlock, and internal state is clean for destroy() to run.
 }

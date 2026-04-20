@@ -13,6 +13,7 @@ import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
 import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer.js"
 import { resolveRenderLib, type RenderLib } from "./zig.js"
+import { NativeSpanFeed } from "./NativeSpanFeed.js"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console.js"
 import { type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/parse.mouse.js"
 import { Selection } from "./lib/selection.js"
@@ -83,12 +84,23 @@ registerEnvVar({
 })
 
 export interface CliRendererConfig {
-  // Read input from this stream. Defaults to process.stdin.
+  // Read input from this stream. Defaults to process.stdin. Any `Readable`
+  // works; capabilities like `setRawMode` are duck-typed and used when present.
   stdin?: NodeJS.ReadStream
 
-  // Use a custom stdout stream for size detection and stdout interception.
-  // Native frame output still goes to the real TTY.
+  // Destination for rendered output. Defaults to process.stdout. When this is
+  // not `process.stdout`, the renderer internally wires a `NativeSpanFeed`
+  // between Zig and the provided `Writable` so frames flow there instead of
+  // the host terminal. TTY capabilities like `columns`/`rows` are duck-typed.
   stdout?: NodeJS.WriteStream
+
+  // Fallback terminal width when `stdout.columns` is not available. Useful
+  // when running against a non-TTY `Writable` (e.g. an SSH channel) where
+  // initial dimensions come from elsewhere. Default 80.
+  width?: number
+
+  // Fallback terminal height when `stdout.rows` is not available. Default 24.
+  height?: number
 
   // Tell the native renderer it is driving a remote terminal.
   remote?: boolean
@@ -401,15 +413,31 @@ export enum MouseButton {
 
 const rendererTracker = singleton("RendererTracker", () => {
   const renderers = new Set<CliRenderer>()
+  // Track how many renderers are actively using process.stdin. We pause
+  // process.stdin only when the last such renderer is destroyed — independent
+  // of whether other renderers (on custom stdins) are still alive. This
+  // prevents a renderer using a non-process stdin (e.g. an SSH channel) from
+  // unexpectedly pausing the host's process.stdin, while still properly
+  // restoring it when process.stdin consumers go away.
+  let processStdinUsers = 0
   return {
     addRenderer: (renderer: CliRenderer) => {
       renderers.add(renderer)
+      if (renderer.stdin === process.stdin) processStdinUsers++
     },
     removeRenderer: (renderer: CliRenderer) => {
       renderers.delete(renderer)
-      if (renderers.size === 0) {
-        process.stdin.pause()
+      const wasProcessStdin = renderer.stdin === process.stdin
+      if (wasProcessStdin) {
+        processStdinUsers = Math.max(0, processStdinUsers - 1)
+        // Pause process.stdin as soon as the last process.stdin-using renderer
+        // goes away. Other renderers on custom stdins are orthogonal.
+        if (processStdinUsers === 0) {
+          process.stdin.pause()
+        }
+      }
 
+      if (renderers.size === 0) {
         if (hasSingleton("tree-sitter-client")) {
           getTreeSitterClient().destroy()
           destroySingleton("tree-sitter-client")
@@ -419,47 +447,38 @@ const rendererTracker = singleton("RendererTracker", () => {
   }
 })
 
+/**
+ * Create a CLI renderer and run its async terminal setup. The constructor
+ * owns all stream and backend decisions; this factory only layers on the
+ * `--delay-start` flag and the `await setupTerminal()` convenience.
+ */
 export async function createCliRenderer(config: CliRendererConfig = {}): Promise<CliRenderer> {
   if (process.argv.includes("--delay-start")) {
     await new Promise((resolve) => setTimeout(resolve, 5000))
   }
-  const stdin = config.stdin || process.stdin
-  const stdout = config.stdout || process.stdout
-  const { screenMode, footerHeight } = resolveModes(config)
+  const stdin = config.stdin ?? process.stdin
+  const stdout = config.stdout ?? process.stdout
 
-  const width = stdout.columns || 80
-  const height = stdout.rows || 24
-  const renderHeight = screenMode === "split-footer" ? footerHeight : height
+  // Prefer real TTY dimensions, then explicit config fallbacks, then defaults.
+  // `||` (not `??`) preserves the historical falsy-fallback semantics where
+  // `stdout.columns === 0` falls through rather than being treated as valid.
+  const width = stdout.columns || config.width || 80
+  const height = stdout.rows || config.height || 24
 
-  const ziglib = resolveRenderLib()
-  const rendererPtr = ziglib.createRenderer(width, renderHeight, {
-    remote: config.remote ?? false,
-    testing: config.testing ?? false,
-  })
-  if (!rendererPtr) {
-    throw new Error("Failed to create renderer")
+  const renderer = new CliRenderer(stdin, stdout, width, height, config)
+  try {
+    if (!config.testing) {
+      await renderer.setupTerminal()
+    }
+    return renderer
+  } catch (error) {
+    try {
+      renderer.destroy()
+    } catch (destroyError) {
+      console.error("Error destroying partially-set-up renderer:", destroyError)
+    }
+    throw error
   }
-  if (config.useThread === undefined) {
-    config.useThread = true
-  }
-
-  // Disable threading on linux because there currently is currently an issue
-  // might be just a missing dependency for the build or something, but threads crash on linux
-  if (process.platform === "linux") {
-    config.useThread = false
-  }
-  ziglib.setUseThread(rendererPtr, config.useThread)
-
-  const kittyConfig = config.useKittyKeyboard ?? {}
-  const kittyFlags = buildKittyKeyboardFlags(kittyConfig)
-
-  ziglib.setKittyKeyboardFlags(rendererPtr, kittyFlags)
-
-  const renderer = new CliRenderer(ziglib, rendererPtr, stdin, stdout, width, height, config)
-  if (!config.testing) {
-    await renderer.setupTerminal()
-  }
-  return renderer
 }
 
 export enum CliRenderEvents {
@@ -680,13 +699,46 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     console.warn(JSON.stringify(warning.message, null, 2))
   }).bind(this)
 
+  // Stream identity flag. Used only for SIGWINCH gating (terminal-driven
+  // resize only fires for process.stdout). Other per-stream behavior uses
+  // identity checks inline (e.g. rendererTracker compares `stdin` directly)
+  // or duck-typed capability checks (e.g. `stdin.setRawMode?.()`).
+  private readonly _usesProcessStdout: boolean
+
+  // Feed wiring. Non-null when the given stdout is not process.stdout and
+  // we're not in testing mode — the renderer then routes native ANSI output
+  // through a NativeSpanFeed into the caller's Writable.
+  private _feed: NativeSpanFeed | null = null
+  private _detachFeed: (() => void) | null = null
+  private _detachFeedError: (() => void) | null = null
+
   public get controlState(): RendererControlState {
     return this._controlState
   }
 
+  /**
+   * Construct a renderer over the given streams.
+   *
+   * If `stdout` is not `process.stdout`, a `NativeSpanFeed` is allocated
+   * internally and rendered bytes are piped through it to `stdout`. Prefer
+   * `createCliRenderer` for the async `setupTerminal` convenience.
+   *
+   * Construction side effects (observable before the constructor returns):
+   *   - Allocates a `NativeSpanFeed` (for non-process stdout, non-testing)
+   *   - Calls `lib.createRenderer` → native Zig allocation
+   *   - Registers in the process-wide `rendererTracker`
+   *   - Adds `process.on(...)` listeners for SIGWINCH (process.stdout only),
+   *     "warning", "uncaughtException", "unhandledRejection", "beforeExit",
+   *     plus the configured `exitSignals`
+   *   - Replaces `global.requestAnimationFrame` with the renderer's impl
+   *   - On non-testing paths, subsequent `setupTerminal()` will put `stdin`
+   *     in raw mode and call `stdin.resume()`
+   *
+   * These side effects are NOT rolled back if the constructor throws partway;
+   * production callers should use `createCliRenderer`, which wraps
+   * `setupTerminal()` in a try/catch that calls `destroy()` on failure.
+   */
   constructor(
-    lib: RenderLib,
-    rendererPtr: Pointer,
     stdin: NodeJS.ReadStream,
     stdout: NodeJS.WriteStream,
     width: number,
@@ -695,19 +747,99 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   ) {
     super()
 
-    rendererTracker.addRenderer(this)
-
     this.stdin = stdin
     this.stdout = stdout
+    this._usesProcessStdout = stdout === process.stdout
+
+    const lib = resolveRenderLib()
+
+    // Feed allocation: only when the output target is a non-process Writable
+    // AND we're not in testing mode. Testing mode short-circuits I/O in Zig,
+    // so a feed would be pure overhead.
+    let feed: NativeSpanFeed | null = null
+    if (!this._usesProcessStdout && !config.testing) {
+      try {
+        feed = NativeSpanFeed.create()
+      } catch (error) {
+        throw new Error(
+          `Failed to allocate NativeSpanFeed for custom stdout: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    }
+
+    // Native renderer creation. `remote` defaults to true for non-process
+    // stdouts so the Zig Terminal module skips local-TTY capability-query
+    // timing assumptions; callers can still override.
+    //
+    // `feedPtr` is an internal wiring detail — the concrete `FFIRenderLib`
+    // accepts it but the public `RenderLib` interface does not. The local
+    // type cast below keeps the method call bound to `lib` (preserving
+    // `this`) while accessing the implementation's wider signature.
+    const { screenMode, footerHeight, externalOutputMode } = resolveModes(config)
+    const renderHeight = screenMode === "split-footer" ? footerHeight : height
+
+    type InternalRenderLib = RenderLib & {
+      createRenderer: (
+        width: number,
+        height: number,
+        options: { testing?: boolean; remote?: boolean; feedPtr?: Pointer | null },
+      ) => Pointer | null
+    }
+
+    let rendererPtr: Pointer | null
+    try {
+      rendererPtr = (lib as InternalRenderLib).createRenderer(width, renderHeight, {
+        remote: config.remote ?? !this._usesProcessStdout,
+        testing: config.testing ?? false,
+        feedPtr: feed?.streamPtr ?? null,
+      })
+    } catch (error) {
+      feed?.close()
+      throw error
+    }
+    if (!rendererPtr) {
+      feed?.close()
+      throw new Error("Failed to create renderer")
+    }
+
+    // Threading defaults (on everywhere except linux, where it currently
+    // crashes — likely a missing build dep).
+    if (config.useThread === undefined) config.useThread = true
+    if (process.platform === "linux") config.useThread = false
+    lib.setUseThread(rendererPtr, config.useThread)
+
+    const kittyConfig = config.useKittyKeyboard ?? {}
+    const kittyFlags = buildKittyKeyboardFlags(kittyConfig)
+    lib.setKittyKeyboardFlags(rendererPtr, kittyFlags)
+
+    // Wire feed → Writable piping. The returned Promise keeps the chunk
+    // pinned (refcount held) until Node's write callback fires; this turns
+    // Node's Writable flow control into async backpressure for the feed.
+    // Write errors are surfaced via feed.onError / console.error; we do not
+    // interfere with the Writable's own error handling (matches the
+    // pre-feed-integration posture where process.stdout EPIPE was the OS's
+    // problem, not the renderer's).
+    this._feed = feed
+    if (feed) {
+      this._detachFeed = feed.onData((bytes: Uint8Array) => {
+        return new Promise<void>((resolve) => {
+          stdout.write(bytes, () => resolve())
+        })
+      })
+      this._detachFeedError = feed.onError((code) => {
+        console.error(`[CliRenderer] NativeSpanFeed error: code=${code}`)
+      })
+    }
+
+    rendererTracker.addRenderer(this)
+
     this.realStdoutWrite = stdout.write
     this.lib = lib
     this._terminalWidth = stdout.columns ?? width
     this._terminalHeight = stdout.rows ?? height
     this.width = width
     this.height = height
-    this._useThread = config.useThread === undefined ? false : config.useThread
-    const { screenMode, footerHeight, externalOutputMode } = resolveModes(config)
-
+    this._useThread = config.useThread
     this._footerHeight = footerHeight
     this._screenMode = screenMode
 
@@ -754,8 +886,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.startMemorySnapshotTimer()
     }
 
-    // Handle terminal resize
-    process.on("SIGWINCH", this.sigwinchHandler)
+    // Handle terminal resize via SIGWINCH, but only when attached to the
+    // process's real stdout — a custom Writable wouldn't drive SIGWINCH
+    // anyway, and external consumers can call `renderer.resize(w, h)` to
+    // announce dimension changes themselves.
+    if (this._usesProcessStdout) {
+      process.on("SIGWINCH", this.sigwinchHandler)
+    }
 
     process.on("warning", this.warningHandler)
 
@@ -763,7 +900,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     process.on("unhandledRejection", this.handleError)
     process.on("beforeExit", this.exitHandler)
 
-    const kittyConfig = config.useKittyKeyboard ?? {}
     const useKittyForParsing = kittyConfig !== null
     this._keyHandler = new InternalKeyHandler()
     this._keyHandler.on("keypress", (event) => {
@@ -952,7 +1088,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private writeOut(chunk: any, encoding?: any, callback?: any): boolean {
-    if (this.rendererPtr && this._useThread) {
+    // Route through the native backend whenever:
+    //   (a) threading is on (pre-existing path — batches with the render thread), OR
+    //   (b) a feed is wired (custom stdout) — otherwise the else-branch would
+    //       write directly to the user's Writable, bypassing the feed and
+    //       causing TS-side ANSI to interleave with Zig-emitted frame bytes
+    //       on Linux where threading is forced off.
+    if (this.rendererPtr && (this._useThread || this._feed !== null)) {
       const data = typeof chunk === "string" ? chunk : (chunk?.toString() ?? "")
       this.lib.writeOut(this.rendererPtr, data)
       if (typeof callback === "function") {
@@ -1923,6 +2065,19 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.requestRender()
   }
 
+  /**
+   * Programmatically resize the renderer to new dimensions.
+   *
+   * Use this for externally-driven resize events — for example, an SSH
+   * `window-change` signal or a test harness simulating a terminal resize.
+   * When the renderer is attached to `process.stdout`, `SIGWINCH` is handled
+   * automatically and callers do not need this method.
+   */
+  public resize(width: number, height: number): void {
+    if (this._isDestroyed) return
+    this.processResize(width, height)
+  }
+
   public setBackgroundColor(color: ColorInput): void {
     const parsedColor = parseColor(color)
     this.lib.setBackgroundColor(this.rendererPtr, parsedColor as RGBA)
@@ -1990,8 +2145,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.dumpBuffers(this.rendererPtr, timestamp)
   }
 
-  public dumpStdoutBuffer(timestamp?: number): void {
-    this.lib.dumpStdoutBuffer(this.rendererPtr, timestamp)
+  public dumpOutputBuffer(timestamp?: number): void {
+    this.lib.dumpOutputBuffer(this.rendererPtr, timestamp)
   }
 
   public static setCursorPosition(renderer: CliRenderer, x: number, y: number, visible: boolean = true): void {
@@ -2222,7 +2377,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._destroyCleanupPrepared) return
     this._destroyCleanupPrepared = true
 
-    process.removeListener("SIGWINCH", this.sigwinchHandler)
+    if (this._usesProcessStdout) {
+      process.removeListener("SIGWINCH", this.sigwinchHandler)
+    }
     process.removeListener("uncaughtException", this.handleError)
     process.removeListener("unhandledRejection", this.handleError)
     process.removeListener("warning", this.warningHandler)
@@ -2309,8 +2466,70 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.oscSubscribers.clear()
     this._console.destroy()
 
-    this.lib.destroyRenderer(this.rendererPtr)
+    // Teardown ordering for the feed backend is subtle and must satisfy two
+    // invariants simultaneously:
+    //
+    //   1. The shutdown ANSI sequence emitted by `lib.destroyRenderer` via
+    //      FeedBackend.writeOut MUST reach the user's Writable. Otherwise the
+    //      remote terminal is left in alt-screen / mouse-tracking / kitty-
+    //      keyboard state at session close.
+    //
+    //   2. The data handler (which does `stdout.write`) must be detached
+    //      before `feed.close()`, otherwise `close()` will wait for any
+    //      in-flight writes that reference chunks about to be freed.
+    //
+    // The correct order is:
+    //   a) drain any frames already committed but not yet delivered
+    //   b) call lib.destroyRenderer — this commits shutdown bytes into the feed
+    //   c) drain again — this flushes those shutdown bytes through the handler
+    //   d) detach the handler now that no more data will flow
+    //   e) close the feed (releases chunk memory once async handlers settle)
+    //
+    // Memory-lifetime invariant: `lib.destroyRenderer` calls into Zig's
+    // `FeedBackend.deinit`, which is a DOCUMENTED NO-OP — feed memory is
+    // owned by the TS side and only released by `feed.close()` at step (e).
+    // Consequently, step (c)'s drain operates on still-valid chunk memory;
+    // there is no use-after-free window between (b) and (e).
+    //
+    // Caller note: `feed.close()` is queued as a microtask when async handlers
+    // from the final drain are still pending. If the caller tears down the
+    // underlying Writable synchronously right after `destroy()` returns (e.g.
+    // `channel.close()` on the very next line, or `process.exit()`), the
+    // shutdown bytes may not have flushed yet. For async teardown, allow one
+    // microtask tick (e.g. `await new Promise(queueMicrotask)`) before closing
+    // the transport.
+    if (this._feed) {
+      try {
+        this._feed.drainAll()
+      } catch (e) {
+        console.error("Error draining NativeSpanFeed during destroy:", e)
+      }
+    }
+
+    try {
+      // destroyRenderer synchronously commits shutdown bytes into the feed,
+      // which can trigger a JS-side DataAvailable → drainAll through the Zig
+      // event callback. We isolate that path so a handler exception does not
+      // prevent the remaining teardown steps.
+      this.lib.destroyRenderer(this.rendererPtr)
+    } catch (e) {
+      console.error("Error in lib.destroyRenderer during destroy:", e)
+    }
     rendererTracker.removeRenderer(this)
+
+    if (this._feed) {
+      try {
+        this._feed.drainAll()
+      } catch (e) {
+        console.error("Error draining NativeSpanFeed shutdown frames:", e)
+      }
+      this._detachFeed?.()
+      this._detachFeed = null
+      this._detachFeedError?.()
+      this._detachFeedError = null
+      this._feed.close()
+      this._feed = null
+    }
 
     if (this._onDestroy) {
       try {
@@ -2459,7 +2678,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.renderingNative = true
     this.lib.render(this.rendererPtr, force)
-    // this.dumpStdoutBuffer(Date.now())
+    // this.dumpOutputBuffer(Date.now())
     this.renderingNative = false
   }
 

@@ -1,8 +1,8 @@
 import { Buffer } from "node:buffer"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type TestRenderer } from "@opentui/core/testing"
-import { getKeymap } from "../../opentui.js"
-import { registerBaseLayoutFallback } from "./base-layout.js"
+import { registerBaseLayoutFallback } from "@opentui/keymap/addons/opentui"
+import { getKeymap } from "@opentui/keymap/opentui"
 
 let renderer: TestRenderer
 

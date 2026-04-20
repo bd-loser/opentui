@@ -145,6 +145,30 @@ export class ProjectionService<TTarget extends object, TEvent extends KeymapEven
     return sequence
   }
 
+  public popPendingSequence(): boolean {
+    const pending = this.ensureValidPendingSequence()
+    if (!pending) {
+      return false
+    }
+
+    if (pending.node.depth <= 1) {
+      this.setPendingSequence(null)
+      return true
+    }
+
+    const parent = pending.node.parent
+    if (!parent || !parent.stroke) {
+      this.setPendingSequence(null)
+      return true
+    }
+
+    this.setPendingSequence({
+      layer: pending.layer,
+      node: parent,
+    })
+    return true
+  }
+
   public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey<TTarget, TEvent>[] {
     const projections = this.state.projection
     const derivedStateVersion = this.state.notify.derivedStateVersion

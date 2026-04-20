@@ -229,27 +229,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
   }
 
   public popPendingSequence(): boolean {
-    const pending = this.projection.ensureValidPendingSequence()
-    if (!pending) {
-      return false
-    }
-
-    if (pending.node.depth <= 1) {
-      this.projection.setPendingSequence(null)
-      return true
-    }
-
-    const parent = pending.node.parent
-    if (!parent || !parent.stroke) {
-      this.projection.setPendingSequence(null)
-      return true
-    }
-
-    this.projection.setPendingSequence({
-      layer: pending.layer,
-      node: parent,
-    })
-    return true
+    return this.projection.popPendingSequence()
   }
 
   public getActiveKeys(options?: ActiveKeyOptions): readonly ActiveKey<TTarget, TEvent>[] {

@@ -15,14 +15,13 @@ import {
   type TextChunk,
 } from "../index.js"
 import {
-  addons,
   type ActiveKey,
   type CommandRecord,
   type Keymap,
   stringifyKeySequence,
   stringifyKeyStroke,
 } from "@opentui/keymap"
-import { getKeymap, registerManagedTextareaLayer } from "@opentui/keymap/opentui"
+import { addons, getKeymap } from "@opentui/keymap/opentui"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const P = {
@@ -973,7 +972,7 @@ function registerCommandLayers(renderer: CliRenderer): void {
   }
 
   disposers.push(
-    registerManagedTextareaLayer(renderer, {
+    addons.registerManagedTextareaLayer(renderer, {
       scope: "global",
       enabled: () => !commandPromptVisible && renderer.currentFocusedEditor !== null,
       bindings: [

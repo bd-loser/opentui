@@ -1,5 +1,5 @@
 import type { KeyEvent, Renderable } from "@opentui/core"
-import type { Keymap } from "../types.js"
+import type { Keymap } from "../../types.js"
 
 function getBaseLayoutKeyName(baseCode: number | undefined): string | undefined {
   if (baseCode === undefined || baseCode < 32 || baseCode === 127) {

@@ -12,6 +12,7 @@ import type {
   CommandResolverContext,
   CompiledBinding,
   Hooks,
+  KeyMatch,
   KeymapEvent,
   KeymapHost,
   KeySequencePart,
@@ -484,8 +485,8 @@ export class ProjectionService<TTarget extends object, TEvent extends KeymapEven
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
   ): readonly ActiveKey<TTarget, TEvent>[] {
-    const activeKeys = new Map<string, ActiveKeyState<TTarget, TEvent>>()
-    const stopped = new Set<string>()
+    const activeKeys = new Map<KeyMatch, ActiveKeyState<TTarget, TEvent>>()
+    const stopped = new Set<KeyMatch>()
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
 
     for (const layer of activeLayers) {
@@ -532,7 +533,7 @@ export class ProjectionService<TTarget extends object, TEvent extends KeymapEven
   }
 
   private collectActiveKeysFromChildren(
-    children: ReadonlyMap<string, SequenceNode<TTarget, TEvent>>,
+    children: ReadonlyMap<KeyMatch, SequenceNode<TTarget, TEvent>>,
     includeBindings: boolean,
     includeMetadata: boolean,
     focused: TTarget | null,

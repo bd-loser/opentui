@@ -93,4 +93,42 @@ describe("react keymap example", () => {
     expect(testSetup.captureCharFrame()).toContain("Counters reset through :")
     expect(testSetup.captureCharFrame()).toContain("Count: 0")
   })
+
+  test("uses vim-style panel bindings where j decreases and k increases", async () => {
+    await act(async () => {
+      testSetup = await testRender(<KeymapDemo />, { width: 70, height: 24 })
+    })
+    await testSetup.renderOnce()
+    await testSetup.renderOnce()
+
+    act(() => {
+      testSetup.mockInput.pressKey("j")
+    })
+    await testSetup.renderOnce()
+    expect(testSetup.captureCharFrame()).toContain("Count: -1")
+
+    act(() => {
+      testSetup.mockInput.pressKey("k")
+    })
+    await testSetup.renderOnce()
+    expect(testSetup.captureCharFrame()).toContain("Count: 0")
+
+    act(() => {
+      testSetup.mockInput.pressTab()
+    })
+    await testSetup.renderOnce()
+    expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-beta")
+
+    act(() => {
+      testSetup.mockInput.pressKey("j")
+    })
+    await testSetup.renderOnce()
+    expect(testSetup.captureCharFrame()).toContain("Count: -5")
+
+    act(() => {
+      testSetup.mockInput.pressKey("k")
+    })
+    await testSetup.renderOnce()
+    expect(testSetup.captureCharFrame()).toContain("Count: 0")
+  })
 })

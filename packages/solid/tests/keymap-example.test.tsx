@@ -71,9 +71,13 @@ describe("solid keymap example", () => {
     await testSetup.renderOnce()
     expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-beta")
 
-    testSetup.mockInput.pressKey("j")
+    testSetup.mockInput.pressKey("k")
     await testSetup.renderOnce()
     expect(testSetup.captureCharFrame()).toContain("Count: 5")
+
+    testSetup.mockInput.pressKey("j")
+    await testSetup.renderOnce()
+    expect(testSetup.captureCharFrame()).toContain("Count: 0")
 
     testSetup.mockInput.pressTab()
     await testSetup.renderOnce()
@@ -148,9 +152,13 @@ describe("solid keymap example", () => {
     testSetup = await testRender(() => <KeymapDemo />, { width: 70, height: 24 })
     await testSetup.renderOnce()
 
-    testSetup.mockInput.pressKey("j")
+    testSetup.mockInput.pressKey("k")
     await testSetup.renderOnce()
     expect(testSetup.captureCharFrame()).toContain("Count: 1")
+
+    testSetup.mockInput.pressKey("j")
+    await testSetup.renderOnce()
+    expect(testSetup.captureCharFrame()).toContain("Count: 0")
 
     testSetup.mockInput.pressKey(":")
     await testSetup.renderOnce()

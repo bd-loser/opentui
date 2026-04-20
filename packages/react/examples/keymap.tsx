@@ -14,9 +14,9 @@ import {
   type KeymapBindingInput,
   type KeymapCommandDefinition,
   type KeymapCommandRecord,
-} from "@opentui/extras/keymap"
-import { registerManagedTextareaLayer } from "@opentui/extras/keymap/opentui"
-import { useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/extras/keymap/react"
+} from "@opentui/keymap"
+import { registerManagedTextareaLayer } from "@opentui/keymap/opentui"
+import { useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/react"
 import { createRoot, useRenderer } from "@opentui/react"
 import {
   useCallback,

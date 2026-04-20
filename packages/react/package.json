@@ -42,7 +42,7 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@opentui/extras": "workspace:*",
+    "@opentui/keymap": "workspace:*",
     "@types/bun": "latest",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",

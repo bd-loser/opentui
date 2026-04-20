@@ -72,9 +72,9 @@ jobs:
             echo "Copied solid dist"
           fi
 
-          if [ -d "npm-packages/extras-dist" ]; then
-            cp -r npm-packages/extras-dist packages/extras/dist
-            echo "Copied extras dist"
+          if [ -d "npm-packages/keymap-dist" ]; then
+            cp -r npm-packages/keymap-dist packages/keymap/dist
+            echo "Copied keymap dist"
           fi
 
           echo "Package extraction complete"
@@ -105,8 +105,8 @@ jobs:
           cd ../../solid/dist && npm pack --dry-run
 
           echo ""
-          echo "📦 Checking @opentui/extras..."
-          cd ../../extras/dist && npm pack --dry-run
+          echo "📦 Checking @opentui/keymap..."
+          cd ../../keymap/dist && npm pack --dry-run
 
           echo ""
           echo "=========================================="

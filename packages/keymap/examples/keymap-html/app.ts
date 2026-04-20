@@ -4,7 +4,7 @@ import {
   getKeymap,
   stringifyKeySequence,
   type ActiveKey,
-} from "/dist/keymap/html.js"
+} from "/dist/html.js"
 
 const app = document.getElementById("app") as HTMLElement | null
 const alphaPanel = document.getElementById("alpha-panel") as HTMLElement | null

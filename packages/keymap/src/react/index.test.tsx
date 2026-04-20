@@ -2,14 +2,14 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { Renderable } from "@opentui/core"
-import { addons, stringifyKeySequence } from "@opentui/extras/keymap"
+import { addons, stringifyKeySequence } from "@opentui/keymap"
 import {
   reactiveMatcherFromStore,
   useActiveKeys,
   useBindings,
   useKeymap,
   usePendingSequence,
-} from "@opentui/extras/keymap/react"
+} from "@opentui/keymap/react"
 import { testRender } from "@opentui/react/test-utils"
 import { act } from "react"
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react"

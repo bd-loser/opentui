@@ -12,9 +12,9 @@ import {
   stringifyKeyStroke,
   type KeymapActiveKey,
   type KeymapCommandRecord,
-} from "@opentui/extras/keymap"
-import { registerManagedTextareaLayer } from "@opentui/extras/keymap/opentui"
-import { useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/extras/keymap/solid"
+} from "@opentui/keymap"
+import { registerManagedTextareaLayer } from "@opentui/keymap/opentui"
+import { useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/solid"
 import { render, useRenderer } from "@opentui/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
 

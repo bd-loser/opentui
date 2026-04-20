@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { KeyEvent, Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { Keymap } from "../../index.js"
-import { createOpenTuiKeymapHost } from "../../opentui.js"
-import { registerDefaultKeys } from "./default-parser.js"
+import { Keymap } from "@opentui/keymap"
+import { registerDefaultKeys } from "@opentui/keymap/addons"
+import { createOpenTuiKeymapHost } from "@opentui/keymap/opentui"
 
 let renderer: TestRenderer
 let mockInput: MockInput

@@ -23,6 +23,14 @@ const testRuns = [
     cwd: resolve(rootDir, "src/solid"),
     args: ["test", "./index.test.tsx"],
   },
+  {
+    cwd: rootDir,
+    args: ["run", "build"],
+  },
+  {
+    cwd: rootDir,
+    args: ["scripts/check-dist-exports.ts"],
+  },
 ] as const
 
 for (const run of testRuns) {

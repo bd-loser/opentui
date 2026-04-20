@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type TestRenderer } from "@opentui/core/testing"
-import { getKeymap } from "../../opentui.js"
-import { registerMetadataFields } from "./metadata.js"
+import { registerMetadataFields } from "@opentui/keymap/addons"
+import { getKeymap } from "@opentui/keymap/opentui"
 
 let renderer: TestRenderer
 

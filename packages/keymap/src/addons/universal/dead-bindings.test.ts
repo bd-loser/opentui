@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { KeyEvent, Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import * as addons from "../../addons/index.js"
-import type { Keymap, WarningEvent } from "../../index.js"
-import { getKeymap } from "../../opentui.js"
+import { registerDeadBindingWarnings } from "@opentui/keymap/addons"
+import type { Keymap, WarningEvent } from "@opentui/keymap"
+import { getKeymap } from "@opentui/keymap/opentui"
 
 let renderer: TestRenderer
 let mockInput: MockInput
@@ -34,7 +34,7 @@ describe("dead binding warnings addon", () => {
   test("warns when an exact binding has no command and no reachable continuations", () => {
     const keymap = getKeymap(renderer)
     const { events, warnings } = captureWarnings(keymap)
-    addons.registerDeadBindingWarnings(keymap)
+    registerDeadBindingWarnings(keymap)
 
     keymap.registerLayer({
       scope: "global",
@@ -58,7 +58,7 @@ describe("dead binding warnings addon", () => {
   test("does not warn for metadata-only prefix bindings", () => {
     const keymap = getKeymap(renderer)
     const { warnings } = captureWarnings(keymap)
-    addons.registerDeadBindingWarnings(keymap)
+    registerDeadBindingWarnings(keymap)
 
     keymap.registerLayer({
       scope: "global",
@@ -71,7 +71,7 @@ describe("dead binding warnings addon", () => {
   test("warns for release bindings without commands", () => {
     const keymap = getKeymap(renderer)
     const { warnings } = captureWarnings(keymap)
-    addons.registerDeadBindingWarnings(keymap)
+    registerDeadBindingWarnings(keymap)
 
     keymap.registerLayer({
       scope: "global",
@@ -86,7 +86,7 @@ describe("dead binding warnings addon", () => {
   test("deduplicates warnings across token recompilation", () => {
     const keymap = getKeymap(renderer)
     const { warnings } = captureWarnings(keymap)
-    addons.registerDeadBindingWarnings(keymap)
+    registerDeadBindingWarnings(keymap)
 
     keymap.registerLayer({
       scope: "global",
@@ -106,7 +106,7 @@ describe("dead binding warnings addon", () => {
     const { warnings } = captureWarnings(keymap)
     const calls: string[] = []
 
-    addons.registerDeadBindingWarnings(keymap)
+    registerDeadBindingWarnings(keymap)
     keymap.registerLayer({
       scope: "global",
       commands: [

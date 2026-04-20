@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { getKeymap } from "../../opentui.js"
-import { registerCommaBindings } from "./comma-bindings.js"
+import { registerCommaBindings } from "@opentui/keymap/addons"
+import { getKeymap } from "@opentui/keymap/opentui"
 
 let renderer: TestRenderer
 let mockInput: MockInput

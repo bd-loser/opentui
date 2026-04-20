@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BoxRenderable, InputRenderable, InputRenderableEvents, TextareaRenderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { getKeymap } from "../../opentui.js"
 import {
   createTextareaBindings,
   registerEditBufferCommands,
   registerManagedTextareaLayer,
   registerTextareaMappingSuspension,
-} from "./edit-buffer-bindings.js"
-import { registerMetadataFields } from "../universal/metadata.js"
+} from "@opentui/keymap/addons/opentui"
+import { registerMetadataFields } from "@opentui/keymap/addons"
+import { getKeymap } from "@opentui/keymap/opentui"
 
 let renderer: TestRenderer
 let mockInput: MockInput

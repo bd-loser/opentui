@@ -62,4 +62,28 @@ describe("default parser addon", () => {
 
     expect(calls).toEqual(["run"])
   })
+
+  test('registerDefaultKeys keeps the " " to "space" mapping in the addon, not the engine', () => {
+    const keymap = new Keymap<Renderable, KeyEvent>(createOpenTuiKeymapHost(renderer))
+    const calls: string[] = []
+
+    registerDefaultKeys(keymap)
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "space",
+          run() {
+            calls.push("space")
+          },
+        },
+      ],
+      bindings: [{ key: " ", cmd: "space" }],
+    })
+
+    mockInput.pressKey(" ")
+
+    expect(calls).toEqual(["space"])
+  })
 })

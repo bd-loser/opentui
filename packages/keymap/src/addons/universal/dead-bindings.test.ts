@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { KeyEvent, Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { addons, type Keymap, type WarningEvent } from "../../index.js"
+import * as addons from "../../addons/index.js"
+import type { Keymap, WarningEvent } from "../../index.js"
 import { getKeymap } from "../../opentui.js"
 
 let renderer: TestRenderer

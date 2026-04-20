@@ -8,13 +8,13 @@ Use the HTML entrypoint for DOM-based hosts and the OpenTUI entrypoint for termi
 
 Entry points:
 
-- `@opentui/keymap`: core keymap API plus universal addons
-- `@opentui/keymap/html`: core API plus the HTML adapter and universal addons
-- `@opentui/keymap/opentui`: core API plus the OpenTUI adapter and the full OpenTUI addon set
+- `@opentui/keymap`: core keymap API
+- `@opentui/keymap/addons`: universal addons
+- `@opentui/keymap/addons/opentui`: universal addons plus OpenTUI-specific addons
+- `@opentui/keymap/html`: core API plus the HTML adapter
+- `@opentui/keymap/opentui`: core API plus the OpenTUI adapter
 - `@opentui/keymap/react`: React hooks for the OpenTUI adapter
 - `@opentui/keymap/solid`: Solid hooks for the OpenTUI adapter
-
-The `addons` namespace is adapter-specific. The core and HTML entrypoints expose universal addons. The OpenTUI entrypoint exposes universal addons plus OpenTUI-specific addons.
 
 ## Installation
 

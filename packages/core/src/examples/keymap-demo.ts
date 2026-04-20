@@ -21,7 +21,8 @@ import {
   stringifyKeySequence,
   stringifyKeyStroke,
 } from "@opentui/keymap"
-import { addons, getKeymap } from "@opentui/keymap/opentui"
+import * as addons from "@opentui/keymap/addons/opentui"
+import { getKeymap } from "@opentui/keymap/opentui"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const P = {

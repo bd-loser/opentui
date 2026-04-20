@@ -1,5 +1,5 @@
-import type { Keymap, KeymapEvent, LayerBindingAnalysis, LayerAnalysisContext } from "../../core.js"
-import { stringifyKeySequence, stringifyKeyStroke } from "../../core.js"
+import type { Keymap, KeymapEvent, LayerBindingAnalysis, LayerAnalysisContext } from "../../index.js"
+import { stringifyKeySequence, stringifyKeyStroke } from "../../index.js"
 
 function isDeadMetadataOnlyBinding<TTarget extends object, TEvent extends KeymapEvent>(
   binding: LayerBindingAnalysis<TTarget, TEvent>,

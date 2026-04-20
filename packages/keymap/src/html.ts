@@ -2,8 +2,7 @@ import { registerDefaultKeys } from "./addons/universal/default-parser.js"
 import { Keymap } from "./keymap.js"
 import type { KeyStrokeInput, KeymapEvent, KeymapHost } from "./types.js"
 
-export * from "./core.js"
-export * as addons from "./addons/universal/index.js"
+export * from "./index.js"
 
 export interface HtmlKeymapEvent extends KeymapEvent {
   readonly originalEvent?: KeyboardEvent

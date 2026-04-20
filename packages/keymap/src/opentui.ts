@@ -3,8 +3,7 @@ import { registerDefaultKeys } from "./addons/universal/default-parser.js"
 import { Keymap } from "./keymap.js"
 import type { KeymapHost } from "./types.js"
 
-export * from "./core.js"
-export * as addons from "./addons/opentui/index.js"
+export * from "./index.js"
 
 const keymapsByRenderer = new WeakMap<CliRenderer, Keymap<Renderable, KeyEvent>>()
 

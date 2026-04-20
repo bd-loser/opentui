@@ -1,4 +1,4 @@
-import type { Keymap, KeymapEvent } from "../../core.js"
+import type { Keymap, KeymapEvent } from "../../index.js"
 
 export type Aliases = Record<string, string>
 

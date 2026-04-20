@@ -1,4 +1,4 @@
-import type { Keymap, KeymapEvent } from "../../core.js"
+import type { Keymap, KeymapEvent } from "../../index.js"
 
 function normalizeMetadataText(fieldName: string, value: unknown): string {
   if (typeof value !== "string") {

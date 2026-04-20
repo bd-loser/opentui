@@ -1,4 +1,4 @@
-import type { BindingParser, BindingParserContext, Keymap, KeymapEvent, KeySequencePart } from "../../core.js"
+import type { BindingParser, BindingParserContext, Keymap, KeymapEvent, KeySequencePart } from "../../index.js"
 
 function parseEmacsStroke(
   input: string,

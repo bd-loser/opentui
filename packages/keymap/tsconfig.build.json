@@ -17,6 +17,6 @@
     "module": "ESNext",
     "moduleResolution": "bundler"
   },
-  "include": ["index.ts", "src/**/*", "keymap/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx", "tests/**/*", "node_modules/**/*"]
 }

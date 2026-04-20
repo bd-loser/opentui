@@ -30,7 +30,7 @@ if [ -z "$TARGET_ROOT" ]; then
   echo "Example: $0 /path/to/your/project --react"
   echo ""
   echo "This script links OpenTUI dev packages into Bun's cache directory."
-  echo "@opentui/core and @opentui/extras are always linked."
+  echo "@opentui/core and @opentui/keymap are always linked."
   echo "Framework packages can be linked with the flags below."
   echo ""
   echo "Options:"
@@ -101,9 +101,9 @@ link_in_bun_cache() {
 echo "Linking @opentui/core..."
 link_in_bun_cache "@opentui+core@*" "@opentui/core" "$OPENTUI_ROOT/packages/core"
 
-# Always link @opentui/extras
-echo "Linking @opentui/extras..."
-link_in_bun_cache "@opentui+extras@*" "@opentui/extras" "$OPENTUI_ROOT/packages/extras"
+# Always link @opentui/keymap
+echo "Linking @opentui/keymap..."
+link_in_bun_cache "@opentui+keymap@*" "@opentui/keymap" "$OPENTUI_ROOT/packages/keymap"
 
 # Link yoga-layout (required by core)
 echo "Linking yoga-layout..."

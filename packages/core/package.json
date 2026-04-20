@@ -29,7 +29,7 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@opentui/extras": "workspace:*",
+    "@opentui/keymap": "workspace:*",
     "@types/bun": "latest",
     "@types/node": "^24.0.0",
     "@types/three": "0.177.0",

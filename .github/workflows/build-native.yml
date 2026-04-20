@@ -75,8 +75,8 @@ jobs:
           test -f packages/react/dist/package.json || (echo "❌ react dist/package.json missing!" && exit 1)
           test -d packages/solid/dist || (echo "❌ solid dist missing!" && exit 1)
           test -f packages/solid/dist/package.json || (echo "❌ solid dist/package.json missing!" && exit 1)
-          test -d packages/extras/dist || (echo "❌ extras dist missing!" && exit 1)
-          test -f packages/extras/dist/package.json || (echo "❌ extras dist/package.json missing!" && exit 1)
+          test -d packages/keymap/dist || (echo "❌ keymap dist missing!" && exit 1)
+          test -f packages/keymap/dist/package.json || (echo "❌ keymap dist/package.json missing!" && exit 1)
 
           echo "✅ All required build outputs verified (6 platforms)"
 
@@ -177,11 +177,11 @@ jobs:
             echo "⚠️  Solid dist not found (skipping)"
           fi
 
-          if [ -d packages/extras/dist ]; then
-            cp -r packages/extras/dist artifacts/npm-packages/extras-dist
-            echo "✅ Extras dist packaged"
+          if [ -d packages/keymap/dist ]; then
+            cp -r packages/keymap/dist artifacts/npm-packages/keymap-dist
+            echo "✅ Keymap dist packaged"
           else
-            echo "⚠️  Extras dist not found (skipping)"
+            echo "⚠️  Keymap dist not found (skipping)"
           fi
 
           cd artifacts

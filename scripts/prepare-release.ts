@@ -59,7 +59,7 @@ if (!/^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$/.test(version)) {
   process.exit(1)
 }
 
-console.log(`\nPreparing release ${version} for core, react, solid, and extras packages...\n`)
+console.log(`\nPreparing release ${version} for core, react, solid, and keymap packages...\n`)
 
 const corePackageJsonPath = join(rootDir, "packages", "core", "package.json")
 console.log("Updating @opentui/core...")
@@ -117,18 +117,18 @@ try {
   process.exit(1)
 }
 
-const extrasPackageJsonPath = join(rootDir, "packages", "extras", "package.json")
-console.log("\nUpdating @opentui/extras...")
+const keymapPackageJsonPath = join(rootDir, "packages", "keymap", "package.json")
+console.log("\nUpdating @opentui/keymap...")
 
 try {
-  const extrasPackageJson: PackageJson = JSON.parse(readFileSync(extrasPackageJsonPath, "utf8"))
+  const keymapPackageJson: PackageJson = JSON.parse(readFileSync(keymapPackageJsonPath, "utf8"))
 
-  extrasPackageJson.version = version
+  keymapPackageJson.version = version
 
-  writeFileSync(extrasPackageJsonPath, JSON.stringify(extrasPackageJson, null, 2) + "\n")
-  console.log(`  @opentui/extras updated to version ${version}`)
+  writeFileSync(keymapPackageJsonPath, JSON.stringify(keymapPackageJson, null, 2) + "\n")
+  console.log(`  @opentui/keymap updated to version ${version}`)
 } catch (error) {
-  console.error(`  Failed to update @opentui/extras: ${error}`)
+  console.error(`  Failed to update @opentui/keymap: ${error}`)
   process.exit(1)
 }
 
@@ -142,7 +142,7 @@ try {
 }
 
 console.log(`
-Successfully prepared release ${version} for core, react, solid, and extras packages!
+Successfully prepared release ${version} for core, react, solid, and keymap packages!
 
 Next steps:
 1. Review the changes: git diff

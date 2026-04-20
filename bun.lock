@@ -20,7 +20,7 @@
         "yoga-layout": "3.2.1",
       },
       "devDependencies": {
-        "@opentui/extras": "workspace:*",
+        "@opentui/keymap": "workspace:*",
         "@types/bun": "latest",
         "@types/node": "^24.0.0",
         "@types/three": "0.177.0",
@@ -44,8 +44,8 @@
         "web-tree-sitter": "0.25.10",
       },
     },
-    "packages/extras": {
-      "name": "@opentui/extras",
+    "packages/keymap": {
+      "name": "@opentui/keymap",
       "version": "0.1.99",
       "dependencies": {
         "@opentui/core": "workspace:*",
@@ -81,7 +81,7 @@
         "react-reconciler": "^0.32.0",
       },
       "devDependencies": {
-        "@opentui/extras": "workspace:*",
+        "@opentui/keymap": "workspace:*",
         "@types/bun": "latest",
         "@types/node": "^24.0.0",
         "@types/react": "^19.0.0",
@@ -115,7 +115,7 @@
         "s-js": "^0.4.9",
       },
       "devDependencies": {
-        "@opentui/extras": "workspace:*",
+        "@opentui/keymap": "workspace:*",
         "@types/babel__core": "7.20.5",
         "@types/bun": "latest",
         "@types/node": "^24.0.0",
@@ -409,7 +409,7 @@
 
     "@opentui/core-win32-x64": ["@opentui/core-win32-x64@0.1.100", "", { "os": "win32", "cpu": "x64" }, "sha512-RyiqbKQ15olR8hK4VsPKL3gHrOIIpqEXhUP0jzXJdQQNusmQKlxHyk5EY3R6hi52IgqjjGxwG+ocVeRb4/VTRg=="],
 
-    "@opentui/extras": ["@opentui/extras@workspace:packages/extras"],
+    "@opentui/keymap": ["@opentui/keymap@workspace:packages/keymap"],
 
     "@opentui/react": ["@opentui/react@workspace:packages/react"],
 

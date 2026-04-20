@@ -642,8 +642,8 @@ function disposers(): void {
     target: alphaPanel,
     scope: "focus-within",
     bindings: [
-      { key: "j", cmd: "alpha-up", desc: "Alpha +1" },
-      { key: "k", cmd: "alpha-down", desc: "Alpha -1" },
+      { key: "j", cmd: "alpha-down", desc: "Alpha -1" },
+      { key: "k", cmd: "alpha-up", desc: "Alpha +1" },
       { key: "return", cmd: "panel-write", desc: "Write alpha snapshot" },
     ],
   })
@@ -652,8 +652,8 @@ function disposers(): void {
     target: betaPanel,
     scope: "focus-within",
     bindings: [
-      { key: "j", cmd: "beta-up", desc: "Beta +1" },
-      { key: "k", cmd: "beta-down", desc: "Beta -1" },
+      { key: "j", cmd: "beta-down", desc: "Beta -1" },
+      { key: "k", cmd: "beta-up", desc: "Beta +1" },
       { key: "return", cmd: "panel-write", desc: "Write beta snapshot" },
     ],
   })

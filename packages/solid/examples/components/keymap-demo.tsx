@@ -12,7 +12,7 @@ import {
   type KeymapActiveKey,
   type KeymapCommandRecord,
 } from "@opentui/keymap"
-import { addons } from "@opentui/keymap/opentui"
+import * as addons from "@opentui/keymap/addons/opentui"
 import { useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/solid"
 import { render, useRenderer } from "@opentui/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"

@@ -2,7 +2,8 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { Renderable } from "@opentui/core"
-import { addons, stringifyKeySequence } from "@opentui/keymap"
+import * as addons from "@opentui/keymap/addons"
+import { stringifyKeySequence } from "@opentui/keymap"
 import {
   reactiveMatcherFromStore,
   useActiveKeys,

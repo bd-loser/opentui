@@ -14,7 +14,7 @@ import {
   type KeymapCommandDefinition,
   type KeymapCommandRecord,
 } from "@opentui/keymap"
-import { addons } from "@opentui/keymap/opentui"
+import * as addons from "@opentui/keymap/addons/opentui"
 import { useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/react"
 import { createRoot, useRenderer } from "@opentui/react"
 import {

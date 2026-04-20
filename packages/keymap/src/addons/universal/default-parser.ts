@@ -7,7 +7,7 @@ import type {
   KeySequencePart,
   KeyStrokeInput,
   ResolvedKeyToken,
-} from "../../core.js"
+} from "../../index.js"
 
 const namedSingleStrokeKeys = new Set<string>([
   "up",

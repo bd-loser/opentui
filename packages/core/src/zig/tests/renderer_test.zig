@@ -1687,10 +1687,9 @@ test "FeedBackend - renderer writes through feed" {
         .remote = true,
         .feed_ptr = feed,
     });
-    // Defer order matters (LIFO): renderer.destroy() must run first so its
-    // shutdown sequence can still reference the feed.
-    defer cli_renderer.destroy();
+    // LIFO: renderer destroys first (needs the feed alive for shutdown writes).
     defer feed.destroy();
+    defer cli_renderer.destroy();
 
     const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
     const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
@@ -1732,8 +1731,8 @@ test "FeedBackend - shouldSkipFrame when span queue saturated" {
         .feed_ptr = feed,
     });
     // LIFO: renderer destroys first.
-    defer cli_renderer.destroy();
     defer feed.destroy();
+    defer cli_renderer.destroy();
 
     // Render a few frames to build up pending spans. Each render commits one
     // span, so after 2 renders without draining we should be at capacity.
@@ -1768,8 +1767,8 @@ test "FeedBackend - supportsThreading is false" {
         .feed_ptr = feed,
     });
     // LIFO: renderer destroys first.
-    defer cli_renderer.destroy();
     defer feed.destroy();
+    defer cli_renderer.destroy();
 
     try std.testing.expect(!cli_renderer.backend.supportsThreading());
     cli_renderer.setUseThread(true); // no-op on feed backend

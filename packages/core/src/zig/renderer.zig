@@ -471,6 +471,27 @@ pub const CliRenderer = struct {
         }
     }
 
+    fn collectFrameStats(self: *CliRenderer, deltaTime: f64) void {
+        if (self.backend.getLastWriteTimeUs()) |wt| {
+            self.renderStats.stdoutWriteTime = wt;
+        }
+
+        self.renderStats.lastFrameTime = deltaTime * 1000.0;
+        self.renderStats.frameCount += 1;
+
+        self.addStatSample(f64, &self.statSamples.lastFrameTime, deltaTime * 1000.0);
+        if (self.renderStats.renderTime) |rt| {
+            self.addStatSample(f64, &self.statSamples.renderTime, rt);
+        }
+        if (self.renderStats.bufferResetTime) |brt| {
+            self.addStatSample(f64, &self.statSamples.bufferResetTime, brt);
+        }
+        if (self.renderStats.stdoutWriteTime) |swt| {
+            self.addStatSample(f64, &self.statSamples.stdoutWriteTime, swt);
+        }
+        self.addStatSample(u32, &self.statSamples.cellsUpdated, self.renderStats.cellsUpdated);
+    }
+
     pub fn setUseThread(self: *CliRenderer, useThread: bool) void {
         if (!self.backend.supportsThreading() and useThread) return;
         self.backend.setUseThread(useThread);
@@ -583,31 +604,12 @@ pub const CliRenderer = struct {
             inline else => |*b| {
                 b.beginFrame();
                 var w = b.writer();
-                self.prepareRenderFrameWithWriter(&w, force, true, false);
+                self.prepareRenderFrameWithWriter(&w, force, false);
                 b.endFrame();
             },
         }
 
-        // Propagate backend's measured write time into renderStats for the
-        // stats overlay / FFI stats readers.
-        if (self.backend.getLastWriteTimeUs()) |wt| {
-            self.renderStats.stdoutWriteTime = wt;
-        }
-
-        self.renderStats.lastFrameTime = deltaTime * 1000.0;
-        self.renderStats.frameCount += 1;
-
-        self.addStatSample(f64, &self.statSamples.lastFrameTime, deltaTime * 1000.0);
-        if (self.renderStats.renderTime) |rt| {
-            self.addStatSample(f64, &self.statSamples.renderTime, rt);
-        }
-        if (self.renderStats.bufferResetTime) |brt| {
-            self.addStatSample(f64, &self.statSamples.bufferResetTime, brt);
-        }
-        if (self.renderStats.stdoutWriteTime) |swt| {
-            self.addStatSample(f64, &self.statSamples.stdoutWriteTime, swt);
-        }
-        self.addStatSample(u32, &self.statSamples.cellsUpdated, self.renderStats.cellsUpdated);
+        self.collectFrameStats(deltaTime);
     }
 
     pub fn resetSplitScrollback(self: *CliRenderer, seed_rows: u32, pinned_render_offset: u32) u32 {
@@ -695,25 +697,7 @@ pub const CliRenderer = struct {
         self.renderDebugOverlay();
 
         self.prepareSplitFooterRepaintFrame(pinned_render_offset, force);
-
-        if (self.backend.getLastWriteTimeUs()) |wt| {
-            self.renderStats.stdoutWriteTime = wt;
-        }
-
-        self.renderStats.lastFrameTime = deltaTime * 1000.0;
-        self.renderStats.frameCount += 1;
-
-        self.addStatSample(f64, &self.statSamples.lastFrameTime, deltaTime * 1000.0);
-        if (self.renderStats.renderTime) |rt| {
-            self.addStatSample(f64, &self.statSamples.renderTime, rt);
-        }
-        if (self.renderStats.bufferResetTime) |brt| {
-            self.addStatSample(f64, &self.statSamples.bufferResetTime, brt);
-        }
-        if (self.renderStats.stdoutWriteTime) |swt| {
-            self.addStatSample(f64, &self.statSamples.stdoutWriteTime, swt);
-        }
-        self.addStatSample(u32, &self.statSamples.cellsUpdated, self.renderStats.cellsUpdated);
+        self.collectFrameStats(deltaTime);
 
         return self.renderOffset;
     }
@@ -767,28 +751,11 @@ pub const CliRenderer = struct {
                     );
 
                     if (finalize_frame) {
-                        self.prepareRenderFrameWithWriter(&w, redraw_footer, false, true);
+                        self.prepareRenderFrameWithWriter(&w, redraw_footer, true);
                         b.endFrame();
+                         self.collectFrameStats(deltaTime);
 
-                        if (self.backend.getLastWriteTimeUs()) |wt| {
-                            self.renderStats.stdoutWriteTime = wt;
-                        }
-
-                        self.renderStats.lastFrameTime = deltaTime * 1000.0;
-                        self.renderStats.frameCount += 1;
-                        self.addStatSample(f64, &self.statSamples.lastFrameTime, deltaTime * 1000.0);
-                        if (self.renderStats.renderTime) |rt| {
-                            self.addStatSample(f64, &self.statSamples.renderTime, rt);
-                        }
-                        if (self.renderStats.bufferResetTime) |brt| {
-                            self.addStatSample(f64, &self.statSamples.bufferResetTime, brt);
-                        }
-                        if (self.renderStats.stdoutWriteTime) |swt| {
-                            self.addStatSample(f64, &self.statSamples.stdoutWriteTime, swt);
-                        }
-                        self.addStatSample(u32, &self.statSamples.cellsUpdated, self.renderStats.cellsUpdated);
-
-                        self.splitBatchActive = false;
+                         self.splitBatchActive = false;
                         self.splitBatchRedrawFooter = false;
                         self.splitBatchDeltaTime = 0;
                     } else {
@@ -830,27 +797,10 @@ pub const CliRenderer = struct {
                 self.splitBatchRedrawFooter = self.splitBatchRedrawFooter or redraw_footer;
 
                 if (finalize_frame) {
-                    self.prepareRenderFrameWithWriter(&w, self.splitBatchRedrawFooter, false, true);
+                    self.prepareRenderFrameWithWriter(&w, self.splitBatchRedrawFooter, true);
                     b.endFrame();
 
-                    if (self.backend.getLastWriteTimeUs()) |wt| {
-                        self.renderStats.stdoutWriteTime = wt;
-                    }
-
-                    const deltaTime = self.splitBatchDeltaTime;
-                    self.renderStats.lastFrameTime = deltaTime * 1000.0;
-                    self.renderStats.frameCount += 1;
-                    self.addStatSample(f64, &self.statSamples.lastFrameTime, deltaTime * 1000.0);
-                    if (self.renderStats.renderTime) |rt| {
-                        self.addStatSample(f64, &self.statSamples.renderTime, rt);
-                    }
-                    if (self.renderStats.bufferResetTime) |brt| {
-                        self.addStatSample(f64, &self.statSamples.bufferResetTime, brt);
-                    }
-                    if (self.renderStats.stdoutWriteTime) |swt| {
-                        self.addStatSample(f64, &self.statSamples.stdoutWriteTime, swt);
-                    }
-                    self.addStatSample(u32, &self.statSamples.cellsUpdated, self.renderStats.cellsUpdated);
+                    self.collectFrameStats(self.splitBatchDeltaTime);
 
                     self.splitBatchActive = false;
                     self.splitBatchRedrawFooter = false;
@@ -1127,7 +1077,7 @@ pub const CliRenderer = struct {
             inline else => |*b| {
                 b.beginFrame();
                 var w = b.writer();
-                self.prepareRenderFrameWithWriter(&w, redraw_footer, true, false);
+                self.prepareRenderFrameWithWriter(&w, redraw_footer, false);
                 b.endFrame();
             },
         }
@@ -1145,7 +1095,7 @@ pub const CliRenderer = struct {
     /// (stdout: buffered-append, feed: streaming) without any dispatch in the
     /// render path.
     ///
-    /// `reset_output` controls whether the frame buffer is reset and a sync
+    /// `sync_started` indicates whether the caller has already emitted a sync
     /// envelope is started at the top of the function. When true (the normal
     /// render path), `beginFrame()` was already called by the caller. When
     /// false (batched split-footer commits), the frame was started by the
@@ -1153,8 +1103,7 @@ pub const CliRenderer = struct {
     ///
     /// `sync_started` indicates whether a sync-update envelope has already
     /// been opened by the caller (for batched commits).
-    pub fn prepareRenderFrameWithWriter(self: *CliRenderer, writer: anytype, force: bool, reset_output: bool, sync_started: bool) void {
-        _ = reset_output; // In our backend model, beginFrame() is always called by the caller.
+    pub fn prepareRenderFrameWithWriter(self: *CliRenderer, writer: anytype, force: bool, sync_started: bool) void {
         const renderStartTime = std.time.microTimestamp();
         var cellsUpdated: u32 = 0;
 

@@ -1008,7 +1008,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // type cast below keeps the method call bound to `lib` (preserving
     // `this`) while accessing the implementation's wider signature.
     const { screenMode, footerHeight, externalOutputMode } = resolveModes(config)
-    const renderHeight = screenMode === "split-footer" ? footerHeight : height
+    const initialGeometry = calculateRenderGeometry(
+      screenMode,
+      stdout.columns ?? width,
+      stdout.rows ?? height,
+      footerHeight,
+    )
 
     type InternalRenderLib = RenderLib & {
       createRenderer: (
@@ -1020,11 +1025,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     let rendererPtr: Pointer | null
     try {
-      rendererPtr = (lib as InternalRenderLib).createRenderer(width, renderHeight, {
-        remote: config.remote ?? !this._usesProcessStdout,
-        testing: config.testing ?? false,
-        feedPtr: feed?.streamPtr ?? null,
-      })
+      rendererPtr = (lib as InternalRenderLib).createRenderer(
+        initialGeometry.renderWidth,
+        initialGeometry.renderHeight,
+        {
+          remote: config.remote ?? !this._usesProcessStdout,
+          testing: config.testing ?? false,
+          feedPtr: feed?.streamPtr ?? null,
+        },
+      )
     } catch (error) {
       feed?.close()
       throw error
@@ -1071,8 +1080,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._terminalHeight = stdout.rows ?? height
     this._useThread = config.useThread
     this._externalOutputMode = externalOutputMode
-
-    const initialGeometry = calculateRenderGeometry(screenMode, this._terminalWidth, this._terminalHeight, footerHeight)
 
     this.width = initialGeometry.renderWidth
     this.height = initialGeometry.renderHeight

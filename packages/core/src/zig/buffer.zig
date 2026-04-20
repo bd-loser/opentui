@@ -702,7 +702,7 @@ pub const OptimizedBuffer = struct {
             } else {
                 const codepoint = char_code;
 
-                if (codepoint > 0x10FFFF) {
+                if (codepoint == 0 or codepoint > 0x10FFFF) {
                     if (bytes_written + 1 > output_buffer.len) {
                         return BufferError.BufferTooSmall;
                     }

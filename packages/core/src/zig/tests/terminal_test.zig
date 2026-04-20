@@ -71,6 +71,22 @@ test "parseXtversion - full ghostty response" {
     try testing.expect(term.term_info.from_xtversion);
 }
 
+test "processCapabilityResponse captures startup cursor report before home probes" {
+    var term = Terminal.init(.{});
+    term.startup_cursor_query_pending = true;
+    term.startup_cursor_query_captured = false;
+
+    term.processCapabilityResponse("\x1b[7;11R\x1b[1;2R\x1b[1;3R");
+
+    const cursor = term.getCursorPosition();
+    try testing.expectEqual(@as(u32, 11), cursor.x);
+    try testing.expectEqual(@as(u32, 7), cursor.y);
+    try testing.expect(term.startup_cursor_query_captured);
+    try testing.expect(!term.startup_cursor_query_pending);
+    try testing.expect(term.caps.explicit_width);
+    try testing.expect(term.caps.scaled_text);
+}
+
 test "environment variables - should be overridden by xtversion" {
     var term = Terminal.init(.{});
 

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>opentui × xterm.js — counter demo</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #111;
+        color: #ddd;
+        font-family: system-ui, sans-serif;
+      }
+      header {
+        padding: 8px 12px;
+        background: #1a1a1a;
+        border-bottom: 1px solid #333;
+        font-size: 13px;
+      }
+      header code {
+        background: #2a2a2a;
+        padding: 1px 6px;
+        border-radius: 3px;
+        color: #9cdcfe;
+      }
+      #terminal {
+        padding: 8px;
+        height: calc(100% - 42px);
+        box-sizing: border-box;
+      }
+      .status {
+        color: #888;
+        margin-left: 12px;
+      }
+      .status.connected {
+        color: #7ec699;
+      }
+      .status.closed {
+        color: #e06c75;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      opentui over xterm.js —
+      <code>↑/k</code> increment, <code>↓/j</code> decrement, <code>r</code> reset, <code>q</code> or
+      <code>Ctrl+C</code> quit.
+      <span class="status" id="status">connecting…</span>
+    </header>
+    <div id="terminal"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+    <script>
+      const status = document.getElementById("status")
+      const term = new Terminal({
+        cursorBlink: false,
+        fontFamily: "Menlo, Monaco, 'Courier New', monospace",
+        theme: { background: "#000000" },
+      })
+      const fitAddon = new FitAddon.FitAddon()
+      term.loadAddon(fitAddon)
+      term.open(document.getElementById("terminal"))
+      fitAddon.fit()
+      term.focus()
+
+      window.addEventListener("resize", () => fitAddon.fit())
+
+      const wsUrl = (location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host + "/ws"
+      const ws = new WebSocket(wsUrl)
+      ws.binaryType = "arraybuffer"
+
+      ws.addEventListener("open", () => {
+        status.textContent = "connected"
+        status.className = "status connected"
+        // Tell the server our dimensions so the renderer sizes correctly.
+        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }))
+      })
+
+      ws.addEventListener("message", (ev) => {
+        // Binary frames are rendered ANSI output from the server.
+        if (ev.data instanceof ArrayBuffer) {
+          term.write(new Uint8Array(ev.data))
+        }
+      })
+
+      ws.addEventListener("close", () => {
+        status.textContent = "connection closed"
+        status.className = "status closed"
+      })
+
+      ws.addEventListener("error", () => {
+        status.textContent = "connection error"
+        status.className = "status closed"
+      })
+
+      // Keyboard → server. xterm gives raw bytes, pass them through verbatim.
+      term.onData((data) => {
+        if (ws.readyState !== WebSocket.OPEN) return
+        ws.send(new TextEncoder().encode(data))
+      })
+
+      // Resize (user zooms browser, etc.) → tell the server.
+      term.onResize(({ cols, rows }) => {
+        if (ws.readyState !== WebSocket.OPEN) return
+        ws.send(JSON.stringify({ type: "resize", cols, rows }))
+      })
+    </script>
+  </body>
+</html>

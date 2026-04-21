@@ -15,6 +15,7 @@ const testRuns = [
       "./src/keymap.test.ts",
       "./src/keymap.host.test.ts",
       "./src/html.test.ts",
+      "./src/html-example.test.ts",
       "./src/addons",
       "./src/react",
     ],

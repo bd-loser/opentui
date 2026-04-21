@@ -12,7 +12,7 @@ test("HTML example only imports exported names from the html entrypoint", async 
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean)
-    .map((entry) => entry.replace(/^type\s+/, ""))
+    .filter((entry) => !entry.startsWith("type "))
 
   const html = await import("./html.js")
 

@@ -83,6 +83,9 @@ function parseEmacsSequence(
   return strokes.map((stroke) => parseEmacsStroke(stroke, input, parseObjectKey))
 }
 
+/**
+ * Parses Emacs-style space-separated chords such as `ctrl+x ctrl+s`.
+ */
 export function registerEmacsBindings<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {

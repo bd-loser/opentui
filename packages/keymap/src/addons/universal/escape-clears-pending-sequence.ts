@@ -9,6 +9,10 @@ export interface EscapeClearsPendingSequenceOptions {
   priority?: number
 }
 
+/**
+ * Lets `Escape` cancel an in-progress multi-key sequence before it dispatches
+ * further.
+ */
 export function registerEscapeClearsPendingSequence<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
   options?: EscapeClearsPendingSequenceOptions,

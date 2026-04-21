@@ -31,6 +31,10 @@ function normalizeEnabledValue(fieldName: string, value: unknown): Enabled {
   throw new Error(`Keymap enabled field "${fieldName}" must be a boolean, a function, or a reactive matcher`)
 }
 
+/**
+ * Adds an `enabled` layer field for boolean, callback, or reactive matcher
+ * gating.
+ */
 export function registerEnabledField<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {

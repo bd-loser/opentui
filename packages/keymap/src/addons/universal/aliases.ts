@@ -39,6 +39,10 @@ function getAliases(layer: Readonly<Record<string, unknown>>): Aliases | undefin
   return normalizeAliases(aliases)
 }
 
+/**
+ * Adds an `aliases` layer field for remapping single-key binding names within
+ * that layer.
+ */
 export function registerAliasesField<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {

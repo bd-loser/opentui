@@ -13,6 +13,10 @@ const commaBindingExpander: BindingExpander = ({ input }) => {
   return parts
 }
 
+/**
+ * Expands comma-separated binding strings such as `j,k` into separate
+ * bindings.
+ */
 export function registerCommaBindings<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {

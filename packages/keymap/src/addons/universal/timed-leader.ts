@@ -7,6 +7,10 @@ export interface TimedLeaderOptions extends LeaderOptions {
   onDisarm?: () => void
 }
 
+/**
+ * Defines a leader token and clears it if no follow-up key arrives before the
+ * timeout.
+ */
 export function registerTimedLeader<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
   options: TimedLeaderOptions,

@@ -214,6 +214,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    queryThemeColors: {
+      args: ["ptr"],
+      returns: "void",
+    },
 
     createOptimizedBuffer: {
       args: ["u32", "u32", "bool", "u8", "ptr", "usize"],
@@ -1620,6 +1624,7 @@ export interface RenderLib {
   suspendRenderer: (renderer: Pointer) => void
   resumeRenderer: (renderer: Pointer) => void
   queryPixelResolution: (renderer: Pointer) => void
+  queryThemeColors: (renderer: Pointer) => void
   writeOut: (renderer: Pointer, data: string | Uint8Array) => void
 
   // TextBuffer methods
@@ -2709,6 +2714,10 @@ class FFIRenderLib implements RenderLib {
 
   public queryPixelResolution(renderer: Pointer): void {
     this.opentui.symbols.queryPixelResolution(renderer)
+  }
+
+  public queryThemeColors(renderer: Pointer): void {
+    this.opentui.symbols.queryThemeColors(renderer)
   }
 
   /**

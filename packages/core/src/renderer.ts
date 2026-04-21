@@ -843,8 +843,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
   private _onDestroy?: () => void
   private _themeMode: ThemeMode | null = null
-  private _themeModeSource: "none" | "osc" | "csi" = "none"
-  private _themeFallbackPending: boolean = true
+  private _themeQueryPending: boolean = true
   private _themeOscForeground: string | null = null
   private _themeOscBackground: string | null = null
   private _terminalFocusState: boolean | null = null
@@ -2637,6 +2636,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
   }
 
+  private requestThemeOscColors(): void {
+    this._themeQueryPending = true
+    this._themeOscForeground = null
+    this._themeOscBackground = null
+
+    // Native setup intentionally never sends CSI ?996n. We only refresh OSC
+    // 10/11 colors and derive the mode from the returned background color.
+    this.lib.queryThemeColors(this.rendererPtr)
+  }
+
   private processCapabilitySequence(sequence: string, hasCursorReport: boolean): boolean {
     const hasStandardCapabilitySignature = isCapabilityResponse(sequence)
     const shouldProcessAsCapability =
@@ -2710,13 +2719,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private themeModeHandler: (sequence: string) => boolean = ((sequence: string) => {
     if (sequence === "\x1b[?997;1n") {
-      this.applyThemeMode("dark", "csi")
-      this._themeFallbackPending = false
+      // We intentionally do not use CSI ?997 as the actual mode value because
+      // terminals disagree on its meaning. OpenTUI only treats it as a signal to
+      // refresh OSC 10/11 and then derives dark/light from the returned bg color.
+      this.requestThemeOscColors()
       return true
     }
     if (sequence === "\x1b[?997;2n") {
-      this.applyThemeMode("light", "csi")
-      this._themeFallbackPending = false
+      this.requestThemeOscColors()
       return true
     }
 
@@ -2739,27 +2749,22 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return false
     }
 
-    if (!this._themeFallbackPending) {
+    if (!this._themeQueryPending) {
       return true
     }
 
     if (this._themeOscForeground && this._themeOscBackground) {
-      this.applyThemeMode(inferThemeModeFromBackgroundColor(this._themeOscBackground), "osc")
-      this._themeFallbackPending = false
+      this.applyThemeMode(inferThemeModeFromBackgroundColor(this._themeOscBackground))
+      this._themeQueryPending = false
     }
 
     return true
   }).bind(this)
 
-  private applyThemeMode(mode: ThemeMode, source: "osc" | "csi"): void {
-    if (source === "osc" && this._themeModeSource === "csi") {
-      return
-    }
-
+  private applyThemeMode(mode: ThemeMode): void {
     const changed = this._themeMode !== mode
 
     this._themeMode = mode
-    this._themeModeSource = source
 
     if (changed) {
       this.emit(CliRenderEvents.THEME_MODE, mode)

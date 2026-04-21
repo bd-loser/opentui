@@ -1813,6 +1813,12 @@ pub const CliRenderer = struct {
         self.writeOut(ansi.ANSI.queryPixelSize);
     }
 
+    pub fn queryThemeColors(self: *CliRenderer) void {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.queryThemeColors(stream.writer()) catch {};
+        self.writeOut(stream.getWritten());
+    }
+
     pub fn disableMouse(self: *CliRenderer) void {
         var stream = std.io.fixedBufferStream(&self.writeOutBuf);
         self.terminal.setMouseMode(stream.writer(), false, self.terminal.state.mouse_movement) catch {};

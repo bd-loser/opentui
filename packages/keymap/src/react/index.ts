@@ -8,9 +8,32 @@ import {
   type ReactiveMatcher,
   type KeySequencePart,
 } from "../index.js"
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, type DependencyList } from "react"
-import { useRenderer } from "@opentui/react"
-import { getKeymap } from "../opentui.js"
+import {
+  createElement,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  type DependencyList,
+  type ReactNode,
+} from "react"
+
+type OpenTuiKeymap = Keymap<Renderable, KeyEvent>
+
+const KeymapContext = createContext<OpenTuiKeymap | null>(null)
+
+export interface KeymapProviderProps {
+  keymap: OpenTuiKeymap
+  children?: ReactNode
+}
+
+export function KeymapProvider({ keymap, children }: KeymapProviderProps) {
+  return createElement(KeymapContext.Provider, { value: keymap }, children)
+}
 
 export type UseBindingsTarget<TRenderable extends Renderable = Renderable> =
   | TRenderable
@@ -61,14 +84,19 @@ function resolveBindingsTarget(target: UseBindingsTarget | undefined): Renderabl
   return target ?? undefined
 }
 
-export const useKeymap = (): Keymap<Renderable, KeyEvent> => {
-  const renderer = useRenderer()
-  return useMemo(() => getKeymap(renderer), [renderer])
+export const useKeymap = (): OpenTuiKeymap => {
+  const keymap = useContext(KeymapContext)
+
+  if (!keymap) {
+    throw new Error("Keymap not found. Wrap the tree in <KeymapProvider>.")
+  }
+
+  return keymap
 }
 
 // Use the batched `state` event for derived reads. Pending-sequence changes
 // already flow through `state`, so subscribing to both would duplicate work.
-function useKeymapStateVersion(keymap: Keymap<Renderable, KeyEvent>): number {
+function useKeymapStateVersion(keymap: OpenTuiKeymap): number {
   const [version, bumpVersion] = useReducer((value: number) => value + 1, 0)
 
   useLayoutEffect(() => {

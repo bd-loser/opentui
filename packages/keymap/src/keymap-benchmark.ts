@@ -5,7 +5,7 @@ import { BoxRenderable, type KeyEvent, type Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import * as addons from "./addons/index.js"
 import { type BindingParser, type Keymap, type ReactiveMatcher } from "./index.js"
-import { getKeymap } from "./opentui.js"
+import { createDefaultOpenTuiKeymap as getKeymap } from "./opentui.js"
 
 const DEFAULT_ITERATIONS = 20_000
 const DEFAULT_WARMUP = 2_000

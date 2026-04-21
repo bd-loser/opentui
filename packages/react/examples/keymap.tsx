@@ -2,6 +2,7 @@ import {
   CliRenderEvents,
   createCliRenderer,
   TextAttributes,
+  type CliRenderer,
   type InputRenderable,
   type Renderable,
   type TextareaRenderable,
@@ -15,7 +16,8 @@ import {
   type KeymapCommandRecord,
 } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
-import { useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/react"
+import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { KeymapProvider, useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/react"
 import { createRoot, useRenderer } from "@opentui/react"
 import {
   useCallback,
@@ -45,6 +47,27 @@ const palette = {
   command: "#67e8f9",
   separator: "#475569",
 } as const
+
+const keymapsByRenderer = new WeakMap<CliRenderer, ReturnType<typeof createOpenTuiKeymap>>()
+
+function getDemoKeymap(renderer: CliRenderer): ReturnType<typeof createOpenTuiKeymap> {
+  const existing = keymapsByRenderer.get(renderer)
+  if (existing) {
+    return existing
+  }
+
+  const keymap = createOpenTuiKeymap(renderer)
+  addons.registerDefaultKeys(keymap)
+  addons.registerEnabledField(keymap)
+  addons.registerMetadataFields(keymap)
+  keymapsByRenderer.set(renderer, keymap)
+
+  renderer.once(CliRenderEvents.DESTROY, () => {
+    keymapsByRenderer.delete(renderer)
+  })
+
+  return keymap
+}
 
 type PanelId = "alpha" | "beta"
 type EditorId = "notes" | "draft" | "scratch"
@@ -371,7 +394,7 @@ function CounterPanel(props: {
   )
 }
 
-export const App = () => {
+const AppContent = () => {
   const renderer = useRenderer()
   const manager = useKeymap()
 
@@ -528,16 +551,6 @@ export const App = () => {
     setCommandPromptSelection(0)
     announce("Opened ex prompt")
   }, [announce, renderer])
-
-  useEffect(() => {
-    const offEnabled = addons.registerEnabledField(manager)
-    const offMetadata = addons.registerMetadataFields(manager)
-
-    return () => {
-      offMetadata()
-      offEnabled()
-    }
-  }, [manager])
 
   const commands = useMemo<KeymapCommandDefinition[]>(
     () => [
@@ -755,8 +768,8 @@ export const App = () => {
   )
 
   useEffect(() => {
-    return addons.registerManagedTextareaLayer(renderer, managedTextareaLayer)
-  }, [managedTextareaLayer, renderer])
+    return addons.registerManagedTextareaLayer(manager, renderer, managedTextareaLayer)
+  }, [managedTextareaLayer, manager, renderer])
 
   useBindings(() => ({
     scope: "global" as const,
@@ -1260,6 +1273,17 @@ export const App = () => {
         </box>
       </box>
     </box>
+  )
+}
+
+export const App = () => {
+  const renderer = useRenderer()
+  const keymap = useMemo(() => getDemoKeymap(renderer), [renderer])
+
+  return (
+    <KeymapProvider keymap={keymap}>
+      <AppContent />
+    </KeymapProvider>
   )
 }
 

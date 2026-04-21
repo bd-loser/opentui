@@ -1,6 +1,7 @@
 import {
   CliRenderEvents,
   ConsolePosition,
+  type CliRenderer,
   type InputRenderable,
   TextAttributes,
   type Renderable,
@@ -13,7 +14,8 @@ import {
   type KeymapCommandRecord,
 } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
-import { useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/solid"
+import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { KeymapProvider, useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/solid"
 import { render, useRenderer } from "@opentui/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
 
@@ -34,6 +36,27 @@ const palette = {
   leader: "#fb923c",
   separator: "#475569",
 } as const
+
+const keymapsByRenderer = new WeakMap<CliRenderer, ReturnType<typeof createOpenTuiKeymap>>()
+
+function getDemoKeymap(renderer: CliRenderer): ReturnType<typeof createOpenTuiKeymap> {
+  const existing = keymapsByRenderer.get(renderer)
+  if (existing) {
+    return existing
+  }
+
+  const keymap = createOpenTuiKeymap(renderer)
+  addons.registerDefaultKeys(keymap)
+  addons.registerEnabledField(keymap)
+  addons.registerMetadataFields(keymap)
+  keymapsByRenderer.set(renderer, keymap)
+
+  renderer.once(CliRenderEvents.DESTROY, () => {
+    keymapsByRenderer.delete(renderer)
+  })
+
+  return keymap
+}
 
 type PanelId = "alpha" | "beta"
 type EditorId = "notes" | "draft" | "scratch"
@@ -352,7 +375,7 @@ function CounterPanel(props: {
 
 // -- KeymapDemo (root) --------------------------------------------------------
 
-export default function KeymapDemo() {
+function KeymapDemoContent() {
   const renderer = useRenderer()
   const manager = useKeymap()
   let alphaPanelRef: Renderable | undefined
@@ -372,8 +395,6 @@ export default function KeymapDemo() {
   const [logs, setLogs] = createSignal<string[]>([])
   const [statusVersion, setStatusVersion] = createSignal(0)
 
-  const offEnabled = addons.registerEnabledField(manager)
-  const offMetadata = addons.registerMetadataFields(manager)
   const activeKeys = useActiveKeys({ includeMetadata: true })
   const pendingSequence = usePendingSequence()
 
@@ -663,7 +684,7 @@ export default function KeymapDemo() {
   const offEscapePending = addons.registerEscapeClearsPendingSequence(manager)
   const offBackspacePending = addons.registerBackspacePopsPendingSequence(manager)
 
-  const offManagedTextareas = addons.registerManagedTextareaLayer(renderer, {
+  const offManagedTextareas = addons.registerManagedTextareaLayer(manager, renderer, {
     scope: "global",
     enabled: () => !commandPromptVisible() && renderer.currentFocusedEditor !== null,
     bindings: [
@@ -852,8 +873,6 @@ export default function KeymapDemo() {
     offBackspacePending()
     offEx()
     offCommands()
-    offMetadata()
-    offEnabled()
   })
 
   return (
@@ -1162,6 +1181,17 @@ export default function KeymapDemo() {
         </box>
       </box>
     </box>
+  )
+}
+
+export default function KeymapDemo() {
+  const renderer = useRenderer()
+  const keymap = getDemoKeymap(renderer)
+
+  return (
+    <KeymapProvider keymap={keymap}>
+      <KeymapDemoContent />
+    </KeymapProvider>
   )
 }
 

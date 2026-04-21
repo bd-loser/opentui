@@ -14,7 +14,6 @@ import type {
   EventData,
   ParsedBindingInput,
   ReactiveMatcher,
-  RegisteredCommand,
   Scope,
   CompiledBinding,
   CompiledBindingsResult,
@@ -113,7 +112,6 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     const warnUnknownField = this.options.warnUnknownField
     const warnUnknownToken = this.options.warnUnknownToken
     const conditions = this.conditions
-    const commands = this.commands
 
     for (const [bindingIndex, binding] of bindings.entries()) {
       let expandedBindingKeys: readonly KeyLike[]

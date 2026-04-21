@@ -1,6 +1,6 @@
 import {
+  createDefaultHtmlKeymap,
   createHtmlKeymapEvent,
-  getKeymap,
   stringifyKeySequence,
   type ActiveKey,
 } from "/dist/html.js"
@@ -54,7 +54,7 @@ if (
   throw new Error("HTML keymap example is missing required DOM nodes")
 }
 
-const keymap = getKeymap(app)
+const keymap = createDefaultHtmlKeymap(app)
 const focusableTargets = [alphaPanel, betaPanel, notesField, draftField]
 
 let alphaValue = 0

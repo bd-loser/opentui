@@ -207,7 +207,6 @@ export function registerTextareaMappingSuspension(
   keymap: Keymap<Renderable, KeyEvent>,
   renderer: CliRenderer,
 ): () => void {
-
   return keymap.acquireResource(TEXTAREA_MAPPING_SUSPENSION_RESOURCE, () => {
     const previousSuspendStates = new WeakMap<TextareaRenderable, boolean>()
     let suspendedEditor: TextareaRenderable | null = null

@@ -1,9 +1,4 @@
-import {
-  createDefaultHtmlKeymap,
-  createHtmlKeymapEvent,
-  stringifyKeySequence,
-  type ActiveKey,
-} from "/dist/html.js"
+import { createDefaultHtmlKeymap, createHtmlKeymapEvent, stringifyKeySequence, type ActiveKey } from "/dist/html.js"
 import * as addons from "/dist/addons/index.js"
 
 const app = document.getElementById("app") as HTMLElement | null
@@ -265,7 +260,11 @@ function completeSuggestion(direction?: 1 | -1): void {
   const normalized = normalizeExPromptName(commandInput.value)
   const spaceIndex = normalized.indexOf(" ")
   const rest = spaceIndex === -1 ? "" : normalized.slice(spaceIndex + 1).trimStart()
-  const nextValue = rest ? `${suggestion.insert} ${rest}` : suggestion.expectsArgs ? `${suggestion.insert} ` : suggestion.insert
+  const nextValue = rest
+    ? `${suggestion.insert} ${rest}`
+    : suggestion.expectsArgs
+      ? `${suggestion.insert} `
+      : suggestion.insert
 
   commandInput.value = nextValue
   selectedSuggestion = nextSelection
@@ -328,12 +327,13 @@ function runPromptCommand(): void {
 
   debug("run prompt command", {
     command: parsed.raw,
-    focused: (promptRestoreTarget && document.contains(promptRestoreTarget)
-      ? promptRestoreTarget
-      : getCurrentFocusedTarget())?.id ?? "none",
+    focused:
+      (promptRestoreTarget && document.contains(promptRestoreTarget) ? promptRestoreTarget : getCurrentFocusedTarget())
+        ?.id ?? "none",
   })
 
-  const focused = promptRestoreTarget && document.contains(promptRestoreTarget) ? promptRestoreTarget : getCurrentFocusedTarget()
+  const focused =
+    promptRestoreTarget && document.contains(promptRestoreTarget) ? promptRestoreTarget : getCurrentFocusedTarget()
   const result = keymap.runCommand(parsed.raw, { focused })
   if (result.ok) {
     appendLog(`Ran ${parsed.raw}`)
@@ -346,7 +346,9 @@ function runPromptCommand(): void {
 }
 
 function saveSnapshot(label: string): void {
-  appendLog(`${label}: alpha=${alphaValue}, beta=${betaValue}, notes=${notesField.value.length} chars, draft=${draftField.value.length} chars`)
+  appendLog(
+    `${label}: alpha=${alphaValue}, beta=${betaValue}, notes=${notesField.value.length} chars, draft=${draftField.value.length} chars`,
+  )
 }
 
 function resetDemo(): void {
@@ -469,7 +471,9 @@ function renderPrompt(): void {
     selectedSuggestion = 0
   }
 
-  commandHelp.textContent = selected ? `${selected.usage}${selected.desc ? ` - ${selected.desc}` : ""}` : "No matching ex command"
+  commandHelp.textContent = selected
+    ? `${selected.usage}${selected.desc ? ` - ${selected.desc}` : ""}`
+    : "No matching ex command"
   commandSuggestions.innerHTML = suggestions
     .map((suggestion, index) => {
       const selectedClass = index === selectedSuggestion ? " suggestion is-selected" : " suggestion"
@@ -594,15 +598,78 @@ function disposers(): void {
   keymap.registerLayer({
     scope: "global",
     commands: [
-      { name: "focus-next", title: "Focus Next", desc: "Move to the next focus target", run() { focusOffset(1) } },
-      { name: "focus-prev", title: "Focus Previous", desc: "Move to the previous focus target", run() { focusOffset(-1) } },
-      { name: "toggle-help", title: "Toggle Help", desc: "Show or hide the help card", run() { toggleHelp() } },
-      { name: "prompt-open", title: "Open Ex Prompt", desc: "Open the ex command prompt", run() { openPrompt() } },
-      { name: "prompt-close", title: "Close Ex Prompt", desc: "Close the ex command prompt", run() { closePrompt() } },
-      { name: "prompt-submit", title: "Run Ex Command", desc: "Run the current ex command", run() { runPromptCommand() } },
-      { name: "prompt-next", title: "Next Suggestion", desc: "Move to the next ex suggestion", run() { applySuggestion(1) } },
-      { name: "prompt-prev", title: "Previous Suggestion", desc: "Move to the previous ex suggestion", run() { applySuggestion(-1) } },
-      { name: "prompt-complete", title: "Complete Suggestion", desc: "Insert the selected ex suggestion", run() { completeSuggestion() } },
+      {
+        name: "focus-next",
+        title: "Focus Next",
+        desc: "Move to the next focus target",
+        run() {
+          focusOffset(1)
+        },
+      },
+      {
+        name: "focus-prev",
+        title: "Focus Previous",
+        desc: "Move to the previous focus target",
+        run() {
+          focusOffset(-1)
+        },
+      },
+      {
+        name: "toggle-help",
+        title: "Toggle Help",
+        desc: "Show or hide the help card",
+        run() {
+          toggleHelp()
+        },
+      },
+      {
+        name: "prompt-open",
+        title: "Open Ex Prompt",
+        desc: "Open the ex command prompt",
+        run() {
+          openPrompt()
+        },
+      },
+      {
+        name: "prompt-close",
+        title: "Close Ex Prompt",
+        desc: "Close the ex command prompt",
+        run() {
+          closePrompt()
+        },
+      },
+      {
+        name: "prompt-submit",
+        title: "Run Ex Command",
+        desc: "Run the current ex command",
+        run() {
+          runPromptCommand()
+        },
+      },
+      {
+        name: "prompt-next",
+        title: "Next Suggestion",
+        desc: "Move to the next ex suggestion",
+        run() {
+          applySuggestion(1)
+        },
+      },
+      {
+        name: "prompt-prev",
+        title: "Previous Suggestion",
+        desc: "Move to the previous ex suggestion",
+        run() {
+          applySuggestion(-1)
+        },
+      },
+      {
+        name: "prompt-complete",
+        title: "Complete Suggestion",
+        desc: "Insert the selected ex suggestion",
+        run() {
+          completeSuggestion()
+        },
+      },
       {
         name: "prompt-complete-prev",
         title: "Previous Completion",
@@ -611,14 +678,70 @@ function disposers(): void {
           completeSuggestion(-1)
         },
       },
-      { name: "save-session", title: "Save Session", desc: "Log a synthetic write snapshot", run() { saveSnapshot("leader") } },
-      { name: "alpha-up", title: "Alpha Up", desc: "Increment the Alpha counter", run() { incrementAlpha(1) } },
-      { name: "alpha-down", title: "Alpha Down", desc: "Decrement the Alpha counter", run() { incrementAlpha(-1) } },
-      { name: "beta-up", title: "Beta Up", desc: "Increment the Beta counter", run() { incrementBeta(1) } },
-      { name: "beta-down", title: "Beta Down", desc: "Decrement the Beta counter", run() { incrementBeta(-1) } },
-      { name: "panel-write", title: "Panel Write", desc: "Log a panel write action", run(ctx) { appendLog(`Panel write from ${ctx.focused?.id ?? "unknown"}`) } },
-      { name: "capture-notes", title: "Capture Notes", desc: "Log the Notes textarea snapshot", run() { captureTextarea("notes", notesField) } },
-      { name: "capture-draft", title: "Capture Draft", desc: "Log the Draft textarea snapshot", run() { captureTextarea("draft", draftField) } },
+      {
+        name: "save-session",
+        title: "Save Session",
+        desc: "Log a synthetic write snapshot",
+        run() {
+          saveSnapshot("leader")
+        },
+      },
+      {
+        name: "alpha-up",
+        title: "Alpha Up",
+        desc: "Increment the Alpha counter",
+        run() {
+          incrementAlpha(1)
+        },
+      },
+      {
+        name: "alpha-down",
+        title: "Alpha Down",
+        desc: "Decrement the Alpha counter",
+        run() {
+          incrementAlpha(-1)
+        },
+      },
+      {
+        name: "beta-up",
+        title: "Beta Up",
+        desc: "Increment the Beta counter",
+        run() {
+          incrementBeta(1)
+        },
+      },
+      {
+        name: "beta-down",
+        title: "Beta Down",
+        desc: "Decrement the Beta counter",
+        run() {
+          incrementBeta(-1)
+        },
+      },
+      {
+        name: "panel-write",
+        title: "Panel Write",
+        desc: "Log a panel write action",
+        run(ctx) {
+          appendLog(`Panel write from ${ctx.focused?.id ?? "unknown"}`)
+        },
+      },
+      {
+        name: "capture-notes",
+        title: "Capture Notes",
+        desc: "Log the Notes textarea snapshot",
+        run() {
+          captureTextarea("notes", notesField)
+        },
+      },
+      {
+        name: "capture-draft",
+        title: "Capture Draft",
+        desc: "Log the Draft textarea snapshot",
+        run() {
+          captureTextarea("draft", draftField)
+        },
+      },
     ],
   })
 
@@ -707,7 +830,10 @@ commandInput.addEventListener("input", () => {
   selectedSuggestion = 0
   debug("prompt input", {
     value: commandInput.value,
-    suggestions: getCommandSuggestions().map((suggestion) => suggestion.label).join(", ") || "none",
+    suggestions:
+      getCommandSuggestions()
+        .map((suggestion) => suggestion.label)
+        .join(", ") || "none",
   })
   renderPrompt()
 })

@@ -37,23 +37,11 @@ const palette = {
   separator: "#475569",
 } as const
 
-const keymapsByRenderer = new WeakMap<CliRenderer, ReturnType<typeof createOpenTuiKeymap>>()
-
-function getDemoKeymap(renderer: CliRenderer): ReturnType<typeof createOpenTuiKeymap> {
-  const existing = keymapsByRenderer.get(renderer)
-  if (existing) {
-    return existing
-  }
-
+function createDemoKeymap(renderer: CliRenderer): ReturnType<typeof createOpenTuiKeymap> {
   const keymap = createOpenTuiKeymap(renderer)
   addons.registerDefaultKeys(keymap)
   addons.registerEnabledField(keymap)
   addons.registerMetadataFields(keymap)
-  keymapsByRenderer.set(renderer, keymap)
-
-  renderer.once(CliRenderEvents.DESTROY, () => {
-    keymapsByRenderer.delete(renderer)
-  })
 
   return keymap
 }
@@ -1186,10 +1174,10 @@ function KeymapDemoContent() {
 
 export default function KeymapDemo() {
   const renderer = useRenderer()
-  const keymap = getDemoKeymap(renderer)
+  const keymap = createMemo(() => createDemoKeymap(renderer))
 
   return (
-    <KeymapProvider keymap={keymap}>
+    <KeymapProvider keymap={keymap()}>
       <KeymapDemoContent />
     </KeymapProvider>
   )

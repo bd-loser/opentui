@@ -1,5 +1,12 @@
 import type { BindingParser, BindingParserContext, Keymap, KeymapEvent, KeySequencePart } from "../../index.js"
 
+/**
+ * Example Emacs-style chord parsing.
+ *
+ * This is included as a sample addon and may not be a complete or accurate
+ * representation of Emacs binding syntax.
+ */
+
 function parseEmacsStroke(
   input: string,
   sequence: string,

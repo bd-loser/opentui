@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { createDefaultHtmlKeymap as getKeymap, createHtmlKeymap, createHtmlKeymapEvent, normalizeHtmlKeyName } from "./html.js"
+import {
+  createDefaultHtmlKeymap as getKeymap,
+  createHtmlKeymap,
+  createHtmlKeymapEvent,
+  normalizeHtmlKeyName,
+} from "../html.js"
 
 type Listener = (event: unknown) => void
 

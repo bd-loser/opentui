@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test"
-import * as addons from "./addons/index.js"
-import { Keymap, type KeymapEvent, type KeymapHost } from "./index.js"
+import * as addons from "../addons/index.js"
+import { Keymap, type KeymapEvent, type KeymapHost } from "../index.js"
 
 class FakeTarget {
   public parent: FakeTarget | null = null

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { Emitter } from "./emitter.js"
+import { Emitter } from "../emitter.js"
 
 interface TestEvents {
   value: number

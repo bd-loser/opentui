@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { OrderedRegistry, PriorityRegistry } from "./registry.js"
+import { OrderedRegistry, PriorityRegistry } from "../registry.js"
 
 describe("keymap registries", () => {
   describe("OrderedRegistry", () => {

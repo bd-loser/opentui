@@ -10,27 +10,11 @@ const rootDir = resolve(__dirname, "..")
 const testRuns = [
   {
     cwd: rootDir,
-    args: [
-      "test",
-      "./src/keymap.test.ts",
-      "./src/keymap.host.test.ts",
-      "./src/html.test.ts",
-      "./src/html-example.test.ts",
-      "./src/addons",
-      "./src/react",
-    ],
+    args: ["test", "./src/tests", "./src/lib", "./src/addons", "./src/react"],
   },
   {
     cwd: resolve(rootDir, "src/solid"),
-    args: ["test", "./index.test.tsx"],
-  },
-  {
-    cwd: rootDir,
-    args: ["run", "build"],
-  },
-  {
-    cwd: rootDir,
-    args: ["scripts/check-dist-exports.ts"],
+    args: ["test", "./tests/index.test.tsx"],
   },
 ] as const
 

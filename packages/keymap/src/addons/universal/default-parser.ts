@@ -272,18 +272,28 @@ export const defaultEventMatchResolver: EventMatchResolver<KeymapEvent> = (event
   ]
 }
 
+/**
+ * Parses the built-in string binding syntax, including modifiers and
+ * `<token>` segments.
+ */
 export function registerDefaultBindingParser<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {
   return keymap.appendBindingParser(defaultBindingParser)
 }
 
+/**
+ * Matches incoming key events against their canonical normalized stroke.
+ */
 export function registerDefaultEventMatchResolver<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {
   return keymap.appendEventMatchResolver(defaultEventMatchResolver)
 }
 
+/**
+ * Installs the standard parser and event matcher used by most keymaps.
+ */
 export function registerDefaultKeys<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {

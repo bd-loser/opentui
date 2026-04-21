@@ -40,6 +40,10 @@ function warnUnresolvedCommand<TTarget extends object, TEvent extends KeymapEven
   )
 }
 
+/**
+ * Warns when a string command name cannot be resolved by registered commands
+ * or resolvers.
+ */
 export function registerUnresolvedCommandWarnings<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {

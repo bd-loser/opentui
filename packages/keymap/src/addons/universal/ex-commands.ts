@@ -80,6 +80,10 @@ function validateCommandArgs<TTarget extends object, TEvent extends KeymapEvent>
   return true
 }
 
+/**
+ * Resolves `:name ...args` strings against the provided Ex commands and
+ * validated argument lists.
+ */
 export function registerExCommands<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
   commands: ExCommand<TTarget, TEvent>[],

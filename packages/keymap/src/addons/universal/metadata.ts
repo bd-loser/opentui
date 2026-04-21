@@ -13,6 +13,10 @@ function normalizeMetadataText(fieldName: string, value: unknown): string {
   return trimmed
 }
 
+/**
+ * Maps `desc`, `group`, `title`, and `category` fields into binding and
+ * command attrs.
+ */
 export function registerMetadataFields<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {

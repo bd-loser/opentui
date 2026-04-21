@@ -38,6 +38,10 @@ function warnDeadMetadataOnlyBinding<TTarget extends object, TEvent extends Keym
   )
 }
 
+/**
+ * Warns about bindings that can never trigger because they have no command and
+ * no reachable continuation.
+ */
 export function registerDeadBindingWarnings<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {

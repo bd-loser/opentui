@@ -9,6 +9,9 @@ export interface BackspacePopsPendingSequenceOptions {
   priority?: number
 }
 
+/**
+ * Lets `Backspace` step back through the current pending multi-key sequence.
+ */
 export function registerBackspacePopsPendingSequence<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
   options?: BackspacePopsPendingSequenceOptions,

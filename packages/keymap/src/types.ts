@@ -21,7 +21,8 @@ export interface KeymapHost<TTarget extends object, TEvent extends KeymapEvent =
   onKeyPress(listener: (event: TEvent) => void): () => void
   onKeyRelease(listener: (event: TEvent) => void): () => void
   onFocusChange(listener: (target: TTarget | null) => void): () => void
-  onDestroy(listener: () => void): () => void
+  /** Optional for hosts whose lifetime is managed by GC or root reachability. */
+  onDestroy?(listener: () => void): () => void
   onTargetDestroy(target: TTarget, listener: () => void): () => void
   onRawInput?(listener: (sequence: string) => boolean): () => void
   createCommandEvent(): TEvent

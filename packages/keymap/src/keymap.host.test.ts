@@ -210,6 +210,62 @@ describe("generic keymap host", () => {
     expect(event.propagationStopped).toBe(true)
   })
 
+  test("supports hosts without explicit destroy notifications", () => {
+    const hostWithoutDestroy: KeymapHost<FakeTarget, FakeEvent> = {
+      rootTarget: host.rootTarget,
+      get isDestroyed() {
+        return host.isDestroyed
+      },
+      getFocusedTarget() {
+        return host.getFocusedTarget()
+      },
+      getParentTarget(target) {
+        return host.getParentTarget(target)
+      },
+      isTargetDestroyed(target) {
+        return host.isTargetDestroyed(target)
+      },
+      onKeyPress(listener) {
+        return host.onKeyPress(listener)
+      },
+      onKeyRelease(listener) {
+        return host.onKeyRelease(listener)
+      },
+      onFocusChange(listener) {
+        return host.onFocusChange(listener)
+      },
+      onTargetDestroy(target, listener) {
+        return host.onTargetDestroy(target, listener)
+      },
+      onRawInput(listener) {
+        return host.onRawInput(listener)
+      },
+      createCommandEvent() {
+        return host.createCommandEvent()
+      },
+    }
+    const localKeymap = new Keymap(hostWithoutDestroy)
+    addons.registerDefaultKeys(localKeymap)
+    const calls: string[] = []
+
+    localKeymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "run",
+          run() {
+            calls.push("run")
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "run" }],
+    })
+
+    host.press("x")
+
+    expect(calls).toEqual(["run"])
+  })
+
   test("uses host parent traversal for focus-within layers", () => {
     const parent = host.rootTarget.append(new FakeTarget("parent"))
     const child = parent.append(new FakeTarget("child"))

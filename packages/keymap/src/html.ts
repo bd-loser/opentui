@@ -139,6 +139,8 @@ export function createHtmlKeymapEvent(event?: KeyboardEvent | HtmlKeyboardEventL
 
   const KeyboardEventCtor = globalThis.KeyboardEvent
 
+  // Keymap uses `meta` for Alt/Option and `super` for the platform Meta key,
+  // so browser `altKey` maps to `meta` and `metaKey` maps to `super`.
   return new HtmlWrappedKeymapEvent(
     normalizeHtmlKeyName(event.key),
     event.ctrlKey,
@@ -220,10 +222,6 @@ class HtmlKeymapHost implements KeymapHost<HTMLElement, HtmlKeymapEvent> {
       this.rootTarget.removeEventListener("focusin", notifyFocus, { capture: true })
       this.rootTarget.removeEventListener("focusout", notifyFocus, { capture: true })
     }
-  }
-
-  public onDestroy(_listener: () => void): () => void {
-    return () => {}
   }
 
   public onTargetDestroy(target: HTMLElement, listener: () => void): () => void {

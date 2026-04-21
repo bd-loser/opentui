@@ -154,11 +154,13 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
       this.cleanupListeners.push(this.host.onRawInput(this.rawListener))
     }
     this.cleanupListeners.push(this.host.onFocusChange(this.focusedTargetListener))
-    this.cleanupListeners.push(
-      this.host.onDestroy(() => {
-        this.cleanup()
-      }),
-    )
+    if (this.host.onDestroy) {
+      this.cleanupListeners.push(
+        this.host.onDestroy(() => {
+          this.cleanup()
+        }),
+      )
+    }
   }
 
   private cleanup(): void {

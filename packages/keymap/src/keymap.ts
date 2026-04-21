@@ -91,7 +91,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     })
     this.notify = new NotificationService(this.state, this.events, this.hooks)
     this.conditions = new ConditionService(this.state, this.notify)
-    this.catalog = new CommandCatalogService(this.state, this.host, this.notify, this.conditions, this.hooks, {
+    this.catalog = new CommandCatalogService(this.state, this.host, this.notify, this.conditions, {
       onCommandResolversChanged: () => {
         this.activation.ensureValidPendingSequence()
       },
@@ -109,7 +109,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
       keymap: this,
       createCommandEvent: () => this.host.createCommandEvent(),
     })
-    this.compiler = new CompilerService(this.state, this.notify, this.catalog, this.conditions, {
+    this.compiler = new CompilerService(this.state, this.notify, this.conditions, {
       warnUnknownField: (kind, fieldName) => {
         this.warnUnknownField(kind, fieldName)
       },
@@ -273,8 +273,6 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
   public on(name: "state", fn: Listener<Events<TTarget, TEvent>["state"]>): () => void
 
   public on(name: "pendingSequence", fn: Listener<Events<TTarget, TEvent>["pendingSequence"]>): () => void
-
-  public on(name: "unresolvedCommand", fn: Listener<Events<TTarget, TEvent>["unresolvedCommand"]>): () => void
 
   public on(name: "warning", fn: Listener<Events<TTarget, TEvent>["warning"]>): () => void
 

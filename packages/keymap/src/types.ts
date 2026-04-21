@@ -127,6 +127,8 @@ export interface CommandContext<TTarget extends object = object, TEvent extends 
 
 export type CommandResult = boolean | void | Promise<boolean | void>
 
+export type CommandResolutionStatus = "resolved" | "unresolved" | "error"
+
 export type CommandHandler<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = (
   ctx: CommandContext<TTarget, TEvent>,
 ) => CommandResult
@@ -316,6 +318,7 @@ export interface LayerAnalysisContext<TTarget extends object = object, TEvent ex
   bindingInputs: readonly BindingInput<TTarget, TEvent>[]
   bindings: readonly LayerBindingAnalysis<TTarget, TEvent>[]
   hasTokenBindings: boolean
+  checkCommandResolution(command: string): CommandResolutionStatus
   warn(code: string, warning: unknown, message: string): void
   warnOnce(key: string, code: string, warning: unknown, message: string): void
   error(code: string, error: unknown, message: string): void
@@ -413,13 +416,6 @@ export interface RawInputContext {
   stop: () => void
 }
 
-export interface UnresolvedCommandContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
-  command: string
-  binding: ParsedBindingInput<TTarget, TEvent>
-  scope: Scope
-  target?: TTarget
-}
-
 export type Hooks<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = {
   /**
    * Batched "derived state may have changed" signal. Re-read through getters;
@@ -431,11 +427,6 @@ export type Hooks<TTarget extends object = object, TEvent extends KeymapEvent = 
    * current sequence.
    */
   pendingSequence: readonly KeySequencePart[]
-  /**
-   * One-time diagnostic when a binding references a command name that is not
-   * currently resolvable.
-   */
-  unresolvedCommand: UnresolvedCommandContext<TTarget, TEvent>
 }
 
 export type HookName = keyof Hooks
@@ -454,11 +445,7 @@ export interface ErrorEvent {
   error: unknown
 }
 
-/**
- * Events exposed by `keymap.on(...)`. `state` is batched, `pendingSequence`
- * is synchronous, and `unresolvedCommand` is emitted during layer registration
- * when a string command name cannot be resolved.
- */
+/** Events exposed by `keymap.on(...)`. `state` is batched and `pendingSequence` is synchronous. */
 export type Events<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = Hooks<
   TTarget,
   TEvent

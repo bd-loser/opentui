@@ -106,6 +106,7 @@ interface AnalyzeLayerOptions<TTarget extends object, TEvent extends KeymapEvent
   scope: Scope
   target?: TTarget
   order: number
+  commandLookup?: ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>>
   bindingInputs: readonly BindingInput<TTarget, TEvent>[]
   compiledBindings: readonly CompiledBinding<TTarget, TEvent>[]
   root: RegisteredLayer<TTarget, TEvent>["root"]
@@ -207,7 +208,6 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         target,
         order,
         compileFields,
-        commandLookup,
       )
 
       if (compiledBindings.bindings.length === 0 && !compiledBindings.hasTokenBindings && commands.length === 0) {
@@ -218,6 +218,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         scope,
         target,
         order,
+        commandLookup,
         bindingInputs,
         compiledBindings: compiledBindings.bindings,
         root: compiledBindings.root,
@@ -299,7 +300,6 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
             layer.target,
             layer.order,
             layer.compileFields,
-            layer.commandLookup,
           ),
         )
       }
@@ -312,6 +312,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
           scope: layer.scope,
           target: layer.target,
           order: layer.order,
+          commandLookup: layer.commandLookup,
           bindingInputs: layer.bindingInputs,
           compiledBindings: compilation.bindings,
           root: compilation.root,
@@ -386,6 +387,9 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       bindingInputs: options.bindingInputs,
       bindings,
       hasTokenBindings: options.hasTokenBindings,
+      checkCommandResolution: (command) => {
+        return this.options.commands.getCommandResolutionStatus(command, options.commandLookup)
+      },
       warn: (code, warning, message) => {
         this.notify.emitWarning(code, warning, message)
       },

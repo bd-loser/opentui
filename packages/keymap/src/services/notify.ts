@@ -78,8 +78,6 @@ export class NotificationService<TTarget extends object, TEvent extends KeymapEv
       this.emitError("pending-sequence-listener-error", error, "[Keymap] Error in pending sequence listener:")
       return
     }
-
-    this.emitError("unresolved-command-listener-error", error, "[Keymap] Error in unresolved command listener:")
   }
 
   public warnOnce(key: string, code: string, warning: unknown, message: string): void {

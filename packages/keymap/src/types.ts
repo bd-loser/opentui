@@ -50,7 +50,7 @@ export interface NormalizedKeyStroke extends KeyStrokeInput {
 export type KeyMatch = symbol
 
 export interface EventMatchResolverContext {
-  match(key: KeyLike): KeyMatch
+  resolveKey(key: KeyLike): KeyMatch
 }
 
 export type EventMatchResolver<TEvent extends KeymapEvent = KeymapEvent> = (
@@ -279,7 +279,7 @@ export interface ActiveKey<TTarget extends object = object, TEvent extends Keyma
 }
 
 /**
- * Boolean source with subscription-based invalidation. `ctx.match(...)`
+ * Boolean source with subscription-based invalidation. `ctx.activeWhen(...)`
  * subscribes at registration time and unsubscribes when the owning
  * layer or binding is removed.
  */
@@ -295,7 +295,7 @@ export interface BindingFieldContext {
    * Registers a runtime matcher. Raw callbacks re-run on every read;
    * reactive matchers stay cached until they notify.
    */
-  match(matcher: (() => boolean) | ReactiveMatcher): void
+  activeWhen(matcher: (() => boolean) | ReactiveMatcher): void
 }
 
 export type BindingFieldCompiler = (value: unknown, ctx: BindingFieldContext) => void
@@ -306,7 +306,7 @@ export interface LayerFieldContext {
    * Registers a runtime matcher. Raw callbacks re-run on every read;
    * reactive matchers stay cached until they notify.
    */
-  match(matcher: (() => boolean) | ReactiveMatcher): void
+  activeWhen(matcher: (() => boolean) | ReactiveMatcher): void
 }
 
 export type LayerFieldCompiler = (value: unknown, ctx: LayerFieldContext) => void

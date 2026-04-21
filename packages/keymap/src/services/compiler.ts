@@ -213,7 +213,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
                   }
                   mergeAttribute(mergedAttrs, name, attributeValue, `field ${fieldName}`)
                 },
-                match: (matcher) => {
+                activeWhen: (matcher) => {
                   const runtimeMatcher = conditions.buildRuntimeMatcher(matcher, `field ${fieldName}`)
                   if (!runtimeMatcher.cacheable) {
                     hasUnkeyedMatchers = true

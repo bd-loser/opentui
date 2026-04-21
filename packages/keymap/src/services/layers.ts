@@ -439,7 +439,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
           mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
           conditionKeys.add(name)
         },
-        match: (matcher) => {
+        activeWhen: (matcher) => {
           const runtimeMatcher = this.conditions.buildRuntimeMatcher(matcher, `field ${fieldName}`)
           if (!runtimeMatcher.cacheable) {
             hasUnkeyedMatchers = true

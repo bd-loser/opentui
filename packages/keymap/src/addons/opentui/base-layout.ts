@@ -31,7 +31,7 @@ export function registerBaseLayoutFallback(keymap: Keymap<Renderable, KeyEvent>)
     }
 
     return [
-      ctx.match({
+      ctx.resolveKey({
         name,
         ctrl: event.ctrl,
         shift: event.shift,

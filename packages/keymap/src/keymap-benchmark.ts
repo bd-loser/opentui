@@ -352,7 +352,7 @@ function registerExternalBindingFields(keymap: OpenTuiKeymap, store: FlagStore):
   keymap.registerBindingFields({
     activeExternally(value, ctx) {
       const key = normalizeFlagKey(value, "binding field activeExternally")
-      ctx.match(createFlagMatcher(store, key))
+      ctx.activeWhen(createFlagMatcher(store, key))
     },
   })
 }

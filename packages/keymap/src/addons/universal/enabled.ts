@@ -46,11 +46,11 @@ export function registerEnabledField<TTarget extends object, TEvent extends Keym
       }
 
       if (normalized === false) {
-        ctx.match(() => false)
+        ctx.activeWhen(() => false)
         return
       }
 
-      ctx.match(normalized)
+      ctx.activeWhen(normalized)
     },
   })
 }

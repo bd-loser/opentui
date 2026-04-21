@@ -261,7 +261,7 @@ export const defaultBindingParser: BindingParser = (ctx) => {
 
 export const defaultEventMatchResolver: EventMatchResolver<KeymapEvent> = (event, ctx) => {
   return [
-    ctx.match({
+    ctx.resolveKey({
       name: event.name,
       ctrl: event.ctrl,
       shift: event.shift,

@@ -519,7 +519,6 @@ disposers()
 
 function disposers(): void {
   addons.registerEnabledField(keymap)
-  addons.registerMetadataFields(keymap)
   addons.registerExCommands(keymap, [
     {
       name: ":help",

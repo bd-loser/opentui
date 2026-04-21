@@ -1,4 +1,5 @@
 import { registerDefaultKeys } from "./addons/universal/default-parser.js"
+import { registerMetadataFields } from "./addons/universal/metadata.js"
 import { Keymap } from "./keymap.js"
 import type { EventMatchResolver, KeyStrokeInput, KeymapEvent, KeymapHost } from "./types.js"
 
@@ -315,6 +316,7 @@ export function createHtmlKeymap(root: HTMLElement): Keymap<HTMLElement, HtmlKey
 export function createDefaultHtmlKeymap(root: HTMLElement): Keymap<HTMLElement, HtmlKeymapEvent> {
   const keymap = createHtmlKeymap(root)
   registerDefaultKeys(keymap)
+  registerMetadataFields(keymap)
   keymap.prependEventMatchResolver(htmlEventMatchResolver)
   return keymap
 }

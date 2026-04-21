@@ -3,7 +3,7 @@ import type { KeyEvent, Renderable } from "@opentui/core"
 import { createTestRenderer, type TestRenderer } from "@opentui/core/testing"
 import { registerUnresolvedCommandWarnings } from "@opentui/keymap/addons"
 import type { Keymap, WarningEvent } from "@opentui/keymap"
-import { getKeymap } from "@opentui/keymap/opentui"
+import { createDefaultOpenTuiKeymap as getKeymap } from "@opentui/keymap/opentui"
 
 let renderer: TestRenderer
 

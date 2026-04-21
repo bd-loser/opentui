@@ -1,6 +1,6 @@
 import { registerDefaultKeys } from "./addons/universal/default-parser.js"
 import { Keymap } from "./keymap.js"
-import type { KeyStrokeInput, KeymapEvent, KeymapHost } from "./types.js"
+import type { EventMatchResolver, KeyStrokeInput, KeymapEvent, KeymapHost } from "./types.js"
 
 export * from "./index.js"
 
@@ -26,8 +26,6 @@ interface MutationObserverLike {
 interface MutationObserverCtorLike {
   new (callback: () => void): MutationObserverLike
 }
-
-const keymapsByRoot = new WeakMap<HTMLElement, Keymap<HTMLElement, HtmlKeymapEvent>>()
 
 const HTML_KEY_NAME_ALIASES = new Map<string, string>([
   [" ", "space"],
@@ -306,17 +304,30 @@ export function createHtmlKeymapHost(root: HTMLElement): KeymapHost<HTMLElement,
   return new HtmlKeymapHost(root)
 }
 
-export function getKeymap(root: HTMLElement): Keymap<HTMLElement, HtmlKeymapEvent> {
-  const existing = keymapsByRoot.get(root)
-  if (existing) {
-    return existing
-  }
+export const htmlEventMatchResolver: EventMatchResolver<HtmlKeymapEvent> = (event, ctx) => {
+  return getHtmlEventMatchInputs(event).map((candidate) => ctx.resolveKey(candidate))
+}
 
-  const keymap = new Keymap(createHtmlKeymapHost(root))
-  registerDefaultKeys(keymap)
-  keymap.prependEventMatchResolver((event, ctx) => {
-    return getHtmlEventMatchInputs(event).map((candidate) => ctx.resolveKey(candidate))
-  })
-  keymapsByRoot.set(root, keymap)
+export function registerHtmlEventMatchResolver(keymap: Keymap<HTMLElement, HtmlKeymapEvent>): () => void {
+  return keymap.prependEventMatchResolver(htmlEventMatchResolver)
+}
+
+export function registerDefaultHtmlKeys(keymap: Keymap<HTMLElement, HtmlKeymapEvent>): () => void {
+  const offKeys = registerDefaultKeys(keymap)
+  const offResolver = registerHtmlEventMatchResolver(keymap)
+
+  return () => {
+    offResolver()
+    offKeys()
+  }
+}
+
+export function createHtmlKeymap(root: HTMLElement): Keymap<HTMLElement, HtmlKeymapEvent> {
+  return new Keymap(createHtmlKeymapHost(root))
+}
+
+export function createDefaultHtmlKeymap(root: HTMLElement): Keymap<HTMLElement, HtmlKeymapEvent> {
+  const keymap = createHtmlKeymap(root)
+  registerDefaultHtmlKeys(keymap)
   return keymap
 }

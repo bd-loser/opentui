@@ -2,9 +2,11 @@
 
 Keymap package for OpenTUI and browser-based UIs.
 
-It provides a shared keymap core, adapter-specific entrypoints for HTML and OpenTUI, and framework helpers for React and Solid.
+It provides a shared keymap core, adapter-specific entrypoints for HTML and OpenTUI, and framework providers/hooks for React and Solid.
 
-Use the HTML entrypoint for DOM-based hosts and the OpenTUI entrypoint for terminal renderers. The React and Solid entrypoints build on the OpenTUI adapter.
+The core `Keymap` is intentionally bare. Create a keymap, install the addons you want, then pass that configured instance to your app.
+
+Use the HTML entrypoint for DOM-based hosts and the OpenTUI entrypoint for terminal renderers. The React and Solid entrypoints consume a pre-created OpenTUI keymap through context.
 
 Entry points:
 
@@ -13,8 +15,25 @@ Entry points:
 - `@opentui/keymap/addons/opentui`: universal addons plus OpenTUI-specific addons
 - `@opentui/keymap/html`: core API plus the HTML adapter
 - `@opentui/keymap/opentui`: core API plus the OpenTUI adapter
-- `@opentui/keymap/react`: React hooks for the OpenTUI adapter
-- `@opentui/keymap/solid`: Solid hooks for the OpenTUI adapter
+- `@opentui/keymap/react`: React provider and hooks for a pre-created OpenTUI keymap
+- `@opentui/keymap/solid`: Solid provider and hooks for a pre-created OpenTUI keymap
+
+## Usage
+
+```tsx
+import { registerDefaultKeys } from "@opentui/keymap/addons"
+import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { KeymapProvider } from "@opentui/keymap/react"
+
+const keymap = createOpenTuiKeymap(renderer)
+registerDefaultKeys(keymap)
+
+createRoot(renderer).render(
+  <KeymapProvider keymap={keymap}>
+    <App />
+  </KeymapProvider>,
+)
+```
 
 ## Installation
 

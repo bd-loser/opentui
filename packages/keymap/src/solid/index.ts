@@ -8,9 +8,40 @@ import {
   type LayerFields,
   type ReactiveMatcher,
 } from "../index.js"
-import { useRenderer } from "@opentui/solid"
-import { createEffect, createMemo, createRoot, createSignal, on, onCleanup, onMount, type Accessor } from "solid-js"
-import { getKeymap } from "../opentui.js"
+import {
+  createComponent,
+  createContext,
+  createEffect,
+  createMemo,
+  createRoot,
+  createSignal,
+  on,
+  onCleanup,
+  onMount,
+  useContext,
+  type Accessor,
+  type JSX,
+} from "solid-js"
+
+type OpenTuiKeymap = Keymap<Renderable, KeyEvent>
+
+const KeymapContext = createContext<OpenTuiKeymap>()
+
+export interface KeymapProviderProps {
+  keymap: OpenTuiKeymap
+  children: JSX.Element
+}
+
+export function KeymapProvider(props: KeymapProviderProps): JSX.Element {
+  return createComponent(KeymapContext.Provider, {
+    get value() {
+      return props.keymap
+    },
+    get children() {
+      return props.children
+    },
+  })
+}
 
 export type UseBindingsTarget<TRenderable extends Renderable = Renderable> =
   | TRenderable
@@ -61,14 +92,19 @@ function resolveBindingsTarget(target: UseBindingsTarget | undefined): Renderabl
   return target ?? undefined
 }
 
-export const useKeymap = (): Keymap<Renderable, KeyEvent> => {
-  const renderer = useRenderer()
-  return getKeymap(renderer)
+export const useKeymap = (): OpenTuiKeymap => {
+  const keymap = useContext(KeymapContext)
+
+  if (!keymap) {
+    throw new Error("Keymap not found. Wrap the tree in <KeymapProvider>.")
+  }
+
+  return keymap
 }
 
 // Use the batched `state` event for derived reads. Pending-sequence changes
 // already flow through `state`, so subscribing to both would duplicate work.
-function useKeymapStateVersion(keymap: Keymap<Renderable, KeyEvent>): Accessor<number> {
+function useKeymapStateVersion(keymap: OpenTuiKeymap): Accessor<number> {
   const [version, setVersion] = createSignal(0)
   let dispose: (() => void) | undefined
 

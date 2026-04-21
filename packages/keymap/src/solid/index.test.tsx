@@ -1,16 +1,40 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { Renderable } from "@opentui/core"
+import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
 import * as addons from "@opentui/keymap/addons"
 import { stringifyKeySequence } from "@opentui/keymap"
+import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import {
+  KeymapProvider,
   reactiveMatcherFromSignal,
   useActiveKeys,
   useBindings,
   useKeymap,
   usePendingSequence,
 } from "@opentui/keymap/solid"
-import { testRender } from "@opentui/solid"
+import { render, type JSX } from "@opentui/solid"
 import { Show, createEffect, createSignal, onCleanup } from "solid-js"
+
+async function testRender(node: () => JSX.Element, renderConfig: TestRendererOptions = {}) {
+  const testSetup = await createTestRenderer({
+    ...renderConfig,
+    onDestroy: () => {
+      renderConfig.onDestroy?.()
+    },
+  })
+
+  const keymap = createDefaultOpenTuiKeymap(testSetup.renderer)
+  await render(
+    () => (
+      <KeymapProvider keymap={keymap}>
+        {node()}
+      </KeymapProvider>
+    ),
+    testSetup.renderer,
+  )
+
+  return testSetup
+}
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -27,7 +51,7 @@ describe("solid keymap hooks", () => {
     }
   })
 
-  test("useKeymap returns the renderer-scoped singleton", async () => {
+  test("useKeymap returns the provided keymap", async () => {
     let first: ReturnType<typeof useKeymap> | undefined
     let second: ReturnType<typeof useKeymap> | undefined
 

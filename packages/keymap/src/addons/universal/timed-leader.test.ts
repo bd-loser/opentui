@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import { registerTimedLeader } from "@opentui/keymap/addons"
-import { getKeymap } from "@opentui/keymap/opentui"
+import { createDefaultOpenTuiKeymap as getKeymap } from "@opentui/keymap/opentui"
 
 let renderer: TestRenderer
 let mockInput: MockInput

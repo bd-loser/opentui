@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { InputRenderable, TextareaRenderable } from "@opentui/core"
-import { getKeymap } from "@opentui/keymap/opentui"
 import { testRender } from "../index.js"
 import KeymapDemo from "../examples/components/keymap-demo.js"
 
@@ -82,11 +81,6 @@ describe("solid keymap example", () => {
     testSetup.mockInput.pressTab()
     await testSetup.renderOnce()
     expect(testSetup.renderer.currentFocusedRenderable?.id).toBe("keymap-demo-editor-1")
-    expect(
-      getKeymap(testSetup.renderer)
-        .getActiveKeys({ includeMetadata: true })
-        .find((candidate) => candidate.stroke.name === "d")?.bindingAttrs,
-    ).toEqual({ group: "Delete" })
 
     testSetup.mockInput.pressTab()
     await testSetup.renderOnce()

@@ -2,18 +2,51 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { Renderable } from "@opentui/core"
+import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
 import * as addons from "@opentui/keymap/addons"
 import { stringifyKeySequence } from "@opentui/keymap"
+import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import {
+  KeymapProvider,
   reactiveMatcherFromStore,
   useActiveKeys,
   useBindings,
   useKeymap,
   usePendingSequence,
 } from "@opentui/keymap/react"
-import { testRender } from "@opentui/react/test-utils"
-import { act } from "react"
+import { createRoot, type Root } from "@opentui/react"
+import { act, type ReactNode } from "react"
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react"
+
+function setIsReactActEnvironment(isReactActEnvironment: boolean) {
+  // @ts-expect-error test environment flag
+  globalThis.IS_REACT_ACT_ENVIRONMENT = isReactActEnvironment
+}
+
+async function testRender(node: ReactNode, testRendererOptions: TestRendererOptions) {
+  let root: Root | null = null
+  setIsReactActEnvironment(true)
+
+  const testSetup = await createTestRenderer({
+    ...testRendererOptions,
+    onDestroy() {
+      act(() => {
+        root?.unmount()
+        root = null
+      })
+      testRendererOptions.onDestroy?.()
+      setIsReactActEnvironment(false)
+    },
+  })
+
+  const keymap = createDefaultOpenTuiKeymap(testSetup.renderer)
+  root = createRoot(testSetup.renderer)
+  act(() => {
+    root?.render(<KeymapProvider keymap={keymap}>{node}</KeymapProvider>)
+  })
+
+  return testSetup
+}
 
 let testSetup: Awaited<ReturnType<typeof testRender>>
 
@@ -34,7 +67,7 @@ describe("React keymap hooks", () => {
     }
   })
 
-  test("useKeymap returns the renderer-scoped singleton", async () => {
+  test("useKeymap returns the provided keymap", async () => {
     let first: ReturnType<typeof useKeymap> | undefined
     let second: ReturnType<typeof useKeymap> | undefined
 

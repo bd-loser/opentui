@@ -16,7 +16,7 @@ import {
   type ReactiveMatcher,
   type WarningEvent,
 } from "./index.js"
-import { getKeymap } from "./opentui.js"
+import { createDefaultOpenTuiKeymap as getKeymap, createOpenTuiKeymap } from "./opentui.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
@@ -184,18 +184,45 @@ describe("keymap", () => {
     renderer?.destroy()
   })
 
-  test("returns the same keymap for the same renderer", () => {
-    const first = getKeymap(renderer)
-    const second = getKeymap(renderer)
+  test("createOpenTuiKeymap returns a fresh keymap for each call", () => {
+    const first = createOpenTuiKeymap(renderer)
+    const second = createOpenTuiKeymap(renderer)
 
-    expect(first).toBe(second)
+    expect(first).not.toBe(second)
   })
 
   test("throws when requesting a keymap for a destroyed renderer", () => {
-    getKeymap(renderer)
+    createOpenTuiKeymap(renderer)
     renderer.destroy()
 
-    expect(() => getKeymap(renderer)).toThrow("Cannot create a keymap for a destroyed renderer")
+    expect(() => createOpenTuiKeymap(renderer)).toThrow("Cannot create a keymap for a destroyed renderer")
+  })
+
+  test("createOpenTuiKeymap stays bare until addons are installed", () => {
+    const keymap = createOpenTuiKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() { calls.push("noop") } }] })
+
+    expect(() => {
+      keymap.registerLayer({
+        scope: "global",
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+    }).not.toThrow()
+
+    mockInput.pressKey("x")
+    expect(calls).toEqual([])
+    expect(keymap.getActiveKeys()).toEqual([])
+
+    addons.registerDefaultKeys(keymap)
+    keymap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "noop" }],
+    })
+
+    mockInput.pressKey("x")
+    expect(calls).toEqual(["noop"])
   })
 
   test("keeps non-renderer state and throws on renderer-backed reads after renderer destroy", () => {

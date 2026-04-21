@@ -11,6 +11,7 @@ import {
   bold,
   fg,
   type CliRenderer,
+  type KeyEvent,
   type Renderable,
   type TextChunk,
 } from "../index.js"
@@ -22,7 +23,7 @@ import {
   stringifyKeyStroke,
 } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
-import { getKeymap } from "@opentui/keymap/opentui"
+import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const P = {
@@ -754,8 +755,7 @@ function renderAll(renderer: CliRenderer): void {
   renderStatus(renderer)
 }
 
-function registerCommandLayers(renderer: CliRenderer): void {
-  const keymapInstance = getKeymap(renderer)
+function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Renderable, KeyEvent>): void {
   keymap = keymapInstance
 
   disposers.push(addons.registerEnabledField(keymapInstance))
@@ -973,7 +973,7 @@ function registerCommandLayers(renderer: CliRenderer): void {
   }
 
   disposers.push(
-    addons.registerManagedTextareaLayer(renderer, {
+    addons.registerManagedTextareaLayer(keymapInstance, renderer, {
       scope: "global",
       enabled: () => !commandPromptVisible && renderer.currentFocusedEditor !== null,
       bindings: [
@@ -1368,7 +1368,10 @@ export function run(renderer: CliRenderer): void {
     renderAll(renderer)
   })
 
-  registerCommandLayers(renderer)
+  const keymapInstance = createOpenTuiKeymap(renderer)
+  addons.registerDefaultKeys(keymapInstance)
+
+  registerCommandLayers(renderer, keymapInstance)
   addLog("Tab switches focus across panels and editors.")
   addLog("ctrl+x arms the leader extension.")
   addLog(": opens the centered ex prompt.")

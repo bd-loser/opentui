@@ -5,8 +5,6 @@ import type { KeymapHost } from "./types.js"
 
 export * from "./index.js"
 
-const keymapsByRenderer = new WeakMap<CliRenderer, Keymap<Renderable, KeyEvent>>()
-
 function createSyntheticCommandEvent(): KeyEvent {
   return new KeyEvent({
     name: "command",
@@ -84,23 +82,16 @@ export function createOpenTuiKeymapHost(renderer: CliRenderer): KeymapHost<Rende
   }
 }
 
-export function getKeymap(renderer: CliRenderer): Keymap<Renderable, KeyEvent> {
+export function createOpenTuiKeymap(renderer: CliRenderer): Keymap<Renderable, KeyEvent> {
   if (renderer.isDestroyed) {
     throw new Error("Cannot create a keymap for a destroyed renderer")
   }
 
-  const existing = keymapsByRenderer.get(renderer)
-  if (existing) {
-    return existing
-  }
+  return new Keymap(createOpenTuiKeymapHost(renderer))
+}
 
-  const keymap = new Keymap(createOpenTuiKeymapHost(renderer))
+export function createDefaultOpenTuiKeymap(renderer: CliRenderer): Keymap<Renderable, KeyEvent> {
+  const keymap = createOpenTuiKeymap(renderer)
   registerDefaultKeys(keymap)
-  keymapsByRenderer.set(renderer, keymap)
-
-  renderer.once(CliRenderEvents.DESTROY, () => {
-    keymapsByRenderer.delete(renderer)
-  })
-
   return keymap
 }

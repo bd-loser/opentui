@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { createHtmlKeymapEvent, getKeymap, normalizeHtmlKeyName } from "./html.js"
+import { createDefaultHtmlKeymap as getKeymap, createHtmlKeymap, createHtmlKeymapEvent, normalizeHtmlKeyName } from "./html.js"
 
 type Listener = (event: unknown) => void
 
@@ -158,11 +158,39 @@ describe("html keymap adapter", () => {
     expect(event.super).toBe(true)
   })
 
-  test("returns the same keymap for the same root element", () => {
-    const first = getKeymap(root as unknown as HTMLElement)
-    const second = getKeymap(root as unknown as HTMLElement)
+  test("createHtmlKeymap returns a fresh keymap for each call", () => {
+    const first = createHtmlKeymap(root as unknown as HTMLElement)
+    const second = createHtmlKeymap(root as unknown as HTMLElement)
 
-    expect(first).toBe(second)
+    expect(first).not.toBe(second)
+  })
+
+  test("createHtmlKeymap stays bare until addons are installed", () => {
+    const keymap = createHtmlKeymap(root as unknown as HTMLElement)
+    const calls: string[] = []
+
+    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() { calls.push("noop") } }] })
+
+    expect(() => {
+      keymap.registerLayer({
+        scope: "global",
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+    }).not.toThrow()
+
+    root.emit("keydown", new FakeKeyboardEvent("x"))
+    expect(calls).toEqual([])
+    expect(keymap.getActiveKeys()).toEqual([])
+
+    const configuredKeymap = getKeymap(root as unknown as HTMLElement)
+    configuredKeymap.registerLayer({
+      scope: "global",
+      commands: [{ name: "configured", run() { calls.push("configured") } }],
+      bindings: [{ key: "x", cmd: "configured" }],
+    })
+
+    root.emit("keydown", new FakeKeyboardEvent("x"))
+    expect(calls).toEqual(["configured"])
   })
 
   test("supports focus-within layers on regular HTML targets", () => {

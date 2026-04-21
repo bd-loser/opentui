@@ -9,8 +9,7 @@ import {
   type Renderable,
   type TextareaAction,
 } from "@opentui/core"
-import type { BindingInput, Bindings, CommandDefinition, CommandContext, Layer } from "../../index.js"
-import { getKeymap } from "../../opentui.js"
+import type { BindingInput, Bindings, CommandDefinition, CommandContext, Keymap, Layer } from "../../index.js"
 
 interface KeyBindingLike {
   name: string
@@ -204,8 +203,10 @@ function getLiveRenderer(renderer: CliRenderer): CliRenderer {
  * focus change. Reference-counted per `Keymap`; prefer
  * `registerManagedTextareaLayer` unless you need this separately.
  */
-export function registerTextareaMappingSuspension(renderer: CliRenderer): () => void {
-  const keymap = getKeymap(renderer)
+export function registerTextareaMappingSuspension(
+  keymap: Keymap<Renderable, KeyEvent>,
+  renderer: CliRenderer,
+): () => void {
 
   return keymap.acquireResource(TEXTAREA_MAPPING_SUSPENSION_RESOURCE, () => {
     const previousSuspendStates = new WeakMap<TextareaRenderable, boolean>()
@@ -400,9 +401,12 @@ function createEditBufferCommands(
  * `registerManagedTextareaLayer` unless you need the commands without the
  * default bindings or textarea suspension.
  */
-export function registerEditBufferCommands(renderer: CliRenderer, options?: EditBufferCommandOptions): () => void {
+export function registerEditBufferCommands(
+  keymap: Keymap<Renderable, KeyEvent>,
+  renderer: CliRenderer,
+  options?: EditBufferCommandOptions,
+): () => void {
   const descriptions = resolveEditBufferCommandDescriptions(options)
-  const keymap = getKeymap(renderer)
 
   return keymap.acquireResource(EDIT_BUFFER_COMMANDS_RESOURCE, () => {
     return keymap.registerLayer({ scope: "global", commands: createEditBufferCommands(renderer, descriptions) })
@@ -416,14 +420,14 @@ export function registerEditBufferCommands(renderer: CliRenderer, options?: Edit
  * lower-level helpers because they are reference-counted.
  */
 export function registerManagedTextareaLayer(
+  keymap: Keymap<Renderable, KeyEvent>,
   renderer: CliRenderer,
   layer: ManagedTextareaLayer,
   options?: EditBufferCommandOptions,
 ): () => void {
   const descriptions = resolveEditBufferCommandDescriptions(options)
-  const keymap = getKeymap(renderer)
-  const offCommands = registerEditBufferCommands(renderer, options)
-  const offSuspension = registerTextareaMappingSuspension(renderer)
+  const offCommands = registerEditBufferCommands(keymap, renderer, options)
+  const offSuspension = registerTextareaMappingSuspension(keymap, renderer)
 
   try {
     const { bindings, ...rest } = layer

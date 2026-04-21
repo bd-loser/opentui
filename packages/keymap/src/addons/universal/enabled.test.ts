@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import { registerEnabledField } from "@opentui/keymap/addons"
-import { getKeymap } from "@opentui/keymap/opentui"
+import { createDefaultOpenTuiKeymap as getKeymap } from "@opentui/keymap/opentui"
 
 let renderer: TestRenderer
 let mockInput: MockInput
+let keymap: ReturnType<typeof getKeymap>
 
 function getActiveKeyNames(): string[] {
-  return getKeymap(renderer)
+  return keymap
     .getActiveKeys()
     .map((candidate) => candidate.stroke.name)
     .sort()
@@ -18,6 +19,7 @@ describe("enabled addon", () => {
     const testSetup = await createTestRenderer({ width: 40, height: 10 })
     renderer = testSetup.renderer
     mockInput = testSetup.mockInput
+    keymap = getKeymap(renderer)
   })
 
   afterEach(() => {
@@ -25,7 +27,6 @@ describe("enabled addon", () => {
   })
 
   test("ignores enabled layer fields until the addon is registered", () => {
-    const keymap = getKeymap(renderer)
     const calls: string[] = []
 
     keymap.registerLayer({
@@ -56,7 +57,6 @@ describe("enabled addon", () => {
   })
 
   test("registers boolean and predicate enabled values", () => {
-    const keymap = getKeymap(renderer)
     const calls: string[] = []
     let enabled = false
 
@@ -107,7 +107,6 @@ describe("enabled addon", () => {
   })
 
   test("supports reactive enabled matchers and unsubscribes on layer unregister", () => {
-    const keymap = getKeymap(renderer)
     let current = false
     const listeners = new Set<() => void>()
     let evaluations = 0
@@ -172,7 +171,6 @@ describe("enabled addon", () => {
   })
 
   test("clears pending sequences when enabled stops matching", () => {
-    const keymap = getKeymap(renderer)
     let enabled = true
 
     registerEnabledField(keymap)
@@ -194,7 +192,6 @@ describe("enabled addon", () => {
   })
 
   test("rejects invalid enabled values and can be disposed", () => {
-    const keymap = getKeymap(renderer)
     const offEnabled = registerEnabledField(keymap)
     const calls: string[] = []
     const errors: string[] = []
@@ -244,7 +241,6 @@ describe("enabled addon", () => {
   })
 
   test("treats thrown enabled predicates as disabled", () => {
-    const keymap = getKeymap(renderer)
     const calls: string[] = []
 
     registerEnabledField(keymap)

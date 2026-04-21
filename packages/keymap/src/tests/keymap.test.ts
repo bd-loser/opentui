@@ -43,6 +43,12 @@ function getActiveKeyNames(keymap: OpenTuiKeymap): string[] {
     .sort()
 }
 
+function getParserKeymap(): OpenTuiKeymap {
+  const keymap = createOpenTuiKeymap(renderer)
+  addons.registerDefaultKeys(keymap)
+  return keymap
+}
+
 function getCommand(keymap: OpenTuiKeymap, name: string) {
   return keymap.getCommands().find((candidate) => candidate.name === name)
 }
@@ -223,6 +229,35 @@ describe("keymap", () => {
 
     mockInput.pressKey("x")
     expect(calls).toEqual(["noop"])
+  })
+
+  test("createDefaultOpenTuiKeymap installs metadata fields", () => {
+    const keymap = getKeymap(renderer)
+    const { warnings } = captureDiagnostics(keymap)
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "save-file",
+          desc: "Save file",
+          title: "Save",
+          category: "File",
+          run() {},
+        },
+      ],
+    })
+
+    keymap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
+    })
+
+    const activeKey = getActiveKey(keymap, "x", { includeMetadata: true })
+
+    expect(activeKey?.bindingAttrs).toEqual({ desc: "Write current file", group: "File" })
+    expect(activeKey?.commandAttrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
+    expect(warnings).toEqual([])
   })
 
   test("keeps non-renderer state and throws on renderer-backed reads after renderer destroy", () => {
@@ -507,12 +542,6 @@ describe("keymap", () => {
     const target = createFocusableBox("layer-command-target")
 
     renderer.root.add(target)
-
-    keymap.registerCommandFields({
-      desc(value, ctx) {
-        ctx.attr("desc", value)
-      },
-    })
 
     keymap.registerLayer({
       scope: "global",
@@ -2128,15 +2157,6 @@ describe("keymap", () => {
   test("supports binding metadata attributes through typed fields", () => {
     const keymap = getKeymap(renderer)
 
-    keymap.registerBindingFields({
-      desc(value, ctx) {
-        ctx.attr("desc", value)
-      },
-      group(value, ctx) {
-        ctx.attr("group", value)
-      },
-    })
-
     keymap.registerLayer({
       scope: "global",
       commands: [
@@ -2975,18 +2995,6 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
     const seen: Record<string, unknown>[] = []
 
-    keymap.registerCommandFields({
-      desc(value, ctx) {
-        ctx.attr("desc", value)
-      },
-      title(value, ctx) {
-        ctx.attr("title", value)
-      },
-      category(value, ctx) {
-        ctx.attr("category", value)
-      },
-    })
-
     keymap.registerLayer({
       scope: "global",
       commands: [
@@ -3025,7 +3033,7 @@ describe("keymap", () => {
   })
 
   test("getCommands searches names by default and returns raw fields plus compiled attrs", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getParserKeymap()
 
     keymap.registerCommandFields({
       title(value, ctx) {
@@ -3082,7 +3090,7 @@ describe("keymap", () => {
   })
 
   test("getCommands supports namespace and filter queries across raw fields and attrs", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getParserKeymap()
 
     keymap.registerCommandFields({
       title(value, ctx) {
@@ -3345,26 +3353,6 @@ describe("keymap", () => {
 
   test("keeps active key projections isolated across repeated reads", () => {
     const keymap = getKeymap(renderer)
-
-    keymap.registerBindingFields({
-      desc(value, ctx) {
-        ctx.attr("desc", value)
-      },
-      group(value, ctx) {
-        ctx.attr("group", value)
-      },
-    })
-    keymap.registerCommandFields({
-      desc(value, ctx) {
-        ctx.attr("desc", value)
-      },
-      title(value, ctx) {
-        ctx.attr("title", value)
-      },
-      category(value, ctx) {
-        ctx.attr("category", value)
-      },
-    })
 
     keymap.registerLayer({
       scope: "global",
@@ -4154,7 +4142,7 @@ describe("keymap", () => {
   })
 
   test("skips bindings with conflicting attributes from typed binding fields", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getParserKeymap()
     const { errors } = captureDiagnostics(keymap)
 
     keymap.registerBindingFields({
@@ -4239,7 +4227,7 @@ describe("keymap", () => {
   })
 
   test("stores raw command fields without requiring command field compilers", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getParserKeymap()
     const calls: string[] = []
 
     expect(() => {
@@ -4713,7 +4701,7 @@ describe("keymap", () => {
   })
 
   test("skips commands with conflicting attributes from typed command fields", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getParserKeymap()
     const { errors } = captureDiagnostics(keymap)
 
     keymap.registerCommandFields({
@@ -4773,12 +4761,6 @@ describe("keymap", () => {
 
   test("allows a non-dispatch binding to label a prefix", () => {
     const keymap = getKeymap(renderer)
-
-    keymap.registerBindingFields({
-      group(value, ctx) {
-        ctx.attr("group", value)
-      },
-    })
 
     keymap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
     keymap.registerLayer({
@@ -5618,7 +5600,7 @@ describe("keymap", () => {
     expect(getActiveKeyNames(keymap)).toContain("y")
 
     const offCommandFields = keymap.registerCommandFields({
-      desc(value, ctx) {
+      summary(value, ctx) {
         ctx.attr("desc", value)
       },
     })
@@ -5630,7 +5612,7 @@ describe("keymap", () => {
         commands: [
           {
             name: "noop-with-desc",
-            desc: "No operation",
+            summary: "No operation",
             run() {},
           },
         ],
@@ -5650,17 +5632,6 @@ describe("keymap", () => {
     const target = createFocusableBox("dispatch-active-target")
 
     renderer.root.add(target)
-
-    keymap.registerBindingFields({
-      desc(value, ctx) {
-        ctx.attr("desc", value)
-      },
-    })
-    keymap.registerCommandFields({
-      category(value, ctx) {
-        ctx.attr("category", value)
-      },
-    })
 
     keymap.registerLayer({
       scope: "global",

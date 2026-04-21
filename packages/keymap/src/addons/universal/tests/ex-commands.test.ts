@@ -161,18 +161,6 @@ describe("ex commands addon", () => {
   test("forwards extra command fields into registered ex commands", () => {
     const keymap = getKeymap(renderer)
 
-    keymap.registerCommandFields({
-      desc(value, ctx) {
-        ctx.attr("desc", value)
-      },
-      title(value, ctx) {
-        ctx.attr("title", value)
-      },
-      category(value, ctx) {
-        ctx.attr("category", value)
-      },
-    })
-
     registerExCommands(keymap, [
       {
         name: "write",

@@ -198,6 +198,39 @@ describe("html keymap adapter", () => {
     expect(calls).toEqual(["configured"])
   })
 
+  test("createDefaultHtmlKeymap installs metadata fields", () => {
+    const keymap = getKeymap(root as unknown as HTMLElement)
+    const warnings: string[] = []
+
+    keymap.on("warning", (event) => {
+      warnings.push(event.message)
+    })
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "save-file",
+          desc: "Save file",
+          title: "Save",
+          category: "File",
+          run() {},
+        },
+      ],
+    })
+
+    keymap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
+    })
+
+    const activeKey = keymap.getActiveKeys({ includeMetadata: true }).find((candidate) => candidate.stroke.name === "x")
+
+    expect(activeKey?.bindingAttrs).toEqual({ desc: "Write current file", group: "File" })
+    expect(activeKey?.commandAttrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
+    expect(warnings).toEqual([])
+  })
+
   test("supports focus-within layers on regular HTML targets", () => {
     const keymap = getKeymap(root as unknown as HTMLElement)
     const panel = root.append(new FakeElement("panel", document))

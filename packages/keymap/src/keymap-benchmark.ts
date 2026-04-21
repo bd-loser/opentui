@@ -461,8 +461,6 @@ function setupStateChangeFocusChurn(resources: ScenarioResources): {
 }
 
 function setupMetadataFocusTree(resources: ScenarioResources): BoxRenderable[] {
-  addons.registerMetadataFields(resources.keymap)
-
   const commands = Array.from({ length: 36 + 300 + 150 }, (_, index) => ({
     name: `metadata-command-${index}`,
     title: `Action ${index}`,

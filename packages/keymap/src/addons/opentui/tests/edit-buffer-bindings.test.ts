@@ -7,7 +7,6 @@ import {
   registerManagedTextareaLayer,
   registerTextareaMappingSuspension,
 } from "@opentui/keymap/addons/opentui"
-import { registerMetadataFields } from "@opentui/keymap/addons"
 import { createDefaultOpenTuiKeymap as getKeymap } from "@opentui/keymap/opentui"
 
 let renderer: TestRenderer
@@ -398,7 +397,6 @@ describe("edit buffer bindings addon", () => {
   test("registerEditBufferCommands applies custom command descriptions when metadata fields are registered", () => {
     const keymap = getKeymap(renderer)
 
-    registerMetadataFields(keymap)
     registerEditBufferCommands(keymap, renderer, {
       descriptions: {
         "delete-line": "Supprimer la ligne",
@@ -418,7 +416,6 @@ describe("edit buffer bindings addon", () => {
   test("registerManagedTextareaLayer applies custom descriptions to generated default bindings", () => {
     const keymap = getKeymap(renderer)
 
-    registerMetadataFields(keymap)
     const off = registerManagedTextareaLayer(
       keymap,
       renderer,

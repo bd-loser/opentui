@@ -1,9 +1,15 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type TestRenderer } from "@opentui/core/testing"
-import { registerMetadataFields } from "@opentui/keymap/addons"
-import { createDefaultOpenTuiKeymap as getKeymap } from "@opentui/keymap/opentui"
+import { registerDefaultKeys, registerMetadataFields } from "@opentui/keymap/addons"
+import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
 
 let renderer: TestRenderer
+
+function getKeymap() {
+  const keymap = createOpenTuiKeymap(renderer)
+  registerDefaultKeys(keymap)
+  return keymap
+}
 
 describe("metadata addon", () => {
   beforeEach(async () => {
@@ -16,7 +22,7 @@ describe("metadata addon", () => {
   })
 
   test("registers binding and command metadata fields", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getKeymap()
     registerMetadataFields(keymap)
 
     keymap.registerLayer({
@@ -45,7 +51,7 @@ describe("metadata addon", () => {
   })
 
   test("exposes generic binding and command metadata through includeMetadata", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getKeymap()
     registerMetadataFields(keymap)
 
     keymap.registerLayer({
@@ -75,7 +81,7 @@ describe("metadata addon", () => {
   })
 
   test("can include both metadata and bindings", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getKeymap()
     registerMetadataFields(keymap)
 
     keymap.registerLayer({
@@ -106,7 +112,7 @@ describe("metadata addon", () => {
   })
 
   test("normalizes metadata strings and rejects invalid values", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getKeymap()
     const errors: string[] = []
 
     keymap.on("error", (event) => {
@@ -166,7 +172,7 @@ describe("metadata addon", () => {
   })
 
   test("can be disposed to stop compiling metadata fields", () => {
-    const keymap = getKeymap(renderer)
+    const keymap = getKeymap()
     const offMetadata = registerMetadataFields(keymap)
 
     offMetadata()

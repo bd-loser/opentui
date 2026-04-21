@@ -82,13 +82,48 @@ describe("keymap addon composition", () => {
     keymap.registerLayer({
       scope: "global",
       commands: [
-        { name: "focus-next", run() { focusOffset(1) } },
-        { name: "focus-prev", run() { focusOffset(-1) } },
-        { name: "alpha-inc", run() { alphaCount += 1 } },
-        { name: "alpha-dec", run() { alphaCount -= 1 } },
-        { name: "beta-inc", run() { betaCount += 5 } },
-        { name: "beta-dec", run() { betaCount -= 5 } },
-        { name: "write-session-log", run() { actions.push("session.log") } },
+        {
+          name: "focus-next",
+          run() {
+            focusOffset(1)
+          },
+        },
+        {
+          name: "focus-prev",
+          run() {
+            focusOffset(-1)
+          },
+        },
+        {
+          name: "alpha-inc",
+          run() {
+            alphaCount += 1
+          },
+        },
+        {
+          name: "alpha-dec",
+          run() {
+            alphaCount -= 1
+          },
+        },
+        {
+          name: "beta-inc",
+          run() {
+            betaCount += 5
+          },
+        },
+        {
+          name: "beta-dec",
+          run() {
+            betaCount -= 5
+          },
+        },
+        {
+          name: "write-session-log",
+          run() {
+            actions.push("session.log")
+          },
+        },
       ],
       bindings: [
         { key: "tab", cmd: "focus-next" },

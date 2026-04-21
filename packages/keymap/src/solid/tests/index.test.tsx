@@ -24,14 +24,7 @@ async function testRender(node: () => JSX.Element, renderConfig: TestRendererOpt
   })
 
   const keymap = createDefaultOpenTuiKeymap(testSetup.renderer)
-  await render(
-    () => (
-      <KeymapProvider keymap={keymap}>
-        {node()}
-      </KeymapProvider>
-    ),
-    testSetup.renderer,
-  )
+  await render(() => <KeymapProvider keymap={keymap}>{node()}</KeymapProvider>, testSetup.renderer)
 
   return testSetup
 }

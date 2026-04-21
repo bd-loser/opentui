@@ -449,7 +449,7 @@ describe("edit buffer bindings addon", () => {
     })
 
     expect(() => {
-        registerEditBufferCommands(keymap, renderer, {
+      registerEditBufferCommands(keymap, renderer, {
         descriptions: {
           "move-left": "Curseur gauche",
         },

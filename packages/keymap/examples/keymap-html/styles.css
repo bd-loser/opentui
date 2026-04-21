@@ -20,7 +20,8 @@
   --tn-red: #f7768e;
   --tn-orange: #ff9e64;
 
-  --tn-mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --tn-mono:
+    "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 
   font-family: var(--tn-mono);
   font-size: 14px;
@@ -39,8 +40,7 @@ body {
   background:
     radial-gradient(circle at 12% 8%, rgba(122, 162, 247, 0.18), transparent 32%),
     radial-gradient(circle at 88% 6%, rgba(187, 154, 247, 0.16), transparent 34%),
-    radial-gradient(circle at 70% 90%, rgba(125, 207, 255, 0.10), transparent 40%),
-    var(--tn-bg);
+    radial-gradient(circle at 70% 90%, rgba(125, 207, 255, 0.1), transparent 40%), var(--tn-bg);
 }
 
 /* Keycap */
@@ -73,7 +73,9 @@ kbd {
   filter: blur(2px) saturate(0.75) brightness(0.6);
   opacity: 0.55;
   pointer-events: none;
-  transition: filter 120ms ease, opacity 120ms ease;
+  transition:
+    filter 120ms ease,
+    opacity 120ms ease;
 }
 
 .hero {
@@ -235,7 +237,9 @@ kbd {
 
 .panel {
   outline: none;
-  transition: border-color 120ms ease, background-color 120ms ease;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
 }
 
 .panel:focus,

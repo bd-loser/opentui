@@ -208,7 +208,17 @@ describe("keymap", () => {
     const keymap = createOpenTuiKeymap(renderer)
     const calls: string[] = []
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() { calls.push("noop") } }] })
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "noop",
+          run() {
+            calls.push("noop")
+          },
+        },
+      ],
+    })
 
     expect(() => {
       keymap.registerLayer({

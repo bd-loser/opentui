@@ -174,7 +174,17 @@ describe("html keymap adapter", () => {
     const keymap = createHtmlKeymap(root as unknown as HTMLElement)
     const calls: string[] = []
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() { calls.push("noop") } }] })
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "noop",
+          run() {
+            calls.push("noop")
+          },
+        },
+      ],
+    })
 
     expect(() => {
       keymap.registerLayer({
@@ -190,7 +200,14 @@ describe("html keymap adapter", () => {
     const configuredKeymap = getKeymap(root as unknown as HTMLElement)
     configuredKeymap.registerLayer({
       scope: "global",
-      commands: [{ name: "configured", run() { calls.push("configured") } }],
+      commands: [
+        {
+          name: "configured",
+          run() {
+            calls.push("configured")
+          },
+        },
+      ],
       bindings: [{ key: "x", cmd: "configured" }],
     })
 

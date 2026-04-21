@@ -698,7 +698,7 @@ describe("keymap", () => {
     expect(getActiveKey(keymap, "x")?.command).toBeUndefined()
     expect(warnings).toEqual([])
     expect(keymap.runCommand("external-run")).toEqual({ ok: false, reason: "error" })
-    expect(errors).toHaveLength(2)
+    expect(errors).toHaveLength(1)
     expect(errors.every((message) => message.includes('Error in command resolver for "external-run":'))).toBe(true)
   })
 
@@ -4311,31 +4311,6 @@ describe("keymap", () => {
     ])
   })
 
-  test("emits unresolved string command warnings", () => {
-    const keymap = getKeymap(renderer)
-    const { warningEvents, warnings } = captureDiagnostics(keymap)
-
-    keymap.registerLayer({
-      scope: "global",
-      bindings: [{ key: "x", cmd: "missing-command" }],
-    })
-
-    expect(warnings).toEqual(['[Keymap] Unresolved command "missing-command" for binding "x" in global layer'])
-    expect(warningEvents).toHaveLength(1)
-    expect(warningEvents[0]).toMatchObject({
-      code: "unresolved-command",
-      warning: {
-        command: "missing-command",
-        scope: "global",
-        target: undefined,
-        binding: {
-          cmd: "missing-command",
-          key: "x",
-        },
-      },
-    })
-  })
-
   test("does not warn about dead metadata-only bindings by default", () => {
     const keymap = getKeymap(renderer)
     const { warnings } = captureDiagnostics(keymap)
@@ -4459,37 +4434,6 @@ describe("keymap", () => {
     expect(errorEvents).toHaveLength(1)
     expect(errorEvents[0]?.code).toBe("layer-analyzer-error")
     expect(errorEvents[0]?.error).toBeInstanceOf(Error)
-  })
-
-  test("notifies unresolved command listeners with command, binding, scope, and target context", () => {
-    const keymap = getKeymap(renderer)
-    const target = createFocusableBox("unresolved-target")
-    const calls: Array<{ command: string; binding: string; scope: string; targetId?: string }> = []
-
-    renderer.root.add(target)
-
-    keymap.on("unresolvedCommand", (ctx) => {
-      calls.push({
-        command: ctx.command,
-        binding: stringifyKeySequence(ctx.binding.sequence, { preferDisplay: true }),
-        scope: ctx.scope,
-        targetId: ctx.target?.id,
-      })
-    })
-
-    keymap.registerLayer({
-      target,
-      bindings: [{ key: "x", cmd: "missing-command" }],
-    })
-
-    expect(calls).toEqual([
-      {
-        command: "missing-command",
-        binding: "x",
-        scope: "focus-within",
-        targetId: "unresolved-target",
-      },
-    ])
   })
 
   test("emits runtime matcher failures as errors", () => {

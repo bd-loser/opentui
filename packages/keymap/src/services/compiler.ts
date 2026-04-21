@@ -1,4 +1,3 @@
-import type { CommandCatalogService } from "./command-catalog.js"
 import type { ConditionService } from "./conditions.js"
 import type { State } from "./state.js"
 import type { NotificationService } from "./notify.js"
@@ -85,7 +84,6 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
   constructor(
     private readonly state: State<TTarget, TEvent>,
     private readonly notify: NotificationService<TTarget, TEvent>,
-    private readonly commands: CommandCatalogService<TTarget, TEvent>,
     private readonly conditions: ConditionService<TTarget, TEvent>,
     private readonly options: CompilerOptions,
   ) {}
@@ -105,7 +103,6 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     sourceTarget: TTarget | undefined,
     sourceLayerOrder: number,
     compileFields?: Readonly<Record<string, unknown>>,
-    commandLookup?: ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>>,
   ): CompiledBindingsResult<TTarget, TEvent> {
     const root = createSequenceNode<TTarget, TEvent>(null, null, null)
     const compiledBindings: CompiledBinding<TTarget, TEvent>[] = []
@@ -255,8 +252,6 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
 
             if (typeof command === "function") {
               compiledBinding.run = command
-            } else {
-              commands.warnIfBindingCommandIsCurrentlyUnresolved(compiledBinding, commandLookup)
             }
 
             if (compiledSequence.length === 0) {

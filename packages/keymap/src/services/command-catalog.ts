@@ -1,4 +1,3 @@
-import type { Emitter } from "../lib/emitter.js"
 import { RESERVED_COMMAND_FIELDS } from "../schema.js"
 import type {
   Attributes,
@@ -7,6 +6,7 @@ import type {
   CommandDefinition,
   CommandFieldCompiler,
   CommandFieldContext,
+  CommandResolutionStatus,
   CommandQuery,
   CommandQueryValue,
   CommandRecord,
@@ -14,20 +14,17 @@ import type {
   CommandResolverContext,
   CommandResult,
   CompiledBinding,
-  Hooks,
   KeymapEvent,
   KeymapHost,
   RegisteredCommand,
   ResolvedBindingCommand,
 } from "../types.js"
 import { getActiveLayersForFocused, getFocusedTargetIfAvailable } from "./primitives/active-layers.js"
-import { snapshotParsedBindingInput } from "./primitives/binding-inputs.js"
 import type { ConditionService } from "./conditions.js"
 import { mergeAttribute } from "./primitives/field-invariants.js"
 import type { NotificationService } from "./notify.js"
 import type { ActiveCommandView, LayerCommandEntry, ResolvedCommandEntry, State } from "./state.js"
 import { getErrorMessage, snapshotDataValue } from "./values.js"
-import { stringifyKeySequence } from "./keys.js"
 
 const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const
 
@@ -100,7 +97,6 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     private readonly host: KeymapHost<TTarget, TEvent>,
     private readonly notify: NotificationService<TTarget, TEvent>,
     private readonly conditions: ConditionService<TTarget, TEvent>,
-    private readonly hooks: Emitter<Hooks<TTarget, TEvent>>,
     private readonly options: CommandCatalogOptions,
   ) {}
 
@@ -288,26 +284,20 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     return fallback?.resolved.attrs
   }
 
-  public warnIfBindingCommandIsCurrentlyUnresolved(
-    binding: CompiledBinding<TTarget, TEvent>,
+  public getCommandResolutionStatus(
+    command: string,
     layerCommands?: ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>>,
-  ): void {
-    const command = binding.command
-    if (typeof command !== "string") {
-      return
-    }
-
+  ): CommandResolutionStatus {
     if (layerCommands?.has(command) || this.state.commands.registeredNames.has(command)) {
-      return
+      return "resolved"
     }
 
-    const focused = getFocusedTargetIfAvailable(this.host)
-    const lookup = this.resolveCommandWithResolvers(command, focused)
+    const lookup = this.resolveCommandWithResolvers(command, getFocusedTargetIfAvailable(this.host))
     if (lookup.resolved || lookup.hadError) {
-      return
+      return lookup.resolved ? "resolved" : "error"
     }
 
-    this.handleUnresolvedCommand(command, binding)
+    return "unresolved"
   }
 
   private mutateCommandResolvers(register: () => () => void, resolver: CommandResolver<TTarget, TEvent>): () => void {
@@ -454,34 +444,6 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
         return this.getTopCommandRecord(name, focused)
       },
     }
-  }
-
-  private handleUnresolvedCommand(command: string, binding: CompiledBinding<TTarget, TEvent>): void {
-    const sequence = stringifyKeySequence(binding.sourceBinding.sequence, { preferDisplay: true })
-    const warningKey = `unresolved:${binding.sourceLayerOrder}:${binding.sourceBindingIndex}:${command}:${sequence}`
-
-    this.notify.warnOnce(
-      warningKey,
-      "unresolved-command",
-      {
-        binding: snapshotParsedBindingInput(binding.sourceBinding),
-        command,
-        scope: binding.sourceScope,
-        target: binding.sourceTarget,
-      },
-      `[Keymap] Unresolved command "${command}" for binding "${sequence}" in ${binding.sourceScope} layer`,
-    )
-
-    if (!this.hooks.has("unresolvedCommand")) {
-      return
-    }
-
-    this.hooks.emit("unresolvedCommand", {
-      command,
-      binding: snapshotParsedBindingInput(binding.sourceBinding),
-      scope: binding.sourceScope,
-      target: binding.sourceTarget,
-    })
   }
 }
 

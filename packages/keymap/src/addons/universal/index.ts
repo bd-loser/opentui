@@ -16,6 +16,7 @@ export { registerExCommands } from "./ex-commands.js"
 export { registerLeader } from "./leader.js"
 export { registerMetadataFields } from "./metadata.js"
 export { registerTimedLeader } from "./timed-leader.js"
+export { registerUnresolvedCommandWarnings } from "./unresolved-commands.js"
 
 export type { Aliases } from "./aliases.js"
 export type { BackspacePopsPendingSequenceOptions } from "./backspace-pops-pending-sequence.js"

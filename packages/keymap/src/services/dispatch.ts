@@ -33,7 +33,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     private readonly compiler: CompilerService<TTarget, TEvent>,
   ) {
     this.eventMatchResolverContext = {
-      match: (key) => {
+      resolveKey: (key) => {
         return this.compiler.parseTokenKey(key).match
       },
     }

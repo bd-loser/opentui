@@ -79,7 +79,7 @@ function captureDiagnostics(keymap: OpenTuiKeymap): {
 }
 
 function matchEventAs(ctx: EventMatchResolverContext, event: KeyEvent, name: string): symbol {
-  return ctx.match({
+  return ctx.resolveKey({
     name,
     ctrl: event.ctrl,
     shift: event.shift,
@@ -1010,7 +1010,7 @@ describe("keymap", () => {
         return undefined
       }
 
-      return [ctx.match("@")]
+      return [ctx.resolveKey("@")]
     })
 
     keymap.registerLayer({
@@ -1572,7 +1572,7 @@ describe("keymap", () => {
         return undefined
       }
 
-      return [ctx.match({ name: " RETURN " })]
+      return [ctx.resolveKey({ name: " RETURN " })]
     })
 
     keymap.registerLayer({
@@ -1609,7 +1609,7 @@ describe("keymap", () => {
         return undefined
       }
 
-      return [ctx.match("[Leader]")]
+      return [ctx.resolveKey("[Leader]")]
     })
 
     keymap.registerToken({ name: "[Leader]", key: { name: "z" } })
@@ -2186,7 +2186,7 @@ describe("keymap", () => {
           throw new Error('Keymap binding field "active" must be true')
         }
 
-        ctx.match(() => enabled)
+        ctx.activeWhen(() => enabled)
       },
     })
 
@@ -2232,7 +2232,7 @@ describe("keymap", () => {
           throw new Error('Keymap binding field "active" must be true')
         }
 
-        ctx.match(() => enabled)
+        ctx.activeWhen(() => enabled)
         ctx.attr("label", "Runtime binding")
       },
     })
@@ -2262,7 +2262,7 @@ describe("keymap", () => {
           throw new Error('Keymap binding field "active" must be true')
         }
 
-        ctx.match(() => enabled)
+        ctx.activeWhen(() => enabled)
       },
     })
 
@@ -2292,7 +2292,7 @@ describe("keymap", () => {
           throw new Error('Keymap binding field "active" must be true')
         }
 
-        ctx.match(() => {
+        ctx.activeWhen(() => {
           throw new Error("boom")
         })
       },
@@ -2335,7 +2335,7 @@ describe("keymap", () => {
           throw new Error('Keymap binding field "active" must be true')
         }
 
-        ctx.match({
+        ctx.activeWhen({
           get() {
             evaluations += 1
             return enabled.get()
@@ -2397,7 +2397,7 @@ describe("keymap", () => {
 
     keymap.registerLayerFields({
       active(_value, ctx) {
-        ctx.match(enabled)
+        ctx.activeWhen(enabled)
       },
     })
 
@@ -2428,7 +2428,7 @@ describe("keymap", () => {
 
     keymap.registerLayerFields({
       active(_value, ctx) {
-        ctx.match(enabled)
+        ctx.activeWhen(enabled)
       },
     })
 
@@ -2457,7 +2457,7 @@ describe("keymap", () => {
 
     keymap.registerLayerFields({
       first(_value, ctx) {
-        ctx.match({
+        ctx.activeWhen({
           get() {
             firstEvals += 1
             return firstEnabled.get()
@@ -2466,7 +2466,7 @@ describe("keymap", () => {
         })
       },
       second(_value, ctx) {
-        ctx.match({
+        ctx.activeWhen({
           get() {
             secondEvals += 1
             return secondEnabled.get()
@@ -2521,7 +2521,7 @@ describe("keymap", () => {
 
     keymap.registerLayerFields({
       active(_value, ctx) {
-        ctx.match(badMatcher)
+        ctx.activeWhen(badMatcher)
       },
     })
 
@@ -2559,7 +2559,7 @@ describe("keymap", () => {
 
     keymap.registerLayerFields({
       active(_value, ctx) {
-        ctx.match(badMatcher)
+        ctx.activeWhen(badMatcher)
       },
     })
 
@@ -2592,7 +2592,7 @@ describe("keymap", () => {
 
     keymap.registerLayerFields({
       active(_value, ctx) {
-        ctx.match(badMatcher)
+        ctx.activeWhen(badMatcher)
       },
     })
 
@@ -2623,7 +2623,7 @@ describe("keymap", () => {
         ctx.require("vim.mode", value)
       },
       active(_value, ctx) {
-        ctx.match(enabled)
+        ctx.activeWhen(enabled)
       },
     })
 
@@ -2658,7 +2658,7 @@ describe("keymap", () => {
 
     keymap.registerLayerFields({
       active(_value, ctx) {
-        ctx.match(() => {
+        ctx.activeWhen(() => {
           evaluations += 1
           return enabled
         })
@@ -2692,7 +2692,7 @@ describe("keymap", () => {
 
     keymap.registerLayerFields({
       active(_value, ctx) {
-        ctx.match(42 as unknown as () => boolean)
+        ctx.activeWhen(42 as unknown as () => boolean)
       },
     })
 
@@ -2715,7 +2715,7 @@ describe("keymap", () => {
 
     keymap.registerBindingFields({
       active(_value, ctx) {
-        ctx.match(enabled)
+        ctx.activeWhen(enabled)
       },
     })
 
@@ -2797,7 +2797,7 @@ describe("keymap", () => {
           throw new Error('Keymap layer field "active" must be true')
         }
 
-        ctx.match(() => enabled)
+        ctx.activeWhen(() => enabled)
       },
     })
 
@@ -2844,7 +2844,7 @@ describe("keymap", () => {
           throw new Error('Keymap layer field "active" must be true')
         }
 
-        ctx.match(() => enabled)
+        ctx.activeWhen(() => enabled)
       },
     })
 
@@ -2875,7 +2875,7 @@ describe("keymap", () => {
           throw new Error('Keymap layer field "active" must be true')
         }
 
-        ctx.match(enabled)
+        ctx.activeWhen(enabled)
       },
     })
 
@@ -4446,7 +4446,7 @@ describe("keymap", () => {
           throw new Error('Keymap binding field "active" must be true')
         }
 
-        ctx.match(() => {
+        ctx.activeWhen(() => {
           throw new Error("boom")
         })
       },

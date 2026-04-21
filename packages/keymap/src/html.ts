@@ -317,7 +317,7 @@ export function getKeymap(root: HTMLElement): Keymap<HTMLElement, HtmlKeymapEven
   const keymap = new Keymap(createHtmlKeymapHost(root))
   registerDefaultKeys(keymap)
   keymap.prependEventMatchResolver((event, ctx) => {
-    return getHtmlEventMatchInputs(event).map((candidate) => ctx.match(candidate))
+    return getHtmlEventMatchInputs(event).map((candidate) => ctx.resolveKey(candidate))
   })
   keymapsByRoot.set(root, keymap)
   return keymap

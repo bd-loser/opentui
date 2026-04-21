@@ -19,6 +19,10 @@ function getBaseLayoutKeyName(baseCode: number | undefined): string | undefined 
   }
 }
 
+/**
+ * Falls back to the event's base layout code so bindings can ignore active
+ * keyboard layout changes.
+ */
 export function registerBaseLayoutFallback(keymap: Keymap<Renderable, KeyEvent>): () => void {
   return keymap.appendEventMatchResolver((event, ctx) => {
     const name = getBaseLayoutKeyName(event.baseCode)

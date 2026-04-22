@@ -68,6 +68,7 @@ export interface KeySequencePart {
   stroke: NormalizedKeyStroke
   display: string
   match: KeyMatch
+  tokenName?: string
 }
 
 export interface StringifyOptions {
@@ -272,6 +273,7 @@ export interface ActiveKeyOptions {
 export interface ActiveKey<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   stroke: NormalizedKeyStroke
   display: string
+  tokenName?: string
   bindings?: ActiveBinding<TTarget, TEvent>[]
   bindingAttrs?: Readonly<Attributes>
   commandAttrs?: Readonly<Attributes>
@@ -357,6 +359,7 @@ export interface BindingParserContext {
     options?: {
       display?: string
       match?: KeyMatch
+      tokenName?: string
     },
   ): KeySequencePart
 }
@@ -527,6 +530,7 @@ export interface CompiledBinding<TTarget extends object = object, TEvent extends
 
 export interface ActiveKeySelection<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   display: string
+  tokenName?: string
   continues: boolean
   firstBinding?: CompiledBinding<TTarget, TEvent>
   commandBinding?: CompiledBinding<TTarget, TEvent>
@@ -537,6 +541,7 @@ export interface ActiveKeySelection<TTarget extends object = object, TEvent exte
 export interface ActiveKeyState<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   stroke: NormalizedKeyStroke
   display: string
+  tokenName?: string
   continues: boolean
   firstBinding?: CompiledBinding<TTarget, TEvent>
   commandBinding?: CompiledBinding<TTarget, TEvent>

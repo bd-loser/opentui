@@ -64,10 +64,12 @@ function parseObjectKeyInput(
   key: KeyStrokeInput,
   display?: string,
   match?: KeyMatch,
+  tokenName?: string,
 ): KeySequencePart {
   return ctx.parseObjectKey(key, {
     display,
     match,
+    tokenName,
   })
 }
 
@@ -213,7 +215,7 @@ export const defaultBindingParser: BindingParser = (ctx) => {
     const token = tokens.get(normalizedToken)
     if (token) {
       return {
-        parts: [parseObjectKeyInput(ctx, token.stroke, normalizedToken, token.match)],
+        parts: [parseObjectKeyInput(ctx, token.stroke, normalizedToken, token.match, normalizedToken)],
         nextIndex: input.length,
         usedTokens: [normalizedToken],
       }
@@ -247,7 +249,7 @@ export const defaultBindingParser: BindingParser = (ctx) => {
     }
 
     return {
-      parts: [parseObjectKeyInput(ctx, token.stroke, tokenName, token.match)],
+      parts: [parseObjectKeyInput(ctx, token.stroke, tokenName, token.match, tokenName)],
       nextIndex: end + 1,
       usedTokens: [tokenName],
     }

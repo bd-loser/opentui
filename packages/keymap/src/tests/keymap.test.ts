@@ -117,14 +117,15 @@ function createBracketTokenParser(options?: { preserveDisplayCase?: boolean }): 
       }
     }
 
-    return {
-      parts: [
-        parseObjectKey(token.stroke, {
-          display: options?.preserveDisplayCase ? tokenName : normalizedTokenName,
-          match: token.match,
-        }),
-      ],
-      nextIndex: end + 1,
+      return {
+        parts: [
+          parseObjectKey(token.stroke, {
+            display: options?.preserveDisplayCase ? tokenName : normalizedTokenName,
+            match: token.match,
+            tokenName: normalizedTokenName,
+          }),
+        ],
+        nextIndex: end + 1,
       usedTokens: [normalizedTokenName],
     }
   }
@@ -1499,6 +1500,12 @@ describe("keymap", () => {
       scope: "global",
       bindings: [{ key: "z", cmd: "submit" }],
     })
+
+    const activeKey = getActiveKey(keymap, "x", { includeBindings: true })
+
+    expect(activeKey?.display).toBe("[Leader]")
+    expect(activeKey?.tokenName).toBe("[leader]")
+    expect(activeKey?.bindings?.[0]?.sequence[0]?.tokenName).toBe("[leader]")
 
     mockInput.pressKey("x", { ctrl: true })
 
@@ -3843,6 +3850,7 @@ describe("keymap", () => {
       {
         stroke: { name: "x", ctrl: true, shift: false, meta: false, super: false },
         display: "<leader>",
+        tokenName: "<leader>",
       },
     ])
     expect(getActiveKey(keymap, "g")?.command).toBeUndefined()
@@ -3882,8 +3890,35 @@ describe("keymap", () => {
       ],
     })
 
-    expect(getActiveKeyDisplay(keymap, "<leader>")?.command).toBeUndefined()
-    expect(stringifyKeyStroke(getActiveKeyDisplay(keymap, "<leader>")!, { preferDisplay: true })).toBe("<leader>")
+    const activeKey = getActiveKeyDisplay(keymap, "<leader>", { includeBindings: true })
+
+    expect(activeKey?.command).toBeUndefined()
+    expect(activeKey?.tokenName).toBe("<leader>")
+    expect(activeKey?.bindings).toBeUndefined()
+    expect(stringifyKeyStroke(activeKey!, { preferDisplay: true })).toBe("<leader>")
+  })
+
+  test("clears active key token provenance when token and literal prefixes share a key", () => {
+    const keymap = getKeymap(renderer)
+
+    keymap.registerToken({ name: "<leader>", key: { name: "space" } })
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        { name: "token-command", run() {} },
+        { name: "literal-command", run() {} },
+      ],
+      bindings: [
+        { key: "<leader>s", cmd: "token-command" },
+        { key: " h", cmd: "literal-command" },
+      ],
+    })
+
+    const activeKey = getActiveKey(keymap, "space", { includeBindings: true })
+
+    expect(activeKey?.display).toBe("space")
+    expect(activeKey?.tokenName).toBeUndefined()
+    expect(activeKey?.bindings).toBeUndefined()
   })
 
   test("supports branching sequences", () => {

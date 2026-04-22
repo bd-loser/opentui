@@ -248,9 +248,12 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     const activeView = this.catalog.getActiveCommandView(focused)
 
     return nodes.map((candidate) => {
+      const presentation = this.getNodePresentation(candidate, focused, activeView)
+
       return createKeySequencePart(candidate.stroke!, {
-        display: this.getNodeDisplay(candidate, focused, activeView),
+        display: presentation.display,
         match: candidate.match!,
+        tokenName: presentation.tokenName,
       })
     })
   }
@@ -285,7 +288,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return false
   }
 
-  private getNodeDisplay(
+  private getNodePresentation(
     node: SequenceNode<TTarget, TEvent>,
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
@@ -294,13 +297,16 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
       focused,
       activeView,
     ),
-  ): string {
+  ): { display: string; tokenName?: string } {
     if (!node.stroke) {
-      return ""
+      return { display: "" }
     }
 
     const partIndex = node.depth - 1
     let display: string | undefined
+    let tokenName: string | undefined
+    let hasDisplayConflict = false
+    let hasTokenConflict = false
 
     for (const binding of reachableBindings) {
       const part = binding.sequence[partIndex]
@@ -310,15 +316,31 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
 
       if (display === undefined) {
         display = part.display
+        tokenName = part.tokenName
         continue
       }
 
-      if (display !== part.display) {
-        return stringifyKeyStroke(node.stroke)
+      if (!hasDisplayConflict && display !== part.display) {
+        hasDisplayConflict = true
+      }
+
+      if (!hasTokenConflict && tokenName !== part.tokenName) {
+        hasTokenConflict = true
       }
     }
 
-    return display ?? stringifyKeyStroke(node.stroke)
+    if (display === undefined || hasDisplayConflict) {
+      display = stringifyKeyStroke(node.stroke)
+    }
+
+    if (hasTokenConflict) {
+      tokenName = undefined
+    }
+
+    return {
+      display,
+      tokenName,
+    }
   }
 
   private toActiveBinding(
@@ -458,7 +480,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     const prefixBindings = this.getMatchingBindings(node.bindings, focused, activeView)
 
     return {
-      display: this.getNodeDisplay(node, focused, activeView, reachableBindings),
+      ...this.getNodePresentation(node, focused, activeView, reachableBindings),
       continues: true,
       firstBinding: prefixBindings[0],
       bindings: includeBindings && prefixBindings.length > 0 ? prefixBindings : undefined,
@@ -481,13 +503,22 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
       return undefined
     }
 
-    const display =
-      selected.bindings.length === 1
-        ? (selected.bindings[0]?.sequence[node.depth - 1]?.display ?? stringifyKeyStroke(node.stroke))
-        : this.getNodeDisplay(node, focused, activeView, selected.bindings)
+    let display: string
+    let tokenName: string | undefined
+
+    if (selected.bindings.length === 1) {
+      const part = selected.bindings[0]?.sequence[node.depth - 1]
+      display = part?.display ?? stringifyKeyStroke(node.stroke)
+      tokenName = part?.tokenName
+    } else {
+      const presentation = this.getNodePresentation(node, focused, activeView, selected.bindings)
+      display = presentation.display
+      tokenName = presentation.tokenName
+    }
 
     return {
       display,
+      tokenName,
       continues: false,
       firstBinding: selected.bindings[0],
       commandBinding: selected.commandBinding,
@@ -541,6 +572,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return {
       stroke,
       display: selection.display,
+      tokenName: selection.tokenName,
       continues: selection.continues,
       firstBinding: selection.firstBinding,
       commandBinding: selection.commandBinding,
@@ -592,6 +624,10 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
       stroke: cloneKeyStroke(state.stroke),
       display: state.display,
       continues: state.continues,
+    }
+
+    if (state.tokenName) {
+      activeKey.tokenName = state.tokenName
     }
 
     if (state.commandBinding) {

@@ -206,7 +206,7 @@ function createBracketTokenParser(): BindingParser {
     }
 
     return {
-      parts: [parseObjectKey(token.stroke, { display: tokenName, match: token.match })],
+      parts: [parseObjectKey(token.stroke, { display: tokenName, match: token.match, tokenName })],
       nextIndex: end + 1,
       usedTokens: [tokenName],
     }

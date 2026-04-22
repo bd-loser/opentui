@@ -66,6 +66,7 @@ export function createKeySequencePart(
   options?: {
     display?: string
     match?: KeyMatch
+    tokenName?: string
   },
 ): KeySequencePart {
   const stroke = cloneKeyStroke(normalizeKeyStroke(input))
@@ -74,6 +75,7 @@ export function createKeySequencePart(
     stroke,
     display: options?.display ?? stringifyCanonicalStroke(stroke),
     match: options?.match ?? createKeyMatch(stroke),
+    tokenName: options?.tokenName ? normalizeBindingTokenName(options.tokenName) : undefined,
   }
 }
 
@@ -82,6 +84,7 @@ export function cloneKeySequencePart(part: KeySequencePart): KeySequencePart {
     stroke: cloneKeyStroke(part.stroke),
     display: part.display,
     match: part.match,
+    tokenName: part.tokenName,
   }
 }
 

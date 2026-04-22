@@ -431,7 +431,12 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     return resolved.length > 0 ? resolved : undefined
   }
 
-  private getRegisteredLayerCommandEntries(): LayerCommandEntry<TTarget, TEvent>[] {
+  private getRegisteredLayerCommandEntries(): readonly LayerCommandEntry<TTarget, TEvent>[] {
+    const cacheVersion = this.state.commands.commandMetadataVersion
+    if (this.state.commands.registeredCommandEntriesCacheVersion === cacheVersion) {
+      return this.state.commands.registeredCommandEntriesCache
+    }
+
     const layers = [...this.state.layers.layers]
     layers.sort((left, right) => left.order - right.order)
 
@@ -442,6 +447,8 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       }
     }
 
+    this.state.commands.registeredCommandEntriesCacheVersion = cacheVersion
+    this.state.commands.registeredCommandEntriesCache = entries
     return entries
   }
 

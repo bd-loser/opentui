@@ -18,7 +18,9 @@ const pendingSequence = document.getElementById("pending-sequence") as HTMLEleme
 const focusedTarget = document.getElementById("focused-target") as HTMLElement | null
 const alphaCount = document.getElementById("alpha-count") as HTMLElement | null
 const betaCount = document.getElementById("beta-count") as HTMLElement | null
+const activeKeysCard = document.getElementById("active-keys-card") as HTMLElement | null
 const activeKeys = document.getElementById("active-keys") as HTMLElement | null
+const logCard = document.getElementById("log-card") as HTMLElement | null
 const logLines = document.getElementById("log-lines") as HTMLElement | null
 const helpCard = document.getElementById("help-card") as HTMLElement | null
 const helpCopy = document.getElementById("help-copy") as HTMLElement | null
@@ -41,7 +43,9 @@ if (
   !focusedTarget ||
   !alphaCount ||
   !betaCount ||
+  !activeKeysCard ||
   !activeKeys ||
+  !logCard ||
   !logLines ||
   !helpCard ||
   !helpCopy
@@ -50,7 +54,7 @@ if (
 }
 
 const keymap = createDefaultHtmlKeymap(app)
-const focusableTargets = [alphaPanel, betaPanel, notesField, draftField]
+const focusableTargets = [alphaPanel, betaPanel, notesField, draftField, activeKeysCard, logCard]
 
 let alphaValue = 0
 let betaValue = 0
@@ -171,7 +175,7 @@ function buildCommandSuggestions(): ExSuggestion[] {
 
 function appendLog(message: string): void {
   lastAction = message
-  logEntries = [{ at: new Date().toLocaleTimeString(), message }, ...logEntries].slice(0, 8)
+  logEntries = [{ at: new Date().toLocaleTimeString(), message }, ...logEntries].slice(0, 40)
   console.log(`${DEBUG_NAMESPACE} action`, message)
   renderLog()
 }
@@ -199,6 +203,51 @@ function focusOffset(delta: number): void {
     next: focusableTargets[nextIndex]?.id ?? "none",
   })
   focusableTargets[nextIndex]?.focus()
+}
+
+function getScrollablePane(target: HTMLElement | null): HTMLElement | null {
+  if (target === activeKeysCard) {
+    return activeKeys
+  }
+
+  if (target === logCard) {
+    return logLines
+  }
+
+  return null
+}
+
+function scrollFocusedPane(delta: number): boolean {
+  const pane = getScrollablePane(getCurrentFocusedTarget())
+  if (!pane) {
+    return false
+  }
+
+  const lineHeight = Number.parseFloat(getComputedStyle(pane).lineHeight)
+  const fallbackStep = 48
+  const step = Number.isFinite(lineHeight) ? Math.max(24, lineHeight * 3) : fallbackStep
+  pane.scrollBy({ top: delta * step, behavior: "auto" })
+  return true
+}
+
+function scrollFocusedPanePage(delta: number): boolean {
+  const pane = getScrollablePane(getCurrentFocusedTarget())
+  if (!pane) {
+    return false
+  }
+
+  pane.scrollBy({ top: delta * Math.max(48, pane.clientHeight * 0.85), behavior: "auto" })
+  return true
+}
+
+function scrollFocusedPaneEdge(position: "top" | "bottom"): boolean {
+  const pane = getScrollablePane(getCurrentFocusedTarget())
+  if (!pane) {
+    return false
+  }
+
+  pane.scrollTo({ top: position === "top" ? 0 : pane.scrollHeight, behavior: "auto" })
+  return true
 }
 
 function setPromptVisible(visible: boolean): void {
@@ -493,11 +542,12 @@ function renderPrompt(): void {
 function renderHelp(): void {
   helpCard.classList.toggle("is-hidden", !helpVisible)
   helpCopy.innerHTML = [
-    "<div><kbd>Tab</kbd> and <kbd>Shift+Tab</kbd> cycle focus between panels and textareas.</div>",
+    "<div><kbd>Tab</kbd> and <kbd>Shift+Tab</kbd> cycle focus between panels, textareas, and sidebar panes.</div>",
     "<div><kbd>Space</kbd> arms a leader sequence for <kbd>Space s</kbd>, <kbd>Space h</kbd>, and <kbd>Space r</kbd>.</div>",
     "<div><kbd>:</kbd> opens the ex prompt as a modal overlay. Try <kbd>:help</kbd>, <kbd>:reset</kbd>, <kbd>:write alpha</kbd>, or <kbd>:focus draft</kbd>.</div>",
     "<div>The Alpha and Beta panels each install their own focus-within layers with <kbd>j</kbd>, <kbd>k</kbd>, and <kbd>Enter</kbd>.</div>",
     "<div>The Notes and Draft textareas use plain browser editing plus keymap bindings for <kbd>Ctrl+Enter</kbd>.</div>",
+    "<div>The Active Keys and Recent Actions panes can be focused and scrolled with <kbd>j</kbd>, <kbd>k</kbd>, <kbd>Ctrl+d</kbd>, <kbd>Ctrl+u</kbd>, <kbd>g</kbd>, and <kbd>Shift+g</kbd>.</div>",
   ].join("")
 }
 
@@ -556,8 +606,8 @@ function disposers(): void {
     {
       name: ":focus",
       nargs: "1",
-      desc: "Focus alpha, beta, notes, or draft",
-      usage: ":focus <alpha|beta|notes|draft>",
+      desc: "Focus alpha, beta, notes, draft, keys, or log",
+      usage: ":focus <alpha|beta|notes|draft|keys|log>",
       run({ args }) {
         debug("command :focus", {
           args: args.join(" "),
@@ -568,6 +618,8 @@ function disposers(): void {
           ["beta", betaPanel],
           ["notes", notesField],
           ["draft", draftField],
+          ["keys", activeKeysCard],
+          ["log", logCard],
         ])
         const target = targetName ? targets.get(targetName) : undefined
         if (!target) {
@@ -742,6 +794,54 @@ function disposers(): void {
           captureTextarea("draft", draftField)
         },
       },
+      {
+        name: "scroll-pane-down",
+        title: "Scroll Pane Down",
+        desc: "Scroll the focused sidebar pane down",
+        run() {
+          return scrollFocusedPane(1)
+        },
+      },
+      {
+        name: "scroll-pane-up",
+        title: "Scroll Pane Up",
+        desc: "Scroll the focused sidebar pane up",
+        run() {
+          return scrollFocusedPane(-1)
+        },
+      },
+      {
+        name: "scroll-pane-page-down",
+        title: "Scroll Pane Page Down",
+        desc: "Page the focused sidebar pane downward",
+        run() {
+          return scrollFocusedPanePage(1)
+        },
+      },
+      {
+        name: "scroll-pane-page-up",
+        title: "Scroll Pane Page Up",
+        desc: "Page the focused sidebar pane upward",
+        run() {
+          return scrollFocusedPanePage(-1)
+        },
+      },
+      {
+        name: "scroll-pane-top",
+        title: "Scroll Pane Top",
+        desc: "Jump the focused sidebar pane to the top",
+        run() {
+          return scrollFocusedPaneEdge("top")
+        },
+      },
+      {
+        name: "scroll-pane-bottom",
+        title: "Scroll Pane Bottom",
+        desc: "Jump the focused sidebar pane to the bottom",
+        run() {
+          return scrollFocusedPaneEdge("bottom")
+        },
+      },
     ],
   })
 
@@ -790,6 +890,32 @@ function disposers(): void {
     target: draftCard,
     scope: "focus-within",
     bindings: [{ key: "ctrl+return", cmd: "capture-draft", desc: "Capture draft snapshot" }],
+  })
+
+  keymap.registerLayer({
+    target: activeKeysCard,
+    scope: "focus-within",
+    bindings: [
+      { key: "j", cmd: "scroll-pane-down", desc: "Scroll active keys down" },
+      { key: "k", cmd: "scroll-pane-up", desc: "Scroll active keys up" },
+      { key: "ctrl+d", cmd: "scroll-pane-page-down", desc: "Page active keys down" },
+      { key: "ctrl+u", cmd: "scroll-pane-page-up", desc: "Page active keys up" },
+      { key: "g", cmd: "scroll-pane-top", desc: "Jump to the top" },
+      { key: "shift+g", cmd: "scroll-pane-bottom", desc: "Jump to the bottom" },
+    ],
+  })
+
+  keymap.registerLayer({
+    target: logCard,
+    scope: "focus-within",
+    bindings: [
+      { key: "j", cmd: "scroll-pane-down", desc: "Scroll recent actions down" },
+      { key: "k", cmd: "scroll-pane-up", desc: "Scroll recent actions up" },
+      { key: "ctrl+d", cmd: "scroll-pane-page-down", desc: "Page recent actions down" },
+      { key: "ctrl+u", cmd: "scroll-pane-page-up", desc: "Page recent actions up" },
+      { key: "g", cmd: "scroll-pane-top", desc: "Jump to the top" },
+      { key: "shift+g", cmd: "scroll-pane-bottom", desc: "Jump to the bottom" },
+    ],
   })
 
   keymap.registerLayer({

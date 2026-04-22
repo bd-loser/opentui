@@ -221,6 +221,7 @@ kbd {
 }
 
 .panel:focus,
+.sidebar-card:focus,
 textarea:focus,
 .prompt-input:focus {
   border-color: var(--tn-cyan);

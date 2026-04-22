@@ -911,6 +911,42 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "get_commands_registered_query",
+    description: "Repeated registered command discovery with namespace filtering",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.keymap.registerCommandFields({
+        title(value, ctx) {
+          ctx.attr("label", value)
+        },
+      })
+
+      for (let layerIndex = 0; layerIndex < 64; layerIndex += 1) {
+        resources.keymap.registerLayer({
+          scope: "global",
+          commands: Array.from({ length: 8 }, (_, index) => ({
+            name: `command-${layerIndex}-${index}`,
+            namespace: index % 2 === 0 ? "bench" : "other",
+            title: `Command ${layerIndex}-${index}`,
+            usage: `:${layerIndex}-${index}`,
+            run() {},
+          })),
+        })
+      }
+
+      return {
+        resources,
+        runIteration() {
+          resources.keymap.getCommands({ visibility: "registered", namespace: "bench" })
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "get_command_entries_query",
     description: "Repeated command-plus-binding discovery with search and filter over raw fields and attrs",
     async setup() {
@@ -950,6 +986,46 @@ const scenarios: BenchmarkScenario[] = [
               tags: "file",
             },
           })
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "get_command_entries_registered_query",
+    description: "Repeated registered command-entry discovery with namespace filtering",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.keymap.registerCommandFields({
+        title(value, ctx) {
+          ctx.attr("label", value)
+        },
+      })
+
+      for (let layerIndex = 0; layerIndex < 64; layerIndex += 1) {
+        resources.keymap.registerLayer({
+          scope: "global",
+          commands: Array.from({ length: 8 }, (_, index) => ({
+            name: `command-${layerIndex}-${index}`,
+            namespace: index % 2 === 0 ? "bench" : "other",
+            title: `Command ${layerIndex}-${index}`,
+            usage: `:${layerIndex}-${index}`,
+            run() {},
+          })),
+          bindings: Array.from({ length: 8 }, (_, index) => ({
+            key: createKey(layerIndex * 8 + index),
+            cmd: `command-${layerIndex}-${index}`,
+          })),
+        })
+      }
+
+      return {
+        resources,
+        runIteration() {
+          resources.keymap.getCommandEntries({ visibility: "registered", namespace: "bench" })
         },
         cleanup() {
           resources.renderer.destroy()

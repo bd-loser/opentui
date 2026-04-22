@@ -37,10 +37,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 12% 8%, rgba(122, 162, 247, 0.18), transparent 32%),
-    radial-gradient(circle at 88% 6%, rgba(187, 154, 247, 0.16), transparent 34%),
-    radial-gradient(circle at 70% 90%, rgba(125, 207, 255, 0.1), transparent 40%), var(--tn-bg);
+  background: var(--tn-bg);
 }
 
 /* Keycap */
@@ -52,7 +49,6 @@ kbd {
   padding: 0.05rem 0.4rem;
   border: 1px solid var(--tn-border-strong);
   border-bottom-width: 2px;
-  border-radius: 4px;
   background: var(--tn-bg-dark);
   color: var(--tn-cyan);
   font-family: var(--tn-mono);
@@ -70,12 +66,9 @@ kbd {
 
 .app-shell.prompt-open .hero,
 .app-shell.prompt-open .layout {
-  filter: blur(2px) saturate(0.75) brightness(0.6);
   opacity: 0.55;
   pointer-events: none;
-  transition:
-    filter 120ms ease,
-    opacity 120ms ease;
+  transition: opacity 120ms ease;
 }
 
 .hero {
@@ -128,7 +121,6 @@ kbd {
 .help-card,
 .sidebar-card {
   border: 1px solid var(--tn-border);
-  border-radius: 6px;
   background: var(--tn-bg-panel);
   box-shadow: none;
 }
@@ -338,9 +330,9 @@ textarea:focus,
 
 textarea,
 .prompt-input {
+  appearance: none;
   width: 100%;
   border: 1px solid var(--tn-border);
-  border-radius: 4px;
   background: var(--tn-bg-dark);
   color: var(--tn-fg);
   padding: 0.65rem 0.8rem;
@@ -380,7 +372,6 @@ textarea::selection,
   place-items: center;
   padding: 1.5rem;
   background: rgba(16, 16, 20, 0.72);
-  backdrop-filter: blur(3px);
   z-index: 30;
 }
 
@@ -401,8 +392,7 @@ textarea::selection,
 .prompt-results {
   background: var(--tn-bg-dark);
   border: 1px solid var(--tn-border-strong);
-  border-radius: 6px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  box-shadow: none;
 }
 
 .prompt-input-shell {
@@ -412,9 +402,6 @@ textarea::selection,
   gap: 0.6rem;
   padding: 0.9rem 1rem;
   border-color: var(--tn-magenta);
-  box-shadow:
-    0 0 0 1px rgba(187, 154, 247, 0.2),
-    0 24px 60px rgba(0, 0, 0, 0.6);
 }
 
 .prompt-results {
@@ -478,7 +465,6 @@ textarea::selection,
 .active-key-row,
 .log-line {
   padding: 0.55rem 0.7rem;
-  border-radius: 4px;
   background: var(--tn-bg-panel);
   border: 1px solid transparent;
   border-left: 2px solid var(--tn-border);
@@ -517,7 +503,6 @@ textarea::selection,
 
 .prompt-suggestions::-webkit-scrollbar-thumb {
   background: var(--tn-border-strong);
-  border-radius: 4px;
 }
 
 .suggestion-header,

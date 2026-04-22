@@ -18,8 +18,8 @@ import {
 import {
   type ActiveKey,
   type CommandRecord,
+  type KeySequencePart,
   type Keymap,
-  stringifyKeySequence,
   stringifyKeyStroke,
 } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
@@ -43,6 +43,9 @@ const P = {
   command: "#67e8f9",
   separator: "#475569",
 } as const
+
+const LEADER_TOKEN = "<leader>"
+const LEADER_TRIGGER_LABEL = stringifyKeyStroke({ name: "x", ctrl: true })
 
 interface EditorSpec {
   id: string
@@ -171,6 +174,18 @@ function getActiveKeyLabel(activeKey: ActiveKey): string {
     (typeof activeKey.command === "string" ? activeKey.command : undefined) ??
     ""
   )
+}
+
+function formatDemoKeyPart(part: Pick<KeySequencePart, "stroke" | "tokenName">): string {
+  if (part.tokenName === LEADER_TOKEN) {
+    return LEADER_TRIGGER_LABEL
+  }
+
+  return stringifyKeyStroke(part)
+}
+
+function formatDemoKeySequence(parts: readonly Pick<KeySequencePart, "stroke" | "tokenName">[]): string {
+  return parts.map((part) => formatDemoKeyPart(part)).join(" ")
 }
 
 function normalizeExPromptName(name: string): string {
@@ -622,9 +637,7 @@ function buildWhichKeyEntries(): StyledText {
   }
 
   const activeKeys = [...keymap.getActiveKeys({ includeMetadata: true })].sort((left, right) => {
-    return stringifyKeyStroke(left, { preferDisplay: true }).localeCompare(
-      stringifyKeyStroke(right, { preferDisplay: true }),
-    )
+    return formatDemoKeyPart(left).localeCompare(formatDemoKeyPart(right))
   })
 
   if (activeKeys.length === 0) {
@@ -635,7 +648,7 @@ function buildWhichKeyEntries(): StyledText {
   for (const activeKey of activeKeys) {
     lines.push(
       styledLine([
-        bold(fg(P.key)(stringifyKeyStroke(activeKey, { preferDisplay: true }))),
+        bold(fg(P.key)(formatDemoKeyPart(activeKey))),
         fg(P.textMuted)(" -> "),
         fg(P.command)(getActiveKeyLabel(activeKey)),
       ]),
@@ -715,7 +728,7 @@ function renderStatus(renderer: CliRenderer): void {
     statusLeaderText.content = joinLines([
       styledLine([
         fg(P.textDim)("Leader: "),
-        leaderArmed ? bold(fg(P.leader)("armed (ctrl+x)")) : fg(P.textMuted)("idle"),
+        leaderArmed ? bold(fg(P.leader)(`armed (${LEADER_TRIGGER_LABEL})`)) : fg(P.textMuted)("idle"),
       ]),
     ])
   }
@@ -733,7 +746,7 @@ function renderStatus(renderer: CliRenderer): void {
   }
 
   if (whichKeyHeaderText && keymap) {
-    const prefix = stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true }) || "<root>"
+    const prefix = formatDemoKeySequence(keymap.getPendingSequence()) || "<root>"
     whichKeyHeaderText.content = joinLines([
       styledLine([bold(fg(P.accent)("Which Key")), fg(P.textDim)(`  ${prefix}`)]),
     ])
@@ -1373,7 +1386,7 @@ export function run(renderer: CliRenderer): void {
 
   registerCommandLayers(renderer, keymapInstance)
   addLog("Tab switches focus across panels and editors.")
-  addLog("ctrl+x arms the leader extension.")
+  addLog(`${LEADER_TRIGGER_LABEL} arms the leader extension.`)
   addLog(": opens the centered ex prompt.")
   renderAll(renderer)
   alphaPanel.focus()

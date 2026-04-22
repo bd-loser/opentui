@@ -557,6 +557,70 @@ textarea::selection,
   color: var(--tn-magenta);
 }
 
+@media (min-width: 981px) {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    min-height: 100dvh;
+  }
+
+  .app-shell {
+    height: 100dvh;
+    max-height: 100dvh;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .layout,
+  .workspace,
+  .sidebar,
+  .sidebar-card,
+  .active-keys,
+  .log-lines {
+    min-height: 0;
+  }
+
+  .layout {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .workspace {
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    align-content: start;
+  }
+
+  .sidebar {
+    height: 100%;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  .sidebar-card {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .active-keys,
+  .log-lines {
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    align-content: start;
+  }
+}
+
 @media (max-width: 980px) {
   .hero,
   .layout,

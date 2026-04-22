@@ -84,8 +84,6 @@ export interface CommandsState<TTarget extends object, TEvent extends KeymapEven
   commandResolvers: OrderedRegistry<CommandResolver<TTarget, TEvent>>
   activeCommandViewVersion: number
   activeCommandView?: ActiveCommandView<TTarget, TEvent>
-  registeredCommandsCacheVersion: number
-  registeredCommandsCache: readonly RegisteredCommand<TTarget, TEvent>[]
 }
 
 export interface ProjectionState<TTarget extends object, TEvent extends KeymapEvent> {
@@ -165,8 +163,6 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
       commandResolvers: new OrderedRegistry<CommandResolver<TTarget, TEvent>>(),
       activeCommandViewVersion: -1,
       activeCommandView: undefined,
-      registeredCommandsCacheVersion: -1,
-      registeredCommandsCache: [],
     },
     projection: {
       pendingSequence: null,

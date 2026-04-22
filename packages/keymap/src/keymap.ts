@@ -10,6 +10,7 @@ import type {
   Events,
   Hooks,
   CommandFieldCompiler,
+  CommandEntry,
   CommandQuery,
   CommandRecord,
   KeymapEvent,
@@ -239,6 +240,10 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
   public getCommands(query?: CommandQuery<TTarget>): readonly CommandRecord[] {
     return this.catalog.getCommands(query)
+  }
+
+  public getCommandEntries(query?: CommandQuery<TTarget>): readonly CommandEntry<TTarget, TEvent>[] {
+    return this.catalog.getCommandEntries(query)
   }
 
   public normalizeCommandName(name: string): string {

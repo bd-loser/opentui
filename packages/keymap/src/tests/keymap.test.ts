@@ -53,6 +53,10 @@ function getCommand(keymap: OpenTuiKeymap, name: string) {
   return keymap.getCommands().find((candidate) => candidate.name === name)
 }
 
+function getCommandEntry(keymap: OpenTuiKeymap, name: string) {
+  return keymap.getCommandEntries().find((candidate) => candidate.command.name === name)
+}
+
 function getActiveKeyDisplay(
   keymap: OpenTuiKeymap,
   display: string,
@@ -3412,6 +3416,179 @@ describe("keymap", () => {
       "Global Save",
       "Quit",
       "Local Save",
+    ])
+  })
+
+  test("getCommandEntries returns commands with bindings across visibility modes", () => {
+    const keymap = getKeymap(renderer)
+    const target = createFocusableBox("command-entry-visibility-target")
+    renderer.root.add(target)
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        { name: "save", title: "Global Save", run() {} },
+        { name: "quit", title: "Quit", run() {} },
+      ],
+      bindings: [
+        { key: "x", cmd: "save", desc: "Write current file" },
+        { key: "q", cmd: "quit", desc: "Quit app" },
+      ],
+    })
+    keymap.registerLayer({
+      target,
+      commands: [{ name: "save", title: "Local Save", run() {} }],
+      bindings: [{ key: "l", cmd: "save", desc: "Save in panel" }],
+    })
+
+    const snapshot = (visibility?: "reachable" | "active" | "registered") => {
+      return keymap.getCommandEntries(visibility ? { visibility } : undefined).map((entry) => ({
+        title: entry.command.fields.title,
+        bindings: entry.bindings
+          .map((binding) => stringifyKeySequence(binding.sequence, { preferDisplay: true }))
+          .sort(),
+      }))
+    }
+
+    expect(snapshot()).toEqual([
+      { title: "Global Save", bindings: ["x"] },
+      { title: "Quit", bindings: ["q"] },
+    ])
+
+    target.focus()
+
+    expect(snapshot()).toEqual([
+      { title: "Local Save", bindings: ["l", "x"] },
+      { title: "Quit", bindings: ["q"] },
+    ])
+    expect(snapshot("active")).toEqual([
+      { title: "Local Save", bindings: ["l", "x"] },
+      { title: "Global Save", bindings: ["l", "x"] },
+      { title: "Quit", bindings: ["q"] },
+    ])
+    expect(snapshot("registered")).toEqual([
+      { title: "Global Save", bindings: ["l", "x"] },
+      { title: "Quit", bindings: ["q"] },
+      { title: "Local Save", bindings: ["l", "x"] },
+    ])
+  })
+
+  test("getCommandEntries reuses active binding views and keeps command-only entries", () => {
+    const keymap = getKeymap(renderer)
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "save-file",
+          desc: "Save the current file",
+          title: "Save File",
+          category: "File",
+          run() {},
+        },
+        {
+          name: "palette-help",
+          title: "Open Help",
+          run() {},
+        },
+      ],
+      bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
+    })
+
+    const save = getCommandEntry(keymap, "save-file")
+    expect(save).toEqual({
+      command: {
+        name: "save-file",
+        fields: {
+          desc: "Save the current file",
+          title: "Save File",
+          category: "File",
+        },
+        attrs: {
+          desc: "Save the current file",
+          title: "Save File",
+          category: "File",
+        },
+      },
+      bindings: [
+        {
+          sequence: save?.bindings[0]?.sequence,
+          command: "save-file",
+          commandAttrs: {
+            desc: "Save the current file",
+            title: "Save File",
+            category: "File",
+          },
+          attrs: {
+            desc: "Write current file",
+            group: "File",
+          },
+          event: "press",
+          preventDefault: true,
+          fallthrough: false,
+        },
+      ],
+    })
+
+    expect(getCommandEntry(keymap, "palette-help")).toEqual({
+      command: {
+        name: "palette-help",
+        fields: {
+          title: "Open Help",
+        },
+        attrs: {
+          title: "Open Help",
+        },
+      },
+      bindings: [],
+    })
+  })
+
+  test("getCommandEntries applies command query filters before attaching bindings", () => {
+    const keymap = getParserKeymap()
+
+    keymap.registerCommandFields({
+      title(value, ctx) {
+        ctx.attr("label", value)
+      },
+    })
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "save-current",
+          namespace: "excommands",
+          title: "Write File",
+          usage: ":write <file>",
+          run() {},
+        },
+        {
+          name: "palette-help",
+          namespace: "palette",
+          title: "Open Help",
+          usage: ":help",
+          run() {},
+        },
+      ],
+      bindings: [
+        { key: "x", cmd: "save-current" },
+        { key: "h", cmd: "palette-help" },
+      ],
+    })
+
+    expect(
+      keymap
+        .getCommandEntries({ namespace: "excommands", search: "write", searchIn: ["title", "label"] })
+        .map((entry) => ({
+          name: entry.command.name,
+          bindings: entry.bindings.map((binding) => stringifyKeySequence(binding.sequence, { preferDisplay: true })),
+        })),
+    ).toEqual([
+      {
+        name: "save-current",
+        bindings: ["x"],
+      },
     ])
   })
 

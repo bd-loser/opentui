@@ -911,6 +911,101 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "get_command_entries_query",
+    description: "Repeated command-plus-binding discovery with search and filter over raw fields and attrs",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.keymap.registerCommandFields({
+        title(value, ctx) {
+          ctx.attr("label", value)
+        },
+      })
+
+      resources.keymap.registerLayer({
+        scope: "global",
+        commands: Array.from({ length: 512 }, (_, index) => ({
+          name: `command-${index}`,
+          namespace: index % 2 === 0 ? "bench" : "other",
+          title: index % 4 === 0 ? `Write File ${index}` : `Open Buffer ${index}`,
+          usage: index % 4 === 0 ? `:write file-${index}.txt` : `:open file-${index}.txt`,
+          tags: index % 4 === 0 ? ["file", "write"] : ["file", "open"],
+          run() {},
+        })),
+        bindings: Array.from({ length: 512 }, (_, index) => ({
+          key: createKey(index),
+          cmd: `command-${index}`,
+          desc: `Binding ${index}`,
+        })),
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.keymap.getCommandEntries({
+            search: "write",
+            searchIn: ["name", "title", "usage", "label"],
+            filter: {
+              namespace: "bench",
+              tags: "file",
+            },
+          })
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "get_command_entries_reachable_shadowed_bindings",
+    description: "Repeated reachable command-entry discovery while shadowed commands share bindings by name",
+    async setup() {
+      const resources = await createScenarioResources()
+      const focusChain = createFocusTree(resources, 4)
+      const focusedTarget = focusChain.at(-1)
+      if (!focusedTarget) {
+        throw new Error("Expected focused target for reachable command-entry benchmark")
+      }
+
+      resources.keymap.registerLayer({
+        scope: "global",
+        commands: Array.from({ length: 128 }, (_, index) => ({
+          name: `command-${index}`,
+          title: `Global ${index}`,
+          run() {},
+        })),
+        bindings: Array.from({ length: 128 }, (_, index) => ({
+          key: createKey(index),
+          cmd: `command-${index}`,
+        })),
+      })
+
+      resources.keymap.registerLayer({
+        target: focusedTarget,
+        commands: Array.from({ length: 64 }, (_, index) => ({
+          name: `command-${index}`,
+          title: `Local ${index}`,
+          run() {},
+        })),
+        bindings: Array.from({ length: 64 }, (_, index) => ({
+          key: createKey(index + 128),
+          cmd: `command-${index}`,
+        })),
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.keymap.getCommandEntries()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "run_command_registered",
     description: "Repeated programmatic execution of a directly registered command",
     async setup() {

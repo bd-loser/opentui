@@ -265,6 +265,15 @@ export interface ActiveBinding<TTarget extends object = object, TEvent extends K
   fallthrough: boolean
 }
 
+/**
+ * Command metadata together with the bindings that invoke it in a given query
+ * projection.
+ */
+export interface CommandEntry<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  command: CommandRecord
+  bindings: readonly ActiveBinding<TTarget, TEvent>[]
+}
+
 export interface ActiveKeyOptions {
   includeBindings?: boolean
   includeMetadata?: boolean
@@ -496,6 +505,10 @@ export type KeymapCommandDefinition<
   TEvent extends KeymapEvent = KeymapEvent,
 > = CommandDefinition<TTarget, TEvent>
 export type KeymapCommandRecord = CommandRecord
+export type KeymapCommandEntry<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+> = CommandEntry<TTarget, TEvent>
 
 export interface RuntimeMatcher {
   source: string

@@ -1,7 +1,9 @@
 import { RESERVED_COMMAND_FIELDS } from "../schema.js"
 import type {
+  ActiveBinding,
   Attributes,
   BindingCommand,
+  CommandEntry,
   CommandContext,
   CommandDefinition,
   CommandFieldCompiler,
@@ -50,9 +52,14 @@ interface NormalizeRegisteredCommandsOptions<TTarget extends object, TEvent exte
   onError(code: string, error: unknown, message: string): void
 }
 
-interface QueryRegisteredCommandsOptions<TTarget extends object, TEvent extends KeymapEvent> {
-  commands: Iterable<RegisteredCommand<TTarget, TEvent>>
+interface QueryLayerCommandEntriesOptions<TTarget extends object, TEvent extends KeymapEvent> {
+  entries: Iterable<LayerCommandEntry<TTarget, TEvent>>
   query?: CommandQuery<TTarget>
+  getCommandRecord(command: RegisteredCommand<TTarget, TEvent>): CommandRecord
+  onFilterError(error: unknown): void
+}
+
+interface CommandQueryMatchOptions<TTarget extends object, TEvent extends KeymapEvent> {
   getCommandRecord(command: RegisteredCommand<TTarget, TEvent>): CommandRecord
   onFilterError(error: unknown): void
 }
@@ -138,31 +145,40 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
   }
 
   public getCommands(query?: CommandQuery<TTarget>): readonly CommandRecord[] {
-    const visibility = query?.visibility ?? "reachable"
-    const focused =
-      query && Object.prototype.hasOwnProperty.call(query, "focused")
-        ? (query.focused ?? null)
-        : getFocusedTargetIfAvailable(this.host)
+    return this.getFilteredCommandEntries(query).map((entry) => getRegisteredCommandRecord(entry.command))
+  }
 
-    let commands: readonly RegisteredCommand<TTarget, TEvent>[]
-    if (visibility === "registered") {
-      commands = this.getRegisteredCommands()
-    } else {
-      const view = this.getActiveCommandView(focused)
-      commands =
-        visibility === "active"
-          ? view.entries.map((entry) => entry.command)
-          : view.reachable.map((entry) => entry.command)
+  public getCommandEntries(query?: CommandQuery<TTarget>): readonly CommandEntry<TTarget, TEvent>[] {
+    const context = this.getCommandQueryContext(query)
+    const filteredEntries = this.getFilteredCommandEntries(query, context)
+    if (filteredEntries.length === 0) {
+      return []
     }
 
-    return queryRegisteredCommands({
-      commands,
-      query,
-      getCommandRecord: (command) => getRegisteredCommandRecord(command),
-      onFilterError: (error) => {
-        this.notify.emitError("command-query-filter-error", error, "[Keymap] Error in command query filter:")
-      },
-    })
+    const grouped = filteredEntries.map((entry) => ({
+      entry,
+      command: getRegisteredCommandRecord(entry.command),
+      bindings: [] as ActiveBinding<TTarget, TEvent>[],
+    }))
+    const indexesByName = new Map<string, number[]>()
+
+    for (const [index, item] of grouped.entries()) {
+      const existing = indexesByName.get(item.command.name)
+      if (existing) {
+        existing.push(index)
+      } else {
+        indexesByName.set(item.command.name, [index])
+      }
+    }
+
+    if (indexesByName.size > 0) {
+      this.collectCommandEntryBindings(grouped, indexesByName, context)
+    }
+
+    return grouped.map((item) => ({
+      command: item.command,
+      bindings: item.bindings,
+    }))
   }
 
   public getResolvedCommandChain(
@@ -415,25 +431,151 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     return resolved.length > 0 ? resolved : undefined
   }
 
-  private getRegisteredCommands(): readonly RegisteredCommand<TTarget, TEvent>[] {
-    const cacheVersion = this.state.commands.commandMetadataVersion
-    if (this.state.commands.registeredCommandsCacheVersion === cacheVersion) {
-      return this.state.commands.registeredCommandsCache
-    }
-
+  private getRegisteredLayerCommandEntries(): LayerCommandEntry<TTarget, TEvent>[] {
     const layers = [...this.state.layers.layers]
     layers.sort((left, right) => left.order - right.order)
 
-    const commands: RegisteredCommand<TTarget, TEvent>[] = []
+    const entries: LayerCommandEntry<TTarget, TEvent>[] = []
     for (const layer of layers) {
-      if (layer.commands.length > 0) {
-        commands.push(...layer.commands)
+      for (const command of layer.commands) {
+        entries.push({ layer, command })
       }
     }
 
-    this.state.commands.registeredCommandsCacheVersion = cacheVersion
-    this.state.commands.registeredCommandsCache = commands
-    return commands
+    return entries
+  }
+
+  private getCommandQueryContext(query?: CommandQuery<TTarget>): {
+    visibility: "reachable" | "active" | "registered"
+    focused: TTarget | null
+    activeView?: ActiveCommandView<TTarget, TEvent>
+  } {
+    const visibility = query?.visibility ?? "reachable"
+    const focused =
+      query && Object.prototype.hasOwnProperty.call(query, "focused")
+        ? (query.focused ?? null)
+        : getFocusedTargetIfAvailable(this.host)
+
+    if (visibility === "registered") {
+      return { visibility, focused }
+    }
+
+    return {
+      visibility,
+      focused,
+      activeView: this.getActiveCommandView(focused),
+    }
+  }
+
+  private getFilteredCommandEntries(
+    query?: CommandQuery<TTarget>,
+    context: {
+      visibility: "reachable" | "active" | "registered"
+      focused: TTarget | null
+      activeView?: ActiveCommandView<TTarget, TEvent>
+    } = this.getCommandQueryContext(query),
+  ): LayerCommandEntry<TTarget, TEvent>[] {
+    let entries: readonly LayerCommandEntry<TTarget, TEvent>[]
+    if (context.visibility === "registered") {
+      entries = this.getRegisteredLayerCommandEntries()
+    } else if (context.visibility === "active") {
+      entries = context.activeView?.entries ?? []
+    } else {
+      entries = context.activeView?.reachable ?? []
+    }
+
+    return queryLayerCommandEntries({
+      entries,
+      query,
+      getCommandRecord: (command) => getRegisteredCommandRecord(command),
+      onFilterError: (error) => {
+        this.notify.emitError("command-query-filter-error", error, "[Keymap] Error in command query filter:")
+      },
+    })
+  }
+
+  private collectCommandEntryBindings(
+    grouped: Array<{
+      entry: LayerCommandEntry<TTarget, TEvent>
+      command: CommandRecord
+      bindings: ActiveBinding<TTarget, TEvent>[]
+    }>,
+    indexesByName: ReadonlyMap<string, readonly number[]>,
+    context: {
+      visibility: "reachable" | "active" | "registered"
+      focused: TTarget | null
+      activeView?: ActiveCommandView<TTarget, TEvent>
+    },
+  ): void {
+    if (context.visibility === "registered") {
+      const layers = [...this.state.layers.layers]
+      layers.sort((left, right) => left.order - right.order)
+
+      for (const layer of layers) {
+        for (const binding of layer.compiledBindings) {
+          this.collectBindingForCommandEntries(grouped, indexesByName, binding)
+        }
+      }
+      return
+    }
+
+    const activeView = context.activeView
+    if (!activeView) {
+      return
+    }
+
+    for (const layer of getActiveLayersForFocused(this.state.layers.targetLayers, this.host, context.focused)) {
+      if (layer.compiledBindings.length === 0 || !this.conditions.layerMatchesRuntimeState(layer)) {
+        continue
+      }
+
+      for (const binding of layer.compiledBindings) {
+        if (
+          !this.conditions.matchesConditions(binding) ||
+          !this.isBindingVisible(binding, context.focused, activeView)
+        ) {
+          continue
+        }
+
+        this.collectBindingForCommandEntries(grouped, indexesByName, binding)
+      }
+    }
+  }
+
+  private collectBindingForCommandEntries(
+    grouped: Array<{
+      entry: LayerCommandEntry<TTarget, TEvent>
+      command: CommandRecord
+      bindings: ActiveBinding<TTarget, TEvent>[]
+    }>,
+    indexesByName: ReadonlyMap<string, readonly number[]>,
+    binding: CompiledBinding<TTarget, TEvent>,
+  ): void {
+    if (typeof binding.command !== "string") {
+      return
+    }
+
+    const indexes = indexesByName.get(binding.command)
+    if (!indexes || indexes.length === 0) {
+      return
+    }
+
+    for (const index of indexes) {
+      const item = grouped[index]
+      if (!item) {
+        continue
+      }
+
+      item.bindings.push({
+        sequence: binding.sequence,
+        command: binding.command,
+        commandAttrs: item.command.attrs,
+        attrs: binding.attrs,
+        event: binding.event,
+        preventDefault: binding.preventDefault,
+        fallthrough: binding.fallthrough,
+      })
+    }
   }
 
   private resolveCommandWithResolvers(
@@ -708,9 +850,9 @@ function resolveCommandWithResolvers<TTarget extends object, TEvent extends Keym
   return { hadError }
 }
 
-function queryRegisteredCommands<TTarget extends object, TEvent extends KeymapEvent>(
-  options: QueryRegisteredCommandsOptions<TTarget, TEvent>,
-): readonly CommandRecord[] {
+function queryLayerCommandEntries<TTarget extends object, TEvent extends KeymapEvent>(
+  options: QueryLayerCommandEntriesOptions<TTarget, TEvent>,
+): LayerCommandEntry<TTarget, TEvent>[] {
   const namespace = options.query?.namespace
   const normalizedSearch = options.query?.search?.trim().toLowerCase() ?? ""
   let searchKeys = DEFAULT_COMMAND_SEARCH_FIELDS as readonly string[]
@@ -728,9 +870,11 @@ function queryRegisteredCommands<TTarget extends object, TEvent extends KeymapEv
     filterEntries = Object.entries(filter)
   }
 
-  const results: CommandRecord[] = []
+  const results: LayerCommandEntry<TTarget, TEvent>[] = []
 
-  for (const command of options.commands) {
+  for (const entry of options.entries) {
+    const command = entry.command
+
     if (!commandMatchesNamespace(command, namespace)) {
       continue
     }
@@ -760,7 +904,7 @@ function queryRegisteredCommands<TTarget extends object, TEvent extends KeymapEv
       }
     }
 
-    results.push(record)
+    results.push(entry)
   }
 
   return results
@@ -802,7 +946,7 @@ function commandMatchesNamespace<TTarget extends object, TEvent extends KeymapEv
 function commandMatchesFilters<TTarget extends object, TEvent extends KeymapEvent>(
   command: RegisteredCommand<TTarget, TEvent>,
   filters: readonly [string, CommandQueryValue][] | undefined,
-  options: QueryRegisteredCommandsOptions<TTarget, TEvent>,
+  options: CommandQueryMatchOptions<TTarget, TEvent>,
 ): boolean {
   if (!filters) {
     return true
@@ -844,7 +988,7 @@ function commandKeyMatchesQuery<TTarget extends object, TEvent extends KeymapEve
   command: RegisteredCommand<TTarget, TEvent>,
   key: string,
   matcher: CommandQueryValue,
-  options: QueryRegisteredCommandsOptions<TTarget, TEvent>,
+  options: CommandQueryMatchOptions<TTarget, TEvent>,
 ): boolean {
   if (typeof matcher === "function") {
     let record: CommandRecord | undefined

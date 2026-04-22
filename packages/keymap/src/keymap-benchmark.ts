@@ -260,6 +260,17 @@ function registerModeLayerFields(keymap: OpenTuiKeymap): void {
   })
 }
 
+function registerModeCommandFields(keymap: OpenTuiKeymap): void {
+  keymap.registerCommandFields({
+    mode(value, ctx) {
+      ctx.require("vim.mode", value)
+    },
+    state(value, ctx) {
+      ctx.require("vim.state", value)
+    },
+  })
+}
+
 function normalizeFlagKey(value: unknown, source: string): string {
   if (typeof value !== "string") {
     throw new Error(`${source} must be a string`)
@@ -706,6 +717,59 @@ const scenarios: BenchmarkScenario[] = [
                 category: "File",
                 usage: ":write <file>",
                 tags: ["file", "write"],
+                run() {},
+              },
+            ],
+          })
+
+          off()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "register_commands_custom_fields_with_conditions",
+    description: "Repeated command registration with compiled custom fields and command runtime conditions",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.keymap.registerCommandFields({
+        desc(value, ctx) {
+          ctx.attr("desc", value)
+        },
+        title(value, ctx) {
+          ctx.attr("title", value)
+        },
+        category(value, ctx) {
+          ctx.attr("category", value)
+        },
+        mode(value, ctx) {
+          ctx.require("vim.mode", value)
+        },
+        state(value, ctx) {
+          ctx.require("vim.state", value)
+        },
+      })
+
+      return {
+        resources,
+        runIteration() {
+          const off = resources.keymap.registerLayer({
+            scope: "global",
+            commands: [
+              {
+                name: "bench-command",
+                namespace: "bench",
+                desc: "Write the current file",
+                title: "Write File",
+                category: "File",
+                usage: ":write <file>",
+                tags: ["file", "write"],
+                mode: "normal",
+                state: "idle",
                 run() {},
               },
             ],
@@ -1290,6 +1354,71 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           resources.keymap.getActiveKeys()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "get_commands_command_requirement_heavy",
+    description: "Repeated getCommands with many runtime-gated commands using keyed requirements",
+    async setup() {
+      const resources = await createScenarioResources()
+      registerModeCommandFields(resources.keymap)
+      resources.keymap.setData("vim.mode", "normal")
+      resources.keymap.setData("vim.state", "idle")
+
+      resources.keymap.registerLayer({
+        scope: "global",
+        commands: Array.from({ length: 512 }, (_, index) => ({
+          name: `command-${index}`,
+          mode: index % 2 === 0 ? "normal" : "visual",
+          state: index % 3 === 0 ? "idle" : "busy",
+          title: `Command ${index}`,
+          run() {},
+        })),
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.keymap.getCommands()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "get_commands_enabled_command_callback_heavy",
+    description: "Repeated getCommands with many callback-enabled commands via the enabled command-field addon",
+    async setup() {
+      const resources = await createScenarioResources()
+      const enabledStates: boolean[] = []
+
+      addons.registerEnabledCommandField(resources.keymap)
+
+      resources.keymap.registerLayer({
+        scope: "global",
+        commands: Array.from({ length: 512 }, (_, index) => {
+          enabledStates.push(index % 3 !== 0)
+
+          return {
+            name: `command-${index}`,
+            enabled: () => enabledStates[index] ?? false,
+            title: `Command ${index}`,
+            run() {},
+          }
+        }),
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.keymap.getCommands()
         },
         cleanup() {
           resources.renderer.destroy()

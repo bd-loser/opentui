@@ -403,7 +403,13 @@ export type BindingTransformer<TTarget extends object = object, TEvent extends K
 ) => void
 
 export interface CommandFieldContext {
+  require(name: string, value: unknown): void
   attr(name: string, value: unknown): void
+  /**
+   * Registers a runtime matcher. Raw callbacks re-run on every read;
+   * reactive matchers stay cached until they notify.
+   */
+  activeWhen(matcher: (() => boolean) | ReactiveMatcher): void
 }
 
 export type CommandFieldCompiler = (value: unknown, ctx: CommandFieldContext) => void
@@ -548,10 +554,8 @@ export interface ActiveKeyState<TTarget extends object = object, TEvent extends 
   bindings?: CompiledBinding<TTarget, TEvent>[]
 }
 
-export interface RegisteredCommand<
-  TTarget extends object = object,
-  TEvent extends KeymapEvent = KeymapEvent,
-> extends CommandRecord {
+export interface RegisteredCommand<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
+  extends CommandRecord, RuntimeMatchable {
   run: (ctx: CommandContext<TTarget, TEvent>) => CommandResult
   runner?: CommandHandler<TTarget, TEvent>
   resolved?: ResolvedBindingCommand<TTarget, TEvent>
@@ -592,6 +596,7 @@ export interface RegisteredLayer<TTarget extends object = object, TEvent extends
   commandLookup?: ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>>
   bindingInputs: readonly BindingInput<TTarget, TEvent>[]
   compiledBindings: readonly CompiledBinding<TTarget, TEvent>[]
+  hasUnkeyedCommands: boolean
   hasUnkeyedBindings: boolean
   hasTokenBindings: boolean
   root: SequenceNode<TTarget, TEvent>

@@ -117,15 +117,15 @@ function createBracketTokenParser(options?: { preserveDisplayCase?: boolean }): 
       }
     }
 
-      return {
-        parts: [
-          parseObjectKey(token.stroke, {
-            display: options?.preserveDisplayCase ? tokenName : normalizedTokenName,
-            match: token.match,
-            tokenName: normalizedTokenName,
-          }),
-        ],
-        nextIndex: end + 1,
+    return {
+      parts: [
+        parseObjectKey(token.stroke, {
+          display: options?.preserveDisplayCase ? tokenName : normalizedTokenName,
+          match: token.match,
+          tokenName: normalizedTokenName,
+        }),
+      ],
+      nextIndex: end + 1,
       usedTokens: [normalizedTokenName],
     }
   }
@@ -2958,6 +2958,175 @@ describe("keymap", () => {
 
     expect(keymap.getPendingSequence()).toEqual([])
     expect(getActiveKeyNames(keymap)).toEqual([])
+  })
+
+  test("typed command fields can emit requirements and attrs", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.registerCommandFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+        ctx.attr("mode", value)
+      },
+    })
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "save-file",
+          mode: "normal",
+          run(ctx) {
+            calls.push(String(ctx.command?.attrs?.mode))
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "save-file" }],
+    })
+
+    expect(keymap.getCommands({ visibility: "registered" }).map((command) => command.name)).toEqual(["save-file"])
+    expect(keymap.getCommands().map((command) => command.name)).toEqual([])
+    expect(getActiveKeyNames(keymap)).toEqual([])
+
+    keymap.setData("vim.mode", "normal")
+
+    expect(keymap.getCommands().map((command) => command.name)).toEqual(["save-file"])
+    expect(getCommand(keymap, "save-file")).toEqual({
+      name: "save-file",
+      fields: { mode: "normal" },
+      attrs: { mode: "normal" },
+    })
+    expect(getActiveKeyNames(keymap)).toEqual(["x"])
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["normal"])
+  })
+
+  test("typed command field matchers can use reactive matchers and unsubscribe on layer unregister", () => {
+    const keymap = getKeymap(renderer)
+    const enabled = createReactiveBoolean(true)
+
+    keymap.registerCommandFields({
+      active(_value, ctx) {
+        ctx.activeWhen(enabled)
+      },
+    })
+
+    expect(enabled.subscribeCalls).toBe(0)
+    expect(enabled.subscriptions).toBe(0)
+
+    const off = keymap.registerLayer({
+      scope: "global",
+      commands: [{ name: "save-file", active: true, run() {} }],
+      bindings: [{ key: "x", cmd: "save-file" }],
+    })
+
+    expect(enabled.subscribeCalls).toBe(1)
+    expect(enabled.subscriptions).toBe(1)
+    expect(keymap.getCommands().map((command) => command.name)).toEqual(["save-file"])
+    expect(getActiveKeyNames(keymap)).toEqual(["x"])
+
+    enabled.set(false)
+
+    expect(keymap.getCommands().map((command) => command.name)).toEqual([])
+    expect(getActiveKeyNames(keymap)).toEqual([])
+
+    off()
+
+    expect(enabled.disposeCalls).toBe(1)
+    expect(enabled.subscriptions).toBe(0)
+  })
+
+  test("typed command field matchers dispose on renderer destroy", () => {
+    const keymap = getKeymap(renderer)
+    const enabled = createReactiveBoolean(true)
+
+    keymap.registerCommandFields({
+      active(_value, ctx) {
+        ctx.activeWhen(enabled)
+      },
+    })
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [{ name: "save-file", active: true, run() {} }],
+      bindings: [{ key: "x", cmd: "save-file" }],
+    })
+
+    expect(enabled.subscriptions).toBe(1)
+
+    renderer.destroy()
+
+    expect(enabled.disposeCalls).toBe(1)
+    expect(enabled.subscriptions).toBe(0)
+  })
+
+  test("command conditions fall through to lower-priority commands and hide unresolved bindings", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+    const target = createFocusableBox("command-condition-target")
+
+    renderer.root.add(target)
+
+    keymap.registerCommandFields({
+      enabled(value, ctx) {
+        if (value !== false) {
+          return
+        }
+
+        ctx.activeWhen(() => false)
+      },
+    })
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "submit",
+          run() {
+            calls.push("global")
+          },
+        },
+      ],
+    })
+
+    keymap.registerLayer({
+      target,
+      commands: [
+        {
+          name: "submit",
+          enabled: false,
+          run() {
+            calls.push("local")
+          },
+        },
+        {
+          name: "hidden-local",
+          enabled: false,
+          run() {
+            calls.push("hidden")
+          },
+        },
+      ],
+      bindings: [
+        { key: "x", cmd: "submit" },
+        { key: "y", cmd: "hidden-local" },
+      ],
+    })
+
+    target.focus()
+
+    expect(getActiveKey(keymap, "x")?.command).toBe("submit")
+    expect(getActiveKey(keymap, "y")).toBeUndefined()
+    expect(keymap.runCommand("submit")).toEqual({ ok: true })
+    expect(keymap.runCommand("hidden-local")).toEqual({ ok: false, reason: "not-found" })
+
+    mockInput.pressKey("x")
+    mockInput.pressKey("y")
+
+    expect(calls).toEqual(["global", "global"])
   })
 
   test("layer and binding requirements compose", () => {

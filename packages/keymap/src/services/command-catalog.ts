@@ -14,14 +14,16 @@ import type {
   CommandResolverContext,
   CommandResult,
   CompiledBinding,
+  EventData,
   KeymapEvent,
   KeymapHost,
   RegisteredCommand,
   ResolvedBindingCommand,
+  RuntimeMatcher,
 } from "../types.js"
 import { getActiveLayersForFocused, getFocusedTargetIfAvailable } from "./primitives/active-layers.js"
 import type { ConditionService } from "./conditions.js"
-import { mergeAttribute } from "./primitives/field-invariants.js"
+import { mergeAttribute, mergeRequirement } from "./primitives/field-invariants.js"
 import type { NotificationService } from "./notify.js"
 import type { ActiveCommandView, LayerCommandEntry, ResolvedCommandEntry, State } from "./state.js"
 import { getErrorMessage, snapshotDataValue } from "./values.js"
@@ -44,6 +46,7 @@ const EMPTY_COMMAND_FIELDS: Readonly<Record<string, unknown>> = Object.freeze({}
 interface NormalizeRegisteredCommandsOptions<TTarget extends object, TEvent extends KeymapEvent> {
   commands: readonly CommandDefinition<TTarget, TEvent>[]
   commandFields: ReadonlyMap<string, CommandFieldCompiler>
+  conditions: ConditionService<TTarget, TEvent>
   onError(code: string, error: unknown, message: string): void
 }
 
@@ -106,6 +109,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     return normalizeRegisteredCommands({
       commands,
       commandFields: this.state.environment.commandFields,
+      conditions: this.conditions,
       onError: (code, error, message) => {
         this.notify.emitError(code, error, message)
       },
@@ -190,7 +194,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     if (
       focused === currentFocused &&
       this.state.commands.activeCommandViewVersion === derivedStateVersion &&
-      this.state.commands.activeCommandView
+      this.state.commands.activeCommandView?.cacheable
     ) {
       return this.state.commands.activeCommandView
     }
@@ -199,6 +203,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     const reachable: LayerCommandEntry<TTarget, TEvent>[] = []
     const reachableByName = new Map<string, LayerCommandEntry<TTarget, TEvent>>()
     const chainsByName = new Map<string, LayerCommandEntry<TTarget, TEvent>[]>()
+    let cacheable = true
 
     if (this.state.layers.layersWithCommands > 0) {
       for (const layer of getActiveLayersForFocused(this.state.layers.targetLayers, this.host, focused)) {
@@ -206,7 +211,19 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
           continue
         }
 
+        if (layer.hasUnkeyedMatchers) {
+          cacheable = false
+        }
+
         for (const command of layer.commands) {
+          if (command.hasUnkeyedMatchers) {
+            cacheable = false
+          }
+
+          if (!this.conditions.matchesConditions(command)) {
+            continue
+          }
+
           const entry: LayerCommandEntry<TTarget, TEvent> = { layer, command }
           entries.push(entry)
 
@@ -226,6 +243,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     }
 
     const view: ActiveCommandView<TTarget, TEvent> = {
+      cacheable,
       entries,
       reachable,
       reachableByName,
@@ -238,7 +256,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       fallbackWithRecordErrors: new Set(),
     }
 
-    if (focused === currentFocused) {
+    if (focused === currentFocused && view.cacheable) {
       this.state.commands.activeCommandViewVersion = derivedStateVersion
       this.state.commands.activeCommandView = view
     }
@@ -529,6 +547,10 @@ function normalizeRegisteredCommands<TTarget extends object, TEvent extends Keym
     try {
       const mergedAttrs: Attributes = {}
       const mergedFields: Record<string, unknown> = {}
+      const mergedRequires: EventData = {}
+      const matchers: RuntimeMatcher[] = []
+      const conditionKeys = new Set<string>()
+      let hasUnkeyedMatchers = false
       const normalizedName = normalizeCommandName(command.name)
 
       if (seen.has(normalizedName)) {
@@ -552,7 +574,22 @@ function normalizeRegisteredCommands<TTarget extends object, TEvent extends Keym
           continue
         }
 
-        compiler(value, createCommandFieldContext(mergedAttrs, fieldName))
+        compiler(
+          value,
+          createCommandFieldContext(
+            mergedAttrs,
+            mergedRequires,
+            conditionKeys,
+            matchers,
+            options.conditions,
+            fieldName,
+            {
+              onUnkeyedMatcher() {
+                hasUnkeyedMatchers = true
+              },
+            },
+          ),
+        )
       }
 
       const attrs = Object.keys(mergedAttrs).length === 0 ? undefined : Object.freeze(mergedAttrs)
@@ -562,6 +599,11 @@ function normalizeRegisteredCommands<TTarget extends object, TEvent extends Keym
         name: normalizedName,
         fields,
         run: command.run,
+        requires: Object.entries(mergedRequires),
+        matchers,
+        conditionKeys: [...conditionKeys],
+        hasUnkeyedMatchers,
+        matchCacheDirty: true,
       }
 
       if (attrs) {
@@ -583,8 +625,22 @@ function normalizeRegisteredCommands<TTarget extends object, TEvent extends Keym
   return normalizedCommands
 }
 
-function createCommandFieldContext(mergedAttrs: Attributes, fieldName: string): CommandFieldContext {
+function createCommandFieldContext<TTarget extends object, TEvent extends KeymapEvent>(
+  mergedAttrs: Attributes,
+  mergedRequires: EventData,
+  conditionKeys: Set<string>,
+  matchers: RuntimeMatcher[],
+  conditions: ConditionService<TTarget, TEvent>,
+  fieldName: string,
+  options: {
+    onUnkeyedMatcher(): void
+  },
+): CommandFieldContext {
   return {
+    require(name, requiredValue) {
+      mergeRequirement(mergedRequires, name, requiredValue, `field ${fieldName}`)
+      conditionKeys.add(name)
+    },
     attr(name, attributeValue) {
       mergeAttribute(
         mergedAttrs,
@@ -592,6 +648,13 @@ function createCommandFieldContext(mergedAttrs: Attributes, fieldName: string): 
         snapshotDataValue(attributeValue, SNAPSHOT_COMMAND_METADATA_OPTIONS),
         `field ${fieldName}`,
       )
+    },
+    activeWhen(matcher) {
+      const runtimeMatcher = conditions.buildRuntimeMatcher(matcher, `field ${fieldName}`)
+      if (!runtimeMatcher.cacheable) {
+        options.onUnkeyedMatcher()
+      }
+      matchers.push(runtimeMatcher)
     },
   }
 }

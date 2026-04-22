@@ -220,7 +220,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
   }
 
   public layerCanCacheActiveKeys(layer: RegisteredLayer<TTarget, TEvent>): boolean {
-    return !layer.hasUnkeyedMatchers && !layer.hasUnkeyedBindings
+    return !layer.hasUnkeyedMatchers && !layer.hasUnkeyedCommands && !layer.hasUnkeyedBindings
   }
 
   public activeLayersCanCacheActiveKeys(activeLayers: readonly RegisteredLayer<TTarget, TEvent>[]): boolean {

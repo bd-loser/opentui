@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { registerEnabledField } from "@opentui/keymap/addons"
+import { registerEnabledCommandField, registerEnabledField } from "@opentui/keymap/addons"
 import { createDefaultOpenTuiKeymap as getKeymap } from "@opentui/keymap/opentui"
 
 let renderer: TestRenderer
@@ -269,5 +269,195 @@ describe("enabled addon", () => {
     mockInput.pressKey("x")
 
     expect(calls).toEqual([])
+  })
+
+  test("ignores enabled command fields until the command addon is registered", () => {
+    const calls: string[] = []
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "noop",
+          enabled: false,
+          run() {
+            calls.push("noop")
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "noop" }],
+    })
+
+    expect(getActiveKeyNames()).toEqual(["x"])
+    expect(keymap.getCommands().map((command) => command.name)).toEqual(["noop"])
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["noop"])
+  })
+
+  test("registers boolean and predicate enabled command values", () => {
+    const calls: string[] = []
+    let enabled = false
+
+    registerEnabledCommandField(keymap)
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "always-off",
+          enabled: false,
+          run() {
+            calls.push("always-off")
+          },
+        },
+        {
+          name: "dynamic",
+          enabled: () => enabled,
+          run() {
+            calls.push("dynamic")
+          },
+        },
+      ],
+      bindings: [
+        { key: "x", cmd: "always-off" },
+        { key: "y", cmd: "dynamic" },
+      ],
+    })
+
+    expect(getActiveKeyNames()).toEqual([])
+    expect(keymap.getCommands().map((command) => command.name)).toEqual([])
+
+    mockInput.pressKey("x")
+    mockInput.pressKey("y")
+
+    expect(calls).toEqual([])
+
+    enabled = true
+
+    expect(getActiveKeyNames()).toEqual(["y"])
+    expect(keymap.getCommands().map((command) => command.name)).toEqual(["dynamic"])
+
+    mockInput.pressKey("y")
+
+    expect(calls).toEqual(["dynamic"])
+  })
+
+  test("supports reactive enabled command matchers and unsubscribes on layer unregister", () => {
+    let current = false
+    const listeners = new Set<() => void>()
+    let evaluations = 0
+    let subscribeCalls = 0
+    let disposeCalls = 0
+
+    const enabledMatcher = {
+      get() {
+        evaluations += 1
+        return current
+      },
+      subscribe(onChange: () => void) {
+        subscribeCalls += 1
+        listeners.add(onChange)
+        return () => {
+          disposeCalls += 1
+          listeners.delete(onChange)
+        }
+      },
+    }
+
+    const setEnabled = (next: boolean) => {
+      if (current === next) {
+        return
+      }
+      current = next
+      for (const fn of listeners) {
+        fn()
+      }
+    }
+
+    registerEnabledCommandField(keymap)
+    const off = keymap.registerLayer({
+      scope: "global",
+      commands: [{ name: "dynamic", enabled: enabledMatcher, run() {} }],
+      bindings: [{ key: "y", cmd: "dynamic" }],
+    })
+
+    expect(subscribeCalls).toBe(1)
+    expect(listeners.size).toBe(1)
+
+    expect(getActiveKeyNames()).toEqual([])
+    expect(keymap.getCommands().map((command) => command.name)).toEqual([])
+    expect(evaluations).toBeGreaterThan(0)
+
+    const stableEvaluations = evaluations
+    current = true
+    expect(getActiveKeyNames()).toEqual([])
+    expect(keymap.getCommands().map((command) => command.name)).toEqual([])
+    expect(evaluations).toBe(stableEvaluations)
+    current = false
+
+    setEnabled(true)
+    expect(getActiveKeyNames()).toEqual(["y"])
+    expect(keymap.getCommands().map((command) => command.name)).toEqual(["dynamic"])
+    expect(evaluations).toBeGreaterThan(stableEvaluations)
+
+    const enabledEvaluations = evaluations
+    setEnabled(false)
+    expect(getActiveKeyNames()).toEqual([])
+    expect(keymap.getCommands().map((command) => command.name)).toEqual([])
+    expect(evaluations).toBeGreaterThan(enabledEvaluations)
+
+    off()
+    expect(disposeCalls).toBe(1)
+    expect(listeners.size).toBe(0)
+  })
+
+  test("rejects invalid enabled command values and can be disposed", () => {
+    const offEnabled = registerEnabledCommandField(keymap)
+    const calls: string[] = []
+    const errors: string[] = []
+
+    keymap.on("error", (event) => {
+      errors.push(event.message)
+    })
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "bad-command",
+          enabled: "yes",
+          run() {
+            calls.push("bad")
+          },
+        },
+      ],
+    })
+
+    expect(errors).toEqual(['Keymap enabled field "enabled" must be a boolean, a function, or a reactive matcher'])
+    expect(keymap.getCommands()).toEqual([])
+
+    offEnabled()
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "active-command",
+          enabled: false,
+          run() {
+            calls.push("active")
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "active-command" }],
+    })
+
+    expect(keymap.getCommands().map((command) => command.name)).toEqual(["active-command"])
+    expect(getActiveKeyNames()).toEqual(["x"])
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["active"])
   })
 })

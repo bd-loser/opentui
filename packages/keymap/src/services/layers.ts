@@ -241,6 +241,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         commandLookup,
         bindingInputs,
         compiledBindings: compiledBindings.bindings,
+        hasUnkeyedCommands: commands.some((command) => command.hasUnkeyedMatchers),
         hasUnkeyedBindings: compiledBindings.bindings.some((binding) => binding.hasUnkeyedMatchers),
         hasTokenBindings: compiledBindings.hasTokenBindings,
         root: compiledBindings.root,
@@ -257,6 +258,9 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         this.state.layers.layersWithConditions += 1
       }
       this.conditions.registerRuntimeMatchable(registeredLayer)
+      for (const command of registeredLayer.commands) {
+        this.conditions.registerRuntimeMatchable(command)
+      }
       for (const binding of registeredLayer.compiledBindings) {
         this.conditions.registerRuntimeMatchable(binding)
       }
@@ -519,6 +523,9 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       }
 
       this.conditions.unregisterRuntimeMatchable(layer)
+      for (const command of layer.commands) {
+        this.conditions.unregisterRuntimeMatchable(command)
+      }
       for (const binding of layer.compiledBindings) {
         this.conditions.unregisterRuntimeMatchable(binding)
       }

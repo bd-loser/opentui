@@ -1,4 +1,4 @@
-import { createDefaultHtmlKeymap, createHtmlKeymapEvent, stringifyKeySequence, type ActiveKey } from "/dist/html.js"
+import { createDefaultHtmlKeymap, createHtmlKeymapEvent, stringifyKeyStroke, type ActiveKey, type KeySequencePart } from "/dist/html.js"
 import * as addons from "/dist/addons/index.js"
 
 const app = document.getElementById("app") as HTMLElement | null
@@ -67,11 +67,25 @@ let lastAction = "Focus a panel or textarea to begin."
 let logEntries: Array<{ at: string; message: string }> = []
 
 const DEBUG_NAMESPACE = "[html-keymap-demo]"
+const LEADER_TOKEN = "<leader>"
+const LEADER_TRIGGER_LABEL = stringifyKeyStroke({ name: "space" })
+
+function formatDemoKeyPart(part: Pick<KeySequencePart, "stroke" | "tokenName">): string {
+  if (part.tokenName === LEADER_TOKEN) {
+    return LEADER_TRIGGER_LABEL
+  }
+
+  return stringifyKeyStroke(part)
+}
+
+function formatDemoKeySequence(parts: readonly Pick<KeySequencePart, "stroke" | "tokenName">[]): string {
+  return parts.map((part) => formatDemoKeyPart(part)).join(" ")
+}
 
 function summarizeActiveKeys(keys: readonly ActiveKey[]): string[] {
   return keys.map((entry) => {
     const summary = entry.continues ? "prefix" : typeof entry.command === "string" ? entry.command : "fn"
-    return `${entry.display}:${summary}`
+    return `${formatDemoKeyPart(entry)}:${summary}`
   })
 }
 
@@ -106,7 +120,7 @@ function debugKeyEvent(phase: "keydown" | "keyup", event: KeyboardEvent): void {
     normalizedSuper: normalized.super,
     focused: getCurrentFocusedTarget()?.id ?? "none",
     activeKeys: summarizeActiveKeys(keymap.getActiveKeys({ includeMetadata: true })).join(", ") || "none",
-    pending: stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true }) || "none",
+    pending: formatDemoKeySequence(keymap.getPendingSequence()) || "none",
     promptVisible,
   })
 }
@@ -439,7 +453,7 @@ function renderStatus(): void {
   leaderState.textContent = leaderArmed ? "Armed" : "Idle"
 
   const pending = keymap.getPendingSequence()
-  pendingSequence.textContent = pending.length === 0 ? "None" : stringifyKeySequence(pending, { preferDisplay: true })
+  pendingSequence.textContent = pending.length === 0 ? "None" : formatDemoKeySequence(pending)
 
   const focused = getCurrentFocusedTarget()
   focusedTarget.textContent = focused?.id ?? "None"
@@ -489,7 +503,7 @@ function renderActiveKeys(): void {
       return `
         <div class="active-key-row">
           <div class="active-key-header">
-            <strong><kbd>${entry.display}</kbd></strong>
+            <strong><kbd>${formatDemoKeyPart(entry)}</kbd></strong>
             <span>${entry.continues ? "Prefix" : "Command"}</span>
           </div>
           <div class="active-key-desc">${getActiveKeyDescription(entry)}</div>
@@ -543,7 +557,7 @@ function renderHelp(): void {
   helpCard.classList.toggle("is-hidden", !helpVisible)
   helpCopy.innerHTML = [
     "<div><kbd>Tab</kbd> and <kbd>Shift+Tab</kbd> cycle focus between panels, textareas, and sidebar panes.</div>",
-    "<div><kbd>Space</kbd> arms a leader sequence for <kbd>Space s</kbd>, <kbd>Space h</kbd>, and <kbd>Space r</kbd>.</div>",
+    `<div><kbd>${LEADER_TRIGGER_LABEL}</kbd> arms a leader sequence for <kbd>${LEADER_TRIGGER_LABEL} s</kbd>, <kbd>${LEADER_TRIGGER_LABEL} h</kbd>, and <kbd>${LEADER_TRIGGER_LABEL} r</kbd>.</div>`,
     "<div><kbd>:</kbd> opens the ex prompt as a modal overlay. Try <kbd>:help</kbd>, <kbd>:reset</kbd>, <kbd>:write alpha</kbd>, or <kbd>:focus draft</kbd>.</div>",
     "<div>The Alpha and Beta panels each install their own focus-within layers with <kbd>j</kbd>, <kbd>k</kbd>, and <kbd>Enter</kbd>.</div>",
     "<div>The Notes and Draft textareas use plain browser editing plus keymap bindings for <kbd>Ctrl+Enter</kbd>.</div>",
@@ -564,7 +578,7 @@ function debugStateSnapshot(source: string): void {
     focused: getCurrentFocusedTarget()?.id ?? "none",
     promptVisible,
     leaderArmed,
-    pending: stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true }) || "none",
+    pending: formatDemoKeySequence(keymap.getPendingSequence()) || "none",
     activeKeys: summarizeActiveKeys(keymap.getActiveKeys({ includeMetadata: true })).join(", ") || "none",
   })
 }

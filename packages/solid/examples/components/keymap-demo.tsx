@@ -8,10 +8,10 @@ import {
   type TextareaRenderable,
 } from "@opentui/core"
 import {
-  stringifyKeySequence,
   stringifyKeyStroke,
   type KeymapActiveKey,
   type KeymapCommandRecord,
+  type KeySequencePart,
 } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
 import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
@@ -36,6 +36,9 @@ const palette = {
   leader: "#fb923c",
   separator: "#475569",
 } as const
+
+const LEADER_TOKEN = "<leader>"
+const LEADER_TRIGGER_LABEL = stringifyKeyStroke({ name: "x", ctrl: true })
 
 function createDemoKeymap(renderer: CliRenderer): ReturnType<typeof createOpenTuiKeymap> {
   const keymap = createOpenTuiKeymap(renderer)
@@ -267,6 +270,18 @@ function getActiveKeyLabel(activeKey: KeymapActiveKey): string {
     (typeof activeKey.command === "string" ? activeKey.command : undefined) ??
     ""
   )
+}
+
+function formatDemoKeyPart(part: Pick<KeySequencePart, "stroke" | "tokenName">): string {
+  if (part.tokenName === LEADER_TOKEN) {
+    return LEADER_TRIGGER_LABEL
+  }
+
+  return stringifyKeyStroke(part)
+}
+
+function formatDemoKeySequence(parts: readonly Pick<KeySequencePart, "stroke" | "tokenName">[]): string {
+  return parts.map((part) => formatDemoKeyPart(part)).join(" ")
 }
 
 // -- CounterPanel ----------------------------------------------------------
@@ -768,19 +783,17 @@ function KeymapDemoContent() {
 
   const whichKeyEntries = createMemo(() => {
     const sortedActiveKeys = [...activeKeys()].sort((left, right) => {
-      return stringifyKeyStroke(left, { preferDisplay: true }).localeCompare(
-        stringifyKeyStroke(right, { preferDisplay: true }),
-      )
+      return formatDemoKeyPart(left).localeCompare(formatDemoKeyPart(right))
     })
 
     return sortedActiveKeys.map((activeKey) => ({
-      key: stringifyKeyStroke(activeKey, { preferDisplay: true }),
+      key: formatDemoKeyPart(activeKey),
       command: getActiveKeyLabel(activeKey),
     }))
   })
 
   const whichKeyPrefix = createMemo(() => {
-    return stringifyKeySequence(pendingSequence(), { preferDisplay: true }) || "<root>"
+    return formatDemoKeySequence(pendingSequence()) || "<root>"
   })
 
   const commandPromptBindingsRef = useBindings<InputRenderable>({
@@ -846,7 +859,7 @@ function KeymapDemoContent() {
     renderer.on(CliRenderEvents.FOCUSED_RENDERABLE, onFocusedRenderable)
     renderer.on(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
     addLog("Tab switches focus across panels and editors.")
-    addLog("ctrl+x arms the leader extension.")
+    addLog(`${LEADER_TRIGGER_LABEL} arms the leader extension.`)
     addLog(": opens the centered ex prompt.")
     alphaPanelRef?.focus()
     announce("Focused Alpha panel")
@@ -998,7 +1011,7 @@ function KeymapDemoContent() {
           <text id="keymap-demo-status-leader" fg={palette.text} height={1}>
             <span style={{ fg: palette.textDim }}>Leader: </span>
             <Show when={leaderArmed()} fallback={<span style={{ fg: palette.textMuted }}>idle</span>}>
-              <span style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}>armed (ctrl+x)</span>
+              <span style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}>{`armed (${LEADER_TRIGGER_LABEL})`}</span>
             </Show>
           </text>
 

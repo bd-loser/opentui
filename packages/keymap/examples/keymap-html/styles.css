@@ -59,9 +59,9 @@ kbd {
 
 .app-shell {
   position: relative;
-  max-width: 1280px;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 1rem 1.25rem;
 }
 
 .app-shell.prompt-open .hero,
@@ -73,17 +73,17 @@ kbd {
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 22rem;
-  gap: 1rem;
-  padding-bottom: 1rem;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+  gap: 0.75rem;
+  padding-bottom: 0.75rem;
   border-bottom: 1px dashed var(--tn-border);
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.75rem;
 }
 
 .eyebrow {
-  margin: 0 0 0.25rem;
+  margin: 0 0 0.15rem;
   color: var(--tn-magenta);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   letter-spacing: 0.02em;
 }
 
@@ -96,7 +96,7 @@ kbd {
   margin: 0;
   font-family: var(--tn-mono);
   font-weight: 600;
-  font-size: clamp(1.4rem, 2.2vw, 1.9rem);
+  font-size: clamp(1.05rem, 1.8vw, 1.35rem);
   color: var(--tn-fg);
   letter-spacing: -0.01em;
 }
@@ -107,11 +107,11 @@ kbd {
 }
 
 .lede {
-  max-width: 58rem;
-  margin: 0.6rem 0 0;
+  max-width: 54rem;
+  margin: 0.35rem 0 0;
   color: var(--tn-fg-dark);
-  line-height: 1.55;
-  font-size: 0.88rem;
+  line-height: 1.45;
+  font-size: 0.82rem;
 }
 
 /* Generic cards */
@@ -126,30 +126,16 @@ kbd {
 }
 
 .hero-card {
-  padding: 0.75rem 0.9rem;
-  position: relative;
-}
-
-.hero-card::before {
-  content: "status";
-  position: absolute;
-  top: -0.55rem;
-  left: 0.75rem;
-  padding: 0 0.4rem;
-  background: var(--tn-bg);
-  color: var(--tn-comment);
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  padding: 0.5rem 0.65rem;
 }
 
 .hero-card-row {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.35rem 0;
+  gap: 0.5rem;
+  padding: 0.22rem 0;
   border-bottom: 1px dashed var(--tn-border);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
 }
 
 .hero-card-row:last-child {
@@ -167,14 +153,14 @@ kbd {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(18rem, 0.9fr);
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 19rem);
+  gap: 0.75rem;
   align-items: start;
 }
 
 .workspace {
   display: grid;
-  gap: 1rem;
+  gap: 0.75rem;
   align-content: start;
   align-items: start;
   grid-auto-rows: max-content;
@@ -182,7 +168,7 @@ kbd {
 
 .sidebar {
   display: grid;
-  gap: 1rem;
+  gap: 0.75rem;
   align-content: start;
 }
 
@@ -190,7 +176,7 @@ kbd {
 .editor-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
+  gap: 0.75rem;
   align-items: start;
 }
 
@@ -198,7 +184,7 @@ kbd {
 .editor-card,
 .help-card,
 .sidebar-card {
-  padding: 0.9rem;
+  padding: 0.65rem;
   position: relative;
 }
 
@@ -208,7 +194,7 @@ kbd {
 .editor-card-header h2,
 .panel-title-row h2 {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 500;
   color: var(--tn-blue);
   letter-spacing: 0.02em;
@@ -216,8 +202,8 @@ kbd {
 
 .sidebar-card > h2,
 .help-card > h2 {
-  padding-bottom: 0.55rem;
-  margin-bottom: 0.55rem;
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.4rem;
   border-bottom: 1px dashed var(--tn-border);
 }
 
@@ -260,18 +246,18 @@ textarea:focus,
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
+  gap: 0.5rem;
 }
 
 .panel-title-row {
-  padding-bottom: 0.5rem;
-  margin-bottom: 0.5rem;
+  padding-bottom: 0.35rem;
+  margin-bottom: 0.35rem;
   border-bottom: 1px dashed var(--tn-border);
 }
 
 .panel-badge {
   color: var(--tn-comment);
-  font-size: 0.7rem;
+  font-size: 0.64rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
 }
@@ -291,15 +277,15 @@ textarea:focus,
 .prompt-header span,
 .prompt-help {
   color: var(--tn-fg-dark);
-  font-size: 0.82rem;
+  font-size: 0.76rem;
 }
 
 .prompt-eyebrow {
-  margin: 0 0 0.25rem;
+  margin: 0 0 0.15rem;
   color: var(--tn-magenta);
   text-transform: lowercase;
   letter-spacing: 0.02em;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
 }
 
 .prompt-eyebrow::before {
@@ -308,11 +294,11 @@ textarea:focus,
 }
 
 .counter {
-  margin-top: 0.75rem;
-  padding-left: 0.6rem;
+  margin-top: 0.45rem;
+  padding-left: 0.45rem;
   border-left: 2px solid var(--tn-border);
   font-family: var(--tn-mono);
-  font-size: clamp(1.8rem, 4vw, 2.4rem);
+  font-size: clamp(1.25rem, 2.4vw, 1.7rem);
   font-weight: 600;
   color: var(--tn-orange);
   line-height: 1.1;
@@ -335,18 +321,18 @@ textarea,
   border: 1px solid var(--tn-border);
   background: var(--tn-bg-dark);
   color: var(--tn-fg);
-  padding: 0.65rem 0.8rem;
+  padding: 0.45rem 0.55rem;
   font: inherit;
   font-family: var(--tn-mono);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   resize: vertical;
   caret-color: var(--tn-cyan);
 }
 
 textarea {
-  min-height: 10rem;
-  margin-top: 0.75rem;
-  line-height: 1.55;
+  min-height: 8rem;
+  margin-top: 0.5rem;
+  line-height: 1.45;
 }
 
 textarea::selection,
@@ -356,7 +342,7 @@ textarea::selection,
 }
 
 .editor-card-header {
-  padding-bottom: 0.5rem;
+  padding-bottom: 0.35rem;
   border-bottom: 1px dashed var(--tn-border);
 }
 
@@ -370,7 +356,7 @@ textarea::selection,
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 1.5rem;
+  padding: 0.75rem;
   background: rgba(16, 16, 20, 0.72);
   z-index: 30;
 }
@@ -381,7 +367,7 @@ textarea::selection,
 
 .prompt-shell {
   position: relative;
-  width: min(100%, 48rem);
+  width: min(100%, 42rem);
   overflow: visible;
   border: 0;
   background: transparent;
@@ -399,18 +385,18 @@ textarea::selection,
   position: relative;
   z-index: 2;
   display: grid;
-  gap: 0.6rem;
-  padding: 0.9rem 1rem;
+  gap: 0.4rem;
+  padding: 0.6rem 0.7rem;
   border-color: var(--tn-magenta);
 }
 
 .prompt-results {
   position: absolute;
-  top: calc(100% + 0.6rem);
+  top: calc(100% + 0.35rem);
   left: 0;
   right: 0;
   z-index: 1;
-  padding: 0.75rem 0.85rem;
+  padding: 0.55rem 0.65rem;
 }
 
 .prompt-header {
@@ -419,7 +405,7 @@ textarea::selection,
 
 .prompt-header h2 {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 500;
   color: var(--tn-fg);
 }
@@ -430,21 +416,21 @@ textarea::selection,
 }
 
 .prompt-header span {
-  max-width: 18rem;
+  max-width: 14rem;
   text-align: right;
-  line-height: 1.45;
+  line-height: 1.35;
   color: var(--tn-comment);
 }
 
 .prompt-input {
-  padding: 0.55rem 0.7rem;
+  padding: 0.4rem 0.5rem;
   border-color: var(--tn-border);
 }
 
 .prompt-help {
-  min-height: 1.3rem;
+  min-height: 1.1rem;
   color: var(--tn-comment);
-  font-size: 0.82rem;
+  font-size: 0.76rem;
 }
 
 .prompt-help::before {
@@ -457,18 +443,18 @@ textarea::selection,
 .log-lines,
 .help-copy {
   display: grid;
-  gap: 0.4rem;
-  margin-top: 0.5rem;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
 }
 
 .suggestion,
 .active-key-row,
 .log-line {
-  padding: 0.55rem 0.7rem;
+  padding: 0.35rem 0.45rem;
   background: var(--tn-bg-panel);
   border: 1px solid transparent;
   border-left: 2px solid var(--tn-border);
-  font-size: 0.83rem;
+  font-size: 0.78rem;
 }
 
 .suggestion.is-selected {
@@ -487,8 +473,8 @@ textarea::selection,
 }
 
 .prompt-suggestions {
-  margin-top: 0.5rem;
-  max-height: min(16rem, 42vh);
+  margin-top: 0.35rem;
+  max-height: min(14rem, 42vh);
   overflow: auto;
   align-content: start;
 }
@@ -509,7 +495,7 @@ textarea::selection,
 .active-key-header {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.5rem;
   align-items: center;
 }
 
@@ -520,7 +506,7 @@ textarea::selection,
 
 .active-key-header span {
   color: var(--tn-comment);
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
@@ -528,7 +514,7 @@ textarea::selection,
 .suggestion-usage,
 .log-line time {
   color: var(--tn-orange);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-family: var(--tn-mono);
 }
 
@@ -545,13 +531,13 @@ textarea::selection,
 .suggestion-desc,
 .active-key-desc {
   color: var(--tn-fg-dark);
-  margin-top: 0.25rem;
-  font-size: 0.8rem;
+  margin-top: 0.15rem;
+  font-size: 0.74rem;
 }
 
 .log-line {
   display: grid;
-  gap: 0.2rem;
+  gap: 0.1rem;
   color: var(--tn-fg-dark);
   border-left-color: var(--tn-green);
 }
@@ -561,9 +547,9 @@ textarea::selection,
 }
 
 .help-copy > div {
-  padding: 0.25rem 0;
+  padding: 0.1rem 0;
   color: var(--tn-fg-dark);
-  font-size: 0.82rem;
+  font-size: 0.76rem;
 }
 
 .help-copy > div::before {
@@ -580,11 +566,11 @@ textarea::selection,
   }
 
   .app-shell {
-    padding: 1rem;
+    padding: 0.75rem;
   }
 
   .prompt-overlay {
-    padding: 1rem;
+    padding: 0.5rem;
     align-items: center;
   }
 
@@ -602,6 +588,6 @@ textarea::selection,
   }
 
   .prompt-results {
-    top: calc(100% + 0.5rem);
+    top: calc(100% + 0.35rem);
   }
 }

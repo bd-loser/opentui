@@ -481,7 +481,10 @@ function parseBindingSequenceWithParsers(
   options: {
     tokens?: ReadonlyMap<string, ResolvedKeyToken>
     layer?: Readonly<Record<string, unknown>>
-    parseObjectKey: (key: KeyStrokeInput, options?: { display?: string; match?: KeyMatch; tokenName?: string }) => KeySequencePart
+    parseObjectKey: (
+      key: KeyStrokeInput,
+      options?: { display?: string; match?: KeyMatch; tokenName?: string },
+    ) => KeySequencePart
   },
 ): ParsedBindingSequenceResult {
   if (key.length === 0) {
@@ -553,7 +556,10 @@ function parseSingleKeyPartWithParsers(
   options: {
     tokens?: ReadonlyMap<string, ResolvedKeyToken>
     layer?: Readonly<Record<string, unknown>>
-    parseObjectKey: (key: KeyStrokeInput, options?: { display?: string; match?: KeyMatch; tokenName?: string }) => KeySequencePart
+    parseObjectKey: (
+      key: KeyStrokeInput,
+      options?: { display?: string; match?: KeyMatch; tokenName?: string },
+    ) => KeySequencePart
   },
 ): KeySequencePart {
   if (typeof key !== "string") {

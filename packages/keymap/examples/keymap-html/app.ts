@@ -1,4 +1,10 @@
-import { createDefaultHtmlKeymap, createHtmlKeymapEvent, stringifyKeyStroke, type ActiveKey, type KeySequencePart } from "/dist/html.js"
+import {
+  createDefaultHtmlKeymap,
+  createHtmlKeymapEvent,
+  stringifyKeyStroke,
+  type ActiveKey,
+  type KeySequencePart,
+} from "/dist/html.js"
 import * as addons from "/dist/addons/index.js"
 
 const app = document.getElementById("app") as HTMLElement | null

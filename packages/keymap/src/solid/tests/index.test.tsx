@@ -424,9 +424,7 @@ describe("solid keymap hooks", () => {
 
       return (
         <box width={20} height={6}>
-          <Show when={visible()}>
-            {() => <box ref={setTarget} width={8} height={3} focusable focused />}
-          </Show>
+          <Show when={visible()}>{() => <box ref={setTarget} width={8} height={3} focusable focused />}</Show>
         </box>
       )
     }

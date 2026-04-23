@@ -1,5 +1,5 @@
 import type { KeyEvent, Renderable } from "@opentui/core"
-import { type Keymap, type Layer, type LayerFields, type ReactiveMatcher } from "../index.js"
+import { type Keymap, type LayerFields, type ReactiveMatcher } from "../index.js"
 import {
   createComponent,
   createContext,
@@ -161,24 +161,30 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
       throw new Error("useBindings target was not available during mount")
     }
 
-    if (resolvedScope !== "global" && !resolvedTarget) {
+    const { scope: _scope, target: _target, ...baseLayer } = layer
+    if (resolvedScope === "global") {
+      const dispose = keymap.registerLayer({
+        ...baseLayer,
+        scope: "global",
+      })
+
+      onCleanup(() => {
+        dispose()
+      })
+
+      return
+    }
+
+    if (!resolvedTarget) {
       throw new Error("useBindings local bindings need a target or the returned ref callback attached to a renderable")
     }
 
-    const { scope: _scope, target: _target, ...baseLayer } = layer
-    const resolvedLayer: Layer<Renderable, KeyEvent> =
-      resolvedScope === "global"
-        ? {
-            ...baseLayer,
-            scope: "global",
-          }
-        : {
-            ...baseLayer,
-            scope: resolvedScope,
-            target: resolvedTarget!,
-          }
+    const dispose = keymap.registerLayer({
+      ...baseLayer,
+      scope: resolvedScope,
+      target: resolvedTarget,
+    })
 
-    const dispose = keymap.registerLayer(resolvedLayer)
     onCleanup(() => {
       dispose()
     })

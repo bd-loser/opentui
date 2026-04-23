@@ -176,27 +176,29 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
       throw new Error("useBindings target was not available during mount")
     }
 
-    if (resolvedScope !== "global" && !resolvedTarget) {
+    const { scope: _scope, target: _target, ...baseLayer } = currentLayer
+
+    if (resolvedScope === "global") {
+      disposeRef.current = keymap.registerLayer({
+        ...baseLayer,
+        scope: "global",
+      })
+      registeredScopeRef.current = "global"
+      registeredTargetRef.current = undefined
+      return
+    }
+
+    if (!resolvedTarget) {
       throw new Error("useBindings local bindings need a target or the returned ref callback attached to a renderable")
     }
 
-    const { scope: _scope, target: _target, ...baseLayer } = currentLayer
-
-    const resolvedLayer: Layer<Renderable, KeyEvent> =
-      resolvedScope === "global"
-        ? {
-            ...baseLayer,
-            scope: "global",
-          }
-        : {
-            ...baseLayer,
-            scope: resolvedScope,
-            target: resolvedTarget!,
-          }
-
-    disposeRef.current = keymap.registerLayer(resolvedLayer)
+    disposeRef.current = keymap.registerLayer({
+      ...baseLayer,
+      scope: resolvedScope,
+      target: resolvedTarget,
+    })
     registeredScopeRef.current = resolvedScope
-    registeredTargetRef.current = resolvedScope === "global" ? undefined : resolvedTarget
+    registeredTargetRef.current = resolvedTarget
   }, [keymap])
 
   const ref = useCallback<BindingsRef<TRenderable>>((value) => {

@@ -622,7 +622,11 @@ export interface RegisteredLayerBucket<TTarget extends object = object, TEvent e
   focusWithinLayers: RegisteredLayer<TTarget, TEvent>[]
 }
 
-export interface PendingSequenceState<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+export interface PendingSequenceCapture<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   layer: RegisteredLayer<TTarget, TEvent>
   node: SequenceNode<TTarget, TEvent>
+}
+
+export interface PendingSequenceState<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  captures: readonly PendingSequenceCapture<TTarget, TEvent>[]
 }

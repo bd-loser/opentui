@@ -4322,7 +4322,7 @@ describe("keymap", () => {
     expect(keymap.getPendingSequence()).toEqual([])
   })
 
-  test("keeps pending sequences local to the layer that captured them", () => {
+  test("merges pending sequence continuations across matching prefix layers", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
@@ -4360,11 +4360,62 @@ describe("keymap", () => {
     target.focus()
     mockInput.pressKey("d")
 
-    expect(getActiveKeyNames(keymap)).toEqual(["d"])
+    expect(getActiveKeyNames(keymap)).toEqual(["a", "d"])
 
     mockInput.pressKey("d")
 
     expect(calls).toEqual(["local"])
+  })
+
+  test("merges shared leader-style prefixes across local and global layers", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+    const target = createFocusableBox("shared-leader-target")
+
+    renderer.root.add(target)
+
+    keymap.registerToken({
+      name: "<leader>",
+      key: { name: "x", ctrl: true },
+    })
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [
+        {
+          name: "global-model",
+          run() {
+            calls.push("global-model")
+          },
+        },
+        {
+          name: "local-editor",
+          run() {
+            calls.push("local-editor")
+          },
+        },
+      ],
+    })
+
+    keymap.registerLayer({
+      scope: "global",
+      bindings: [{ key: "<leader>m", cmd: "global-model" }],
+    })
+    keymap.registerLayer({
+      target,
+      bindings: [{ key: "<leader>e", cmd: "local-editor" }],
+    })
+
+    target.focus()
+    mockInput.pressKey("x", { ctrl: true })
+
+    expect(getActiveKeyNames(keymap)).toEqual(["e", "m"])
+
+    mockInput.pressKey("m")
+    mockInput.pressKey("x", { ctrl: true })
+    mockInput.pressKey("e")
+
+    expect(calls).toEqual(["global-model", "local-editor"])
   })
 
   test("supports addon-style backspace editing for pending sequences", () => {

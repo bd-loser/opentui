@@ -12,6 +12,7 @@ import type {
   KeyInterceptOptions,
   KeyInputContext,
   KeymapEvent,
+  PendingSequenceCapture,
   RawInterceptOptions,
   RawInputContext,
   CompiledBinding,
@@ -201,23 +202,62 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     event: TEvent,
     focused: TTarget | null,
   ): void {
-    const nextNode = this.getReachableChild(pending.node, matchKeys, focused)
-    if (!nextNode) {
+    const advancedCaptures: PendingSequenceCapture<TTarget, TEvent>[] = []
+
+    for (const capture of pending.captures) {
+      const nextNode = this.getReachableChild(capture.node, matchKeys, focused)
+      if (!nextNode) {
+        continue
+      }
+
+      advancedCaptures.push({
+        layer: capture.layer,
+        node: nextNode,
+      })
+    }
+
+    if (advancedCaptures.length === 0) {
       this.activation.setPendingSequence(null)
       return
     }
 
-    if (nextNode.children.size > 0) {
-      this.activation.setPendingSequence({
-        layer: pending.layer,
-        node: nextNode,
-      })
-      event.preventDefault()
-      event.stopPropagation()
-      return
+    let handledExact = false
+
+    captureLoop: for (let index = 0; index < advancedCaptures.length; index += 1) {
+      const capture = advancedCaptures[index]
+      if (!capture) {
+        continue
+      }
+
+      if (capture.node.children.size > 0) {
+        if (handledExact) {
+          continue
+        }
+
+        this.activation.setPendingSequence({
+          captures: advancedCaptures.filter((candidate, candidateIndex) => {
+            return candidateIndex >= index && candidate.node.children.size > 0
+          }),
+        })
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+
+      const result = this.runBindings(capture.layer, capture.node.bindings, event, focused)
+      if (!result.handled) {
+        continue
+      }
+
+      handledExact = true
+      if (result.stop) {
+        this.activation.setPendingSequence(null)
+        return
+      }
+
+      continue captureLoop
     }
 
-    this.runBindings(pending.layer, nextNode.bindings, event, focused)
     this.activation.setPendingSequence(null)
   }
 
@@ -229,7 +269,12 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   ): void {
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
 
-    layerLoop: for (const layer of activeLayers) {
+    layerLoop: for (let index = 0; index < activeLayers.length; index += 1) {
+      const layer = activeLayers[index]
+      if (!layer) {
+        continue
+      }
+
       if (layer.root.children.size === 0) {
         continue
       }
@@ -245,8 +290,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
       if (nextNode.children.size > 0) {
         this.activation.setPendingSequence({
-          layer,
-          node: nextNode,
+          captures: this.collectPendingCapturesFromRoot(activeLayers, index, matchKeys, focused),
         })
         event.preventDefault()
         event.stopPropagation()
@@ -264,6 +308,39 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
       continue layerLoop
     }
+  }
+
+  private collectPendingCapturesFromRoot(
+    activeLayers: RegisteredLayer<TTarget, TEvent>[],
+    startIndex: number,
+    matchKeys: readonly KeyMatch[],
+    focused: TTarget | null,
+  ): PendingSequenceCapture<TTarget, TEvent>[] {
+    const captures: PendingSequenceCapture<TTarget, TEvent>[] = []
+    const hasLayerConditions = this.state.layers.layersWithConditions > 0
+
+    for (let index = startIndex; index < activeLayers.length; index += 1) {
+      const layer = activeLayers[index]
+      if (!layer || layer.root.children.size === 0) {
+        continue
+      }
+
+      if (hasLayerConditions && !this.conditions.hasNoConditions(layer) && !this.conditions.matchesConditions(layer)) {
+        continue
+      }
+
+      const nextNode = this.getReachableChild(layer.root, matchKeys, focused)
+      if (!nextNode || nextNode.children.size === 0) {
+        continue
+      }
+
+      captures.push({
+        layer,
+        node: nextNode,
+      })
+    }
+
+    return captures
   }
 
   private resolveEventMatchKeys(event: TEvent): KeyMatch[] {

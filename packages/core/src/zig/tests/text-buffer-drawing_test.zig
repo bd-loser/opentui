@@ -159,7 +159,7 @@ test "drawTextBuffer - transparent background preserves underlying non-space und
     const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
     const green_fg = RGBA{ 0.0, 1.0, 0.0, 1.0 };
     try opt_buffer.clear(red_bg, 32);
-    try opt_buffer.drawChar('X', 1, 0, green_fg, blue_bg, ansi.TextAttributes.BOLD);
+    try opt_buffer.drawChar('X', 1, 0, green_fg, blue_bg, ansi.TextAttributes.BOLD, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     try opt_buffer.drawTextBuffer(view, 0, 0);
 

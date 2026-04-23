@@ -15,7 +15,7 @@ import {
 } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
 import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
-import { KeymapProvider, useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/solid"
+import { KeymapProvider, useBindings, useKeymap, useKeymapSelector } from "@opentui/keymap/solid"
 import { render, useRenderer } from "@opentui/solid"
 import { createMemo, createSignal, For, onCleanup, onMount, Show, type Accessor, type JSX } from "solid-js"
 
@@ -329,13 +329,13 @@ function CounterPanel(props: {
     ],
   })
 
-  const bindingsRef = useBindings({
+  const bindingsRef = useBindings(() => ({
     bindings: [
       { key: "j", cmd: decrementCommand, desc: `${props.label} -${props.step}` },
       { key: "k", cmd: incrementCommand, desc: `${props.label} +${props.step}` },
       { key: "return", cmd: `:w ${props.saveTarget}`, desc: `Write ${props.label.toLowerCase()} panel` },
     ],
-  })
+  }))
 
   onCleanup(() => {
     offCommands()
@@ -398,8 +398,8 @@ function KeymapDemoContent() {
   const [logs, setLogs] = createSignal<string[]>([])
   const [statusVersion, setStatusVersion] = createSignal(0)
 
-  const activeKeys = useActiveKeys({ includeMetadata: true })
-  const pendingSequence = usePendingSequence()
+  const activeKeys = useKeymapSelector((keymap) => keymap.getActiveKeys({ includeMetadata: true }))
+  const pendingSequence = useKeymapSelector((keymap) => keymap.getPendingSequence())
 
   const bumpStatus = () => {
     setStatusVersion((value) => value + 1)
@@ -705,7 +705,7 @@ function KeymapDemoContent() {
     ],
   })
 
-  useBindings({
+  useBindings(() => ({
     scope: "global",
     enabled: () => !commandPromptVisible(),
     bindings: [
@@ -717,13 +717,13 @@ function KeymapDemoContent() {
       { key: "<leader>s", cmd: ":w session.log", desc: "Write session log", group: "Leader" },
       { key: "<leader>h", cmd: "toggle-help", desc: "Toggle help", group: "Leader" },
     ],
-  })
+  }))
 
-  useBindings({
+  useBindings(() => ({
     scope: "global",
     enabled: () => !commandPromptVisible(),
     bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }],
-  })
+  }))
 
   const focusedEditorIndex = createMemo(() => {
     statusVersion()
@@ -796,7 +796,7 @@ function KeymapDemoContent() {
     return formatDemoKeySequence(pendingSequence()) || "<root>"
   })
 
-  const commandPromptBindingsRef = useBindings<InputRenderable>({
+  const commandPromptBindingsRef = useBindings<InputRenderable>(() => ({
     enabled: () => commandPromptVisible(),
     commands: [
       {
@@ -844,7 +844,7 @@ function KeymapDemoContent() {
       { key: "shift+tab", cmd: "ex-prompt-complete-prev", desc: "Previous completion" },
       { key: "return", cmd: "ex-prompt-submit", desc: "Run ex command" },
     ],
-  })
+  }))
 
   const onFocusedRenderable = () => {
     bumpStatus()
@@ -1011,7 +1011,9 @@ function KeymapDemoContent() {
           <text id="keymap-demo-status-leader" fg={palette.text} height={1}>
             <span style={{ fg: palette.textDim }}>Leader: </span>
             <Show when={leaderArmed()} fallback={<span style={{ fg: palette.textMuted }}>idle</span>}>
-              <span style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}>{`armed (${LEADER_TRIGGER_LABEL})`}</span>
+              <span
+                style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}
+              >{`armed (${LEADER_TRIGGER_LABEL})`}</span>
             </Show>
           </text>
 

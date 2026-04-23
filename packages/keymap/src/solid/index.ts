@@ -1,13 +1,5 @@
 import type { KeyEvent, Renderable } from "@opentui/core"
-import {
-  type ActiveKey,
-  type ActiveKeyOptions,
-  type Keymap,
-  type KeySequencePart,
-  type Layer,
-  type LayerFields,
-  type ReactiveMatcher,
-} from "../index.js"
+import { type Keymap, type Layer, type LayerFields, type ReactiveMatcher } from "../index.js"
 import {
   createComponent,
   createContext,
@@ -102,8 +94,6 @@ export const useKeymap = (): OpenTuiKeymap => {
   return keymap
 }
 
-// Use the batched `state` event for derived reads. Pending-sequence changes
-// already flow through `state`, so subscribing to both would duplicate work.
 function useKeymapStateVersion(keymap: OpenTuiKeymap): Accessor<number> {
   const [version, setVersion] = createSignal(0)
   let dispose: (() => void) | undefined
@@ -123,119 +113,80 @@ function useKeymapStateVersion(keymap: OpenTuiKeymap): Accessor<number> {
   return version
 }
 
-export const useActiveKeys = (options?: ActiveKeyOptions): Accessor<readonly ActiveKey[]> => {
+/**
+ * Reactively derives any view from the current keymap by re-running `selector`
+ * on each batched keymap state change.
+ */
+export const useKeymapSelector = <T>(selector: (keymap: OpenTuiKeymap) => T): Accessor<T> => {
   const keymap = useKeymap()
   const version = useKeymapStateVersion(keymap)
 
-  return createMemo(() => {
+  return createMemo((previous) => {
     version()
-    return keymap.getActiveKeys(options)
+    try {
+      return selector(keymap)
+    } catch (error) {
+      if (
+        previous !== undefined &&
+        error instanceof Error &&
+        error.message === "Cannot use a keymap after its host was destroyed"
+      ) {
+        return previous
+      }
+
+      throw error
+    }
   })
 }
 
-export const usePendingSequence = (): Accessor<readonly KeySequencePart[]> => {
-  const keymap = useKeymap()
-  const version = useKeymapStateVersion(keymap)
-
-  return createMemo(() => {
-    version()
-    return keymap.getPendingSequence()
-  })
-}
-
 export function useBindings<TRenderable extends Renderable = Renderable>(
-  layer: UseGlobalBindingsLayer,
+  createLayer: () => UseGlobalBindingsLayer,
 ): BindingsRef<TRenderable>
 export function useBindings<TRenderable extends Renderable = Renderable>(
-  layer: UseTargetBindingsLayer<TRenderable>,
+  createLayer: () => UseTargetBindingsLayer<TRenderable>,
 ): BindingsRef<TRenderable>
 export function useBindings<TRenderable extends Renderable = Renderable>(
-  layer: UseBindingsLayer<TRenderable>,
+  createLayer: () => UseBindingsLayer<TRenderable>,
 ): BindingsRef<TRenderable> {
   const keymap = useKeymap()
-  let dispose: (() => void) | undefined
-  let mounted = false
-  let registered = false
-  let registeredScope: Layer<Renderable, KeyEvent>["scope"] | undefined
-  let refTarget: Renderable | undefined
+  const [refTarget, setRefTarget] = createSignal<TRenderable | undefined>(undefined)
 
-  const register = (): void => {
-    if (registered) {
-      return
-    }
-
+  createEffect(() => {
+    const layer = createLayer()
     const explicitTarget = resolveBindingsTarget(layer.target)
-    const resolvedTarget = explicitTarget ?? refTarget
+    const resolvedTarget = explicitTarget ?? refTarget()
     const resolvedScope = layer.scope ?? (resolvedTarget ? "focus-within" : "global")
 
-    if (resolvedScope !== "global" && !resolvedTarget) {
-      return
-    }
-
-    const { scope: _scope, target: _target, ...baseLayer } = layer
-
-    let resolvedLayer: Layer<Renderable, KeyEvent>
-    if (resolvedScope === "global") {
-      resolvedLayer = {
-        ...baseLayer,
-        scope: "global",
-      }
-    } else {
-      if (!resolvedTarget) {
-        return
-      }
-
-      resolvedLayer = {
-        ...baseLayer,
-        scope: resolvedScope,
-        target: resolvedTarget,
-      }
-    }
-
-    dispose = keymap.registerLayer(resolvedLayer)
-    registered = true
-    registeredScope = resolvedScope
-  }
-
-  const ref: BindingsRef<TRenderable> = (value) => {
-    refTarget = value
-
-    if (mounted) {
-      if (registered && layer.target === undefined && layer.scope === undefined && registeredScope === "global") {
-        dispose?.()
-        dispose = undefined
-        registered = false
-        registeredScope = undefined
-      }
-
-      register()
-    }
-  }
-
-  onMount(() => {
-    mounted = true
-    const resolvedTarget = resolveBindingsTarget(layer.target)
-    if (layer.target !== undefined && !resolvedTarget) {
+    if (layer.target !== undefined && !explicitTarget) {
       throw new Error("useBindings target was not available during mount")
     }
 
-    const resolvedScope = layer.scope ?? (resolvedTarget || refTarget ? "focus-within" : "global")
-    if (resolvedScope !== "global" && !resolvedTarget && !refTarget) {
+    if (resolvedScope !== "global" && !resolvedTarget) {
       throw new Error("useBindings local bindings need a target or the returned ref callback attached to a renderable")
     }
 
-    register()
+    const { scope: _scope, target: _target, ...baseLayer } = layer
+    const resolvedLayer: Layer<Renderable, KeyEvent> =
+      resolvedScope === "global"
+        ? {
+            ...baseLayer,
+            scope: "global",
+          }
+        : {
+            ...baseLayer,
+            scope: resolvedScope,
+            target: resolvedTarget,
+          }
+
+    const dispose = keymap.registerLayer(resolvedLayer)
+    onCleanup(() => {
+      dispose()
+    })
   })
 
-  onCleanup(() => {
-    dispose?.()
-    dispose = undefined
-    mounted = false
-    registered = false
-    registeredScope = undefined
-  })
-
-  return ref
+  return (value) => {
+    setRefTarget(() => value)
+  }
 }
 
 /**

@@ -162,6 +162,8 @@ describe("solid keymap hooks", () => {
 
     function App() {
       const manager = useKeymap()
+      const [firstBindingTarget, setFirstBindingTarget] = createSignal<Renderable | undefined>(undefined)
+      const [secondBindingTarget, setSecondBindingTarget] = createSignal<Renderable | undefined>(undefined)
       const activeKeys = useKeymapSelector((keymap) => keymap.getActiveKeys())
       const offCommands = manager.registerLayer({
         scope: "global",
@@ -171,12 +173,14 @@ describe("solid keymap hooks", () => {
         ],
       })
 
-      const firstBindingsRef = useBindings(() => ({
+      useBindings(() => ({
         scope: "focus-within",
+        target: firstBindingTarget,
         bindings: { x: "first" },
       }))
-      const secondBindingsRef = useBindings(() => ({
+      useBindings(() => ({
         scope: "focus-within",
+        target: secondBindingTarget,
         bindings: { y: "second" },
       }))
 
@@ -193,7 +197,7 @@ describe("solid keymap hooks", () => {
           }`}</text>
           <box
             ref={(value: Renderable) => {
-              firstBindingsRef(value)
+              setFirstBindingTarget(value)
               firstTarget = value
             }}
             width={8}
@@ -203,7 +207,7 @@ describe("solid keymap hooks", () => {
           />
           <box
             ref={(value: Renderable) => {
-              secondBindingsRef(value)
+              setSecondBindingTarget(value)
               secondTarget = value
             }}
             width={8}
@@ -266,13 +270,14 @@ describe("solid keymap hooks", () => {
     expect(testSetup.captureCharFrame()).toContain("Pending: <root>")
   })
 
-  test("useBindings can bind local bindings through its returned ref", async () => {
+  test("useBindings can bind local bindings through a target accessor", async () => {
     const calls: string[] = []
     let setActive!: (value: "first" | "second") => void
 
     function App() {
       const manager = useKeymap()
       const [active, setActiveSignal] = createSignal<"first" | "second">("first")
+      const [target, setTarget] = createSignal<Renderable | undefined>(undefined)
       setActive = setActiveSignal
 
       const offCommands = manager.registerLayer({
@@ -291,14 +296,15 @@ describe("solid keymap hooks", () => {
         offCommands()
       })
 
-      const bindingsRef = useBindings(() => ({
+      useBindings(() => ({
         scope: "focus-within",
+        target,
         bindings: [{ key: "x", cmd: "target" }],
       }))
 
       return (
         <box width={20} height={6}>
-          <box ref={bindingsRef} width={8} height={3} focusable focused={active() === "first"} />
+          <box ref={setTarget} width={8} height={3} focusable focused={active() === "first"} />
           <box width={8} height={3} focusable focused={active() === "second"} />
         </box>
       )
@@ -366,7 +372,7 @@ describe("solid keymap hooks", () => {
     expect(calls).toEqual(["reactive"])
   })
 
-  test("useBindings rejects local bindings without a target or ref", async () => {
+  test("useBindings rejects local bindings without a target accessor", async () => {
     function App() {
       useBindings(() => ({
         scope: "focus-within",
@@ -381,26 +387,63 @@ describe("solid keymap hooks", () => {
         width: 20,
         height: 6,
       }),
-    ).rejects.toThrow("useBindings local bindings need a target or the returned ref callback attached to a renderable")
+    ).rejects.toThrow("useBindings local bindings need a target accessor")
   })
 
-  test("useBindings rejects explicit targets that are unavailable during mount", async () => {
+  test("useBindings can wait for an explicit reactive target to become available", async () => {
+    const calls: string[] = []
+    let setVisible!: (value: boolean) => void
+
     function App() {
-      useBindings(() => ({
+      const manager = useKeymap()
+      const [visible, setVisibleSignal] = createSignal(false)
+      const [target, setTarget] = createSignal<Renderable | undefined>(undefined)
+      setVisible = setVisibleSignal
+
+      const offCommands = manager.registerLayer({
+        scope: "global",
+        commands: [
+          {
+            name: "target",
+            run() {
+              calls.push("target")
+            },
+          },
+        ],
+      })
+
+      useBindings<Renderable>(() => ({
         scope: "focus-within",
-        target: () => undefined,
+        target,
         bindings: { x: "target" },
       }))
 
-      return <text>bindings</text>
+      onCleanup(() => {
+        offCommands()
+      })
+
+      return (
+        <box width={20} height={6}>
+          <Show when={visible()}>
+            {() => <box ref={setTarget} width={8} height={3} focusable focused />}
+          </Show>
+        </box>
+      )
     }
 
-    await expect(
-      testRender(() => <App />, {
-        width: 20,
-        height: 6,
-      }),
-    ).rejects.toThrow("useBindings target was not available during mount")
+    testSetup = await testRender(() => <App />, {
+      width: 20,
+      height: 6,
+    })
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual([])
+
+    setVisible(true)
+    await Bun.sleep(0)
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual(["target"])
   })
 
   test("reactiveMatcherFromSignal: coerces accessor value and re-evaluates on signal change", async () => {

@@ -16,7 +16,7 @@ import {
 } from "@opentui/keymap/react"
 import { createRoot, type Root } from "@opentui/react"
 import { act, type ReactNode } from "react"
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react"
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react"
 
 function setIsReactActEnvironment(isReactActEnvironment: boolean) {
   // @ts-expect-error test environment flag
@@ -200,6 +200,8 @@ describe("React keymap hooks", () => {
     function App() {
       const manager = useKeymap()
       const activeKeys = useActiveKeys()
+      const firstTargetRef = useRef<Renderable | null>(null)
+      const secondTargetRef = useRef<Renderable | null>(null)
 
       useEffect(() => {
         return manager.registerLayer({
@@ -211,12 +213,14 @@ describe("React keymap hooks", () => {
         })
       }, [manager])
 
-      const firstBindingsRef = useBindings(() => ({
+      useBindings(() => ({
         scope: "focus-within" as const,
+        targetRef: firstTargetRef,
         bindings: { x: "first" },
       }))
-      const secondBindingsRef = useBindings(() => ({
+      useBindings(() => ({
         scope: "focus-within" as const,
+        targetRef: secondTargetRef,
         bindings: { y: "second" },
       }))
 
@@ -225,7 +229,7 @@ describe("React keymap hooks", () => {
           <text>{`Active: ${activeKeys.map((key) => key.stroke.name).join(",") || "<none>"}`}</text>
           <box
             ref={(value) => {
-              firstBindingsRef(value)
+              firstTargetRef.current = value
               if (value) {
                 firstTarget = value
               }
@@ -237,7 +241,7 @@ describe("React keymap hooks", () => {
           />
           <box
             ref={(value) => {
-              secondBindingsRef(value)
+              secondTargetRef.current = value
               if (value) {
                 secondTarget = value
               }
@@ -311,13 +315,14 @@ describe("React keymap hooks", () => {
     expect(testSetup.captureCharFrame()).toContain("Pending: <root>")
   })
 
-  test("useBindings can bind local bindings through its returned ref", async () => {
+  test("useBindings can bind local bindings through targetRef", async () => {
     const calls: string[] = []
     let setActive!: Dispatch<SetStateAction<"first" | "second">>
 
     function App() {
       const manager = useKeymap()
       const [active, setActiveSignal] = useState<"first" | "second">("first")
+      const targetRef = useRef<Renderable | null>(null)
       setActive = setActiveSignal
 
       useEffect(() => {
@@ -334,14 +339,15 @@ describe("React keymap hooks", () => {
         })
       }, [manager])
 
-      const bindingsRef = useBindings(() => ({
+      useBindings(() => ({
         scope: "focus-within" as const,
+        targetRef,
         bindings: [{ key: "x", cmd: "target" }],
       }))
 
       return (
         <box width={20} height={6}>
-          <box ref={bindingsRef} width={8} height={3} focusable focused={active === "first"} />
+          <box ref={targetRef} width={8} height={3} focusable focused={active === "first"} />
           <box width={8} height={3} focusable focused={active === "second"} />
         </box>
       )
@@ -374,6 +380,7 @@ describe("React keymap hooks", () => {
     function App() {
       const manager = useKeymap()
       const [active, setActiveSignal] = useState<"first" | "second">("first")
+      const targetRef = useRef<Renderable | null>(null)
       setActive = setActiveSignal
 
       useEffect(() => {
@@ -390,17 +397,18 @@ describe("React keymap hooks", () => {
         })
       }, [manager])
 
-      const bindingsRef = useBindings(() => ({
+      useBindings(() => ({
         scope: "focus-within" as const,
+        targetRef,
         bindings: [{ key: "x", cmd: "target" }],
       }))
 
       return (
         <box width={20} height={6}>
           {active === "first" ? (
-            <box key="first" id="first" ref={bindingsRef} width={8} height={3} focusable focused />
+            <box key="first" id="first" ref={targetRef} width={8} height={3} focusable focused />
           ) : (
-            <box key="second" id="second" ref={bindingsRef} width={8} height={3} focusable focused />
+            <box key="second" id="second" ref={targetRef} width={8} height={3} focusable focused />
           )}
         </box>
       )
@@ -638,7 +646,7 @@ describe("React keymap hooks", () => {
     expect(storeListeners.size).toBe(0)
   })
 
-  test("useBindings shows an error for local bindings without a target or ref", async () => {
+  test("useBindings shows an error for local bindings without a targetRef", async () => {
     const originalConsoleError = console.error
     console.error = () => {}
 
@@ -661,41 +669,67 @@ describe("React keymap hooks", () => {
       await testSetup.renderOnce()
 
       const frame = testSetup.captureCharFrame()
-      expect(frame).toContain(
-        "useBindings local bindings need a target or the returned ref callback attached to a renderable",
-      )
+      expect(frame).toContain("useBindings local bindings need a targetRef")
     } finally {
       console.error = originalConsoleError
     }
   })
 
-  test("useBindings shows an error for explicit targets that are unavailable during mount", async () => {
-    const originalConsoleError = console.error
-    console.error = () => {}
+  test("useBindings can wait for a targetRef to become available", async () => {
+    const calls: string[] = []
+    let setVisible!: Dispatch<SetStateAction<boolean>>
 
-    try {
-      function App() {
-        useBindings(() => ({
-          scope: "focus-within",
-          target: () => undefined,
-          bindings: { x: "target" },
-        }))
+    function App() {
+      const manager = useKeymap()
+      const [visible, setVisibleState] = useState(false)
+      const targetRef = useRef<Renderable | null>(null)
+      setVisible = setVisibleState
 
-        return <text>bindings</text>
-      }
-
-      await act(async () => {
-        testSetup = await testRender(<App />, {
-          width: 140,
-          height: 12,
-        })
+      const offCommands = manager.registerLayer({
+        scope: "global",
+        commands: [
+          {
+            name: "target",
+            run() {
+              calls.push("target")
+            },
+          },
+        ],
       })
-      await testSetup.renderOnce()
 
-      const frame = testSetup.captureCharFrame()
-      expect(frame).toContain("useBindings target was not available during mount")
-    } finally {
-      console.error = originalConsoleError
+      useEffect(() => offCommands, [offCommands])
+
+      useBindings<Renderable>(
+        () => ({
+          scope: "focus-within",
+          targetRef,
+          bindings: { x: "target" },
+        }),
+        [],
+      )
+
+      return (
+        <box width={20} height={6}>
+          {visible ? <box ref={targetRef} width={8} height={3} focusable focused /> : null}
+        </box>
+      )
     }
+
+    await act(async () => {
+      testSetup = await testRender(<App />, {
+        width: 20,
+        height: 6,
+      })
+    })
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual([])
+
+    await act(async () => {
+      setVisible(true)
+    })
+
+    testSetup.mockInput.pressKey("x")
+    expect(calls).toEqual(["target"])
   })
 })

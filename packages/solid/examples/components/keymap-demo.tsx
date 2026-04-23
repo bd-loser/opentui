@@ -298,6 +298,7 @@ function CounterPanel(props: {
   announce: (message: string) => void
 }) {
   const manager = useKeymap()
+  const [target, setTarget] = createSignal<Renderable | undefined>(undefined)
   const incrementCommand = `${props.id}-up`
   const decrementCommand = `${props.id}-down`
 
@@ -329,7 +330,8 @@ function CounterPanel(props: {
     ],
   })
 
-  const bindingsRef = useBindings(() => ({
+  useBindings(() => ({
+    target,
     bindings: [
       { key: "j", cmd: decrementCommand, desc: `${props.label} -${props.step}` },
       { key: "k", cmd: incrementCommand, desc: `${props.label} +${props.step}` },
@@ -345,7 +347,7 @@ function CounterPanel(props: {
     <box
       id={`keymap-demo-${props.id}`}
       ref={(value: Renderable) => {
-        bindingsRef(value)
+        setTarget(value)
         props.setRef?.(value)
       }}
       border
@@ -392,6 +394,7 @@ function KeymapDemoContent() {
   const [helpVisible, setHelpVisible] = createSignal(true)
   const [leaderArmed, setLeaderArmed] = createSignal(false)
   const [commandPromptVisible, setCommandPromptVisible] = createSignal(false)
+  const [commandPromptTarget, setCommandPromptTarget] = createSignal<InputRenderable | undefined>(undefined)
   const [commandPromptValue, setCommandPromptValue] = createSignal(":")
   const [commandPromptSelection, setCommandPromptSelection] = createSignal(0)
   const [lastAction, setLastAction] = createSignal("Click a panel or press Tab to start.")
@@ -796,7 +799,8 @@ function KeymapDemoContent() {
     return formatDemoKeySequence(pendingSequence()) || "<root>"
   })
 
-  const commandPromptBindingsRef = useBindings<InputRenderable>(() => ({
+  useBindings<InputRenderable>(() => ({
+    target: commandPromptTarget,
     enabled: () => commandPromptVisible(),
     commands: [
       {
@@ -1115,7 +1119,7 @@ function KeymapDemoContent() {
             id="keymap-demo-ex-input"
             ref={(value: InputRenderable) => {
               commandInputRef = value
-              commandPromptBindingsRef(value)
+              setCommandPromptTarget(value)
             }}
             width="100%"
             value={commandPromptValue()}

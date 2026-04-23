@@ -307,6 +307,7 @@ function CounterPanel(props: {
   announce: (message: string) => void
 }) {
   const manager = useKeymap()
+  const targetRef = useRef<Renderable | null>(null)
 
   const incrementCommand = useMemo(() => `${props.id}-up`, [props.id])
   const decrementCommand = useMemo(() => `${props.id}-down`, [props.id])
@@ -347,8 +348,9 @@ function CounterPanel(props: {
     return manager.registerLayer({ scope: "global", commands: commands })
   }, [commands, manager])
 
-  const bindingsRef = useBindings(
+  useBindings(
     () => ({
+      targetRef,
       bindings: [
         { key: "j", cmd: decrementCommand, desc: `${props.label} -${props.step}` },
         { key: "k", cmd: incrementCommand, desc: `${props.label} +${props.step}` },
@@ -359,10 +361,10 @@ function CounterPanel(props: {
   )
   const combinedRef = useCallback(
     (value: Renderable | null) => {
-      bindingsRef(value)
+      targetRef.current = value
       props.setRef?.(value)
     },
-    [bindingsRef, props.setRef],
+    [props.setRef],
   )
 
   return (
@@ -874,8 +876,9 @@ const AppContent = () => {
     return `Usage: ${selectedCommandPromptSuggestion.usage}  |  ${selectedCommandPromptSuggestion.desc}`
   }, [selectedCommandPromptSuggestion])
 
-  const commandPromptBindingsRef = useBindings<InputRenderable>(
+  useBindings<InputRenderable>(
     () => ({
+      targetRef: commandInputRef,
       enabled: () => commandPromptVisibleRef.current,
       commands: [
         {
@@ -925,14 +928,6 @@ const AppContent = () => {
       ] satisfies KeymapBindingInput[],
     }),
     [applyCommandPromptSuggestion, closeCommandPrompt, executeCommandPrompt, moveCommandPromptSelection],
-  )
-
-  const commandPromptInputBindingRef = useCallback(
-    (value: InputRenderable | null) => {
-      commandInputRef.current = value
-      commandPromptBindingsRef(value)
-    },
-    [commandPromptBindingsRef],
   )
 
   useEffect(() => {
@@ -1213,7 +1208,7 @@ const AppContent = () => {
           </text>
           <input
             id="keymap-demo-ex-input"
-            ref={commandPromptInputBindingRef}
+            ref={commandInputRef}
             width="100%"
             value={commandPromptValue}
             placeholder=":write session.log"

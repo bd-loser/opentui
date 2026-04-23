@@ -536,7 +536,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
 
       if (this.state.projection.pendingSequence?.layer === layer) {
         this.activation.setPendingSequence(null)
-      } else if (layer.commands.length > 0) {
+      } else if (layer.commands.length > 0 && !this.options.host.isDestroyed) {
         this.activation.ensureValidPendingSequence()
       }
 

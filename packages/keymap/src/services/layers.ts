@@ -334,7 +334,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
           this.conditions.registerRuntimeMatchable(binding)
         }
 
-        if (this.state.projection.pendingSequence?.layer === layer) {
+        if (this.state.projection.pendingSequence?.captures.some((capture) => capture.layer === layer)) {
           shouldClearPending = true
         }
       }
@@ -534,7 +534,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       layer.offTargetDestroy?.()
       layer.offTargetDestroy = undefined
 
-      if (this.state.projection.pendingSequence?.layer === layer) {
+      if (this.state.projection.pendingSequence?.captures.some((capture) => capture.layer === layer)) {
         this.activation.setPendingSequence(null)
       } else if (layer.commands.length > 0 && !this.options.host.isDestroyed) {
         this.activation.ensureValidPendingSequence()

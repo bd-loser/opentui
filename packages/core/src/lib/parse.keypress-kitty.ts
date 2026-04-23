@@ -136,6 +136,8 @@ const kittyKeyMap: Record<number, string> = {
   57454: "iso_level5_shift",
 }
 
+export const kittyNamedSingleStrokeKeys = [...new Set(Object.values(kittyKeyMap))]
+
 function fromKittyMods(mod: number): {
   shift: boolean
   alt: boolean

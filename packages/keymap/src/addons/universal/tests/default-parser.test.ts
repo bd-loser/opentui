@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import type { KeyEvent, Renderable } from "@opentui/core"
+import { terminalNamedSingleStrokeKeys, type KeyEvent, type Renderable } from "@opentui/core"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import { Keymap } from "@opentui/keymap"
 import { registerDefaultKeys } from "@opentui/keymap/addons"
@@ -85,5 +85,23 @@ describe("default parser addon", () => {
     mockInput.pressKey(" ")
 
     expect(calls).toEqual(["space"])
+  })
+
+  test("registerDefaultKeys parses every named single-stroke key emitted by terminal hosts", () => {
+    const keymap = new Keymap<Renderable, KeyEvent>(createOpenTuiKeymapHost(renderer))
+
+    registerDefaultKeys(keymap)
+
+    keymap.registerLayer({
+      scope: "global",
+      commands: [{ name: "run", run() {} }],
+      bindings: terminalNamedSingleStrokeKeys.map((key) => ({ key, cmd: "run" })),
+    })
+
+    const activeKeyNames = new Set(keymap.getActiveKeys().map((candidate) => candidate.stroke.name))
+
+    for (const key of terminalNamedSingleStrokeKeys) {
+      expect(activeKeyNames.has(key)).toBe(true)
+    }
   })
 })

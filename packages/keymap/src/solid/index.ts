@@ -35,15 +35,9 @@ export function KeymapProvider(props: KeymapProviderProps): JSX.Element {
   })
 }
 
-export type UseBindingsTarget<TRenderable extends Renderable = Renderable> =
-  | TRenderable
-  | null
-  | undefined
-  | (() => TRenderable | null | undefined)
+export type UseBindingsTarget<TRenderable extends Renderable = Renderable> = () => TRenderable | null | undefined
 
 type UseBindingsLayerBase = LayerFields<Renderable, KeyEvent>
-
-export type BindingsRef<TRenderable extends Renderable = Renderable> = (value: TRenderable) => void
 
 export interface UseGlobalBindingsLayer extends UseBindingsLayerBase {
   scope?: "global"
@@ -52,12 +46,12 @@ export interface UseGlobalBindingsLayer extends UseBindingsLayerBase {
 
 export interface UseFocusBindingsLayer<TRenderable extends Renderable = Renderable> extends UseBindingsLayerBase {
   scope: "focus"
-  target?: UseBindingsTarget<TRenderable>
+  target: UseBindingsTarget<TRenderable>
 }
 
 export interface UseFocusWithinBindingsLayer<TRenderable extends Renderable = Renderable> extends UseBindingsLayerBase {
   scope: "focus-within"
-  target?: UseBindingsTarget<TRenderable>
+  target: UseBindingsTarget<TRenderable>
 }
 
 export interface UseInferredFocusWithinBindingsLayer<
@@ -77,11 +71,7 @@ export type UseBindingsLayer<TRenderable extends Renderable = Renderable> =
   | UseTargetBindingsLayer<TRenderable>
 
 function resolveBindingsTarget(target: UseBindingsTarget | undefined): Renderable | undefined {
-  if (typeof target === "function") {
-    return target() ?? undefined
-  }
-
-  return target ?? undefined
+  return target?.() ?? undefined
 }
 
 export const useKeymap = (): OpenTuiKeymap => {
@@ -141,25 +131,20 @@ export const useKeymapSelector = <T>(selector: (keymap: OpenTuiKeymap) => T): Ac
 
 export function useBindings<TRenderable extends Renderable = Renderable>(
   createLayer: () => UseGlobalBindingsLayer,
-): BindingsRef<TRenderable>
+): void
 export function useBindings<TRenderable extends Renderable = Renderable>(
   createLayer: () => UseTargetBindingsLayer<TRenderable>,
-): BindingsRef<TRenderable>
+): void
 export function useBindings<TRenderable extends Renderable = Renderable>(
   createLayer: () => UseBindingsLayer<TRenderable>,
-): BindingsRef<TRenderable> {
+): void {
   const keymap = useKeymap()
-  const [refTarget, setRefTarget] = createSignal<TRenderable | undefined>(undefined)
 
   createEffect(() => {
     const layer = createLayer()
+    const hasExplicitTarget = layer.target !== undefined
     const explicitTarget = resolveBindingsTarget(layer.target)
-    const resolvedTarget = explicitTarget ?? refTarget()
-    const resolvedScope = layer.scope ?? (resolvedTarget ? "focus-within" : "global")
-
-    if (layer.target !== undefined && !explicitTarget) {
-      throw new Error("useBindings target was not available during mount")
-    }
+    const resolvedScope = layer.scope ?? (hasExplicitTarget ? "focus-within" : "global")
 
     const { scope: _scope, target: _target, ...baseLayer } = layer
     if (resolvedScope === "global") {
@@ -175,24 +160,24 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
       return
     }
 
-    if (!resolvedTarget) {
-      throw new Error("useBindings local bindings need a target or the returned ref callback attached to a renderable")
+    if (!hasExplicitTarget) {
+      throw new Error("useBindings local bindings need a target accessor")
+    }
+
+    if (!explicitTarget) {
+      return
     }
 
     const dispose = keymap.registerLayer({
       ...baseLayer,
       scope: resolvedScope,
-      target: resolvedTarget,
+      target: explicitTarget,
     })
 
     onCleanup(() => {
       dispose()
     })
   })
-
-  return (value) => {
-    setRefTarget(() => value)
-  }
 }
 
 /**

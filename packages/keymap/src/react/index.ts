@@ -2,7 +2,6 @@ import type { KeyEvent, Renderable } from "@opentui/core"
 import {
   type ActiveKey,
   type ActiveKeyOptions,
-  type Layer,
   type LayerFields,
   type Keymap,
   type ReactiveMatcher,
@@ -35,36 +34,32 @@ export function KeymapProvider({ keymap, children }: KeymapProviderProps) {
   return createElement(KeymapContext.Provider, { value: keymap }, children)
 }
 
-export type UseBindingsTarget<TRenderable extends Renderable = Renderable> =
-  | TRenderable
-  | null
-  | undefined
-  | (() => TRenderable | null | undefined)
+export interface UseBindingsTargetRef<TRenderable extends Renderable = Renderable> {
+  current: TRenderable | null
+}
 
 type UseBindingsLayerBase = LayerFields<Renderable, KeyEvent>
 
-export type BindingsRef<TRenderable extends Renderable = Renderable> = (value: TRenderable | null) => void
-
 export interface UseGlobalBindingsLayer extends UseBindingsLayerBase {
   scope?: "global"
-  target?: undefined
+  targetRef?: undefined
 }
 
 export interface UseFocusBindingsLayer<TRenderable extends Renderable = Renderable> extends UseBindingsLayerBase {
   scope: "focus"
-  target?: UseBindingsTarget<TRenderable>
+  targetRef: UseBindingsTargetRef<TRenderable>
 }
 
 export interface UseFocusWithinBindingsLayer<TRenderable extends Renderable = Renderable> extends UseBindingsLayerBase {
   scope: "focus-within"
-  target?: UseBindingsTarget<TRenderable>
+  targetRef: UseBindingsTargetRef<TRenderable>
 }
 
 export interface UseInferredFocusWithinBindingsLayer<
   TRenderable extends Renderable = Renderable,
 > extends UseBindingsLayerBase {
   scope?: undefined
-  target: UseBindingsTarget<TRenderable>
+  targetRef: UseBindingsTargetRef<TRenderable>
 }
 
 export type UseTargetBindingsLayer<TRenderable extends Renderable = Renderable> =
@@ -76,12 +71,8 @@ export type UseBindingsLayer<TRenderable extends Renderable = Renderable> =
   | UseGlobalBindingsLayer
   | UseTargetBindingsLayer<TRenderable>
 
-function resolveBindingsTarget(target: UseBindingsTarget | undefined): Renderable | undefined {
-  if (typeof target === "function") {
-    return target() ?? undefined
-  }
-
-  return target ?? undefined
+function resolveBindingsTarget(targetRef: UseBindingsTargetRef | undefined): Renderable | undefined {
+  return targetRef?.current ?? undefined
 }
 
 export const useKeymap = (): OpenTuiKeymap => {
@@ -135,22 +126,21 @@ export const usePendingSequence = (): readonly KeySequencePart[] => {
 export function useBindings<TRenderable extends Renderable = Renderable>(
   createLayer: () => UseGlobalBindingsLayer,
   deps?: DependencyList,
-): BindingsRef<TRenderable>
+): void
 export function useBindings<TRenderable extends Renderable = Renderable>(
   createLayer: () => UseTargetBindingsLayer<TRenderable>,
   deps?: DependencyList,
-): BindingsRef<TRenderable>
+): void
 export function useBindings<TRenderable extends Renderable = Renderable>(
   createLayer: () => UseBindingsLayer<TRenderable>,
   deps: DependencyList = [],
-): BindingsRef<TRenderable> {
+): void {
   const keymap = useKeymap()
   const layer = useMemo(createLayer, deps)
   const layerRef = useRef(layer)
-  const refTargetRef = useRef<TRenderable | undefined>(undefined)
   const disposeRef = useRef<(() => void) | undefined>(undefined)
-  const mountedRef = useRef(false)
-  const registeredScopeRef = useRef<Layer<Renderable, KeyEvent>["scope"] | undefined>(undefined)
+  const registeredLayerRef = useRef<UseBindingsLayer<TRenderable> | undefined>(undefined)
+  const registeredScopeRef = useRef<"global" | "focus" | "focus-within" | undefined>(undefined)
   const registeredTargetRef = useRef<Renderable | undefined>(undefined)
 
   layerRef.current = layer
@@ -158,92 +148,62 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
   const unregister = useCallback(() => {
     disposeRef.current?.()
     disposeRef.current = undefined
+    registeredLayerRef.current = undefined
     registeredScopeRef.current = undefined
     registeredTargetRef.current = undefined
   }, [])
 
-  const register = useCallback(() => {
-    if (disposeRef.current) {
+  useEffect(() => {
+    const currentLayer = layerRef.current
+    const hasExplicitTarget = currentLayer.targetRef !== undefined
+    const explicitTarget = resolveBindingsTarget(currentLayer.targetRef)
+    const resolvedScope = currentLayer.scope ?? (hasExplicitTarget ? "focus-within" : "global")
+    const nextTarget = resolvedScope === "global" ? undefined : explicitTarget
+
+    if (!hasExplicitTarget && resolvedScope !== "global") {
+      throw new Error("useBindings local bindings need a targetRef")
+    }
+
+    if (
+      registeredLayerRef.current === currentLayer &&
+      registeredScopeRef.current === resolvedScope &&
+      registeredTargetRef.current === nextTarget
+    ) {
       return
     }
 
-    const currentLayer = layerRef.current
-    const explicitTarget = resolveBindingsTarget(currentLayer.target)
-    const resolvedTarget = explicitTarget ?? refTargetRef.current
-    const resolvedScope = currentLayer.scope ?? (resolvedTarget ? "focus-within" : "global")
+    unregister()
 
-    if (currentLayer.target !== undefined && !explicitTarget) {
-      throw new Error("useBindings target was not available during mount")
-    }
-
-    const { scope: _scope, target: _target, ...baseLayer } = currentLayer
-
-    if (resolvedScope === "global") {
-      disposeRef.current = keymap.registerLayer({
-        ...baseLayer,
-        scope: "global",
-      })
-      registeredScopeRef.current = "global"
+    if (!nextTarget && resolvedScope !== "global") {
+      registeredLayerRef.current = currentLayer
+      registeredScopeRef.current = resolvedScope
       registeredTargetRef.current = undefined
       return
     }
 
-    if (!resolvedTarget) {
-      throw new Error("useBindings local bindings need a target or the returned ref callback attached to a renderable")
-    }
-
-    disposeRef.current = keymap.registerLayer({
-      ...baseLayer,
-      scope: resolvedScope,
-      target: resolvedTarget,
-    })
+    const { scope: _scope, targetRef: _targetRef, ...baseLayer } = currentLayer
+    disposeRef.current = keymap.registerLayer(
+      resolvedScope === "global"
+        ? {
+            ...baseLayer,
+            scope: "global",
+          }
+        : {
+            ...baseLayer,
+            scope: resolvedScope,
+            target: nextTarget!,
+          },
+    )
+    registeredLayerRef.current = currentLayer
     registeredScopeRef.current = resolvedScope
-    registeredTargetRef.current = resolvedTarget
-  }, [keymap])
-
-  const ref = useCallback<BindingsRef<TRenderable>>((value) => {
-    refTargetRef.current = value ?? undefined
-  }, [])
-
-  useEffect(() => {
-    mountedRef.current = true
-    unregister()
-    register()
-
-    return () => {
-      mountedRef.current = false
-      unregister()
-    }
-  }, [layer, register, unregister])
-
-  useEffect(() => {
-    if (!mountedRef.current) {
-      return
-    }
-
-    const currentLayer = layerRef.current
-    if (currentLayer.target !== undefined || currentLayer.scope === "global") {
-      return
-    }
-
-    const resolvedTarget = refTargetRef.current
-    const resolvedScope = currentLayer.scope ?? (resolvedTarget ? "focus-within" : "global")
-    const nextTarget = resolvedScope === "global" ? undefined : resolvedTarget
-
-    if (registeredScopeRef.current === resolvedScope && registeredTargetRef.current === nextTarget) {
-      return
-    }
-
-    unregister()
-
-    if (!nextTarget && currentLayer.scope !== undefined) {
-      return
-    }
-
-    register()
+    registeredTargetRef.current = nextTarget
   })
 
-  return ref
+  useEffect(() => {
+    return () => {
+      unregister()
+    }
+  }, [unregister])
 }
 
 /**

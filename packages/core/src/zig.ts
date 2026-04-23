@@ -166,9 +166,25 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "u32", "u32"],
       returns: "u32",
     },
+    reseedSplitScrollback: {
+      args: ["ptr", "u32", "u32"],
+      returns: "u32",
+    },
     syncSplitScrollback: {
       args: ["ptr", "u32"],
       returns: "u32",
+    },
+    getSplitTailColumn: {
+      args: ["ptr"],
+      returns: "u32",
+    },
+    getSplitPendingCommitCount: {
+      args: ["ptr"],
+      returns: "u32",
+    },
+    enqueueSplitFooterSnapshot: {
+      args: ["ptr", "ptr", "u32", "bool", "bool"],
+      returns: "bool",
     },
     setPendingSplitFooterTransition: {
       args: ["ptr", "u8", "u32", "u32", "u32", "u32"],
@@ -192,6 +208,10 @@ function getOpenTUILib(libPath?: string) {
     },
     repaintSplitFooter: {
       args: ["ptr", "u32", "bool"],
+      returns: "u32",
+    },
+    flushSplitFooterCommits: {
+      args: ["ptr", "u32", "bool", "u32"],
       returns: "u32",
     },
     // Single FFI entrypoint for split commit append. beginFrame/finalizeFrame let
@@ -1434,7 +1454,17 @@ export interface RenderLib {
   setBackgroundColor: (renderer: Pointer, color: RGBA) => void
   setRenderOffset: (renderer: Pointer, offset: number) => void
   resetSplitScrollback: (renderer: Pointer, seedRows: number, pinnedRenderOffset: number) => number
+  reseedSplitScrollback: (renderer: Pointer, seedRows: number, pinnedRenderOffset: number) => number
   syncSplitScrollback: (renderer: Pointer, pinnedRenderOffset: number) => number
+  getSplitTailColumn: (renderer: Pointer) => number
+  getSplitPendingCommitCount: (renderer: Pointer) => number
+  enqueueSplitFooterSnapshot: (
+    renderer: Pointer,
+    snapshot: OptimizedBuffer,
+    rowColumns: number,
+    startOnNewLine: boolean,
+    trailingNewline: boolean,
+  ) => boolean
   setPendingSplitFooterTransition: (
     renderer: Pointer,
     mode: number,
@@ -1448,6 +1478,7 @@ export interface RenderLib {
   updateMemoryStats: (renderer: Pointer, heapUsed: number, heapTotal: number, arrayBuffers: number) => void
   render: (renderer: Pointer, force: boolean) => void
   repaintSplitFooter: (renderer: Pointer, pinnedRenderOffset: number, force: boolean) => number
+  flushSplitFooterCommits: (renderer: Pointer, pinnedRenderOffset: number, force: boolean, maxCommits: number) => number
   commitSplitFooterSnapshot: (
     renderer: Pointer,
     snapshot: OptimizedBuffer,
@@ -2119,8 +2150,36 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.resetSplitScrollback(renderer, seedRows, pinnedRenderOffset)
   }
 
+  public reseedSplitScrollback(renderer: Pointer, seedRows: number, pinnedRenderOffset: number): number {
+    return this.opentui.symbols.reseedSplitScrollback(renderer, seedRows, pinnedRenderOffset)
+  }
+
   public syncSplitScrollback(renderer: Pointer, pinnedRenderOffset: number): number {
     return this.opentui.symbols.syncSplitScrollback(renderer, pinnedRenderOffset)
+  }
+
+  public getSplitTailColumn(renderer: Pointer): number {
+    return this.opentui.symbols.getSplitTailColumn(renderer)
+  }
+
+  public getSplitPendingCommitCount(renderer: Pointer): number {
+    return this.opentui.symbols.getSplitPendingCommitCount(renderer)
+  }
+
+  public enqueueSplitFooterSnapshot(
+    renderer: Pointer,
+    snapshot: OptimizedBuffer,
+    rowColumns: number,
+    startOnNewLine: boolean,
+    trailingNewline: boolean,
+  ): boolean {
+    return this.opentui.symbols.enqueueSplitFooterSnapshot(
+      renderer,
+      snapshot.ptr,
+      rowColumns,
+      startOnNewLine,
+      trailingNewline,
+    )
   }
 
   public setPendingSplitFooterTransition(
@@ -2151,6 +2210,15 @@ class FFIRenderLib implements RenderLib {
 
   public updateMemoryStats(renderer: Pointer, heapUsed: number, heapTotal: number, arrayBuffers: number) {
     this.opentui.symbols.updateMemoryStats(renderer, heapUsed, heapTotal, arrayBuffers)
+  }
+
+  public flushSplitFooterCommits(
+    renderer: Pointer,
+    pinnedRenderOffset: number,
+    force: boolean,
+    maxCommits: number,
+  ): number {
+    return this.opentui.symbols.flushSplitFooterCommits(renderer, pinnedRenderOffset, force, maxCommits)
   }
 
   public getNextBuffer(renderer: Pointer): OptimizedBuffer {

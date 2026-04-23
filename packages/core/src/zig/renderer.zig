@@ -141,7 +141,7 @@ pub const CliRenderer = struct {
     renderInProgress: bool = false,
     currentOutputBuffer: []u8 = &[_]u8{},
     currentOutputLen: usize = 0,
-    splitScrollback: split_scrollback.SplitScrollback = .{},
+    splitScrollback: split_scrollback.SplitScrollback,
     // Batch state for split-footer commit flushing. A single JS render tick can
     // enqueue multiple stdout snapshots; batching keeps all of them inside one
     // sync frame so terminals do not repeatedly enter/exit synchronized update.
@@ -275,6 +275,8 @@ pub const CliRenderer = struct {
         @memset(nextHitGrid, 0);
         const hitScissorStack: std.ArrayListUnmanaged(buf.ClipRect) = .{};
 
+        const link_pool = link.initGlobalLinkPool(allocator);
+
         self.* = .{
             .width = width,
             .height = height,
@@ -321,6 +323,7 @@ pub const CliRenderer = struct {
             .hitGridWidth = width,
             .hitGridHeight = height,
             .hitScissorStack = hitScissorStack,
+            .splitScrollback = split_scrollback.SplitScrollback.init(allocator, pool, link_pool),
             .palette_rgba = undefined,
             .default_fg_rgba = .{ 1.0, 1.0, 1.0, 1.0 },
             .default_bg_rgba = .{ 0.0, 0.0, 0.0, 1.0 },
@@ -353,6 +356,7 @@ pub const CliRenderer = struct {
 
         self.performShutdownSequence();
         self.terminal.deinit();
+        self.splitScrollback.deinit(self.allocator);
 
         self.currentRenderBuffer.deinit();
         self.nextRenderBuffer.deinit();
@@ -710,14 +714,49 @@ pub const CliRenderer = struct {
     }
 
     pub fn resetSplitScrollback(self: *CliRenderer, seed_rows: u32, pinned_render_offset: u32) u32 {
-        self.splitScrollback.reset(seed_rows);
+        self.splitScrollback.reset(self.allocator, seed_rows, self.width);
+        self.renderOffset = self.splitScrollback.renderOffset(pinned_render_offset);
+        return self.renderOffset;
+    }
+
+    pub fn reseedSplitScrollback(self: *CliRenderer, seed_rows: u32, pinned_render_offset: u32) u32 {
+        self.splitScrollback.reseed(seed_rows, self.width);
         self.renderOffset = self.splitScrollback.renderOffset(pinned_render_offset);
         return self.renderOffset;
     }
 
     pub fn syncSplitScrollback(self: *CliRenderer, pinned_render_offset: u32) u32 {
+        self.splitScrollback.syncLayout(self.width);
         self.renderOffset = self.splitScrollback.renderOffset(pinned_render_offset);
         return self.renderOffset;
+    }
+
+    pub fn getSplitTailColumn(self: *const CliRenderer) u32 {
+        return self.splitScrollback.tailColumn();
+    }
+
+    pub fn getSplitPendingCommitCount(self: *const CliRenderer) u32 {
+        return self.splitScrollback.pendingCount();
+    }
+
+    pub fn enqueueSplitFooterSnapshot(
+        self: *CliRenderer,
+        snapshot: *const OptimizedBuffer,
+        row_columns: u32,
+        start_on_new_line: bool,
+        trailing_newline: bool,
+    ) bool {
+        self.splitScrollback.enqueueSnapshot(
+            self.allocator,
+            snapshot,
+            row_columns,
+            start_on_new_line,
+            trailing_newline,
+        ) catch {
+            return false;
+        };
+
+        return true;
     }
 
     pub fn setPendingSplitFooterTransition(
@@ -842,6 +881,15 @@ pub const CliRenderer = struct {
         pinned_render_offset: u32,
         force: bool,
     ) u32 {
+        return self.flushSplitFooterCommits(pinned_render_offset, force, 0);
+    }
+
+    pub fn flushSplitFooterCommits(
+        self: *CliRenderer,
+        pinned_render_offset: u32,
+        force: bool,
+        max_commits: u32,
+    ) u32 {
         const now = std.time.microTimestamp();
         const deltaTimeMs = @as(f64, @floatFromInt(now - self.lastRenderTime));
         const deltaTime = deltaTimeMs / 1000.0; // Convert to seconds
@@ -849,9 +897,28 @@ pub const CliRenderer = struct {
         self.lastRenderTime = now;
         self.renderDebugOverlay();
 
-        self.prepareSplitFooterRepaintFrame(pinned_render_offset, force);
+        var frame_started = false;
+        var redraw_footer = false;
+        if (self.splitScrollback.replay_dirty or max_commits > 0) {
+            resetActiveOutputBuffer();
+            const writer = OutputBufferWriter.writer();
+            self.applyPendingSplitFooterTransition(writer, &frame_started);
+            redraw_footer = self.flushSplitFooterCommitsIntoFrame(
+                writer,
+                pinned_render_offset,
+                force,
+                max_commits,
+                &frame_started,
+            );
+        }
 
-        self.finalizeRender(deltaTime);
+        if (frame_started) {
+            self.prepareRenderFrame(redraw_footer, false, true);
+            self.finalizeRender(deltaTime);
+        } else {
+            self.prepareSplitFooterRepaintFrame(pinned_render_offset, force);
+            self.finalizeRender(deltaTime);
+        }
 
         return self.renderOffset;
     }
@@ -867,6 +934,10 @@ pub const CliRenderer = struct {
         begin_frame: bool,
         finalize_frame: bool,
     ) u32 {
+        if (!self.enqueueSplitFooterSnapshot(snapshot, row_columns, start_on_new_line, trailing_newline)) {
+            return self.renderOffset;
+        }
+
         // Batched commit protocol:
         // - first call starts frame and appends payload
         // - middle calls append payload only
@@ -886,20 +957,16 @@ pub const CliRenderer = struct {
             var frame_started = true;
             self.applyPendingSplitFooterTransition(writer, &frame_started);
 
-            // Track batch lifetime so subsequent calls can append into the same
-            // output buffer without restarting frame state.
             self.splitBatchActive = !finalize_frame;
             self.splitBatchRedrawFooter = false;
             self.splitBatchDeltaTime = deltaTime;
 
-            const redraw_footer = self.appendSplitFooterSnapshotCommit(
+            const redraw_footer = self.flushSplitFooterCommitsIntoFrame(
                 writer,
-                snapshot,
-                row_columns,
-                start_on_new_line,
-                trailing_newline,
                 pinned_render_offset,
                 force,
+                1,
+                &frame_started,
             );
 
             if (finalize_frame) {
@@ -915,8 +982,6 @@ pub const CliRenderer = struct {
             return self.renderOffset;
         }
 
-        // Defensive fallback: if caller forgot begin_frame, execute through a
-        // single-call frame instead of appending into undefined batch state.
         if (!self.splitBatchActive) {
             return self.commitSplitFooterSnapshotBatched(
                 snapshot,
@@ -931,14 +996,13 @@ pub const CliRenderer = struct {
         }
 
         const writer = OutputBufferWriter.writer();
-        const redraw_footer = self.appendSplitFooterSnapshotCommit(
+        var frame_started = true;
+        const redraw_footer = self.flushSplitFooterCommitsIntoFrame(
             writer,
-            snapshot,
-            row_columns,
-            start_on_new_line,
-            trailing_newline,
             pinned_render_offset,
             force,
+            1,
+            &frame_started,
         );
         self.splitBatchRedrawFooter = self.splitBatchRedrawFooter or redraw_footer;
 
@@ -951,6 +1015,59 @@ pub const CliRenderer = struct {
         }
 
         return self.renderOffset;
+    }
+
+    fn flushSplitFooterCommitsIntoFrame(
+        self: *CliRenderer,
+        writer: anytype,
+        pinned_render_offset: u32,
+        force: bool,
+        max_commits: u32,
+        frame_started: *bool,
+    ) bool {
+        var redraw_footer = false;
+
+        if (self.splitScrollback.replay_dirty) {
+            if (!frame_started.*) {
+                beginRenderFrame(writer);
+                frame_started.* = true;
+            }
+
+            self.replaySplitTranscriptTail(writer, pinned_render_offset) catch {
+                // Keep replay dirty on failure so the next frame can retry.
+                return redraw_footer;
+            };
+            self.splitScrollback.clearReplayDirty();
+            redraw_footer = true;
+        }
+
+        const requested_commits: usize = if (max_commits == 0)
+            0
+        else
+            @min(@as(usize, @intCast(max_commits)), self.splitScrollback.pending.items.len);
+
+        var committed_count: usize = 0;
+        while (committed_count < requested_commits) : (committed_count += 1) {
+            if (!frame_started.*) {
+                beginRenderFrame(writer);
+                frame_started.* = true;
+            }
+
+            const force_commit = force and committed_count + 1 == requested_commits;
+            const appended_redraw = self.appendPendingSplitFooterCommit(
+                writer,
+                &self.splitScrollback.pending.items[committed_count],
+                pinned_render_offset,
+                force_commit,
+            ) catch break;
+            redraw_footer = redraw_footer or appended_redraw;
+        }
+
+        if (committed_count > 0) {
+            self.splitScrollback.removePendingPrefix(self.allocator, committed_count);
+        }
+
+        return redraw_footer;
     }
 
     fn finalizeRender(self: *CliRenderer, deltaTime: f64) void {
@@ -1016,6 +1133,201 @@ pub const CliRenderer = struct {
         // frame output only when something actually changes; this prevents no-op
         // repaint ticks from emitting hide/show cursor and sync envelopes.
         self.prepareRenderFrame(redraw_footer, true, false);
+    }
+
+    fn writeStoredRowCells(self: *CliRenderer, writer: anytype, cells: []const buf.Cell) void {
+        var currentFg: ?RGBA = null;
+        var currentBg: ?RGBA = null;
+        var currentFgTag: ?ansi.ColorTag = null;
+        var currentBgTag: ?ansi.ColorTag = null;
+        var currentAttributes: i32 = -1;
+        var currentLinkId: u32 = 0;
+        var utf8Buf: [4]u8 = undefined;
+
+        const colorEpsilon: f32 = COLOR_EPSILON_DEFAULT;
+        const hyperlinksEnabled = self.terminal.getCapabilities().hyperlinks;
+
+        for (cells) |cell| {
+            const fgMatch = currentFg != null and currentFgTag != null and currentFgTag.? == cell.fg_tag and buf.rgbaEqual(currentFg.?, cell.fg, colorEpsilon);
+            const bgMatch = currentBg != null and currentBgTag != null and currentBgTag.? == cell.bg_tag and buf.rgbaEqual(currentBg.?, cell.bg, colorEpsilon);
+            const sameAttributes = fgMatch and bgMatch and @as(i32, @intCast(cell.attributes)) == currentAttributes;
+
+            const linkId = if (hyperlinksEnabled) ansi.TextAttributes.getLinkId(cell.attributes) else 0;
+            if (hyperlinksEnabled and linkId != currentLinkId) {
+                if (currentLinkId != 0) {
+                    writer.writeAll("\x1b]8;;\x1b\\") catch {};
+                }
+                currentLinkId = linkId;
+                if (currentLinkId != 0) {
+                    const lp = link.initGlobalLinkPool(self.allocator);
+                    if (lp.get(currentLinkId)) |url_bytes| {
+                        writer.print("\x1b]8;id={d};{s}\x1b\\", .{ currentLinkId, url_bytes }) catch {};
+                    } else |_| {
+                        currentLinkId = 0;
+                    }
+                }
+            }
+
+            if (!sameAttributes) {
+                writer.writeAll(ansi.ANSI.reset) catch {};
+
+                currentFg = cell.fg;
+                currentBg = cell.bg;
+                currentFgTag = cell.fg_tag;
+                currentBgTag = cell.bg_tag;
+                currentAttributes = @as(i32, @intCast(cell.attributes));
+
+                self.emitColor(writer, cell.fg, cell.fg_tag, false);
+                self.emitColor(writer, cell.bg, cell.bg_tag, true);
+
+                ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
+            }
+
+            if (cell.char == 0) {
+                writer.writeByte(' ') catch {};
+            } else if (gp.isGraphemeChar(cell.char)) {
+                const gid: u32 = gp.graphemeIdFromChar(cell.char);
+                const bytes = self.pool.get(gid) catch {
+                    writer.writeByte(' ') catch {};
+                    continue;
+                };
+
+                if (bytes.len > 0) {
+                    const capabilities = self.terminal.getCapabilities();
+                    const graphemeWidth = gp.charRightExtent(cell.char) + 1;
+                    if (capabilities.explicit_width) {
+                        ansi.ANSI.explicitWidthOutput(writer, graphemeWidth, bytes) catch {};
+                    } else {
+                        writer.writeAll(bytes) catch {};
+                    }
+                }
+            } else if (gp.isContinuationChar(cell.char)) {
+                // Continuation cells are represented by the leading grapheme cell.
+            } else {
+                const len = std.unicode.utf8Encode(@intCast(cell.char), &utf8Buf) catch 1;
+                writer.writeAll(utf8Buf[0..len]) catch {};
+            }
+        }
+
+        if (hyperlinksEnabled and currentLinkId != 0) {
+            writer.writeAll("\x1b]8;;\x1b\\") catch {};
+        }
+
+        writer.writeAll(ansi.ANSI.reset) catch {};
+        writer.writeAll(ansi.ANSI.eraseToEndOfLine) catch {};
+    }
+
+    fn writePendingCommitRows(self: *CliRenderer, writer: anytype, commit: *const split_scrollback.PendingCommit) void {
+        for (commit.rows.items, 0..) |row, row_index| {
+            self.writeStoredRowCells(writer, row.cells.items);
+
+            const is_last_row = row_index + 1 >= commit.rows.items.len;
+            if (!is_last_row or commit.trailing_newline) {
+                writer.writeAll("\r\n") catch {};
+            }
+
+            if (is_last_row and commit.trailing_newline) {
+                writer.writeAll(ansi.ANSI.reset) catch {};
+                writer.writeAll(ansi.ANSI.eraseToEndOfLine) catch {};
+            }
+        }
+    }
+
+    fn writeReplaySlices(self: *CliRenderer, writer: anytype, slices: []const split_scrollback.RowSlice) void {
+        for (slices, 0..) |slice, slice_index| {
+            self.writeStoredRowCells(writer, slice.cells);
+
+            if (slice_index + 1 < slices.len) {
+                writer.writeAll("\r\n") catch {};
+            }
+        }
+    }
+
+    fn replaySplitTranscriptTail(
+        self: *CliRenderer,
+        writer: anytype,
+        pinned_render_offset: u32,
+    ) !void {
+        const coverage = self.splitScrollback.coverage(pinned_render_offset);
+        self.renderOffset = coverage.render_offset;
+
+        if (coverage.covered_rows == 0) {
+            return;
+        }
+
+        var slices = try self.splitScrollback.collectBaseVisibleTailSlices(self.allocator, coverage.covered_rows);
+        defer slices.deinit(self.allocator);
+
+        const replay_start_line = @max(coverage.uncovered_rows + 1, @as(u32, 1));
+        ansi.ANSI.moveToOutput(writer, 1, replay_start_line) catch {};
+        writer.writeAll(ansi.ANSI.eraseBelowCursor) catch {};
+        ansi.ANSI.moveToOutput(writer, 1, replay_start_line) catch {};
+        self.writeReplaySlices(writer, slices.items);
+    }
+
+    fn appendPendingSplitFooterCommit(
+        self: *CliRenderer,
+        writer: anytype,
+        commit: *const split_scrollback.PendingCommit,
+        pinned_render_offset: u32,
+        force: bool,
+    ) !bool {
+        const previousRenderOffset = self.renderOffset;
+        const previousOutputColumn = self.splitScrollback.base.layout.tail_column;
+        const has_payload_rows = commit.rows.items.len > 0;
+        const starts_mid_line = previousOutputColumn > 0 and commit.start_on_new_line;
+        const starts_wrapped_line = previousOutputColumn >= self.width;
+        const previousFooterTopLine: u32 = @max(previousRenderOffset + 1, @as(u32, 1));
+
+        try self.splitScrollback.base.applyPendingCommit(
+            self.allocator,
+            &self.splitScrollback.grapheme_tracker,
+            &self.splitScrollback.link_tracker,
+            commit,
+        );
+
+        const next_render_offset = self.splitScrollback.renderOffset(pinned_render_offset);
+        const targetFooterTopLine: u32 = @max(next_render_offset + 1, @as(u32, 1));
+        const redraw_footer = force or previousRenderOffset != next_render_offset;
+        const use_bounded_scroll_region = has_payload_rows and
+            pinned_render_offset > 0 and
+            next_render_offset == pinned_render_offset;
+
+        if (has_payload_rows or force) {
+            if (has_payload_rows) {
+                if (targetFooterTopLine > previousFooterTopLine) {
+                    var clear_line = previousFooterTopLine;
+                    while (clear_line < targetFooterTopLine) : (clear_line += 1) {
+                        ansi.ANSI.moveToOutput(writer, 1, clear_line) catch {};
+                        writer.writeAll("\x1b[2K") catch {};
+                    }
+                }
+
+                if (use_bounded_scroll_region) {
+                    writer.print("\x1b[1;{d}r", .{pinned_render_offset}) catch {};
+                }
+
+                moveToSplitOutputCursor(writer, previousRenderOffset, previousOutputColumn, self.width);
+                if (starts_mid_line or starts_wrapped_line) {
+                    writer.writeAll("\r\n") catch {};
+                }
+
+                self.writePendingCommitRows(writer, commit);
+
+                if (use_bounded_scroll_region) {
+                    writer.writeAll("\x1b[r") catch {};
+                }
+            }
+
+            self.renderOffset = next_render_offset;
+            if (redraw_footer) {
+                ansi.ANSI.moveToOutput(writer, 1, targetFooterTopLine) catch {};
+            }
+        } else {
+            self.renderOffset = next_render_offset;
+        }
+
+        return redraw_footer;
     }
 
     /// Serialization for one split append payload.
@@ -1147,110 +1459,6 @@ pub const CliRenderer = struct {
                 writer.writeAll(ansi.ANSI.eraseToEndOfLine) catch {};
             }
         }
-    }
-
-    /// Shared append path for all split payload sources.
-    ///
-    /// Contract: append payload first, then position for footer repaint in the
-    /// same frame. Returning redraw_footer lets caller skip full diff work when
-    /// footer position did not actually change.
-    fn appendSplitFooterSnapshotCommit(
-        self: *CliRenderer,
-        writer: anytype,
-        snapshot: *const OptimizedBuffer,
-        row_columns: u32,
-        start_on_new_line: bool,
-        trailing_newline: bool,
-        pinned_render_offset: u32,
-        force: bool,
-    ) bool {
-        const previousRenderOffset = self.renderOffset;
-        const previousOutputColumn = self.splitScrollback.tail_column;
-        const snapshot_has_content = snapshot.width > 0 and snapshot.height > 0;
-        const normalized_row_columns = @min(row_columns, snapshot.width);
-        const starts_mid_line = previousOutputColumn > 0 and start_on_new_line;
-        const starts_wrapped_line = previousOutputColumn >= self.width;
-        const previousFooterTopLine: u32 = @max(previousRenderOffset + 1, @as(u32, 1));
-
-        if (snapshot_has_content) {
-            // First update logical split scrollback state, then emit terminal I/O.
-            // Keeping model state authoritative makes repaint decisions deterministic.
-            if (starts_mid_line) {
-                self.splitScrollback.noteNewline();
-            }
-
-            var row: u32 = 0;
-            while (row < snapshot.height) : (row += 1) {
-                self.splitScrollback.publishRow(
-                    snapshotRowEnd(snapshot, row, normalized_row_columns),
-                    self.width,
-                    row + 1 < snapshot.height or trailing_newline,
-                );
-            }
-        }
-
-        const next_render_offset = self.splitScrollback.renderOffset(pinned_render_offset);
-        const targetFooterTopLine: u32 = @max(next_render_offset + 1, @as(u32, 1));
-        // Footer redraw is only needed when offset changes (settling/pinning) or
-        // when an explicit force was requested by the caller.
-        const redraw_footer = force or previousRenderOffset != next_render_offset;
-        // When split scrollback is settled at the pinned boundary, newlines/wraps from
-        // appended output must scroll only the upper pane. Without a temporary DECSTBM
-        // region, terminals advance into the footer rows and overwrite them in place.
-        const use_bounded_scroll_region = snapshot_has_content and
-            pinned_render_offset > 0 and
-            next_render_offset == pinned_render_offset;
-
-        if (snapshot_has_content or force) {
-            if (snapshot_has_content) {
-                // Clear rows that are transitioning from "footer surface" to scrollback before
-                // writing appended rows. If this happens after append, the clear itself is what
-                // gets scrolled and manifests as extra blank lines in history.
-                if (targetFooterTopLine > previousFooterTopLine) {
-                    var clear_line = previousFooterTopLine;
-                    while (clear_line < targetFooterTopLine) : (clear_line += 1) {
-                        ansi.ANSI.moveToOutput(writer, 1, clear_line) catch {};
-                        writer.writeAll("\x1b[2K") catch {};
-                    }
-                }
-
-                if (use_bounded_scroll_region) {
-                    // Temporarily bound scrolling to the upper pane so newline/wrap
-                    // from appended payload pushes history upward instead of stepping
-                    // through footer rows.
-                    writer.print("\x1b[1;{d}r", .{pinned_render_offset}) catch {};
-                }
-
-                moveToSplitOutputCursor(writer, previousRenderOffset, previousOutputColumn, self.width);
-                if (starts_mid_line or starts_wrapped_line) {
-                    // The prior commit left output cursor mid-row and caller asked
-                    // for newline anchoring. When the prior commit exactly filled the
-                    // row, we also need a CRLF here because moving the cursor back to
-                    // the last column loses the terminal's pending autowrap state.
-                    // Emit CRLF before payload to preserve logical row boundaries
-                    // across commit chunks.
-                    writer.writeAll("\r\n") catch {};
-                }
-
-                // Serialize payload rows at current output cursor.
-                self.writeSnapshotCommit(writer, snapshot, normalized_row_columns, trailing_newline);
-
-                if (use_bounded_scroll_region) {
-                    // Restore default full-height scroll region for regular repaint
-                    // and cursor operations after append is complete.
-                    writer.writeAll("\x1b[r") catch {};
-                }
-            }
-
-            self.renderOffset = next_render_offset;
-            if (redraw_footer) {
-                ansi.ANSI.moveToOutput(writer, 1, targetFooterTopLine) catch {};
-            }
-        } else {
-            self.renderOffset = next_render_offset;
-        }
-
-        return redraw_footer;
     }
 
     pub fn getNextBuffer(self: *CliRenderer) *OptimizedBuffer {

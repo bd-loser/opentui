@@ -275,8 +275,35 @@ export fn resetSplitScrollback(rendererPtr: *renderer.CliRenderer, seedRows: u32
     return rendererPtr.resetSplitScrollback(seedRows, pinnedRenderOffset);
 }
 
+export fn reseedSplitScrollback(rendererPtr: *renderer.CliRenderer, seedRows: u32, pinnedRenderOffset: u32) u32 {
+    return rendererPtr.reseedSplitScrollback(seedRows, pinnedRenderOffset);
+}
+
 export fn syncSplitScrollback(rendererPtr: *renderer.CliRenderer, pinnedRenderOffset: u32) u32 {
     return rendererPtr.syncSplitScrollback(pinnedRenderOffset);
+}
+
+export fn getSplitTailColumn(rendererPtr: *const renderer.CliRenderer) u32 {
+    return rendererPtr.getSplitTailColumn();
+}
+
+export fn getSplitPendingCommitCount(rendererPtr: *const renderer.CliRenderer) u32 {
+    return rendererPtr.getSplitPendingCommitCount();
+}
+
+export fn enqueueSplitFooterSnapshot(
+    rendererPtr: *renderer.CliRenderer,
+    snapshotBufferPtr: *buffer.OptimizedBuffer,
+    rowColumns: u32,
+    startOnNewLine: bool,
+    trailingNewline: bool,
+) bool {
+    return rendererPtr.enqueueSplitFooterSnapshot(
+        snapshotBufferPtr,
+        rowColumns,
+        startOnNewLine,
+        trailingNewline,
+    );
 }
 
 export fn setPendingSplitFooterTransition(
@@ -353,6 +380,15 @@ export fn repaintSplitFooter(
     force: bool,
 ) u32 {
     return rendererPtr.repaintSplitFooter(pinnedRenderOffset, force);
+}
+
+export fn flushSplitFooterCommits(
+    rendererPtr: *renderer.CliRenderer,
+    pinnedRenderOffset: u32,
+    force: bool,
+    maxCommits: u32,
+) u32 {
+    return rendererPtr.flushSplitFooterCommits(pinnedRenderOffset, force, maxCommits);
 }
 
 export fn commitSplitFooterSnapshot(

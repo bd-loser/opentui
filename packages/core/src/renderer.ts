@@ -392,9 +392,6 @@ class ExternalOutputQueue {
   }
 }
 
-const CHAR_FLAG_CONTINUATION = 0xc0000000 >>> 0
-const CHAR_FLAG_MASK = 0xc0000000 >>> 0
-
 class ScrollbackSnapshotRenderContext extends EventEmitter implements RenderContext {
   public width: number
   public height: number
@@ -804,7 +801,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private _splitHeight: number = 0
   private renderOffset: number = 0
-  private splitTailColumn: number = 0
   private pendingSplitFooterTransition: PendingSplitFooterTransition | null = null
   // One-shot latch used to request a full split repaint after transitions
   // (resize/mode/output-path changes). Cleared on first renderNative tick.
@@ -818,6 +814,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _terminalHeight: number = 0
   private _terminalIsSetup: boolean = false
 
+  // Debug/testing mirror of enqueued split commits. Native owns capture-mode
+  // ordering and append state; this queue only exists so tests and dump helpers
+  // can inspect the pre-flush snapshots.
   private externalOutputQueue = new ExternalOutputQueue()
   private realStdoutWrite: (chunk: any, encoding?: any, callback?: any) => boolean
 
@@ -1403,7 +1402,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
 
-    if (previousMode === "capture-stdout" && mode === "passthrough" && this._splitHeight > 0) {
+    const canFlushSplitOutputBeforeTransition =
+      this._terminalIsSetup && this._controlState !== RendererControlState.EXPLICIT_SUSPENDED
+
+    if (
+      previousMode === "capture-stdout" &&
+      mode === "passthrough" &&
+      this._splitHeight > 0 &&
+      canFlushSplitOutputBeforeTransition
+    ) {
       this.flushPendingSplitOutputBeforeTransition()
     }
 
@@ -1423,7 +1430,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       mode === "passthrough"
     ) {
       this.clearPendingSplitFooterTransition()
-      return
+      if (canFlushSplitOutputBeforeTransition) {
+        return
+      }
     }
 
     this.syncSplitFooterState()
@@ -1509,10 +1518,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const renderer = this
     const surfaceId = scrollbackSurfaceCounter++
     const startOnNewLine = options.startOnNewLine ?? true
-    const firstLineOffset =
-      !startOnNewLine && renderer.splitTailColumn > 0 && renderer.splitTailColumn < renderer.width
-        ? renderer.splitTailColumn
-        : 0
+    const tailColumn = renderer.getSplitTailColumn()
+    const firstLineOffset = !startOnNewLine && tailColumn > 0 && tailColumn < renderer.width ? tailColumn : 0
 
     const snapshotContext = new ScrollbackSnapshotRenderContext(renderer.width, 1, renderer.widthMethod)
     let firstLineOffsetOwner: Renderable | null = null
@@ -1848,11 +1855,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       throw new Error('writeToScrollback requires screenMode "split-footer" and externalOutputMode "capture-stdout"')
     }
 
+    const tailColumn = this.getSplitTailColumn()
     const snapshotContext = new ScrollbackSnapshotRenderContext(this.width, this.height, this.widthMethod)
     const snapshot = write({
       width: this.width,
       widthMethod: this.widthMethod,
-      tailColumn: this.splitTailColumn,
+      tailColumn,
       renderContext: snapshotContext,
     })
 
@@ -1939,67 +1947,30 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return Math.max(Math.trunc(rawValue), 1)
   }
 
-  private getSnapshotRowWidths(snapshot: OptimizedBuffer, rowColumns: number): number[] {
-    const widths: number[] = []
-    const limit = Math.min(Math.max(Math.trunc(rowColumns), 0), snapshot.width)
-    const chars = snapshot.buffers.char
-
-    for (let y = 0; y < snapshot.height; y += 1) {
-      let x = limit
-
-      while (x > 0) {
-        const cp = chars[y * snapshot.width + x - 1]
-        if (cp === 0 || (cp & CHAR_FLAG_MASK) === CHAR_FLAG_CONTINUATION) {
-          x -= 1
-          continue
-        }
-
-        break
-      }
-
-      widths.push(x)
+  private getSplitTailColumn(): number {
+    if (this._screenMode !== "split-footer" || this._externalOutputMode !== "capture-stdout") {
+      return 0
     }
 
-    return widths
+    return this.lib.getSplitTailColumn(this.rendererPtr)
   }
 
-  private publishSplitTailColumns(columns: number): void {
-    if (columns <= 0) {
+  private getPendingSplitCommitCount(): number {
+    if (this._screenMode !== "split-footer" || this._externalOutputMode !== "capture-stdout") {
+      return 0
+    }
+
+    return this.lib.getSplitPendingCommitCount(this.rendererPtr)
+  }
+
+  private drainDebugSplitCommitMirror(count: number): void {
+    if (count <= 0) {
       return
     }
 
-    const width = Math.max(this.width, 1)
-    let tail = this.splitTailColumn
-    let remaining = columns
-
-    while (remaining > 0) {
-      if (tail >= width) {
-        tail = 0
-      }
-
-      const step = Math.min(remaining, width - tail)
-      tail += step
-      remaining -= step
-
-      if (remaining > 0 && tail >= width) {
-        tail = 0
-      }
-    }
-
-    this.splitTailColumn = tail
-  }
-
-  private recordSplitCommit(commit: ExternalOutputCommit): void {
-    if (commit.startOnNewLine && this.splitTailColumn > 0) {
-      this.splitTailColumn = 0
-    }
-
-    const rowWidths = this.getSnapshotRowWidths(commit.snapshot, commit.rowColumns)
-    for (const [index, rowWidth] of rowWidths.entries()) {
-      this.publishSplitTailColumns(rowWidth)
-      if (index < rowWidths.length - 1 || commit.trailingNewline) {
-        this.splitTailColumn = 0
-      }
+    const flushedCommits = this.externalOutputQueue.claim(count)
+    for (const commit of flushedCommits) {
+      commit.snapshot.destroy()
     }
   }
 
@@ -2029,7 +2000,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private enqueueSplitCommit(commit: ExternalOutputCommit): void {
-    this.recordSplitCommit(commit)
+    const enqueued = this.lib.enqueueSplitFooterSnapshot(
+      this.rendererPtr,
+      commit.snapshot,
+      commit.rowColumns,
+      commit.startOnNewLine,
+      commit.trailingNewline,
+    )
+
+    if (!enqueued) {
+      throw new Error("failed to enqueue split scrollback snapshot")
+    }
+
     this.externalOutputQueue.writeSnapshot(commit)
   }
 
@@ -2140,54 +2122,23 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return commits
   }
 
-  private flushPendingSplitCommits(forceFooterRepaint: boolean = false): void {
-    // Drain only a bounded prefix so one JS render pass maps to one native frame.
-    // Remaining commits are intentionally left queued and rendered on subsequent
-    // ticks to avoid giant multi-thousand-cell frames that can flicker.
-    const commits = this.externalOutputQueue.claim(this.maxSplitCommitsPerFrame)
-    let hasCommittedOutput = false
-    const lastCommitIndex = commits.length - 1
+  private flushPendingSplitCommits(forceFooterRepaint: boolean = false, drainAll: boolean = false): void {
+    const pendingBefore = this.getPendingSplitCommitCount()
+    const maxCommits = drainAll ? Math.max(pendingBefore, 1) : this.maxSplitCommitsPerFrame
 
-    for (const [index, commit] of commits.entries()) {
-      // Force repaint only on the last commit in a frame. Repainting after every
-      // chunk negates batching and reintroduces duplicate clear/move traffic.
-      const forceCommit = forceFooterRepaint && index === lastCommitIndex
-      // beginFrame/finalizeFrame tell native code whether this commit opens or
-      // closes the shared frame envelope. Intermediate commits append payload only.
-      const beginFrame = index === 0
-      const finalizeFrame = index === lastCommitIndex
+    this.renderOffset = this.lib.flushSplitFooterCommits(
+      this.rendererPtr,
+      this.getSplitPinnedRenderOffset(),
+      forceFooterRepaint,
+      maxCommits,
+    )
 
-      try {
-        // Keep split append policy in native code so every producer (captured stdout
-        // and writeToScrollback) shares the same cursor/scrollback invariants.
-        this.renderOffset = this.lib.commitSplitFooterSnapshot(
-          this.rendererPtr,
-          commit.snapshot,
-          commit.rowColumns,
-          commit.startOnNewLine,
-          commit.trailingNewline,
-          this.getSplitPinnedRenderOffset(),
-          forceCommit,
-          beginFrame,
-          finalizeFrame,
-        )
-        hasCommittedOutput = true
-      } finally {
-        commit.snapshot.destroy()
-      }
-    }
-
-    if (!hasCommittedOutput) {
-      this.renderOffset = this.lib.repaintSplitFooter(
-        this.rendererPtr,
-        this.getSplitPinnedRenderOffset(),
-        forceFooterRepaint,
-      )
-    }
+    const pendingAfter = this.getPendingSplitCommitCount()
+    this.drainDebugSplitCommitMirror(Math.max(pendingBefore - pendingAfter, 0))
 
     this.pendingSplitFooterTransition = null
 
-    if (this.externalOutputQueue.size > 0) {
+    if (pendingAfter > 0) {
       // Preserve FIFO ordering without doing unbounded work in one tick.
       // This keeps sustained stdout bursts smooth instead of blocking on one frame.
       this.requestRender()
@@ -2240,16 +2191,20 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
 
-    if (this.externalOutputQueue.size === 0 && !forceFooterRepaint) {
+    if (this.getPendingSplitCommitCount() === 0 && !forceFooterRepaint) {
       return
     }
 
-    this.flushPendingSplitCommits(forceFooterRepaint)
+    this.flushPendingSplitCommits(forceFooterRepaint, true)
   }
 
   private resetSplitScrollback(seedRows: number = 0): void {
-    this.splitTailColumn = 0
+    this.externalOutputQueue.clear()
     this.renderOffset = this.lib.resetSplitScrollback(this.rendererPtr, seedRows, this.getSplitPinnedRenderOffset())
+  }
+
+  private reseedSplitScrollback(seedRows: number): void {
+    this.renderOffset = this.lib.reseedSplitScrollback(this.rendererPtr, seedRows, this.getSplitPinnedRenderOffset())
   }
 
   private syncSplitScrollback(): void {
@@ -2282,7 +2237,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (!splitActive) {
       this.clearPendingSplitFooterTransition()
-      this.splitTailColumn = 0
+      this.externalOutputQueue.clear()
       this.lib.resetSplitScrollback(this.rendererPtr, 0, 0)
       this.renderOffset = 0
       this.lib.setRenderOffset(this.rendererPtr, this.renderOffset)
@@ -2293,7 +2248,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.syncSplitScrollback()
     } else {
       this.clearPendingSplitFooterTransition()
-      this.splitTailColumn = 0
+      this.externalOutputQueue.clear()
       this.lib.resetSplitScrollback(this.rendererPtr, 0, 0)
       this.renderOffset = this.getSplitPinnedRenderOffset()
       this.lib.setRenderOffset(this.rendererPtr, this.renderOffset)
@@ -2350,46 +2305,26 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return
     }
 
+    const terminalWritable = this._terminalIsSetup && this._controlState !== RendererControlState.EXPLICIT_SUSPENDED
     const prevUseAlternateScreen = prevScreenMode === "alternate-screen"
     const nextUseAlternateScreen = screenMode === "alternate-screen"
-    const terminalScreenModeChanged = this._terminalIsSetup && prevUseAlternateScreen !== nextUseAlternateScreen
+    const terminalScreenModeChanged = terminalWritable && prevUseAlternateScreen !== nextUseAlternateScreen
     const leavingSplitFooter = prevSplitHeight > 0 && nextSplitHeight === 0
 
-    if (this._terminalIsSetup && prevSplitHeight > 0) {
+    if (terminalWritable && prevSplitHeight > 0) {
       this.flushPendingSplitOutputBeforeTransition()
     }
 
     const previousSurfaceTopLine = this.renderOffset + 1
-    const previousPinnedRenderOffset = Math.max(this._terminalHeight - prevSplitHeight, 0)
-    const splitWasSettled = prevSplitHeight === 0 || this.renderOffset >= previousPinnedRenderOffset
-    const shouldUseViewportScrollTransitions = this._externalOutputMode !== "capture-stdout" || splitWasSettled
-    const shouldDeferSplitFooterResizeTransition =
-      this._terminalIsSetup &&
-      prevScreenMode === "split-footer" &&
-      screenMode === "split-footer" &&
-      this._externalOutputMode === "capture-stdout" &&
-      prevSplitHeight > 0 &&
-      nextSplitHeight > 0 &&
-      !terminalScreenModeChanged
-    const splitStartupSeedBlocksFirstNativeFrame =
-      this.pendingSplitStartupCursorSeed && this.splitStartupSeedTimeoutId !== null
-    const splitTransitionSourceTopLine = this.pendingSplitFooterTransition?.sourceTopLine ?? previousSurfaceTopLine
-    const splitTransitionSourceHeight = this.pendingSplitFooterTransition?.sourceHeight ?? prevSplitHeight
-    const splitTransitionMode =
-      this.pendingSplitFooterTransition?.mode ?? (splitWasSettled ? "viewport-scroll" : "clear-stale-rows")
+    const shouldUseViewportScrollTransitions = this._externalOutputMode !== "capture-stdout"
 
-    if (this._terminalIsSetup && leavingSplitFooter) {
+    if (terminalWritable && leavingSplitFooter) {
       this.clearPendingSplitFooterTransition()
       this.renderOffset = 0
       this.lib.setRenderOffset(this.rendererPtr, 0)
     }
 
-    if (
-      this._terminalIsSetup &&
-      !terminalScreenModeChanged &&
-      shouldUseViewportScrollTransitions &&
-      !shouldDeferSplitFooterResizeTransition
-    ) {
+    if (terminalWritable && !terminalScreenModeChanged && shouldUseViewportScrollTransitions) {
       if (prevSplitHeight === 0 && nextSplitHeight > 0) {
         const freedLines = this._terminalHeight - nextSplitHeight
         const scrollDown = ANSI.scrollDown(freedLines)
@@ -2419,24 +2354,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this.syncSplitScrollback()
       }
 
-      if (shouldDeferSplitFooterResizeTransition) {
-        if (splitStartupSeedBlocksFirstNativeFrame) {
-          this.clearPendingSplitFooterTransition()
-        } else {
-          this.setPendingSplitFooterTransition({
-            mode: splitTransitionMode,
-            sourceTopLine: splitTransitionSourceTopLine,
-            sourceHeight: splitTransitionSourceHeight,
-            targetTopLine: this.renderOffset + 1,
-            targetHeight: nextSplitHeight,
-          })
-        }
-        this.forceFullRepaintRequested = true
-      } else if (!shouldUseViewportScrollTransitions && prevSplitHeight > 0 && nextSplitHeight > 0) {
+      this.clearPendingSplitFooterTransition()
+      this.forceFullRepaintRequested = false
+
+      if (terminalWritable && !shouldUseViewportScrollTransitions && prevSplitHeight > 0 && nextSplitHeight > 0) {
         this.clearPendingSplitFooterTransition()
         this.clearStaleSplitSurfaceRows(previousSurfaceTopLine, prevSplitHeight, this.renderOffset + 1, nextSplitHeight)
-      } else {
-        this.clearPendingSplitFooterTransition()
       }
     } else {
       this.syncSplitFooterState()
@@ -2670,7 +2593,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._screenMode === "split-footer" &&
       this._externalOutputMode === "capture-stdout"
     ) {
-      this.resetSplitScrollback(this.getSplitCursorSeedRows())
+      this.reseedSplitScrollback(this.getSplitCursorSeedRows())
       this.clearPendingSplitFooterTransition()
       this.pendingSplitStartupCursorSeed = false
       this.updateStdinParserProtocolContext({ startupCursorCprActive: false })

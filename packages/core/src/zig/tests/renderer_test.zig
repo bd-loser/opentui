@@ -1443,7 +1443,7 @@ test "renderer - commitSplitFooterSnapshot multiline short final row keeps conti
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(first_snapshot, 16, false, false, 2, false, true, true);
 
-    try std.testing.expectEqual(@as(u32, 5), cli_renderer.splitScrollback.tail_column);
+    try std.testing.expectEqual(@as(u32, 5), cli_renderer.getSplitTailColumn());
 
     var second_snapshot = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1520,7 +1520,7 @@ test "renderer - commitSplitFooterSnapshot exact-width continuation preserves au
     const wrap_index = std.mem.indexOf(u8, output, "\x1b[2;20H\r\n");
     const text_index = std.mem.indexOf(u8, output, " letters");
 
-    try std.testing.expectEqual(@as(u32, 8), cli_renderer.splitScrollback.tail_column);
+    try std.testing.expectEqual(@as(u32, 8), cli_renderer.getSplitTailColumn());
     try std.testing.expect(wrap_index != null);
     try std.testing.expect(text_index != null);
     try std.testing.expect(wrap_index.? < text_index.?);

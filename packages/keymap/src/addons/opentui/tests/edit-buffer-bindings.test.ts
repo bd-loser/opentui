@@ -114,6 +114,20 @@ describe("edit buffer bindings addon", () => {
     expect(bindings.some((binding) => binding.key === "backspace" && binding.desc === "Delete backward")).toBe(true)
   })
 
+  test("createTextareaBindings applies custom command names to generated defaults", () => {
+    const bindings = createTextareaBindings(undefined, {
+      commandNames: {
+        "move-left": "input_move_left",
+        submit: "input_submit",
+      },
+    })
+
+    expect(bindings.some((binding) => binding.key === "left" && binding.cmd === "input_move_left")).toBe(true)
+    expect(bindings.some((binding) => binding.key === "left" && binding.cmd === "move-left")).toBe(false)
+    expect(bindings.some((binding) => binding.key === "meta+return" && binding.cmd === "input_submit")).toBe(true)
+    expect(bindings.some((binding) => binding.key === "return" && binding.cmd === "newline")).toBe(true)
+  })
+
   test("registerManagedTextareaLayer normalizes shorthand overrides through keymap.normalizeBindings", () => {
     const keymap = getKeymap(renderer)
     const textarea = new TextareaRenderable(renderer, {
@@ -394,10 +408,13 @@ describe("edit buffer bindings addon", () => {
     off()
   })
 
-  test("registerEditBufferCommands applies custom command descriptions when metadata fields are registered", () => {
+  test("registerEditBufferCommands applies custom command names and descriptions when metadata fields are registered", () => {
     const keymap = getKeymap(renderer)
 
     registerEditBufferCommands(keymap, renderer, {
+      commandNames: {
+        "delete-line": "input_delete_line",
+      },
       descriptions: {
         "delete-line": "Supprimer la ligne",
       },
@@ -405,16 +422,35 @@ describe("edit buffer bindings addon", () => {
 
     keymap.registerLayer({
       scope: "global",
-      bindings: [{ key: "x", cmd: "delete-line" }],
+      bindings: [{ key: "x", cmd: "input_delete_line" }],
     })
+
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 4,
+      initialValue: "Line 1\nLine 2\nLine 3",
+    })
+    renderer.root.add(textarea)
+
+    textarea.focus()
+    textarea.gotoLine(1)
+    mockInput.pressKey("x")
 
     const activeKey = keymap.getActiveKeys({ includeMetadata: true }).find((candidate) => candidate.stroke.name === "x")
 
+    expect(textarea.plainText).toBe("Line 1\nLine 3")
+    expect(activeKey?.command).toBe("input_delete_line")
     expect(activeKey?.commandAttrs).toEqual({ desc: "Supprimer la ligne" })
   })
 
-  test("registerManagedTextareaLayer applies custom descriptions to generated default bindings", () => {
+  test("registerManagedTextareaLayer applies custom command names and descriptions to generated default bindings", () => {
     const keymap = getKeymap(renderer)
+    const textarea = new TextareaRenderable(renderer, {
+      width: 20,
+      height: 4,
+      initialValue: "abc",
+    })
+    renderer.root.add(textarea)
 
     const off = registerManagedTextareaLayer(
       keymap,
@@ -423,6 +459,9 @@ describe("edit buffer bindings addon", () => {
         scope: "global",
       },
       {
+        commandNames: {
+          "move-left": "input_move_left",
+        },
         descriptions: {
           "move-left": "Curseur gauche",
         },
@@ -433,6 +472,12 @@ describe("edit buffer bindings addon", () => {
       .getActiveKeys({ includeMetadata: true })
       .find((candidate) => candidate.stroke.name === "left")
 
+    textarea.focus()
+    textarea.cursorOffset = 3
+    mockInput.pressArrow("left")
+
+    expect(textarea.cursorOffset).toBe(2)
+    expect(activeKey?.command).toBe("input_move_left")
     expect(activeKey?.bindingAttrs).toEqual({ desc: "Curseur gauche" })
     expect(activeKey?.commandAttrs).toEqual({ desc: "Curseur gauche" })
 
@@ -455,6 +500,54 @@ describe("edit buffer bindings addon", () => {
         },
       })
     }).not.toThrow()
+  })
+
+  test("shared edit buffer command registrations ignore later command name overrides", () => {
+    const keymap = getKeymap(renderer)
+
+    registerEditBufferCommands(keymap, renderer, {
+      commandNames: {
+        "move-left": "input_move_left",
+      },
+    })
+
+    expect(() => {
+      registerEditBufferCommands(keymap, renderer, {
+        commandNames: {
+          "move-left": "other_move_left",
+        },
+      })
+    }).not.toThrow()
+
+    expect(keymap.getCommands({ visibility: "registered" }).some((command) => command.name === "input_move_left")).toBe(
+      true,
+    )
+    expect(keymap.getCommands({ visibility: "registered" }).some((command) => command.name === "other_move_left")).toBe(
+      false,
+    )
+  })
+
+  test("createTextareaBindings rejects empty custom command names", () => {
+    expect(() => {
+      createTextareaBindings(undefined, {
+        commandNames: {
+          "move-left": "   ",
+        },
+      })
+    }).toThrow('Edit buffer command name for "move-left" cannot be empty')
+  })
+
+  test("registerEditBufferCommands rejects duplicate custom command names", () => {
+    const keymap = getKeymap(renderer)
+
+    expect(() => {
+      registerEditBufferCommands(keymap, renderer, {
+        commandNames: {
+          "move-left": "input_move",
+          "move-right": "input_move",
+        },
+      })
+    }).toThrow('Edit buffer command name "input_move" is assigned to both "move-left" and "move-right"')
   })
 
   test("disposes single registrations cleanly and supports re-registration", () => {

@@ -38,7 +38,7 @@ function normalizeEnabledValue(fieldName: string, value: unknown): Enabled {
 export function registerEnabledField<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {
-  return keymap.registerLayerFields({
+  const offLayerFields = keymap.registerLayerFields({
     enabled(value, ctx) {
       const normalized = normalizeEnabledValue("enabled", value)
       if (normalized === true) {
@@ -53,6 +53,27 @@ export function registerEnabledField<TTarget extends object, TEvent extends Keym
       ctx.activeWhen(normalized)
     },
   })
+
+  const offCommandFields = keymap.registerCommandFields({
+    enabled(value, ctx) {
+      const normalized = normalizeEnabledValue("enabled", value)
+      if (normalized === true) {
+        return
+      }
+
+      if (normalized === false) {
+        ctx.activeWhen(() => false)
+        return
+      }
+
+      ctx.activeWhen(normalized)
+    },
+  })
+
+  return () => {
+    offCommandFields()
+    offLayerFields()
+  }
 }
 
 /**

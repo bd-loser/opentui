@@ -175,7 +175,7 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
         : {
             ...baseLayer,
             scope: resolvedScope,
-            target: resolvedTarget,
+            target: resolvedTarget!,
           }
 
     const dispose = keymap.registerLayer(resolvedLayer)

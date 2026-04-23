@@ -55,7 +55,7 @@ function getReachableCommandNames() {
   return testSetup.keymap.getCommandEntries({ visibility: "reachable" }).map((entry) => entry.command.name).sort()
 }
 
-describe("solid keymap leader regressions", () => {
+describe("solid keymap leader behavior", () => {
   beforeEach(async () => {
     if (testSetup) {
       testSetup.renderer.destroy()
@@ -68,7 +68,7 @@ describe("solid keymap leader regressions", () => {
     }
   })
 
-  test("merges leader continuations across competing global leader layers with a focused managed textarea", async () => {
+  test("supports leader bindings across global layers with a focused managed textarea", async () => {
     const calls: string[] = []
     let editor!: TextareaRenderable
     let offLeader!: () => void
@@ -277,7 +277,7 @@ describe("solid keymap leader regressions", () => {
     expect(editor.plainText).toBe("")
   })
 
-  test("keeps split global commands reachable when only their enabled-gated bindings layer is disabled", async () => {
+  test("keeps commands reachable when only the bindings layer is disabled", async () => {
     let setBindingsEnabled!: (value: boolean) => void
     const calls: string[] = []
 
@@ -351,7 +351,7 @@ describe("solid keymap leader regressions", () => {
     expect(calls).toEqual(["console-toggle"])
   })
 
-  test("keeps global leader continuations available across separate components with extra focus-within layers", async () => {
+  test("supports leader bindings across separate components with extra focus-within layers", async () => {
     const calls: string[] = []
     let editor!: TextareaRenderable
     let offLeader!: () => void

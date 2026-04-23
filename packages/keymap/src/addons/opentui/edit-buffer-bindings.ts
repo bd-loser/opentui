@@ -9,7 +9,7 @@ import {
   type Renderable,
   type TextareaAction,
 } from "@opentui/core"
-import type { BindingInput, Bindings, CommandDefinition, CommandContext, Keymap, Layer } from "../../index.js"
+import type { BindingInput, Bindings, CommandDefinition, Keymap, Layer } from "../../index.js"
 
 interface KeyBindingLike {
   name: string
@@ -32,7 +32,7 @@ function keyBindingToString(binding: KeyBindingLike): string {
   return parts.join("+")
 }
 
-const editBufferCommandNames = [
+const editBufferActions = [
   "move-left",
   "move-right",
   "move-up",
@@ -71,7 +71,46 @@ const editBufferCommandNames = [
   "submit",
 ] as const satisfies readonly TextareaAction[]
 
-export type EditBufferCommandName = (typeof editBufferCommandNames)[number]
+export type EditBufferCommandName = (typeof editBufferActions)[number]
+
+const editBufferCommandNames = {
+  "move-left": "move-left",
+  "move-right": "move-right",
+  "move-up": "move-up",
+  "move-down": "move-down",
+  "select-left": "select-left",
+  "select-right": "select-right",
+  "select-up": "select-up",
+  "select-down": "select-down",
+  "line-home": "line-home",
+  "line-end": "line-end",
+  "select-line-home": "select-line-home",
+  "select-line-end": "select-line-end",
+  "visual-line-home": "visual-line-home",
+  "visual-line-end": "visual-line-end",
+  "select-visual-line-home": "select-visual-line-home",
+  "select-visual-line-end": "select-visual-line-end",
+  "buffer-home": "buffer-home",
+  "buffer-end": "buffer-end",
+  "select-buffer-home": "select-buffer-home",
+  "select-buffer-end": "select-buffer-end",
+  "delete-line": "delete-line",
+  "delete-to-line-end": "delete-to-line-end",
+  "delete-to-line-start": "delete-to-line-start",
+  backspace: "backspace",
+  delete: "delete",
+  newline: "newline",
+  undo: "undo",
+  redo: "redo",
+  "word-forward": "word-forward",
+  "word-backward": "word-backward",
+  "select-word-forward": "select-word-forward",
+  "select-word-backward": "select-word-backward",
+  "delete-word-forward": "delete-word-forward",
+  "delete-word-backward": "delete-word-backward",
+  "select-all": "select-all",
+  submit: "submit",
+} as const satisfies Record<EditBufferCommandName, string>
 
 const editBufferCommandDescriptions = {
   "move-left": "Cursor left",
@@ -113,6 +152,7 @@ const editBufferCommandDescriptions = {
 } as const satisfies Record<EditBufferCommandName, string>
 
 export interface EditBufferCommandOptions {
+  commandNames?: Partial<Record<EditBufferCommandName, string>>
   descriptions?: Partial<Record<EditBufferCommandName, string>>
 }
 
@@ -136,7 +176,7 @@ function resolveEditBufferCommandDescriptions(
     return descriptions
   }
 
-  for (const name of editBufferCommandNames) {
+  for (const name of editBufferActions) {
     const override = overrides[name]
     if (override === undefined) {
       continue
@@ -153,6 +193,43 @@ function resolveEditBufferCommandDescriptions(
   return descriptions
 }
 
+function resolveEditBufferCommandNames(options?: EditBufferCommandOptions): Record<EditBufferCommandName, string> {
+  const commandNames: Record<EditBufferCommandName, string> = { ...editBufferCommandNames }
+  const overrides = options?.commandNames
+
+  if (overrides) {
+    for (const action of editBufferActions) {
+      const override = overrides[action]
+      if (override === undefined) {
+        continue
+      }
+
+      const normalized = override.trim()
+      if (!normalized) {
+        throw new Error(`Edit buffer command name for "${action}" cannot be empty`)
+      }
+
+      commandNames[action] = normalized
+    }
+  }
+
+  const seenNames = new Map<string, EditBufferCommandName>()
+
+  for (const action of editBufferActions) {
+    const commandName = commandNames[action]
+    const existingAction = seenNames.get(commandName)
+    if (existingAction !== undefined) {
+      throw new Error(
+        `Edit buffer command name "${commandName}" is assigned to both "${existingAction}" and "${action}"`,
+      )
+    }
+
+    seenNames.set(commandName, action)
+  }
+
+  return commandNames
+}
+
 function setTextareaSuspend(editor: TextareaRenderable, suspended: boolean): void {
   const nextTraits = { ...editor.traits }
   if (suspended) {
@@ -164,10 +241,13 @@ function setTextareaSuspend(editor: TextareaRenderable, suspended: boolean): voi
   editor.traits = nextTraits
 }
 
-function createDefaultTextareaBindings(descriptions: Readonly<Record<EditBufferCommandName, string>>): BindingInput[] {
+function createDefaultTextareaBindings(
+  commandNames: Readonly<Record<EditBufferCommandName, string>>,
+  descriptions: Readonly<Record<EditBufferCommandName, string>>,
+): BindingInput[] {
   return defaultTextareaKeyBindings.map((binding) => ({
     key: keyBindingToString(binding),
-    cmd: binding.action,
+    cmd: commandNames[binding.action],
     desc: descriptions[binding.action],
   }))
 }
@@ -177,16 +257,24 @@ function createDefaultTextareaBindings(descriptions: Readonly<Record<EditBufferC
  * take precedence. Prefer `registerManagedTextareaLayer` unless you are
  * composing a custom textarea integration.
  */
-export function createTextareaBindings(overrides?: readonly BindingInput[]): BindingInput[] {
-  return createTextareaBindingsWithDescriptions(overrides, editBufferCommandDescriptions)
+export function createTextareaBindings(
+  overrides?: readonly BindingInput[],
+  options?: EditBufferCommandOptions,
+): BindingInput[] {
+  return createTextareaBindingsWithResolvedOptions(
+    overrides,
+    resolveEditBufferCommandNames(options),
+    resolveEditBufferCommandDescriptions(options),
+  )
 }
 
-function createTextareaBindingsWithDescriptions(
+function createTextareaBindingsWithResolvedOptions(
   overrides: readonly BindingInput[] | undefined,
+  commandNames: Readonly<Record<EditBufferCommandName, string>>,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
 ): BindingInput[] {
   const overrideBindings = overrides ?? []
-  return [...overrideBindings, ...createDefaultTextareaBindings(descriptions)]
+  return [...overrideBindings, ...createDefaultTextareaBindings(commandNames, descriptions)]
 }
 
 function getLiveRenderer(renderer: CliRenderer): CliRenderer {
@@ -262,11 +350,7 @@ export function registerTextareaMappingSuspension(
   })
 }
 
-function withFocusedEditor(
-  renderer: CliRenderer,
-  ctx: CommandContext<Renderable, KeyEvent>,
-  run: (editor: EditBufferRenderable) => boolean,
-): boolean {
+function withFocusedEditor(renderer: CliRenderer, run: (editor: EditBufferRenderable) => boolean): boolean {
   const editor = getLiveRenderer(renderer).currentFocusedEditor
   if (!editor || editor.isDestroyed) {
     return false
@@ -279,119 +363,75 @@ function hasSubmit(editor: EditBufferRenderable): editor is EditBufferRenderable
   return typeof (editor as { submit?: unknown }).submit === "function"
 }
 
+const editBufferCommandHandlers = {
+  "move-left": (editor: EditBufferRenderable) => editor.moveCursorLeft(),
+  "move-right": (editor: EditBufferRenderable) => editor.moveCursorRight(),
+  "move-up": (editor: EditBufferRenderable) => editor.moveCursorUp(),
+  "move-down": (editor: EditBufferRenderable) => editor.moveCursorDown(),
+  "select-left": (editor: EditBufferRenderable) => editor.moveCursorLeft({ select: true }),
+  "select-right": (editor: EditBufferRenderable) => editor.moveCursorRight({ select: true }),
+  "select-up": (editor: EditBufferRenderable) => editor.moveCursorUp({ select: true }),
+  "select-down": (editor: EditBufferRenderable) => editor.moveCursorDown({ select: true }),
+  "line-home": (editor: EditBufferRenderable) => editor.gotoLineHome(),
+  "line-end": (editor: EditBufferRenderable) => editor.gotoLineEnd(),
+  "select-line-home": (editor: EditBufferRenderable) => editor.gotoLineHome({ select: true }),
+  "select-line-end": (editor: EditBufferRenderable) => editor.gotoLineEnd({ select: true }),
+  "visual-line-home": (editor: EditBufferRenderable) => editor.gotoVisualLineHome(),
+  "visual-line-end": (editor: EditBufferRenderable) => editor.gotoVisualLineEnd(),
+  "select-visual-line-home": (editor: EditBufferRenderable) => editor.gotoVisualLineHome({ select: true }),
+  "select-visual-line-end": (editor: EditBufferRenderable) => editor.gotoVisualLineEnd({ select: true }),
+  "buffer-home": (editor: EditBufferRenderable) => editor.gotoBufferHome(),
+  "buffer-end": (editor: EditBufferRenderable) => editor.gotoBufferEnd(),
+  "select-buffer-home": (editor: EditBufferRenderable) => editor.gotoBufferHome({ select: true }),
+  "select-buffer-end": (editor: EditBufferRenderable) => editor.gotoBufferEnd({ select: true }),
+  "delete-line": (editor: EditBufferRenderable) => editor.deleteLine(),
+  "delete-to-line-end": (editor: EditBufferRenderable) => editor.deleteToLineEnd(),
+  "delete-to-line-start": (editor: EditBufferRenderable) => editor.deleteToLineStart(),
+  backspace: (editor: EditBufferRenderable) => editor.deleteCharBackward(),
+  delete: (editor: EditBufferRenderable) => editor.deleteChar(),
+  newline: (editor: EditBufferRenderable) => editor.newLine(),
+  undo: (editor: EditBufferRenderable) => editor.undo(),
+  redo: (editor: EditBufferRenderable) => editor.redo(),
+  "word-forward": (editor: EditBufferRenderable) => editor.moveWordForward(),
+  "word-backward": (editor: EditBufferRenderable) => editor.moveWordBackward(),
+  "select-word-forward": (editor: EditBufferRenderable) => editor.moveWordForward({ select: true }),
+  "select-word-backward": (editor: EditBufferRenderable) => editor.moveWordBackward({ select: true }),
+  "delete-word-forward": (editor: EditBufferRenderable) => editor.deleteWordForward(),
+  "delete-word-backward": (editor: EditBufferRenderable) => editor.deleteWordBackward(),
+  "select-all": (editor: EditBufferRenderable) => editor.selectAll(),
+  submit: (editor: EditBufferRenderable) => {
+    if (!hasSubmit(editor)) {
+      return false
+    }
+
+    return editor.submit()
+  },
+} as const satisfies Record<EditBufferCommandName, (editor: EditBufferRenderable) => boolean>
+
 function createEditBufferCommand(
   renderer: CliRenderer,
-  name: EditBufferCommandName,
+  action: EditBufferCommandName,
+  commandNames: Readonly<Record<EditBufferCommandName, string>>,
   run: (editor: EditBufferRenderable) => boolean,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
 ): CommandDefinition<Renderable, KeyEvent> {
   return {
-    name,
-    desc: descriptions[name],
-    run(ctx) {
-      return withFocusedEditor(renderer, ctx, run)
+    name: commandNames[action],
+    desc: descriptions[action],
+    run() {
+      return withFocusedEditor(renderer, run)
     },
   }
 }
 
 function createEditBufferCommands(
   renderer: CliRenderer,
+  commandNames: Readonly<Record<EditBufferCommandName, string>>,
   descriptions: Readonly<Record<EditBufferCommandName, string>>,
 ): CommandDefinition<Renderable, KeyEvent>[] {
-  return [
-    createEditBufferCommand(renderer, "move-left", (editor) => editor.moveCursorLeft(), descriptions),
-    createEditBufferCommand(renderer, "move-right", (editor) => editor.moveCursorRight(), descriptions),
-    createEditBufferCommand(renderer, "move-up", (editor) => editor.moveCursorUp(), descriptions),
-    createEditBufferCommand(renderer, "move-down", (editor) => editor.moveCursorDown(), descriptions),
-    createEditBufferCommand(renderer, "select-left", (editor) => editor.moveCursorLeft({ select: true }), descriptions),
-    createEditBufferCommand(
-      renderer,
-      "select-right",
-      (editor) => editor.moveCursorRight({ select: true }),
-      descriptions,
-    ),
-    createEditBufferCommand(renderer, "select-up", (editor) => editor.moveCursorUp({ select: true }), descriptions),
-    createEditBufferCommand(renderer, "select-down", (editor) => editor.moveCursorDown({ select: true }), descriptions),
-    createEditBufferCommand(renderer, "line-home", (editor) => editor.gotoLineHome(), descriptions),
-    createEditBufferCommand(renderer, "line-end", (editor) => editor.gotoLineEnd(), descriptions),
-    createEditBufferCommand(
-      renderer,
-      "select-line-home",
-      (editor) => editor.gotoLineHome({ select: true }),
-      descriptions,
-    ),
-    createEditBufferCommand(
-      renderer,
-      "select-line-end",
-      (editor) => editor.gotoLineEnd({ select: true }),
-      descriptions,
-    ),
-    createEditBufferCommand(renderer, "visual-line-home", (editor) => editor.gotoVisualLineHome(), descriptions),
-    createEditBufferCommand(renderer, "visual-line-end", (editor) => editor.gotoVisualLineEnd(), descriptions),
-    createEditBufferCommand(
-      renderer,
-      "select-visual-line-home",
-      (editor) => editor.gotoVisualLineHome({ select: true }),
-      descriptions,
-    ),
-    createEditBufferCommand(
-      renderer,
-      "select-visual-line-end",
-      (editor) => editor.gotoVisualLineEnd({ select: true }),
-      descriptions,
-    ),
-    createEditBufferCommand(renderer, "buffer-home", (editor) => editor.gotoBufferHome(), descriptions),
-    createEditBufferCommand(renderer, "buffer-end", (editor) => editor.gotoBufferEnd(), descriptions),
-    createEditBufferCommand(
-      renderer,
-      "select-buffer-home",
-      (editor) => editor.gotoBufferHome({ select: true }),
-      descriptions,
-    ),
-    createEditBufferCommand(
-      renderer,
-      "select-buffer-end",
-      (editor) => editor.gotoBufferEnd({ select: true }),
-      descriptions,
-    ),
-    createEditBufferCommand(renderer, "delete-line", (editor) => editor.deleteLine(), descriptions),
-    createEditBufferCommand(renderer, "delete-to-line-end", (editor) => editor.deleteToLineEnd(), descriptions),
-    createEditBufferCommand(renderer, "delete-to-line-start", (editor) => editor.deleteToLineStart(), descriptions),
-    createEditBufferCommand(renderer, "backspace", (editor) => editor.deleteCharBackward(), descriptions),
-    createEditBufferCommand(renderer, "delete", (editor) => editor.deleteChar(), descriptions),
-    createEditBufferCommand(renderer, "newline", (editor) => editor.newLine(), descriptions),
-    createEditBufferCommand(renderer, "undo", (editor) => editor.undo(), descriptions),
-    createEditBufferCommand(renderer, "redo", (editor) => editor.redo(), descriptions),
-    createEditBufferCommand(renderer, "word-forward", (editor) => editor.moveWordForward(), descriptions),
-    createEditBufferCommand(renderer, "word-backward", (editor) => editor.moveWordBackward(), descriptions),
-    createEditBufferCommand(
-      renderer,
-      "select-word-forward",
-      (editor) => editor.moveWordForward({ select: true }),
-      descriptions,
-    ),
-    createEditBufferCommand(
-      renderer,
-      "select-word-backward",
-      (editor) => editor.moveWordBackward({ select: true }),
-      descriptions,
-    ),
-    createEditBufferCommand(renderer, "delete-word-forward", (editor) => editor.deleteWordForward(), descriptions),
-    createEditBufferCommand(renderer, "delete-word-backward", (editor) => editor.deleteWordBackward(), descriptions),
-    createEditBufferCommand(renderer, "select-all", (editor) => editor.selectAll(), descriptions),
-    createEditBufferCommand(
-      renderer,
-      "submit",
-      (editor) => {
-        if (!hasSubmit(editor)) {
-          return false
-        }
-
-        return editor.submit()
-      },
-      descriptions,
-    ),
-  ]
+  return editBufferActions.map((action) =>
+    createEditBufferCommand(renderer, action, commandNames, editBufferCommandHandlers[action], descriptions),
+  )
 }
 
 /**
@@ -405,10 +445,14 @@ export function registerEditBufferCommands(
   renderer: CliRenderer,
   options?: EditBufferCommandOptions,
 ): () => void {
+  const commandNames = resolveEditBufferCommandNames(options)
   const descriptions = resolveEditBufferCommandDescriptions(options)
 
   return keymap.acquireResource(EDIT_BUFFER_COMMANDS_RESOURCE, () => {
-    return keymap.registerLayer({ scope: "global", commands: createEditBufferCommands(renderer, descriptions) })
+    return keymap.registerLayer({
+      scope: "global",
+      commands: createEditBufferCommands(renderer, commandNames, descriptions),
+    })
   })
 }
 
@@ -424,6 +468,7 @@ export function registerManagedTextareaLayer(
   layer: ManagedTextareaLayer,
   options?: EditBufferCommandOptions,
 ): () => void {
+  const commandNames = resolveEditBufferCommandNames(options)
   const descriptions = resolveEditBufferCommandDescriptions(options)
   const offCommands = registerEditBufferCommands(keymap, renderer, options)
   const offSuspension = registerTextareaMappingSuspension(keymap, renderer)
@@ -432,8 +477,9 @@ export function registerManagedTextareaLayer(
     const { bindings, ...rest } = layer
     const offLayer = keymap.registerLayer({
       ...rest,
-      bindings: createTextareaBindingsWithDescriptions(
+      bindings: createTextareaBindingsWithResolvedOptions(
         bindings ? keymap.normalizeBindings(bindings) : undefined,
+        commandNames,
         descriptions,
       ),
     })

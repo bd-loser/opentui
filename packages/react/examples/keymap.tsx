@@ -1094,7 +1094,9 @@ const AppContent = () => {
           <text id="keymap-demo-status-leader" fg={palette.text} height={1}>
             <span style={{ fg: palette.textDim }}>Leader: </span>
             {leaderArmed ? (
-              <span style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}>{`armed (${LEADER_TRIGGER_LABEL})`}</span>
+              <span
+                style={{ fg: palette.leader, attributes: TextAttributes.BOLD }}
+              >{`armed (${LEADER_TRIGGER_LABEL})`}</span>
             ) : (
               <span style={{ fg: palette.textMuted }}>idle</span>
             )}

@@ -766,7 +766,9 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
 
     this.hooks.emit(
       "pendingSequence",
-      this.state.projection.pendingSequence ? this.collectSequencePartsFromPending(this.state.projection.pendingSequence) : [],
+      this.state.projection.pendingSequence
+        ? this.collectSequencePartsFromPending(this.state.projection.pendingSequence)
+        : [],
     )
   }
 }

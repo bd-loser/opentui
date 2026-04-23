@@ -52,7 +52,10 @@ function getActive() {
 }
 
 function getReachableCommandNames() {
-  return testSetup.keymap.getCommandEntries({ visibility: "reachable" }).map((entry) => entry.command.name).sort()
+  return testSetup.keymap
+    .getCommandEntries({ visibility: "reachable" })
+    .map((entry) => entry.command.name)
+    .sort()
 }
 
 describe("solid keymap leader behavior", () => {

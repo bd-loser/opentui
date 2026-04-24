@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url"
 import { Readable, Writable } from "node:stream"
 import type { ServerWebSocket } from "bun"
 
-import { BoxRenderable, CliRenderer, TextRenderable, createCliRenderer, type KeyEvent } from "../../index.js"
+import { BoxRenderable, CliRenderEvents, CliRenderer, TextRenderable, createCliRenderer, type KeyEvent } from "../../index.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const INDEX_HTML = readFileSync(join(__dirname, "index.html"), "utf8")
@@ -25,11 +25,177 @@ const INDEX_HTML = readFileSync(join(__dirname, "index.html"), "utf8")
 interface Session {
   renderer: CliRenderer | null
   stdin: Readable | null
+  card: BoxRenderable | null
   counterText: TextRenderable | null
-  counter: number
+  sessionInfoText: TextRenderable | null
+  liveStatusText: TextRenderable | null
   cols: number
   rows: number
+  sessionId: string
+  theme: SessionTheme
   closed: boolean
+  pendingWrite: ((error?: Error | null) => void) | null
+}
+
+interface SessionTheme {
+  borderColor: string
+  cardColor: string
+  counterColor: string
+  accentColor: string
+  noteColor: string
+}
+
+const SESSION_THEMES: SessionTheme[] = [
+  {
+    borderColor: "#38bdf8",
+    cardColor: "#1e293b",
+    counterColor: "#fde68a",
+    accentColor: "#67e8f9",
+    noteColor: "#86efac",
+  },
+  {
+    borderColor: "#f472b6",
+    cardColor: "#3b1e31",
+    counterColor: "#f9a8d4",
+    accentColor: "#f5d0fe",
+    noteColor: "#fdba74",
+  },
+  {
+    borderColor: "#a78bfa",
+    cardColor: "#2e2061",
+    counterColor: "#ddd6fe",
+    accentColor: "#c4b5fd",
+    noteColor: "#93c5fd",
+  },
+]
+
+const ACTIVE_SESSIONS = new Set<ServerWebSocket<Session>>()
+const LIVE_FRAMES = ["[=     ]", "[==    ]", "[===   ]", "[ ===  ]", "[  === ]", "[   == ]", "[    = ]"]
+const CARD_WIDTH = 46
+const CARD_HEIGHT = 12
+
+let liveFrameIndex = 0
+let sharedCounter = 0
+let sharedOffsetX = 0
+let sharedOffsetY = 0
+
+function formatSigned(value: number) {
+  return `${value >= 0 ? "+" : "-"}${Math.abs(value)}`
+}
+
+function formatScore(value: number) {
+  return `${value >= 0 ? "+" : "-"}${Math.abs(value).toString().padStart(3, "0")}`
+}
+
+function createSessionId() {
+  return crypto.randomUUID().slice(0, 4).toUpperCase()
+}
+
+function pickSessionTheme(sessionId: string) {
+  return SESSION_THEMES[sessionId.charCodeAt(0) % SESSION_THEMES.length]
+}
+
+function finishPendingWrite(session: Session) {
+  const pendingWrite = session.pendingWrite
+  if (!pendingWrite) return
+  session.pendingWrite = null
+  pendingWrite()
+}
+
+function setTextContent(renderable: TextRenderable | null, content: string) {
+  if (!renderable) return
+  try {
+    renderable.content = content
+  } catch {
+    // Renderer teardown can destroy TextBuffer instances before the WS close
+    // callback clears our references.
+  }
+}
+
+function cleanupSession(ws: ServerWebSocket<Session>) {
+  ACTIVE_SESSIONS.delete(ws)
+  ws.data.card = null
+  ws.data.counterText = null
+  ws.data.sessionInfoText = null
+  ws.data.liveStatusText = null
+  if (ACTIVE_SESSIONS.size === 0) {
+    sharedCounter = 0
+    sharedOffsetX = 0
+    sharedOffsetY = 0
+    return
+  }
+
+  clampSharedOffsets()
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(value, max))
+}
+
+function clampSharedOffsets() {
+  if (ACTIVE_SESSIONS.size === 0) {
+    sharedOffsetX = 0
+    sharedOffsetY = 0
+    return
+  }
+
+  let minOffsetX = Number.NEGATIVE_INFINITY
+  let maxOffsetX = Number.POSITIVE_INFINITY
+  let minOffsetY = Number.NEGATIVE_INFINITY
+  let maxOffsetY = Number.POSITIVE_INFINITY
+
+  for (const ws of ACTIVE_SESSIONS) {
+    const centerX = Math.floor((ws.data.cols - CARD_WIDTH) / 2)
+    const centerY = Math.floor((ws.data.rows - CARD_HEIGHT) / 2)
+    const sessionMaxX = Math.max(0, ws.data.cols - CARD_WIDTH)
+    const sessionMaxY = Math.max(0, ws.data.rows - CARD_HEIGHT)
+
+    minOffsetX = Math.max(minOffsetX, -centerX)
+    maxOffsetX = Math.min(maxOffsetX, sessionMaxX - centerX)
+    minOffsetY = Math.max(minOffsetY, -centerY)
+    maxOffsetY = Math.min(maxOffsetY, sessionMaxY - centerY)
+  }
+
+  sharedOffsetX = clamp(sharedOffsetX, minOffsetX, maxOffsetX)
+  sharedOffsetY = clamp(sharedOffsetY, minOffsetY, maxOffsetY)
+}
+
+function renderCardPosition(session: Session) {
+  if (!session.card) return
+
+  const centerX = Math.floor((session.cols - CARD_WIDTH) / 2)
+  const centerY = Math.floor((session.rows - CARD_HEIGHT) / 2)
+  const maxX = Math.max(0, session.cols - CARD_WIDTH)
+  const maxY = Math.max(0, session.rows - CARD_HEIGHT)
+
+  session.card.x = clamp(centerX + sharedOffsetX, 0, maxX)
+  session.card.y = clamp(centerY + sharedOffsetY, 0, maxY)
+}
+
+function renderAllCardPositions() {
+  for (const ws of ACTIVE_SESSIONS) {
+    renderCardPosition(ws.data)
+  }
+}
+
+function nudgeSharedCard(dx: number, dy: number) {
+  sharedOffsetX += dx
+  sharedOffsetY += dy
+  clampSharedOffsets()
+  sharedCounter += 1
+  renderAllCardPositions()
+  renderAllCounters()
+}
+
+function closeSession(ws: ServerWebSocket<Session>, code = 1000, reason = "quit") {
+  if (ws.data.closed) return
+  ws.data.closed = true
+  finishPendingWrite(ws.data)
+  try {
+    ws.close(code, reason)
+  } catch {
+    // Socket may already be closing.
+  }
 }
 
 /**
@@ -48,9 +214,16 @@ function createSessionStreams(ws: ServerWebSocket<Session>, initialCols: number,
       // chunk memory (which is reclaimed once this callback fires).
       const bytes = typeof chunk === "string" ? Buffer.from(chunk) : Buffer.from(chunk)
       try {
-        ws.sendBinary(bytes)
+        const sendResult = ws.sendBinary(bytes)
+        if (sendResult === -1) {
+          ws.data.pendingWrite = callback
+          return
+        }
+        if (sendResult === 0) {
+          closeSession(ws, 1011, "socket-send-failed")
+        }
       } catch {
-        // Socket may have closed between the feed commit and us getting here.
+        closeSession(ws, 1011, "socket-send-failed")
       }
       callback()
     },
@@ -66,11 +239,36 @@ function createSessionStreams(ws: ServerWebSocket<Session>, initialCols: number,
 }
 
 function renderCounter(session: Session) {
-  if (!session.counterText) return
-  session.counterText.content = `Counter: ${session.counter}`
+  setTextContent(session.counterText, `Score ${formatScore(sharedCounter)}`)
 }
 
-function setupCounterUI(renderer: CliRenderer, session: Session) {
+function renderAllCounters() {
+  for (const ws of ACTIVE_SESSIONS) {
+    renderCounter(ws.data)
+  }
+}
+
+function renderSessionInfo(session: Session) {
+  setTextContent(session.sessionInfoText, `Tabs ${ACTIVE_SESSIONS.size}  Session ${session.sessionId}  ${session.cols}x${session.rows}`)
+}
+
+function renderLiveStatus(session: Session) {
+  setTextContent(session.liveStatusText, `Offset ${formatSigned(sharedOffsetX)},${formatSigned(sharedOffsetY)}  ${LIVE_FRAMES[liveFrameIndex]}`)
+}
+
+function renderSharedStatus() {
+  for (const ws of ACTIVE_SESSIONS) {
+    renderLiveStatus(ws.data)
+  }
+}
+
+setInterval(() => {
+  if (ACTIVE_SESSIONS.size === 0) return
+  liveFrameIndex = (liveFrameIndex + 1) % LIVE_FRAMES.length
+  renderSharedStatus()
+}, 140)
+
+function setupCounterUI(ws: ServerWebSocket<Session>, renderer: CliRenderer, session: Session) {
   renderer.setBackgroundColor("#0f172a")
 
   const container = new BoxRenderable(renderer, {
@@ -88,11 +286,14 @@ function setupCounterUI(renderer: CliRenderer, session: Session) {
 
   const card = new BoxRenderable(renderer, {
     id: "xterm-demo-card",
-    width: 44,
-    height: 9,
-    backgroundColor: "#1e293b",
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
+    backgroundColor: session.theme.cardColor,
     borderStyle: "double",
-    borderColor: "#38bdf8",
+    borderColor: session.theme.borderColor,
     title: " opentui × xterm.js ",
     titleAlignment: "center",
     border: true,
@@ -104,65 +305,104 @@ function setupCounterUI(renderer: CliRenderer, session: Session) {
 
   const counterText = new TextRenderable(renderer, {
     id: "xterm-demo-counter",
-    content: `Counter: ${session.counter}`,
-    fg: "#fde68a",
+    content: `Shared counter: ${sharedCounter}`,
+    fg: session.theme.counterColor,
   })
   card.add(counterText)
 
+  const transportText = new TextRenderable(renderer, {
+    id: "xterm-demo-transport",
+    content: "shared server state in xterm",
+    fg: "#e2e8f0",
+  })
+  card.add(transportText)
+
+  const multiTabText = new TextRenderable(renderer, {
+    id: "xterm-demo-multi-tab",
+    content: "move here, mirror everywhere",
+    fg: "#cbd5e1",
+  })
+  card.add(multiTabText)
+
+  const sessionInfoText = new TextRenderable(renderer, {
+    id: "xterm-demo-session-info",
+    content: "",
+    fg: session.theme.accentColor,
+  })
+  card.add(sessionInfoText)
+
+  const liveStatusText = new TextRenderable(renderer, {
+    id: "xterm-demo-live-status",
+    content: "",
+    fg: session.theme.noteColor,
+  })
+  card.add(liveStatusText)
+
   const hint = new TextRenderable(renderer, {
     id: "xterm-demo-hint",
-    content: "↑/k: +1   ↓/j: −1   r: reset   q: quit",
-    fg: "#94a3b8",
+    content: "hjkl move   +/- score   r reset",
+    fg: session.theme.noteColor,
   })
   card.add(hint)
 
   container.add(card)
   renderer.root.add(container)
 
+  session.card = card
   session.counterText = counterText
+  session.sessionInfoText = sessionInfoText
+  session.liveStatusText = liveStatusText
+  renderCardPosition(session)
+  renderSessionInfo(session)
+  renderLiveStatus(session)
 
   renderer.keyInput.on("keypress", (key: KeyEvent) => {
     if (!session.renderer) return
     const sequence = key.sequence ?? ""
 
     if ((key.ctrl && key.name === "c") || key.name === "q") {
-      try {
-        ws_closeFromKey(session)
-      } catch {
-        // ignore
-      }
+      closeSession(ws)
       return
     }
 
-    if (key.name === "up" || key.name === "k" || sequence === "+" || sequence === "=") {
-      session.counter += 1
-      renderCounter(session)
+    if (key.name === "h") {
+      nudgeSharedCard(-2, 0)
       return
     }
 
-    if (key.name === "down" || key.name === "j" || sequence === "-" || sequence === "_") {
-      session.counter -= 1
-      renderCounter(session)
+    if (key.name === "l") {
+      nudgeSharedCard(2, 0)
+      return
+    }
+
+    if (key.name === "k") {
+      nudgeSharedCard(0, -1)
+      return
+    }
+
+    if (key.name === "j") {
+      nudgeSharedCard(0, 1)
+      return
+    }
+
+    if (key.name === "up" || sequence === "+" || sequence === "=") {
+      sharedCounter += 1
+      renderAllCounters()
+      return
+    }
+
+    if (key.name === "down" || sequence === "-" || sequence === "_") {
+      sharedCounter -= 1
+      renderAllCounters()
       return
     }
 
     if (key.name === "r") {
-      session.counter = 0
-      renderCounter(session)
+      sharedCounter = 0
+      renderAllCounters()
       return
     }
   })
-}
-
-function ws_closeFromKey(session: Session) {
-  if (session.closed) return
-  session.closed = true
-  // Mild exit message before teardown — goes out through the feed.
-  try {
-    session.renderer?.destroy()
-  } catch (err) {
-    console.error("error destroying renderer on key-close", err)
-  }
 }
 
 async function startSession(ws: ServerWebSocket<Session>) {
@@ -175,17 +415,25 @@ async function startSession(ws: ServerWebSocket<Session>) {
     width: ws.data.cols,
     height: ws.data.rows,
     exitOnCtrlC: false, // we handle quit ourselves so we can tidy the socket
+    exitSignals: [],
     targetFps: 30,
   })
 
+  renderer.on(CliRenderEvents.DESTROY, () => {
+    cleanupSession(ws)
+  })
+
   ws.data.renderer = renderer
-  setupCounterUI(renderer, ws.data)
+  setupCounterUI(ws, renderer, ws.data)
 }
 
 function handleResize(ws: ServerWebSocket<Session>, cols: number, rows: number) {
   if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols <= 0 || rows <= 0) return
   ws.data.cols = cols
   ws.data.rows = rows
+  clampSharedOffsets()
+  renderAllCardPositions()
+  renderSessionInfo(ws.data)
   if (ws.data.renderer) {
     ws.data.renderer.resize(cols, rows)
   }
@@ -196,15 +444,22 @@ const server = Bun.serve<Session>({
   fetch(req, srv) {
     const url = new URL(req.url)
     if (url.pathname === "/ws") {
+      const sessionId = createSessionId()
+      const theme = pickSessionTheme(sessionId)
       const ok = srv.upgrade(req, {
         data: {
           renderer: null,
           stdin: null,
+          card: null,
           counterText: null,
-          counter: 0,
+          sessionInfoText: null,
+          liveStatusText: null,
           cols: 80,
           rows: 24,
+          sessionId,
+          theme,
           closed: false,
+          pendingWrite: null,
         } satisfies Session,
       })
       return ok ? undefined : new Response("WebSocket upgrade failed", { status: 400 })
@@ -218,13 +473,24 @@ const server = Bun.serve<Session>({
     async open(ws) {
       try {
         await startSession(ws)
+        ACTIVE_SESSIONS.add(ws)
+        clampSharedOffsets()
+        renderAllCardPositions()
+        renderAllCounters()
+        renderSharedStatus()
       } catch (err) {
         console.error("failed to start session", err)
         ws.close(1011, "session-start-failed")
       }
     },
 
+    drain(ws) {
+      finishPendingWrite(ws.data)
+    },
+
     message(ws, message) {
+      if (ws.data.closed) return
+
       // Binary frames are raw keyboard bytes from xterm.
       if (message instanceof Buffer || message instanceof Uint8Array) {
         if (!ws.data.stdin) return
@@ -248,6 +514,11 @@ const server = Bun.serve<Session>({
 
     close(ws) {
       ws.data.closed = true
+      finishPendingWrite(ws.data)
+      cleanupSession(ws)
+      renderAllCardPositions()
+      renderAllCounters()
+      renderSharedStatus()
       if (ws.data.renderer) {
         try {
           ws.data.renderer.destroy()
@@ -255,11 +526,13 @@ const server = Bun.serve<Session>({
           console.error("error destroying renderer on WS close", err)
         }
       }
+      ws.data.renderer = null
       try {
         ws.data.stdin?.push(null)
       } catch {
         // ignore
       }
+      ws.data.stdin = null
     },
   },
 })

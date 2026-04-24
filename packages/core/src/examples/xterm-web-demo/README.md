@@ -1,6 +1,7 @@
 # opentui x xterm.js demo
 
-Renders an opentui app in the browser via xterm.js over WebSockets. Each browser tab gets its own `CliRenderer` backed by a `NativeSpanFeed` — rendered ANSI flows through the feed to xterm.js, and keystrokes flow back.
+Renders an opentui app in the browser via xterm.js over WebSockets. Each browser tab gets its own `CliRenderer` backed
+by a `NativeSpanFeed` — rendered ANSI flows through the feed to xterm.js, and keystrokes flow back.
 
 ## Run
 
@@ -16,10 +17,10 @@ Then open http://localhost:3000/.
 Browser                          Server (Bun)
 ┌──────────────┐                ┌──────────────────────┐
 │  xterm.js    │  ── keystrokes ──▶  Readable (stdin)  │
-│              │                │         ↓             │
-│              │                │    CliRenderer         │
-│              │                │         ↓             │
-│  term.write  │  ◀── ANSI ────  NativeSpanFeed → WS  │
+│              │                │         ↓            │
+│              │                │    CliRenderer       │
+│              │                │         ↓            │
+│  term.write  │  ◀── ANSI ──── NativeSpanFeed → WS    │
 └──────────────┘                └──────────────────────┘
 ```
 

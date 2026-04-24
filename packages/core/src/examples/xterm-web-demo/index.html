@@ -10,25 +10,50 @@
         margin: 0;
         padding: 0;
         height: 100%;
+      }
+      body {
         background: #111;
         color: #ddd;
         font-family: system-ui, sans-serif;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
       }
       header {
-        padding: 8px 12px;
-        background: #1a1a1a;
-        border-bottom: 1px solid #333;
+        flex: none;
+        padding: 10px 14px;
+        background: #101826;
+        border-bottom: 1px solid #223047;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .header-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .header-title {
+        color: #e2e8f0;
         font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .header-copy {
+        margin-top: 4px;
+        color: #94a3b8;
       }
       header code {
-        background: #2a2a2a;
+        background: #182235;
         padding: 1px 6px;
         border-radius: 3px;
         color: #9cdcfe;
       }
       #terminal {
+        flex: 1;
+        min-height: 0;
         padding: 8px;
-        height: calc(100% - 42px);
         box-sizing: border-box;
       }
       .status {
@@ -45,10 +70,13 @@
   </head>
   <body>
     <header>
-      opentui over xterm.js —
-      <code>↑/k</code> increment, <code>↓/j</code> decrement, <code>r</code> reset, <code>q</code> or
-      <code>Ctrl+C</code> quit.
-      <span class="status" id="status">connecting…</span>
+      <div class="header-row">
+        <div class="header-title">opentui × xterm mirror demo</div>
+        <span class="status" id="status">connecting…</span>
+      </div>
+      <div class="header-copy">
+        Shared state across tabs. <code>h/j/k/l</code> move, <code>+/-</code> score, <code>r</code> reset, <code>q</code> quit.
+      </div>
     </header>
     <div id="terminal"></div>
 
@@ -56,6 +84,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
     <script>
       const status = document.getElementById("status")
+      const terminalElement = document.getElementById("terminal")
       const term = new Terminal({
         cursorBlink: false,
         fontFamily: "Menlo, Monaco, 'Courier New', monospace",
@@ -63,21 +92,50 @@
       })
       const fitAddon = new FitAddon.FitAddon()
       term.loadAddon(fitAddon)
-      term.open(document.getElementById("terminal"))
+      term.open(terminalElement)
       fitAddon.fit()
       term.focus()
-
-      window.addEventListener("resize", () => fitAddon.fit())
 
       const wsUrl = (location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host + "/ws"
       const ws = new WebSocket(wsUrl)
       ws.binaryType = "arraybuffer"
 
+      function focusTerminal() {
+        term.focus()
+      }
+
+      function syncSize() {
+        fitAddon.fit()
+        if (ws.readyState !== WebSocket.OPEN) return
+        if (term.cols <= 0 || term.rows <= 0) return
+        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }))
+      }
+
+      const resizeObserver = new ResizeObserver(() => syncSize())
+      resizeObserver.observe(terminalElement)
+      terminalElement.addEventListener("pointerdown", focusTerminal)
+
+      window.addEventListener("resize", syncSize)
+      window.addEventListener("pageshow", () => {
+        focusTerminal()
+        syncSize()
+      })
+      window.addEventListener("focus", () => {
+        focusTerminal()
+        syncSize()
+      })
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) {
+          focusTerminal()
+          syncSize()
+        }
+      })
+
       ws.addEventListener("open", () => {
         status.textContent = "connected"
         status.className = "status connected"
-        // Tell the server our dimensions so the renderer sizes correctly.
-        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }))
+        focusTerminal()
+        syncSize()
       })
 
       ws.addEventListener("message", (ev) => {
@@ -101,12 +159,6 @@
       term.onData((data) => {
         if (ws.readyState !== WebSocket.OPEN) return
         ws.send(new TextEncoder().encode(data))
-      })
-
-      // Resize (user zooms browser, etc.) → tell the server.
-      term.onResize(({ cols, rows }) => {
-        if (ws.readyState !== WebSocket.OPEN) return
-        ws.send(JSON.stringify({ type: "resize", cols, rows }))
       })
     </script>
   </body>

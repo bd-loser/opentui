@@ -287,44 +287,14 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
           continue
         }
 
-        nextCompilations.set(
-          layer,
-          this.options.compiler.compileBindings(
-            layer.bindingInputs,
-            nextTokens,
-            layer.target,
-            layer.order,
-            layer.compileFields,
-          ),
-        )
+        nextCompilations.set(layer, this.compileLayerBindings(layer, nextTokens))
       }
 
       this.state.environment.tokens = nextTokens
 
       let shouldClearPending = false
       for (const [layer, compilation] of nextCompilations) {
-        this.runLayerAnalyzers({
-          target: layer.target,
-          order: layer.order,
-          commandLookup: layer.commandLookup,
-          bindingInputs: layer.bindingInputs,
-          compiledBindings: compilation.bindings,
-          root: compilation.root,
-          hasTokenBindings: compilation.hasTokenBindings,
-        })
-
-        for (const binding of layer.compiledBindings) {
-          this.disconnectRuntimeMatchable(binding)
-        }
-
-        layer.root = compilation.root
-        layer.compiledBindings = compilation.bindings
-
-        for (const binding of layer.compiledBindings) {
-          this.connectRuntimeMatchable(binding)
-        }
-
-        if (this.state.projection.pendingSequence?.captures.some((capture) => capture.layer === layer)) {
+        if (this.applyCompiledBindings(layer, compilation)) {
           shouldClearPending = true
         }
       }
@@ -349,38 +319,9 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
           continue
         }
 
-        const compilation = this.options.compiler.compileBindings(
-          layer.bindingInputs,
-          this.state.environment.tokens,
-          layer.target,
-          layer.order,
-          layer.compileFields,
-        )
+        const compilation = this.compileLayerBindings(layer, this.state.environment.tokens)
 
-        this.runLayerAnalyzers({
-          target: layer.target,
-          order: layer.order,
-          commandLookup: layer.commandLookup,
-          bindingInputs: layer.bindingInputs,
-          compiledBindings: compilation.bindings,
-          root: compilation.root,
-          hasTokenBindings: compilation.hasTokenBindings,
-        })
-
-        for (const binding of layer.compiledBindings) {
-          this.disconnectRuntimeMatchable(binding)
-        }
-
-        layer.root = compilation.root
-        layer.compiledBindings = compilation.bindings
-        layer.hasUnkeyedBindings = compilation.bindings.some((binding) => binding.hasUnkeyedMatchers)
-        layer.hasTokenBindings = compilation.hasTokenBindings
-
-        for (const binding of layer.compiledBindings) {
-          this.connectRuntimeMatchable(binding)
-        }
-
-        if (this.state.projection.pendingSequence?.captures.some((capture) => capture.layer === layer)) {
+        if (this.applyCompiledBindings(layer, compilation)) {
           shouldClearPending = true
         }
 
@@ -519,6 +460,49 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       hasUnkeyedMatchers,
       compileFields: Object.keys(compileFields).length > 0 ? Object.freeze(compileFields) : undefined,
     }
+  }
+
+  private compileLayerBindings(
+    layer: RegisteredLayer<TTarget, TEvent>,
+    tokens: ReadonlyMap<string, ResolvedKeyToken>,
+  ): CompiledBindingsResult<TTarget, TEvent> {
+    return this.options.compiler.compileBindings(
+      layer.bindingInputs,
+      tokens,
+      layer.target,
+      layer.order,
+      layer.compileFields,
+    )
+  }
+
+  private applyCompiledBindings(
+    layer: RegisteredLayer<TTarget, TEvent>,
+    compilation: CompiledBindingsResult<TTarget, TEvent>,
+  ): boolean {
+    this.runLayerAnalyzers({
+      target: layer.target,
+      order: layer.order,
+      commandLookup: layer.commandLookup,
+      bindingInputs: layer.bindingInputs,
+      compiledBindings: compilation.bindings,
+      root: compilation.root,
+      hasTokenBindings: compilation.hasTokenBindings,
+    })
+
+    for (const binding of layer.compiledBindings) {
+      this.disconnectRuntimeMatchable(binding)
+    }
+
+    layer.root = compilation.root
+    layer.compiledBindings = compilation.bindings
+    layer.hasUnkeyedBindings = compilation.bindings.some((binding) => binding.hasUnkeyedMatchers)
+    layer.hasTokenBindings = compilation.hasTokenBindings
+
+    for (const binding of layer.compiledBindings) {
+      this.connectRuntimeMatchable(binding)
+    }
+
+    return this.state.projection.pendingSequence?.captures.some((capture) => capture.layer === layer) ?? false
   }
 
   private indexLayer(layer: RegisteredLayer<TTarget, TEvent>): void {

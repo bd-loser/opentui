@@ -583,23 +583,36 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       event.stopPropagation()
     }
 
-    const sequence = this.activation.collectSequencePartsFromPending({ captures: continuationCaptures })
+    let sequence: ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]> | undefined
+    const getSequence = (): ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]> => {
+      sequence ??= this.activation.collectSequencePartsFromPending({ captures: continuationCaptures })
+      return sequence
+    }
+
     const decision = this.resolveDisambiguation({
       event,
       focused,
-      sequence,
+      getSequence,
       exactBindings,
       continuationCaptures,
       activeView,
     })
 
     if (!decision) {
-      this.warnUnresolvedAmbiguity(sequence)
+      this.warnUnresolvedAmbiguity(getSequence())
       continueSequence()
       return true
     }
 
-    return this.applySyncDecision(decision, continuationCaptures, runExact, continueSequence, clear, focused, sequence)
+    return this.applySyncDecision(
+      decision,
+      continuationCaptures,
+      runExact,
+      continueSequence,
+      clear,
+      focused,
+      getSequence,
+    )
   }
 
   private applySyncDecision(
@@ -609,7 +622,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     continueSequence: () => void,
     clear: () => void,
     focused: TTarget | null,
-    sequence: ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]>,
+    getSequence: () => ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]>,
   ): boolean {
     if (decision.action === "run-exact") {
       runExact()
@@ -627,39 +640,40 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     }
 
     continueSequence()
-    this.scheduleDeferredDisambiguation(continuationCaptures, decision.handler!, focused, sequence, (nextDecision) => {
-      if (!nextDecision) {
-        return
-      }
+    this.scheduleDeferredDisambiguation(
+      continuationCaptures,
+      decision.handler!,
+      focused,
+      getSequence(),
+      (nextDecision) => {
+        if (!nextDecision) {
+          return
+        }
 
-      if (nextDecision.action === "run-exact") {
-        runExact()
-        return
-      }
+        if (nextDecision.action === "run-exact") {
+          runExact()
+          return
+        }
 
-      if (nextDecision.action === "continue-sequence") {
-        continueSequence()
-        return
-      }
+        if (nextDecision.action === "continue-sequence") {
+          continueSequence()
+          return
+        }
 
-      clear()
-    })
+        clear()
+      },
+    )
     return true
   }
 
   private resolveDisambiguation(options: {
     event: TEvent
     focused: TTarget | null
-    sequence: ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]>
+    getSequence: () => ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]>
     exactBindings: readonly CompiledBinding<TTarget, TEvent>[]
     continuationCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[]
     activeView: ReturnType<CommandCatalogService<TTarget, TEvent>["getActiveCommandView"]>
   }): InternalDisambiguationDecision | undefined {
-    const stroke = options.sequence.at(-1)
-    if (!stroke) {
-      return undefined
-    }
-
     const activation = this.activation
     const runtime = this.runtime
     let sequence: ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]> | undefined
@@ -671,10 +685,15 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       event: options.event as Readonly<Omit<TEvent, "preventDefault" | "stopPropagation">>,
       focused: options.focused,
       get sequence() {
-        sequence ??= cloneKeySequence(options.sequence)
+        sequence ??= cloneKeySequence(options.getSequence())
         return sequence
       },
       get stroke() {
+        const stroke = options.getSequence().at(-1)
+        if (!stroke) {
+          throw new Error("Disambiguation context expected a non-empty sequence")
+        }
+
         strokePart ??= {
           ...stroke,
           stroke: cloneKeyStroke(stroke.stroke),

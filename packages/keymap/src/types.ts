@@ -229,6 +229,11 @@ export interface LayerFields<TTarget extends object = object, TEvent extends Key
   bindings?: Bindings<TTarget, TEvent>
   commands?: readonly CommandDefinition<TTarget, TEvent>[]
   targetMode?: TargetMode
+  /**
+   * Extra layer fields feed layer-field compilers and binding compilation via
+   * `BindingParserContext.layer` / `BindingTransformerContext.layer`. Unlike
+   * binding and command fields, layer fields do not compile into public attrs.
+   */
   [key: string]: unknown
 }
 
@@ -368,6 +373,10 @@ export type BindingFieldCompiler = (value: unknown, ctx: BindingFieldContext) =>
 export interface LayerFieldContext {
   require(name: string, value: unknown): void
   /**
+   * Layer fields only influence activation and binding compilation. They do
+   * not expose `attr(...)` because the current model has no layer-level attrs
+   * surface on `ActiveKey`, `ActiveBinding`, or `CommandRecord`.
+   *
    * Registers a runtime matcher. Raw callbacks re-run on every read;
    * reactive matchers stay cached until they notify.
    */

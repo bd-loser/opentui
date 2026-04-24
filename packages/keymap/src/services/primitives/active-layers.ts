@@ -1,12 +1,5 @@
 import type { KeymapEvent, KeymapHost, RegisteredLayer } from "../../types.js"
-
-export interface ActiveLayerCacheState<TTarget extends object, TEvent extends KeymapEvent> {
-  sortedLayers: readonly RegisteredLayer<TTarget, TEvent>[]
-  activeLayersVersion: number
-  activeLayersCacheVersion: number
-  activeLayersCacheFocused: TTarget | null | undefined
-  activeLayersCache: readonly RegisteredLayer<TTarget, TEvent>[]
-}
+import type { LayersState } from "../state.js"
 
 export function getFocusedTargetIfAvailable<TTarget extends object, TEvent extends KeymapEvent>(
   host: KeymapHost<TTarget, TEvent>,
@@ -49,7 +42,7 @@ export function getActivationPath<TTarget extends object, TEvent extends KeymapE
   return path
 }
 
-export function getActiveLayersForFocused<TTarget extends object, TEvent extends KeymapEvent>(
+function buildActiveLayersForFocused<TTarget extends object, TEvent extends KeymapEvent>(
   sortedLayers: readonly RegisteredLayer<TTarget, TEvent>[],
   host: KeymapHost<TTarget, TEvent>,
   focused: TTarget | null,
@@ -66,8 +59,8 @@ export function getActiveLayersForFocused<TTarget extends object, TEvent extends
   return activeLayers
 }
 
-export function getCachedActiveLayersForFocused<TTarget extends object, TEvent extends KeymapEvent>(
-  state: ActiveLayerCacheState<TTarget, TEvent>,
+export function getActiveLayersForFocused<TTarget extends object, TEvent extends KeymapEvent>(
+  state: LayersState<TTarget, TEvent>,
   host: KeymapHost<TTarget, TEvent>,
   focused: TTarget | null,
 ): readonly RegisteredLayer<TTarget, TEvent>[] {
@@ -75,7 +68,7 @@ export function getCachedActiveLayersForFocused<TTarget extends object, TEvent e
     return state.activeLayersCache
   }
 
-  const activeLayers = getActiveLayersForFocused(state.sortedLayers, host, focused)
+  const activeLayers = buildActiveLayersForFocused(state.sortedLayers, host, focused)
   state.activeLayersCacheVersion = state.activeLayersVersion
   state.activeLayersCacheFocused = focused
   state.activeLayersCache = activeLayers
@@ -83,7 +76,7 @@ export function getCachedActiveLayersForFocused<TTarget extends object, TEvent e
 }
 
 export function invalidateCachedActiveLayers<TTarget extends object, TEvent extends KeymapEvent>(
-  state: ActiveLayerCacheState<TTarget, TEvent>,
+  state: LayersState<TTarget, TEvent>,
 ): void {
   state.activeLayersCacheVersion = -1
   state.activeLayersCacheFocused = undefined

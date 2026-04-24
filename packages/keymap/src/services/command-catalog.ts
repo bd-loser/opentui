@@ -23,7 +23,7 @@ import type {
   ResolvedBindingCommand,
   RuntimeMatcher,
 } from "../types.js"
-import { getCachedActiveLayersForFocused, getFocusedTargetIfAvailable } from "./primitives/active-layers.js"
+import { getActiveLayersForFocused, getFocusedTargetIfAvailable } from "./primitives/active-layers.js"
 import type { ConditionService } from "./conditions.js"
 import { mergeAttribute, mergeRequirement } from "./primitives/field-invariants.js"
 import type { NotificationService } from "./notify.js"
@@ -222,7 +222,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     let cacheable = true
 
     if (this.state.layers.layersWithCommands > 0) {
-      for (const layer of getCachedActiveLayersForFocused(this.state.layers, this.host, focused)) {
+      for (const layer of getActiveLayersForFocused(this.state.layers, this.host, focused)) {
         if (layer.commands.length === 0 || !this.conditions.layerMatchesRuntimeState(layer)) {
           continue
         }
@@ -531,7 +531,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       return
     }
 
-    for (const layer of getCachedActiveLayersForFocused(this.state.layers, this.host, context.focused)) {
+    for (const layer of getActiveLayersForFocused(this.state.layers, this.host, context.focused)) {
       if (layer.compiledBindings.length === 0 || !this.conditions.layerMatchesRuntimeState(layer)) {
         continue
       }

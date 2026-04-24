@@ -60,26 +60,25 @@ function createSyncDecision(
   action: SyncDecisionAction,
   handler?: KeyDeferredDisambiguationHandler<any, any>,
 ): KeyDisambiguationDecision {
-  return {
+  return Object.freeze({
     [DISAMBIGUATION_DECISION]: true,
     action,
     handler,
-  } as unknown as KeyDisambiguationDecision
+  }) as unknown as KeyDisambiguationDecision
 }
 
 function createDeferredDecision(action: DeferredDecisionAction): KeyDeferredDisambiguationDecision {
-  return {
+  return Object.freeze({
     [DEFERRED_DISAMBIGUATION_DECISION]: true,
     action,
-  } as unknown as KeyDeferredDisambiguationDecision
+  }) as unknown as KeyDeferredDisambiguationDecision
 }
 
 function isSyncDecision(value: unknown): value is InternalDisambiguationDecision {
   return (
     !!value &&
     typeof value === "object" &&
-    (value as { [DISAMBIGUATION_DECISION]?: unknown })[DISAMBIGUATION_DECISION] === true &&
-    (value as { action?: unknown }).action !== undefined
+    (value as { [DISAMBIGUATION_DECISION]?: unknown })[DISAMBIGUATION_DECISION] === true
   )
 }
 
@@ -87,8 +86,7 @@ function isDeferredDecision(value: unknown): value is InternalDeferredDisambigua
   return (
     !!value &&
     typeof value === "object" &&
-    (value as { [DEFERRED_DISAMBIGUATION_DECISION]?: unknown })[DEFERRED_DISAMBIGUATION_DECISION] === true &&
-    (value as { action?: unknown }).action !== undefined
+    (value as { [DEFERRED_DISAMBIGUATION_DECISION]?: unknown })[DEFERRED_DISAMBIGUATION_DECISION] === true
   )
 }
 

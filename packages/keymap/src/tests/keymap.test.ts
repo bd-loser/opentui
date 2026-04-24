@@ -5665,6 +5665,111 @@ describe("keymap", () => {
     expect(keymap.getPendingSequence()).toEqual([])
   })
 
+  test("disposing a layer cancels deferred disambiguation", async () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "go",
+          run() {
+            calls.push("go")
+          },
+        },
+        {
+          name: "top",
+          run() {
+            calls.push("top")
+          },
+        },
+      ],
+    })
+
+    keymap.appendDisambiguationResolver((ctx) => {
+      return ctx.defer(async (deferred) => {
+        const elapsed = await deferred.sleep(5)
+        if (!elapsed) {
+          return
+        }
+
+        return deferred.runExact()
+      })
+    })
+
+    const offLayer = keymap.registerLayer({
+      bindings: [
+        { key: "g", cmd: "go" },
+        { key: "gg", cmd: "top" },
+      ],
+    })
+
+    mockInput.pressKey("g")
+    offLayer()
+    await Bun.sleep(20)
+
+    expect(calls).toEqual([])
+    expect(keymap.getPendingSequence()).toEqual([])
+  })
+
+  test("token recompilation cancels deferred disambiguation", async () => {
+    const keymap = getKeymap(renderer)
+    const { takeWarnings } = captureDiagnostics(keymap)
+    const calls: string[] = []
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "plain",
+          run() {
+            calls.push("plain")
+          },
+        },
+        {
+          name: "leader-action",
+          run() {
+            calls.push("leader")
+          },
+        },
+      ],
+    })
+
+    keymap.appendDisambiguationResolver((ctx) => {
+      return ctx.defer(async (deferred) => {
+        const elapsed = await deferred.sleep(5)
+        if (!elapsed) {
+          return
+        }
+
+        return deferred.runExact()
+      })
+    })
+
+    keymap.registerLayer({
+      bindings: [
+        { key: "a", cmd: "plain" },
+        { key: "<leader>ab", cmd: "leader-action" },
+      ],
+    })
+
+    expect(takeWarnings().warnings).toEqual([
+      '[Keymap] Unknown token "<leader>" in key sequence "<leader>ab" was ignored',
+    ])
+
+    mockInput.pressKey("a")
+    expect(stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true })).toBe("a")
+
+    keymap.registerToken({
+      name: "<leader>",
+      key: { name: "x", ctrl: true },
+    })
+    await Bun.sleep(20)
+
+    expect(calls).toEqual([])
+    expect(keymap.getPendingSequence()).toEqual([])
+    expect(getActiveKeyNames(keymap)).toEqual(["a", "x"])
+  })
+
   test("clear decisions consume the key and clear the sequence", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []

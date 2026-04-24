@@ -91,30 +91,6 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return !!value && typeof value === "object" && typeof (value as PromiseLike<unknown>).then === "function"
 }
 
-function isSameCaptureList<TTarget extends object, TEvent extends KeymapEvent>(
-  left: readonly PendingSequenceCapture<TTarget, TEvent>[],
-  right: readonly PendingSequenceCapture<TTarget, TEvent>[],
-): boolean {
-  if (left.length !== right.length) {
-    return false
-  }
-
-  for (let index = 0; index < left.length; index += 1) {
-    const leftCapture = left[index]
-    const rightCapture = right[index]
-    if (
-      !leftCapture ||
-      !rightCapture ||
-      leftCapture.layer !== rightCapture.layer ||
-      leftCapture.node !== rightCapture.node
-    ) {
-      return false
-    }
-  }
-
-  return true
-}
-
 export class DispatchService<TTarget extends object, TEvent extends KeymapEvent> {
   private readonly eventMatchResolverContext: EventMatchResolverContext
   private pendingDisambiguation: PendingDisambiguation<TTarget, TEvent> | null = null
@@ -200,14 +176,9 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
   public handlePendingSequenceChange(
     _previous: PendingSequenceState<TTarget, TEvent> | null,
-    next: PendingSequenceState<TTarget, TEvent> | null,
+    _next: PendingSequenceState<TTarget, TEvent> | null,
   ): void {
-    const pending = this.pendingDisambiguation
-    if (!pending) {
-      return
-    }
-
-    if (next && isSameCaptureList(pending.captures, next.captures)) {
+    if (!this.pendingDisambiguation) {
       return
     }
 

@@ -67,12 +67,7 @@ export interface ResolvedCommandEntry<TTarget extends object, TEvent extends Key
   resolved: ResolvedBindingCommand<TTarget, TEvent>
 }
 
-export interface ActiveCommandView<TTarget extends object, TEvent extends KeymapEvent> {
-  cacheable: boolean
-  entries: readonly LayerCommandEntry<TTarget, TEvent>[]
-  reachable: readonly LayerCommandEntry<TTarget, TEvent>[]
-  reachableByName: ReadonlyMap<string, LayerCommandEntry<TTarget, TEvent>>
-  chainsByName: ReadonlyMap<string, readonly LayerCommandEntry<TTarget, TEvent>[]>
+export interface CommandChainCacheState<TTarget extends object, TEvent extends KeymapEvent> {
   resolvedWithoutRecordChains: Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[]>
   resolvedWithRecordChains: Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[]>
   fallbackWithoutRecord: Map<string, ResolvedBindingCommand<TTarget, TEvent> | null>
@@ -81,15 +76,19 @@ export interface ActiveCommandView<TTarget extends object, TEvent extends Keymap
   fallbackWithRecordErrors: Set<string>
 }
 
-export interface RegisteredCommandView<TTarget extends object, TEvent extends KeymapEvent> {
+export interface ActiveCommandView<TTarget extends object, TEvent extends KeymapEvent>
+  extends CommandChainCacheState<TTarget, TEvent> {
+  cacheable: boolean
+  entries: readonly LayerCommandEntry<TTarget, TEvent>[]
+  reachable: readonly LayerCommandEntry<TTarget, TEvent>[]
+  reachableByName: ReadonlyMap<string, LayerCommandEntry<TTarget, TEvent>>
+  chainsByName: ReadonlyMap<string, readonly LayerCommandEntry<TTarget, TEvent>[]>
+}
+
+export interface RegisteredCommandView<TTarget extends object, TEvent extends KeymapEvent>
+  extends CommandChainCacheState<TTarget, TEvent> {
   entries: readonly LayerCommandEntry<TTarget, TEvent>[]
   chainsByName: ReadonlyMap<string, readonly LayerCommandEntry<TTarget, TEvent>[]>
-  resolvedWithoutRecordChains: Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[]>
-  resolvedWithRecordChains: Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[]>
-  fallbackWithoutRecord: Map<string, ResolvedBindingCommand<TTarget, TEvent> | null>
-  fallbackWithRecord: Map<string, ResolvedBindingCommand<TTarget, TEvent> | null>
-  fallbackWithoutRecordErrors: Set<string>
-  fallbackWithRecordErrors: Set<string>
 }
 
 export interface CommandsState<TTarget extends object, TEvent extends KeymapEvent> {

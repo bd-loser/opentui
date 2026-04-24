@@ -27,7 +27,14 @@ import { getActiveLayersForFocused, getFocusedTargetIfAvailable, isLayerActiveFo
 import type { ConditionService } from "./conditions.js"
 import { mergeAttribute, mergeRequirement } from "./primitives/field-invariants.js"
 import type { NotificationService } from "./notify.js"
-import type { ActiveCommandView, LayerCommandEntry, RegisteredCommandView, ResolvedCommandEntry, State } from "./state.js"
+import type {
+  ActiveCommandView,
+  CommandChainCacheState,
+  LayerCommandEntry,
+  RegisteredCommandView,
+  ResolvedCommandEntry,
+  State,
+} from "./state.js"
 import { getErrorMessage, snapshotDataValue } from "./values.js"
 
 const DEFAULT_COMMAND_SEARCH_FIELDS = ["name"] as const
@@ -73,13 +80,18 @@ interface ResolvedCommandLookup<TTarget extends object, TEvent extends KeymapEve
   hadError: boolean
 }
 
-interface CommandChainCacheView<TTarget extends object, TEvent extends KeymapEvent> {
-  resolvedWithoutRecordChains: Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[]>
-  resolvedWithRecordChains: Map<string, readonly ResolvedCommandEntry<TTarget, TEvent>[]>
-  fallbackWithoutRecord: Map<string, ResolvedBindingCommand<TTarget, TEvent> | null>
-  fallbackWithRecord: Map<string, ResolvedBindingCommand<TTarget, TEvent> | null>
-  fallbackWithoutRecordErrors: Set<string>
-  fallbackWithRecordErrors: Set<string>
+function createCommandChainCacheState<TTarget extends object, TEvent extends KeymapEvent>(): CommandChainCacheState<
+  TTarget,
+  TEvent
+> {
+  return {
+    resolvedWithoutRecordChains: new Map(),
+    resolvedWithRecordChains: new Map(),
+    fallbackWithoutRecord: new Map(),
+    fallbackWithRecord: new Map(),
+    fallbackWithoutRecordErrors: new Set(),
+    fallbackWithRecordErrors: new Set(),
+  }
 }
 
 export function normalizeBindingCommand<TTarget extends object, TEvent extends KeymapEvent>(
@@ -202,24 +214,6 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       focused,
       includeRecord,
       "active",
-      view.chainsByName.get(command),
-    )
-    const hadError = (includeRecord ? view.fallbackWithRecordErrors : view.fallbackWithoutRecordErrors).has(command)
-
-    return { entries, hadError }
-  }
-
-  public getRegisteredCommandChain(
-    command: string,
-    includeRecord: boolean,
-  ): { entries?: readonly ResolvedCommandEntry<TTarget, TEvent>[]; hadError: boolean } {
-    const view = this.getRegisteredCommandView()
-    const entries = this.getResolvedCommandChainFromView(
-      view,
-      command,
-      null,
-      includeRecord,
-      "registered",
       view.chainsByName.get(command),
     )
     const hadError = (includeRecord ? view.fallbackWithRecordErrors : view.fallbackWithoutRecordErrors).has(command)
@@ -382,12 +376,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
       reachable,
       reachableByName,
       chainsByName,
-      resolvedWithoutRecordChains: new Map(),
-      resolvedWithRecordChains: new Map(),
-      fallbackWithoutRecord: new Map(),
-      fallbackWithRecord: new Map(),
-      fallbackWithoutRecordErrors: new Set(),
-      fallbackWithRecordErrors: new Set(),
+      ...createCommandChainCacheState(),
     }
 
     if (focused === currentFocused && view.cacheable) {
@@ -428,12 +417,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
     const view: RegisteredCommandView<TTarget, TEvent> = {
       entries,
       chainsByName,
-      resolvedWithoutRecordChains: new Map(),
-      resolvedWithRecordChains: new Map(),
-      fallbackWithoutRecord: new Map(),
-      fallbackWithRecord: new Map(),
-      fallbackWithoutRecordErrors: new Set(),
-      fallbackWithRecordErrors: new Set(),
+      ...createCommandChainCacheState(),
     }
 
     this.state.commands.registeredCommandViewVersion = cacheVersion
@@ -540,7 +524,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
   }
 
   private getFallbackResolvedCommand(
-    view: CommandChainCacheView<TTarget, TEvent>,
+    view: CommandChainCacheState<TTarget, TEvent>,
     command: string,
     focused: TTarget | null,
     includeRecord: boolean,
@@ -567,7 +551,7 @@ export class CommandCatalogService<TTarget extends object, TEvent extends Keymap
   }
 
   private getResolvedCommandChainFromView(
-    view: CommandChainCacheView<TTarget, TEvent>,
+    view: CommandChainCacheState<TTarget, TEvent>,
     command: string,
     focused: TTarget | null,
     includeRecord: boolean,

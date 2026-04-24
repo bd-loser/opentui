@@ -8,6 +8,7 @@ import type { NotificationService } from "./notify.js"
 import type { RuntimeService } from "./runtime.js"
 import type { State } from "./state.js"
 import { cloneKeySequence, cloneKeyStroke, stringifyKeySequence } from "./keys.js"
+import { isPromiseLike } from "./values.js"
 import {
   KEY_DEFERRED_DISAMBIGUATION_DECISION,
   KEY_DISAMBIGUATION_DECISION,
@@ -85,10 +86,6 @@ function isDeferredDecision(value: unknown): value is InternalDeferredDisambigua
     typeof value === "object" &&
     (value as { [KEY_DEFERRED_DISAMBIGUATION_DECISION]?: unknown })[KEY_DEFERRED_DISAMBIGUATION_DECISION] === true
   )
-}
-
-function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return !!value && typeof value === "object" && typeof (value as PromiseLike<unknown>).then === "function"
 }
 
 export class DispatchService<TTarget extends object, TEvent extends KeymapEvent> {

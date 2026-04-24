@@ -8,9 +8,9 @@ import {
   type TextareaRenderable,
 } from "@opentui/core"
 import {
+  type ActiveKey,
+  type CommandRecord,
   stringifyKeyStroke,
-  type KeymapActiveKey,
-  type KeymapCommandRecord,
   type KeySequencePart,
 } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
@@ -130,11 +130,11 @@ function parseExPromptInput(input: string): { raw: string; name: string; args: s
   }
 }
 
-function getExPromptCommandFieldText(command: KeymapCommandRecord, fieldName: string): string | undefined {
+function getExPromptCommandFieldText(command: CommandRecord, fieldName: string): string | undefined {
   return getMetadataText(command.fields[fieldName])
 }
 
-function getExPromptCommandNargs(command: KeymapCommandRecord): ExArgCount | undefined {
+function getExPromptCommandNargs(command: CommandRecord): ExArgCount | undefined {
   const value = command.fields.nargs
   if (value === "0" || value === "1" || value === "?" || value === "*" || value === "+") {
     return value
@@ -143,7 +143,7 @@ function getExPromptCommandNargs(command: KeymapCommandRecord): ExArgCount | und
   return undefined
 }
 
-function buildExPromptSuggestions(commands: readonly KeymapCommandRecord[]): ExPromptSuggestion[] {
+function buildExPromptSuggestions(commands: readonly CommandRecord[]): ExPromptSuggestion[] {
   const suggestions: ExPromptSuggestion[] = []
 
   for (const command of commands) {
@@ -160,7 +160,7 @@ function buildExPromptSuggestions(commands: readonly KeymapCommandRecord[]): ExP
   return suggestions
 }
 
-function getExPromptSuggestions(commands: readonly KeymapCommandRecord[], value: string): ExPromptSuggestion[] {
+function getExPromptSuggestions(commands: readonly CommandRecord[], value: string): ExPromptSuggestion[] {
   const normalized = normalizeExPromptName(value)
   const spaceIndex = normalized.indexOf(" ")
   const query = spaceIndex === -1 ? normalized : normalized.slice(0, spaceIndex)
@@ -176,7 +176,7 @@ function getExPromptSuggestions(commands: readonly KeymapCommandRecord[], value:
 }
 
 function getSelectedExPromptSuggestion(
-  commands: readonly KeymapCommandRecord[],
+  commands: readonly CommandRecord[],
   value: string,
   selection: number,
 ): ExPromptSuggestion | null {
@@ -189,7 +189,7 @@ function getSelectedExPromptSuggestion(
 }
 
 function moveExPromptSelection(
-  commands: readonly KeymapCommandRecord[],
+  commands: readonly CommandRecord[],
   value: string,
   selection: number,
   direction: 1 | -1,
@@ -204,7 +204,7 @@ function moveExPromptSelection(
 }
 
 function applyExPromptSuggestion(
-  commands: readonly KeymapCommandRecord[],
+  commands: readonly CommandRecord[],
   value: string,
   selection: number,
   direction?: 1 | -1,
@@ -250,7 +250,7 @@ function getMetadataText(value: unknown): string | undefined {
   return trimmed || undefined
 }
 
-function getActiveKeyLabel(activeKey: KeymapActiveKey): string {
+function getActiveKeyLabel(activeKey: ActiveKey): string {
   if (activeKey.continues) {
     const group = getMetadataText(activeKey.bindingAttrs?.group)
     if (group) {

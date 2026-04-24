@@ -1,5 +1,5 @@
 import { expect } from "bun:test"
-import type { ErrorEvent, Keymap, KeymapEvent, WarningEvent } from "../index.js"
+import type { ErrorEvent, Keymap, WarningEvent } from "../index.js"
 
 export interface DiagnosticCapture {
   warnings: string[]
@@ -13,23 +13,17 @@ export interface DiagnosticCapture {
 }
 
 export interface DiagnosticHarness {
-  trackKeymap<TTarget extends object, TEvent extends KeymapEvent, TKeymap extends Keymap<TTarget, TEvent>>(
-    keymap: TKeymap,
-  ): TKeymap
-  captureDiagnostics<TTarget extends object, TEvent extends KeymapEvent>(
-    keymap: Keymap<TTarget, TEvent>,
-  ): DiagnosticCapture
+  trackKeymap<TKeymap extends Keymap<any, any>>(keymap: TKeymap): TKeymap
+  captureDiagnostics<TKeymap extends Keymap<any, any>>(keymap: TKeymap): DiagnosticCapture
   assertNoUnhandledDiagnostics(): void
 }
 
 export function createDiagnosticHarness(): DiagnosticHarness {
-  const tracked = new WeakMap<Keymap<object, KeymapEvent>, DiagnosticCapture>()
+  const tracked = new WeakMap<Keymap<any, any>, DiagnosticCapture>()
   const captures = new Set<DiagnosticCapture>()
 
-  const ensureCapture = <TTarget extends object, TEvent extends KeymapEvent>(
-    keymap: Keymap<TTarget, TEvent>,
-  ): DiagnosticCapture => {
-    const existing = tracked.get(keymap as unknown as Keymap<object, KeymapEvent>)
+  const ensureCapture = <TKeymap extends Keymap<any, any>>(keymap: TKeymap): DiagnosticCapture => {
+    const existing = tracked.get(keymap)
     if (existing) {
       return existing
     }
@@ -100,7 +94,7 @@ export function createDiagnosticHarness(): DiagnosticHarness {
       }
     }) as typeof keymap.on
 
-    tracked.set(keymap as unknown as Keymap<object, KeymapEvent>, capture)
+    tracked.set(keymap, capture)
     captures.add(capture)
     return capture
   }

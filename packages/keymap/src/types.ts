@@ -548,23 +548,6 @@ export interface RawInterceptOptions {
 }
 
 export type { Keymap }
-export type KeymapActiveKey<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = ActiveKey<
-  TTarget,
-  TEvent
->
-export type KeymapBindingInput<
-  TTarget extends object = object,
-  TEvent extends KeymapEvent = KeymapEvent,
-> = BindingInput<TTarget, TEvent>
-export type KeymapCommandDefinition<
-  TTarget extends object = object,
-  TEvent extends KeymapEvent = KeymapEvent,
-> = CommandDefinition<TTarget, TEvent>
-export type KeymapCommandRecord = CommandRecord
-export type KeymapCommandEntry<
-  TTarget extends object = object,
-  TEvent extends KeymapEvent = KeymapEvent,
-> = CommandEntry<TTarget, TEvent>
 
 export interface RuntimeMatcher {
   source: string

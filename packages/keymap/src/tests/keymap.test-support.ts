@@ -14,7 +14,7 @@ import {
   type WarningEvent,
 } from "../index.js"
 import { type TestRenderer } from "@opentui/core/testing"
-import { createDiagnosticHarness } from "./diagnostic-harness.js"
+import { type DiagnosticHarness } from "./diagnostic-harness.js"
 
 export type OpenTuiKeymap = Keymap<Renderable, KeyEvent>
 
@@ -26,7 +26,7 @@ export interface ReactiveBoolean extends ReactiveMatcher {
 }
 
 export function createKeymapTestHelpers(
-  diagnostics: ReturnType<typeof createDiagnosticHarness>,
+  diagnostics: DiagnosticHarness,
   getRenderer: () => TestRenderer,
 ) {
   function createFocusableBox(id: string): BoxRenderable {
@@ -50,17 +50,22 @@ export function createKeymapTestHelpers(
   }
 
   function getParserKeymap(): OpenTuiKeymap {
-    const keymap = diagnostics.trackKeymap(createOpenTuiKeymap(getRenderer()))
+    const keymap: OpenTuiKeymap = createOpenTuiKeymap(getRenderer())
+    diagnostics.trackKeymap(keymap)
     addons.registerDefaultKeys(keymap)
     return keymap
   }
 
   function getKeymap(renderer: TestRenderer): OpenTuiKeymap {
-    return diagnostics.trackKeymap(createDefaultOpenTuiKeymap(renderer))
+    const keymap: OpenTuiKeymap = createDefaultOpenTuiKeymap(renderer)
+    diagnostics.trackKeymap(keymap)
+    return keymap
   }
 
   function createBareKeymap(renderer: TestRenderer): OpenTuiKeymap {
-    return diagnostics.trackKeymap(createOpenTuiKeymap(renderer))
+    const keymap: OpenTuiKeymap = createOpenTuiKeymap(renderer)
+    diagnostics.trackKeymap(keymap)
+    return keymap
   }
 
   function getCommand(keymap: OpenTuiKeymap, name: string) {

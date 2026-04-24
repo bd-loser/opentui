@@ -165,12 +165,6 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return sequence
   }
 
-  public getSequenceForCaptures(
-    captures: readonly PendingSequenceCapture<TTarget, TEvent>[],
-  ): readonly KeySequencePart[] {
-    return this.collectSequencePartsFromPending({ captures })
-  }
-
   public popPendingSequence(): boolean {
     const pending = this.ensureValidPendingSequence()
     if (!pending) {
@@ -275,22 +269,6 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return this.collectActiveKeysFromPending(captures, includeBindings, includeMetadata, focused, activeView)
   }
 
-  public getMatchingBindings(
-    bindings: readonly CompiledBinding<TTarget, TEvent>[],
-    focused: TTarget | null,
-    activeView: ActiveCommandView<TTarget, TEvent>,
-  ): readonly CompiledBinding<TTarget, TEvent>[] {
-    return this.collectMatchingBindings(bindings, focused, activeView)
-  }
-
-  public getActiveBindings(
-    bindings: readonly CompiledBinding<TTarget, TEvent>[],
-    focused: TTarget | null,
-    activeView: ActiveCommandView<TTarget, TEvent>,
-  ): readonly ActiveBinding<TTarget, TEvent>[] {
-    return this.collectActiveBindings(bindings, focused, activeView)
-  }
-
   public nodeHasReachableBindings(node: SequenceNode<TTarget, TEvent>, focused: TTarget | null): boolean {
     return this.hasMatchingBindings(node.reachableBindings, focused, this.catalog.getActiveCommandView(focused))
   }
@@ -339,7 +317,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return nodes
   }
 
-  private collectSequencePartsFromPending(pending: PendingSequenceState<TTarget, TEvent>): KeySequencePart[] {
+  public collectSequencePartsFromPending(pending: PendingSequenceState<TTarget, TEvent>): KeySequencePart[] {
     const focused = this.getFocusedTarget()
     const activeView = this.catalog.getActiveCommandView(focused)
     const paths = pending.captures.map((capture) => this.collectNodesFromNode(capture.node))
@@ -402,7 +380,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return parts
   }
 
-  private collectMatchingBindings(
+  public collectMatchingBindings(
     bindings: readonly CompiledBinding<TTarget, TEvent>[],
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
@@ -436,7 +414,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     node: SequenceNode<TTarget, TEvent>,
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
-    reachableBindings: readonly CompiledBinding<TTarget, TEvent>[] = this.getMatchingBindings(
+    reachableBindings: readonly CompiledBinding<TTarget, TEvent>[] = this.collectMatchingBindings(
       node.reachableBindings,
       focused,
       activeView,
@@ -503,7 +481,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     }
   }
 
-  private collectActiveBindings(
+  public collectActiveBindings(
     bindings: readonly CompiledBinding<TTarget, TEvent>[],
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
@@ -631,7 +609,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
       return undefined
     }
 
-    const reachableBindings = this.getMatchingBindings(node.reachableBindings, focused, activeView)
+    const reachableBindings = this.collectMatchingBindings(node.reachableBindings, focused, activeView)
     if (reachableBindings.length === 0) {
       return undefined
     }

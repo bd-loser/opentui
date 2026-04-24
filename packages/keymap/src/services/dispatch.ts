@@ -543,7 +543,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     }
 
     const activeView = this.catalog.getActiveCommandView(focused)
-    const exactBindings = this.activation.getMatchingBindings(node.bindings, focused, activeView)
+    const exactBindings = this.activation.collectMatchingBindings(node.bindings, focused, activeView)
     if (!exactBindings.some((binding) => binding.command !== undefined)) {
       return false
     }
@@ -568,7 +568,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       }
     }
 
-    const sequence = this.activation.getSequenceForCaptures(continuationCaptures)
+    const sequence = this.activation.collectSequencePartsFromPending({ captures: continuationCaptures })
     const decision = this.resolveDisambiguation({
       event,
       focused,
@@ -609,7 +609,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     }
 
     const activeView = this.catalog.getActiveCommandView(focused)
-    const exactBindings = this.activation.getMatchingBindings(capture.node.bindings, focused, activeView)
+    const exactBindings = this.activation.collectMatchingBindings(capture.node.bindings, focused, activeView)
     if (!exactBindings.some((binding) => binding.command !== undefined)) {
       return false
     }
@@ -642,7 +642,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       )
     }
 
-    const sequence = this.activation.getSequenceForCaptures(continuationCaptures)
+    const sequence = this.activation.collectSequencePartsFromPending({ captures: continuationCaptures })
     const decision = this.resolveDisambiguation({
       event,
       focused,
@@ -676,7 +676,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     continueSequence: () => void,
     clear: () => void,
     focused: TTarget | null,
-    sequence: ReturnType<ActivationService<TTarget, TEvent>["getSequenceForCaptures"]>,
+    sequence: ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]>,
   ): boolean {
     if (decision.action === "run-exact") {
       runExact()
@@ -717,12 +717,12 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   private resolveDisambiguation(options: {
     event: TEvent
     focused: TTarget | null
-    sequence: ReturnType<ActivationService<TTarget, TEvent>["getSequenceForCaptures"]>
+    sequence: ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]>
     exactBindings: readonly CompiledBinding<TTarget, TEvent>[]
     continuationCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[]
     activeView: ReturnType<CommandCatalogService<TTarget, TEvent>["getActiveCommandView"]>
   }): InternalDisambiguationDecision | undefined {
-    const exact = this.activation.getActiveBindings(options.exactBindings, options.focused, options.activeView)
+    const exact = this.activation.collectActiveBindings(options.exactBindings, options.focused, options.activeView)
     const continuations = this.activation.getActiveKeysForCaptures(options.continuationCaptures, {
       includeBindings: true,
       includeMetadata: true,
@@ -799,7 +799,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     captures: readonly PendingSequenceCapture<TTarget, TEvent>[],
     handler: KeyDeferredDisambiguationHandler<TTarget, TEvent>,
     focused: TTarget | null,
-    sequence: ReturnType<ActivationService<TTarget, TEvent>["getSequenceForCaptures"]>,
+    sequence: ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]>,
     apply: (decision: InternalDeferredDisambiguationDecision | void) => void,
   ): void {
     this.cancelPendingDisambiguation()
@@ -822,7 +822,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     pending: PendingDisambiguation<TTarget, TEvent>,
     handler: KeyDeferredDisambiguationHandler<TTarget, TEvent>,
     focused: TTarget | null,
-    sequence: ReturnType<ActivationService<TTarget, TEvent>["getSequenceForCaptures"]>,
+    sequence: ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]>,
   ): void {
     if (!this.isPendingDisambiguationCurrent(pending)) {
       return
@@ -947,7 +947,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   }
 
   private warnUnresolvedAmbiguity(
-    sequence: ReturnType<ActivationService<TTarget, TEvent>["getSequenceForCaptures"]>,
+    sequence: ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]>,
   ): void {
     const display = stringifyKeySequence(sequence, { preferDisplay: true })
 

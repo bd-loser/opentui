@@ -212,7 +212,7 @@ describe("html keymap adapter", () => {
     expect(calls).toEqual(["configured"])
   })
 
-  test("createDefaultHtmlKeymap installs metadata fields", () => {
+  test("createDefaultHtmlKeymap installs metadata and enabled fields", () => {
     const keymap = getKeymap(root as unknown as HTMLElement)
     const warnings: string[] = []
 
@@ -235,9 +235,14 @@ describe("html keymap adapter", () => {
     keymap.registerLayer({
       bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
     })
+    keymap.registerLayer({
+      enabled: false,
+      bindings: [{ key: "y", cmd: "save-file" }],
+    })
 
     const activeKey = keymap.getActiveKeys({ includeMetadata: true }).find((candidate) => candidate.stroke.name === "x")
 
+    expect(keymap.getActiveKeys().find((candidate) => candidate.stroke.name === "y")).toBeUndefined()
     expect(activeKey?.bindingAttrs).toEqual({ desc: "Write current file", group: "File" })
     expect(activeKey?.commandAttrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
     expect(warnings).toEqual([])

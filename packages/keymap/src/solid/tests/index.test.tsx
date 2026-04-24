@@ -325,7 +325,6 @@ describe("solid keymap hooks", () => {
       const [enabled, setEnabledSignal] = createSignal(false)
       setEnabled = setEnabledSignal
 
-      const offEnabled = addons.registerEnabledField(manager)
       const offCommands = manager.registerLayer({
         commands: [
           {
@@ -344,7 +343,6 @@ describe("solid keymap hooks", () => {
 
       onCleanup(() => {
         offCommands()
-        offEnabled()
       })
 
       return <box width={20} height={6} />
@@ -768,8 +766,6 @@ describe("solid keymap hooks", () => {
       })
       onCleanup(offCommands)
 
-      addons.registerEnabledField(manager)
-
       const [enabled, setter] = createSignal(false)
       setEnabled = setter
 
@@ -823,7 +819,6 @@ describe("solid keymap hooks", () => {
       unmount = () => setMounted(false)
 
       const manager = useKeymap()
-      addons.registerEnabledField(manager)
       const offCommands = manager.registerLayer({ commands: [{ name: "probe", run() {} }] })
       onCleanup(offCommands)
 
@@ -862,8 +857,6 @@ describe("solid keymap hooks", () => {
         ],
       })
       onCleanup(offCommands)
-
-      addons.registerEnabledField(manager)
 
       const [mode, setter] = createSignal<"normal" | "visual">("visual")
       setMode = setter

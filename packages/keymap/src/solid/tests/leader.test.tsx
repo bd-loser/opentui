@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { Renderable, TextareaRenderable } from "@opentui/core"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
-import { registerCommaBindings, registerEnabledField, registerTimedLeader } from "@opentui/keymap/addons"
+import { registerCommaBindings, registerTimedLeader } from "@opentui/keymap/addons"
 import { registerManagedTextareaLayer } from "@opentui/keymap/addons/opentui"
 import { stringifyKeySequence } from "@opentui/keymap"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
@@ -75,7 +75,6 @@ describe("solid keymap leader behavior", () => {
     const calls: string[] = []
     let editor!: TextareaRenderable
     let offLeader!: () => void
-    let offEnabled!: () => void
     let offCommaBindings!: () => void
     let offManagedTextarea!: () => void
 
@@ -237,14 +236,12 @@ describe("solid keymap leader behavior", () => {
         onDestroy() {
           offManagedTextarea?.()
           offCommaBindings?.()
-          offEnabled?.()
           offLeader?.()
         },
       },
       {
         setupKeymap(keymap, renderer) {
           offCommaBindings = registerCommaBindings(keymap)
-          offEnabled = registerEnabledField(keymap)
           offLeader = registerTimedLeader(keymap, {
             trigger: { name: "x", ctrl: true },
             timeoutMs: 1_000,
@@ -279,7 +276,6 @@ describe("solid keymap leader behavior", () => {
     let setBindingsEnabled!: (value: boolean) => void
     const calls: string[] = []
 
-    let offEnabled!: () => void
     let offLeader!: () => void
     testSetup = await testRender(
       () => {
@@ -318,12 +314,10 @@ describe("solid keymap leader behavior", () => {
         height: 6,
         onDestroy() {
           offLeader?.()
-          offEnabled?.()
         },
       },
       {
         setupKeymap(keymap) {
-          offEnabled = registerEnabledField(keymap)
           offLeader = registerTimedLeader(keymap, {
             trigger: { name: "x", ctrl: true },
             timeoutMs: 1_000,
@@ -351,7 +345,6 @@ describe("solid keymap leader behavior", () => {
     const calls: string[] = []
     let editor!: TextareaRenderable
     let offLeader!: () => void
-    let offEnabled!: () => void
     let offCommaBindings!: () => void
     let offManagedTextarea!: () => void
 
@@ -458,14 +451,12 @@ describe("solid keymap leader behavior", () => {
         onDestroy() {
           offManagedTextarea?.()
           offCommaBindings?.()
-          offEnabled?.()
           offLeader?.()
         },
       },
       {
         setupKeymap(keymap, renderer) {
           offCommaBindings = registerCommaBindings(keymap)
-          offEnabled = registerEnabledField(keymap)
           offLeader = registerTimedLeader(keymap, {
             trigger: { name: "x", ctrl: true },
             timeoutMs: 1_000,

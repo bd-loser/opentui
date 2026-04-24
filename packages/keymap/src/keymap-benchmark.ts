@@ -1484,8 +1484,6 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
       const enabledStates: boolean[] = []
 
-      addons.registerEnabledField(resources.keymap)
-
       for (let index = 0; index < 320; index += 1) {
         enabledStates.push(index % 3 !== 0)
         resources.keymap.registerLayer({

@@ -3,7 +3,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import type { Renderable } from "@opentui/core"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
-import * as addons from "@opentui/keymap/addons"
 import { stringifyKeySequence } from "@opentui/keymap"
 import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import {
@@ -450,7 +449,6 @@ describe("React keymap hooks", () => {
       const manager = useKeymap()
 
       useEffect(() => {
-        const offEnabled = addons.registerEnabledField(manager)
         const offCommands = manager.registerLayer({
           commands: [
             {
@@ -464,7 +462,6 @@ describe("React keymap hooks", () => {
 
         return () => {
           offCommands()
-          offEnabled()
         }
       }, [manager])
 
@@ -529,7 +526,6 @@ describe("React keymap hooks", () => {
       const manager = useKeymap()
 
       useEffect(() => {
-        const offEnabled = addons.registerEnabledField(manager)
         const offCommands = manager.registerLayer({
           commands: [
             {
@@ -542,7 +538,6 @@ describe("React keymap hooks", () => {
         })
         return () => {
           offCommands()
-          offEnabled()
         }
       }, [manager])
 
@@ -603,7 +598,6 @@ describe("React keymap hooks", () => {
 
       // Install these before the child's `useBindings` effect runs.
       useMemo(() => {
-        addons.registerEnabledField(manager)
         manager.registerLayer({ commands: [{ name: "probe", run() {} }] })
       }, [manager])
 

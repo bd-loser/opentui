@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import { stringifyKeySequence } from "@opentui/keymap"
-import { registerEnabledCommandField, registerEnabledField } from "@opentui/keymap/addons"
-import { createDefaultOpenTuiKeymap as getKeymap } from "@opentui/keymap/opentui"
+import { registerDefaultKeys, registerEnabledCommandField, registerEnabledField } from "@opentui/keymap/addons"
+import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
 
 let renderer: TestRenderer
 let mockInput: MockInput
-let keymap: ReturnType<typeof getKeymap>
+let keymap: ReturnType<typeof createOpenTuiKeymap>
 
 function getActiveKeyNames(): string[] {
   return keymap
@@ -20,7 +20,8 @@ describe("enabled addon", () => {
     const testSetup = await createTestRenderer({ width: 40, height: 10 })
     renderer = testSetup.renderer
     mockInput = testSetup.mockInput
-    keymap = getKeymap(renderer)
+    keymap = createOpenTuiKeymap(renderer)
+    registerDefaultKeys(keymap)
   })
 
   afterEach(() => {

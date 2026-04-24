@@ -16,7 +16,7 @@ import {
   type KeySequencePart,
 } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
-import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { KeymapProvider, useActiveKeys, useBindings, useKeymap, usePendingSequence } from "@opentui/keymap/react"
 import { createRoot, useRenderer } from "@opentui/react"
 import {
@@ -51,13 +51,8 @@ const palette = {
 const LEADER_TOKEN = "<leader>"
 const LEADER_TRIGGER_LABEL = stringifyKeyStroke({ name: "x", ctrl: true })
 
-function createDemoKeymap(renderer: CliRenderer): ReturnType<typeof createOpenTuiKeymap> {
-  const keymap = createOpenTuiKeymap(renderer)
-  addons.registerDefaultKeys(keymap)
-  addons.registerEnabledField(keymap)
-  addons.registerMetadataFields(keymap)
-
-  return keymap
+function createDemoKeymap(renderer: CliRenderer): ReturnType<typeof createDefaultOpenTuiKeymap> {
+  return createDefaultOpenTuiKeymap(renderer)
 }
 
 type PanelId = "alpha" | "beta"

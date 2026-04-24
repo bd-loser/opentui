@@ -243,7 +243,7 @@ describe("keymap", () => {
     expect(calls).toEqual(["noop"])
   })
 
-  test("createDefaultOpenTuiKeymap installs metadata fields", () => {
+  test("createDefaultOpenTuiKeymap installs metadata and enabled fields", () => {
     const keymap = getKeymap(renderer)
     const { warnings } = captureDiagnostics(keymap)
 
@@ -262,9 +262,14 @@ describe("keymap", () => {
     keymap.registerLayer({
       bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
     })
+    keymap.registerLayer({
+      enabled: false,
+      bindings: [{ key: "y", cmd: "save-file" }],
+    })
 
     const activeKey = getActiveKey(keymap, "x", { includeMetadata: true })
 
+    expect(getActiveKey(keymap, "y")).toBeUndefined()
     expect(activeKey?.bindingAttrs).toEqual({ desc: "Write current file", group: "File" })
     expect(activeKey?.commandAttrs).toEqual({ desc: "Save file", title: "Save", category: "File" })
     expect(warnings).toEqual([])
@@ -2993,16 +2998,6 @@ describe("keymap", () => {
     const target = createFocusableBox("command-condition-target")
 
     renderer.root.add(target)
-
-    keymap.registerCommandFields({
-      enabled(value, ctx) {
-        if (value !== false) {
-          return
-        }
-
-        ctx.activeWhen(() => false)
-      },
-    })
 
     keymap.registerLayer({
       commands: [

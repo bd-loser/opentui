@@ -23,7 +23,7 @@ import {
   stringifyKeyStroke,
 } from "@opentui/keymap"
 import * as addons from "@opentui/keymap/addons/opentui"
-import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
+import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 const P = {
@@ -771,9 +771,6 @@ function renderAll(renderer: CliRenderer): void {
 function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Renderable, KeyEvent>): void {
   keymap = keymapInstance
 
-  disposers.push(addons.registerEnabledField(keymapInstance))
-  disposers.push(addons.registerMetadataFields(keymapInstance))
-
   disposers.push(
     keymapInstance.registerLayer({
       commands: [
@@ -1377,8 +1374,7 @@ export function run(renderer: CliRenderer): void {
     renderAll(renderer)
   })
 
-  const keymapInstance = createOpenTuiKeymap(renderer)
-  addons.registerDefaultKeys(keymapInstance)
+  const keymapInstance = createDefaultOpenTuiKeymap(renderer)
 
   registerCommandLayers(renderer, keymapInstance)
   addLog("Tab switches focus across panels and editors.")

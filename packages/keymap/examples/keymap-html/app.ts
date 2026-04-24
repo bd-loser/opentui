@@ -592,7 +592,6 @@ function debugStateSnapshot(source: string): void {
 disposers()
 
 function disposers(): void {
-  addons.registerEnabledField(keymap)
   addons.registerExCommands(keymap, [
     {
       name: ":help",

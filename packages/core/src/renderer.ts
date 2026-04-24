@@ -985,12 +985,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // type cast below keeps the method call bound to `lib` (preserving
     // `this`) while accessing the implementation's wider signature.
     const { screenMode, footerHeight, externalOutputMode } = resolveModes(config)
-    const initialGeometry = calculateRenderGeometry(
-      screenMode,
-      width,
-      height,
-      footerHeight,
-    )
+    const initialGeometry = calculateRenderGeometry(screenMode, width, height, footerHeight)
 
     type InternalRenderLib = RenderLib & {
       createRenderer: (

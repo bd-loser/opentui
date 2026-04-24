@@ -178,19 +178,7 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
     }
     this.resources.clear()
 
-    for (const layer of this.state.layers.layers) {
-      // Drop matcher subscriptions before clearing layer state.
-      this.conditions.unregisterRuntimeMatchable(layer)
-      for (const command of layer.commands) {
-        this.conditions.unregisterRuntimeMatchable(command)
-      }
-      for (const binding of layer.compiledBindings) {
-        this.conditions.unregisterRuntimeMatchable(binding)
-      }
-
-      layer.offTargetDestroy?.()
-      layer.offTargetDestroy = undefined
-    }
+    this.layers.cleanup()
 
     for (const cleanupListener of this.cleanupListeners.splice(0)) {
       cleanupListener()

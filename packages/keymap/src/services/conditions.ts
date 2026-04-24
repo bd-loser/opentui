@@ -1,7 +1,6 @@
 import type { NotificationService } from "./notify.js"
 import type { State } from "./state.js"
 import type { KeymapEvent, ReactiveMatcher, RegisteredLayer, RuntimeMatchable, RuntimeMatcher } from "../types.js"
-import { getErrorMessage } from "./values.js"
 
 function isReactiveMatcher(value: unknown): value is ReactiveMatcher {
   if (!value || typeof value !== "object") {
@@ -43,26 +42,7 @@ export class ConditionService<TTarget extends object, TEvent extends KeymapEvent
     return target.requires.length === 0 && target.matchers.length === 0
   }
 
-  public registerRuntimeMatchable(target: RuntimeMatchable): void {
-    for (const matcher of target.matchers) {
-      if (!matcher.subscribe) {
-        continue
-      }
-
-      try {
-        matcher.dispose = matcher.subscribe(() => {
-          target.matchCacheDirty = true
-          this.notify.queueStateChange()
-        })
-      } catch (error) {
-        this.notify.emitError(
-          "reactive-matcher-subscribe-error",
-          error,
-          getErrorMessage(error, `Failed to subscribe to reactive matcher from ${matcher.source}`),
-        )
-      }
-    }
-
+  public indexRuntimeMatchable(target: RuntimeMatchable): void {
     if (target.conditionKeys.length > 0) {
       for (const key of target.conditionKeys) {
         const dependents = this.state.conditions.runtimeKeyDependents.get(key)
@@ -80,25 +60,7 @@ export class ConditionService<TTarget extends object, TEvent extends KeymapEvent
     }
   }
 
-  public unregisterRuntimeMatchable(target: RuntimeMatchable): void {
-    for (const matcher of target.matchers) {
-      if (!matcher.dispose) {
-        continue
-      }
-
-      try {
-        matcher.dispose()
-      } catch (error) {
-        this.notify.emitError(
-          "reactive-matcher-dispose-error",
-          error,
-          getErrorMessage(error, `Failed to dispose reactive matcher from ${matcher.source}`),
-        )
-      }
-
-      matcher.dispose = undefined
-    }
-
+  public unindexRuntimeMatchable(target: RuntimeMatchable): void {
     if (target.conditionKeys.length === 0) {
       return
     }

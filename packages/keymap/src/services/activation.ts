@@ -123,6 +123,18 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return this.state.projection.pendingSequence ?? undefined
   }
 
+  public revalidatePendingSequenceIfNeeded(): void {
+    if (this.host.isDestroyed || !this.state.projection.pendingSequence) {
+      return
+    }
+
+    this.ensureValidPendingSequence()
+  }
+
+  public hasPendingSequenceState(): boolean {
+    return !this.host.isDestroyed && this.state.projection.pendingSequence !== null
+  }
+
   public getPendingSequence(): readonly KeySequencePart[] {
     const projections = this.state.projection
     const derivedStateVersion = this.state.notify.derivedStateVersion

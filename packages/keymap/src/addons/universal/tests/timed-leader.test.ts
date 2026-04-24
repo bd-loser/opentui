@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
-import { registerTimedLeader } from "@opentui/keymap/addons"
+import { registerEnabledField, registerTimedLeader } from "@opentui/keymap/addons"
 import { createDefaultOpenTuiKeymap as getKeymap } from "@opentui/keymap/opentui"
 
 let renderer: TestRenderer
@@ -146,6 +146,52 @@ describe("timed leader addon", () => {
     mockInput.pressKey("x", { ctrl: true })
     off()
     await Bun.sleep(20)
+
+    expect(states).toEqual(["armed", "disarmed"])
+  })
+
+  test("disarms immediately when reactive invalidation clears the pending leader sequence", () => {
+    const keymap = getKeymap(renderer)
+    const states: string[] = []
+    let enabled = true
+    const listeners = new Set<() => void>()
+
+    registerEnabledField(keymap)
+    registerTimedLeader(keymap, {
+      trigger: { name: "x", ctrl: true },
+      timeoutMs: 1000,
+      onArm() {
+        states.push("armed")
+      },
+      onDisarm() {
+        states.push("disarmed")
+      },
+    })
+
+    keymap.registerLayer({ commands: [{ name: "leader-action", run() {} }] })
+    keymap.registerLayer({
+      enabled: {
+        get() {
+          return enabled
+        },
+        subscribe(onChange) {
+          listeners.add(onChange)
+          return () => {
+            listeners.delete(onChange)
+          }
+        },
+      },
+      bindings: [{ key: "<leader>a", cmd: "leader-action" }],
+    })
+
+    mockInput.pressKey("x", { ctrl: true })
+
+    expect(states).toEqual(["armed"])
+
+    enabled = false
+    for (const listener of listeners) {
+      listener()
+    }
 
     expect(states).toEqual(["armed", "disarmed"])
   })

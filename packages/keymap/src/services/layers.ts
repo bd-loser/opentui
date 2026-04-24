@@ -17,6 +17,7 @@ import type {
   ResolvedKeyToken,
   RegisteredCommand,
   RegisteredLayer,
+  RuntimeMatchable,
   RuntimeMatcher,
   SequenceNode,
   TargetMode,
@@ -246,12 +247,12 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       if (registeredLayer.requires.length > 0 || registeredLayer.matchers.length > 0) {
         this.state.layers.layersWithConditions += 1
       }
-      this.conditions.registerRuntimeMatchable(registeredLayer)
+      this.connectRuntimeMatchable(registeredLayer)
       for (const command of registeredLayer.commands) {
-        this.conditions.registerRuntimeMatchable(command)
+        this.connectRuntimeMatchable(command)
       }
       for (const binding of registeredLayer.compiledBindings) {
-        this.conditions.registerRuntimeMatchable(binding)
+        this.connectRuntimeMatchable(binding)
       }
       this.indexLayer(registeredLayer)
       this.activation.invalidateActiveLayers()
@@ -313,14 +314,14 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         })
 
         for (const binding of layer.compiledBindings) {
-          this.conditions.unregisterRuntimeMatchable(binding)
+          this.disconnectRuntimeMatchable(binding)
         }
 
         layer.root = compilation.root
         layer.compiledBindings = compilation.bindings
 
         for (const binding of layer.compiledBindings) {
-          this.conditions.registerRuntimeMatchable(binding)
+          this.connectRuntimeMatchable(binding)
         }
 
         if (this.state.projection.pendingSequence?.captures.some((capture) => capture.layer === layer)) {
@@ -348,6 +349,21 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
 
   public clearLayerAnalyzers(): void {
     this.state.layers.layerAnalyzers.clear()
+  }
+
+  public cleanup(): void {
+    for (const layer of this.state.layers.layers) {
+      this.disconnectRuntimeMatchable(layer)
+      for (const command of layer.commands) {
+        this.disconnectRuntimeMatchable(command)
+      }
+      for (const binding of layer.compiledBindings) {
+        this.disconnectRuntimeMatchable(binding)
+      }
+
+      layer.offTargetDestroy?.()
+      layer.offTargetDestroy = undefined
+    }
   }
 
   private normalizeTargetMode(layer: Layer<TTarget, TEvent>): TargetMode | undefined {
@@ -473,12 +489,12 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         removeRegisteredCommandNames(this.state.commands.registeredNames, layer.commands)
       }
 
-      this.conditions.unregisterRuntimeMatchable(layer)
+      this.disconnectRuntimeMatchable(layer)
       for (const command of layer.commands) {
-        this.conditions.unregisterRuntimeMatchable(command)
+        this.disconnectRuntimeMatchable(command)
       }
       for (const binding of layer.compiledBindings) {
-        this.conditions.unregisterRuntimeMatchable(binding)
+        this.disconnectRuntimeMatchable(binding)
       }
 
       this.removeLayerFromIndex(layer)
@@ -495,5 +511,65 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
 
       this.notify.queueStateChange()
     })
+  }
+
+  private connectRuntimeMatchable(target: RuntimeMatchable): void {
+    this.attachReactiveMatchers(target)
+    this.conditions.indexRuntimeMatchable(target)
+  }
+
+  private disconnectRuntimeMatchable(target: RuntimeMatchable): void {
+    this.detachReactiveMatchers(target)
+    this.conditions.unindexRuntimeMatchable(target)
+  }
+
+  private attachReactiveMatchers(target: RuntimeMatchable): void {
+    for (const matcher of target.matchers) {
+      if (!matcher.subscribe) {
+        continue
+      }
+
+      try {
+        matcher.dispose = matcher.subscribe(() => {
+          target.matchCacheDirty = true
+
+          if (!this.activation.hasPendingSequenceState()) {
+            this.notify.queueStateChange()
+            return
+          }
+
+          this.notify.runWithStateChangeBatch(() => {
+            this.activation.revalidatePendingSequenceIfNeeded()
+            this.notify.queueStateChange()
+          })
+        })
+      } catch (error) {
+        this.notify.emitError(
+          "reactive-matcher-subscribe-error",
+          error,
+          getErrorMessage(error, `Failed to subscribe to reactive matcher from ${matcher.source}`),
+        )
+      }
+    }
+  }
+
+  private detachReactiveMatchers(target: RuntimeMatchable): void {
+    for (const matcher of target.matchers) {
+      if (!matcher.dispose) {
+        continue
+      }
+
+      try {
+        matcher.dispose()
+      } catch (error) {
+        this.notify.emitError(
+          "reactive-matcher-dispose-error",
+          error,
+          getErrorMessage(error, `Failed to dispose reactive matcher from ${matcher.source}`),
+        )
+      }
+
+      matcher.dispose = undefined
+    }
   }
 }

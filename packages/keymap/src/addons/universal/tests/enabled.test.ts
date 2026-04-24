@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
+import { stringifyKeySequence } from "@opentui/keymap"
 import { registerEnabledCommandField, registerEnabledField } from "@opentui/keymap/addons"
 import { createDefaultOpenTuiKeymap as getKeymap } from "@opentui/keymap/opentui"
 
@@ -182,6 +183,44 @@ describe("enabled addon", () => {
 
     expect(keymap.getPendingSequence()).toEqual([])
     expect(getActiveKeyNames()).toEqual([])
+  })
+
+  test("reactive enabled matchers synchronously emit pending sequence clears", () => {
+    let enabled = true
+    const listeners = new Set<() => void>()
+    const changes: string[] = []
+
+    registerEnabledField(keymap)
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({
+      enabled: {
+        get() {
+          return enabled
+        },
+        subscribe(onChange) {
+          listeners.add(onChange)
+          return () => {
+            listeners.delete(onChange)
+          }
+        },
+      },
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
+
+    keymap.on("pendingSequence", (sequence) => {
+      changes.push(stringifyKeySequence(sequence, { preferDisplay: true }))
+    })
+
+    mockInput.pressKey("d")
+
+    expect(changes).toEqual(["d"])
+
+    enabled = false
+    for (const listener of listeners) {
+      listener()
+    }
+
+    expect(changes).toEqual(["d", ""])
   })
 
   test("rejects invalid enabled values and can be disposed", () => {

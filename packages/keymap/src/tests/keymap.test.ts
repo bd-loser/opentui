@@ -5408,6 +5408,51 @@ describe("keymap", () => {
     expect(keymap.getPendingSequence()).toEqual([])
   })
 
+  test("disambiguation resolvers can choose the exact binding after entering a pending prefix", () => {
+    const keymap = getKeymap(renderer)
+    const calls: string[] = []
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "delete-char",
+          run() {
+            calls.push("delete-char")
+          },
+        },
+        {
+          name: "delete-ca",
+          run() {
+            calls.push("delete-ca")
+          },
+        },
+      ],
+    })
+
+    keymap.appendDisambiguationResolver((ctx) => {
+      if (stringifyKeySequence(ctx.sequence, { preferDisplay: true }) === "dc") {
+        return ctx.runExact()
+      }
+
+      return ctx.continueSequence()
+    })
+
+    keymap.registerLayer({
+      bindings: [
+        { key: "dc", cmd: "delete-char" },
+        { key: "dca", cmd: "delete-ca" },
+      ],
+    })
+
+    mockInput.pressKey("d")
+    expect(stringifyKeySequence(keymap.getPendingSequence(), { preferDisplay: true })).toBe("d")
+
+    mockInput.pressKey("c")
+
+    expect(calls).toEqual(["delete-char"])
+    expect(keymap.getPendingSequence()).toEqual([])
+  })
+
   test("the next stroke cancels deferred disambiguation", async () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
@@ -5859,6 +5904,49 @@ describe("keymap", () => {
     expect(calls).toEqual(["top"])
 
     offResolver()
+
+    expect(takeErrors().errors).toEqual([
+      "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
+    ])
+    expect(getActiveKey(keymap, "g")?.command).toBe("go")
+    expect(getActiveKey(keymap, "g")?.continues).toBe(false)
+  })
+
+  test("removing one of multiple disambiguation resolvers keeps ambiguity enabled until the last resolver is removed", () => {
+    const keymap = getKeymap(renderer)
+    const { takeErrors } = captureDiagnostics(keymap)
+
+    keymap.registerLayer({
+      commands: [
+        { name: "go", run() {} },
+        { name: "top", run() {} },
+      ],
+    })
+
+    keymap.registerLayer({
+      bindings: [
+        { key: "g", cmd: "go" },
+        { key: "gg", cmd: "top" },
+      ],
+    })
+
+    expect(takeErrors().errors).toEqual([
+      "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
+    ])
+
+    const offFirst = keymap.appendDisambiguationResolver((ctx) => ctx.continueSequence())
+    const offSecond = keymap.appendDisambiguationResolver((ctx) => ctx.runExact())
+
+    expect(getActiveKey(keymap, "g")?.command).toBe("go")
+    expect(getActiveKey(keymap, "g")?.continues).toBe(true)
+
+    offFirst()
+
+    expect(getActiveKey(keymap, "g")?.command).toBe("go")
+    expect(getActiveKey(keymap, "g")?.continues).toBe(true)
+    expect(takeErrors().errors).toEqual([])
+
+    offSecond()
 
     expect(takeErrors().errors).toEqual([
       "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",

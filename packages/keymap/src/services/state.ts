@@ -40,9 +40,9 @@ export interface EnvironmentState<TTarget extends object, TEvent extends KeymapE
   commandFields: Map<string, CommandFieldCompiler>
 }
 
-export interface DispatchState<TEvent extends KeymapEvent> {
+export interface DispatchState<TTarget extends object, TEvent extends KeymapEvent> {
   eventMatchResolvers: OrderedRegistry<EventMatchResolver<TEvent>>
-  disambiguationResolvers: OrderedRegistry<KeyDisambiguationResolver<any, TEvent>>
+  disambiguationResolvers: OrderedRegistry<KeyDisambiguationResolver<TTarget, TEvent>>
   keyHooks: PriorityRegistry<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>
   rawHooks: PriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>
 }
@@ -145,7 +145,7 @@ export interface NotifyState {
 export interface State<TTarget extends object, TEvent extends KeymapEvent> {
   core: CoreState
   environment: EnvironmentState<TTarget, TEvent>
-  dispatch: DispatchState<TEvent>
+  dispatch: DispatchState<TTarget, TEvent>
   layers: LayersState<TTarget, TEvent>
   commands: CommandsState<TTarget, TEvent>
   projection: ProjectionState<TTarget, TEvent>
@@ -170,7 +170,7 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     },
     dispatch: {
       eventMatchResolvers: new OrderedRegistry<EventMatchResolver<TEvent>>(),
-      disambiguationResolvers: new OrderedRegistry<KeyDisambiguationResolver<any, TEvent>>(),
+      disambiguationResolvers: new OrderedRegistry<KeyDisambiguationResolver<TTarget, TEvent>>(),
       keyHooks: new PriorityRegistry<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>(),
       rawHooks: new PriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>(),
     },

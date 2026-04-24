@@ -148,15 +148,15 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
   public prependDisambiguationResolver(resolver: KeyDisambiguationResolver<TTarget, TEvent>): () => void {
     return this.mutateDisambiguationResolvers(
-      () => this.state.dispatch.disambiguationResolvers.prepend(resolver as KeyDisambiguationResolver<any, TEvent>),
-      resolver as KeyDisambiguationResolver<any, TEvent>,
+      () => this.state.dispatch.disambiguationResolvers.prepend(resolver),
+      resolver,
     )
   }
 
   public appendDisambiguationResolver(resolver: KeyDisambiguationResolver<TTarget, TEvent>): () => void {
     return this.mutateDisambiguationResolvers(
-      () => this.state.dispatch.disambiguationResolvers.append(resolver as KeyDisambiguationResolver<any, TEvent>),
-      resolver as KeyDisambiguationResolver<any, TEvent>,
+      () => this.state.dispatch.disambiguationResolvers.append(resolver),
+      resolver,
     )
   }
 
@@ -265,7 +265,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
   private mutateDisambiguationResolvers(
     register: () => () => void,
-    resolver: KeyDisambiguationResolver<any, TEvent>,
+    resolver: KeyDisambiguationResolver<TTarget, TEvent>,
   ): () => void {
     return this.notify.runWithStateChangeBatch(() => {
       const hadResolvers = this.state.dispatch.disambiguationResolvers.has()
@@ -501,28 +501,6 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     event: TEvent,
     focused: TTarget | null,
   ): boolean {
-    if (!this.state.dispatch.disambiguationResolvers.has() || continuationCaptures.length === 0) {
-      return false
-    }
-
-    const activeView = this.catalog.getActiveCommandView(focused)
-    const exactBindings = this.activation.collectMatchingBindings(node.bindings, focused, activeView)
-    if (!exactBindings.some((binding) => binding.command !== undefined)) {
-      return false
-    }
-
-    const applyContinue = (): void => {
-      this.activation.setPendingSequence({ captures: continuationCaptures })
-      event.preventDefault()
-      event.stopPropagation()
-    }
-
-    const applyClear = (): void => {
-      this.activation.setPendingSequence(null)
-      event.preventDefault()
-      event.stopPropagation()
-    }
-
     const applyExact = (): void => {
       this.activation.setPendingSequence(null)
       const result = this.runBindings(layer, node.bindings, event, focused)
@@ -531,31 +509,13 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       }
     }
 
-    const sequence = this.activation.collectSequencePartsFromPending({ captures: continuationCaptures })
-    const decision = this.resolveDisambiguation({
+    return this.tryResolveAmbiguity({
       event,
       focused,
-      sequence,
-      exactBindings,
       continuationCaptures,
-      activeView,
+      exactBindingsSource: node.bindings,
+      runExact: applyExact,
     })
-
-    if (!decision) {
-      this.warnUnresolvedAmbiguity(sequence)
-      applyContinue()
-      return true
-    }
-
-    return this.applySyncDecision(
-      decision,
-      continuationCaptures,
-      applyExact,
-      applyContinue,
-      applyClear,
-      focused,
-      sequence,
-    )
   }
 
   private tryResolvePendingAmbiguity(
@@ -567,28 +527,6 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     focused: TTarget | null,
     handledExact: boolean,
   ): boolean {
-    if (!this.state.dispatch.disambiguationResolvers.has() || continuationCaptures.length === 0) {
-      return false
-    }
-
-    const activeView = this.catalog.getActiveCommandView(focused)
-    const exactBindings = this.activation.collectMatchingBindings(capture.node.bindings, focused, activeView)
-    if (!exactBindings.some((binding) => binding.command !== undefined)) {
-      return false
-    }
-
-    const applyContinue = (): void => {
-      this.activation.setPendingSequence({ captures: continuationCaptures })
-      event.preventDefault()
-      event.stopPropagation()
-    }
-
-    const applyClear = (): void => {
-      this.activation.setPendingSequence(null)
-      event.preventDefault()
-      event.stopPropagation()
-    }
-
     const applyExact = (): void => {
       this.activation.setPendingSequence(null)
       const result = this.runBindings(capture.layer, capture.node.bindings, event, focused)
@@ -605,6 +543,46 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       )
     }
 
+    return this.tryResolveAmbiguity({
+      event,
+      focused,
+      continuationCaptures,
+      exactBindingsSource: capture.node.bindings,
+      runExact: applyExact,
+    })
+  }
+
+  private tryResolveAmbiguity(options: {
+    event: TEvent
+    focused: TTarget | null
+    continuationCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[]
+    exactBindingsSource: readonly CompiledBinding<TTarget, TEvent>[]
+    runExact: () => void
+  }): boolean {
+    const { event, focused, continuationCaptures, exactBindingsSource, runExact } = options
+
+    if (!this.state.dispatch.disambiguationResolvers.has() || continuationCaptures.length === 0) {
+      return false
+    }
+
+    const activeView = this.catalog.getActiveCommandView(focused)
+    const exactBindings = this.activation.collectMatchingBindings(exactBindingsSource, focused, activeView)
+    if (!exactBindings.some((binding) => binding.command !== undefined)) {
+      return false
+    }
+
+    const continueSequence = (): void => {
+      this.activation.setPendingSequence({ captures: continuationCaptures })
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    const clear = (): void => {
+      this.activation.setPendingSequence(null)
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
     const sequence = this.activation.collectSequencePartsFromPending({ captures: continuationCaptures })
     const decision = this.resolveDisambiguation({
       event,
@@ -617,19 +595,11 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
 
     if (!decision) {
       this.warnUnresolvedAmbiguity(sequence)
-      applyContinue()
+      continueSequence()
       return true
     }
 
-    return this.applySyncDecision(
-      decision,
-      continuationCaptures,
-      applyExact,
-      applyContinue,
-      applyClear,
-      focused,
-      sequence,
-    )
+    return this.applySyncDecision(decision, continuationCaptures, runExact, continueSequence, clear, focused, sequence)
   }
 
   private applySyncDecision(

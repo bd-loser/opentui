@@ -30,7 +30,8 @@ interface ScenarioResources {
 
 interface ScenarioInstance {
   resources: ScenarioResources
-  runIteration: () => void
+  runIteration?: () => void
+  runIterationAsync?: () => Promise<void>
   cleanup: () => void
 }
 
@@ -1297,6 +1298,149 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "dispatch_disambiguation_default_fast_path",
+    description: "Repeated exact-key dispatch with no disambiguation resolver installed",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.keymap.registerLayer({
+        bindings: [{ key: "g", cmd: "noop" }],
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.mockInput.pressKey("g")
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "dispatch_disambiguation_sync_run_exact",
+    description: "Repeated ambiguous first-stroke dispatch with a sync runExact disambiguation resolver",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.keymap.appendDisambiguationResolver((ctx) => ctx.runExact())
+      resources.keymap.registerLayer({
+        bindings: [
+          { key: "g", cmd: "noop" },
+          { key: "gg", cmd: "noop" },
+        ],
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.mockInput.pressKey("g")
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "dispatch_disambiguation_sync_continue_sequence",
+    description: "Repeated ambiguous first-stroke dispatch with a sync continueSequence disambiguation resolver",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.keymap.appendDisambiguationResolver((ctx) => ctx.continueSequence())
+      resources.keymap.registerLayer({
+        bindings: [
+          { key: "g", cmd: "noop" },
+          { key: "gg", cmd: "noop" },
+        ],
+      })
+
+      return {
+        resources,
+        runIteration() {
+          resources.mockInput.pressKey("g")
+          resources.keymap.clearPendingSequence()
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "dispatch_disambiguation_deferred_timeout_run_exact",
+    description: "Repeated ambiguous first-stroke dispatch with a deferred timeout resolver that later runs the exact binding",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.keymap.appendDisambiguationResolver((ctx) => {
+        return ctx.defer(async (deferred) => {
+          const elapsed = await deferred.sleep(0)
+          if (!elapsed) {
+            return
+          }
+
+          return deferred.runExact()
+        })
+      })
+      resources.keymap.registerLayer({
+        bindings: [
+          { key: "g", cmd: "noop" },
+          { key: "gg", cmd: "noop" },
+        ],
+      })
+
+      return {
+        resources,
+        async runIterationAsync() {
+          resources.mockInput.pressKey("g")
+          await Bun.sleep(0)
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "dispatch_disambiguation_deferred_timeout_cancelled",
+    description: "Repeated ambiguous first-stroke dispatch with a deferred timeout resolver that is cancelled before it resolves",
+    async setup() {
+      const resources = await createScenarioResources()
+
+      resources.keymap.appendDisambiguationResolver((ctx) => {
+        return ctx.defer(async (deferred) => {
+          const elapsed = await deferred.sleep(0)
+          if (!elapsed) {
+            return
+          }
+
+          return deferred.runExact()
+        })
+      })
+      resources.keymap.registerLayer({
+        bindings: [
+          { key: "g", cmd: "noop" },
+          { key: "gg", cmd: "noop" },
+        ],
+      })
+
+      return {
+        resources,
+        async runIterationAsync() {
+          resources.mockInput.pressKey("g")
+          resources.keymap.clearPendingSequence()
+          await Bun.sleep(0)
+        },
+        cleanup() {
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "active_keys_pending_sequence",
     description: "Repeated getActiveKeys while a multi-key sequence is pending",
     async setup() {
@@ -1963,15 +2107,11 @@ async function runScenario(scenario: BenchmarkScenario, args: BenchmarkArgs): Pr
   const instance = await scenario.setup()
 
   try {
-    for (let iteration = 0; iteration < args.warmupIterations; iteration += 1) {
-      instance.runIteration()
-    }
+    await runIterations(instance, args.warmupIterations)
 
     let measuredIterations = args.iterations
     const calibrationStart = nowNs()
-    for (let iteration = 0; iteration < measuredIterations; iteration += 1) {
-      instance.runIteration()
-    }
+    await runIterations(instance, measuredIterations)
     const calibrationDurationMs = nsToMs(nowNs() - calibrationStart)
 
     if (calibrationDurationMs > 0 && calibrationDurationMs < args.minSampleMs) {
@@ -1980,17 +2120,13 @@ async function runScenario(scenario: BenchmarkScenario, args: BenchmarkArgs): Pr
     }
 
     if (measuredIterations !== args.iterations) {
-      for (let iteration = 0; iteration < Math.min(measuredIterations, args.warmupIterations); iteration += 1) {
-        instance.runIteration()
-      }
+      await runIterations(instance, Math.min(measuredIterations, args.warmupIterations))
     }
 
     const samples: BenchmarkSample[] = []
     for (let round = 0; round < args.rounds; round += 1) {
       const start = nowNs()
-      for (let iteration = 0; iteration < measuredIterations; iteration += 1) {
-        instance.runIteration()
-      }
+      await runIterations(instance, measuredIterations)
       const durationMs = nsToMs(nowNs() - start)
       samples.push({
         round: round + 1,
@@ -2016,6 +2152,29 @@ async function runScenario(scenario: BenchmarkScenario, args: BenchmarkArgs): Pr
     }
   } finally {
     instance.cleanup()
+  }
+}
+
+async function runIterations(instance: ScenarioInstance, count: number): Promise<void> {
+  if (count <= 0) {
+    return
+  }
+
+  const runIteration = instance.runIteration
+  if (runIteration) {
+    for (let iteration = 0; iteration < count; iteration += 1) {
+      runIteration()
+    }
+    return
+  }
+
+  const runIterationAsync = instance.runIterationAsync
+  if (!runIterationAsync) {
+    throw new Error("Benchmark scenario must provide runIteration or runIterationAsync")
+  }
+
+  for (let iteration = 0; iteration < count; iteration += 1) {
+    await runIterationAsync()
   }
 }
 

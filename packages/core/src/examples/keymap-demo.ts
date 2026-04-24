@@ -554,6 +554,15 @@ function buildHelpContent(): StyledText {
       bold(fg(P.key)(":")),
       fg(P.textDim)(" opens the ex prompt."),
     ]),
+    styledLine([
+      fg(P.textDim)("Editors use "),
+      bold(fg(P.key)("g")),
+      fg(P.textDim)(", "),
+      bold(fg(P.key)("gg")),
+      fg(P.textDim)(", and "),
+      bold(fg(P.key)("shift+g")),
+      fg(P.textDim)(" for line, buffer, and end navigation."),
+    ]),
   ])
 }
 
@@ -899,6 +908,7 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
       },
     }),
   )
+  disposers.push(addons.registerNeovimDisambiguation(keymapInstance))
   disposers.push(addons.registerEscapeClearsPendingSequence(keymapInstance))
   disposers.push(addons.registerBackspacePopsPendingSequence(keymapInstance))
 
@@ -994,6 +1004,9 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
         { key: "ctrl+e", cmd: "line-end", desc: "Line end" },
         { key: "d", group: "Delete" },
         { key: "dd", cmd: "delete-line", desc: "Delete line" },
+        { key: "g", cmd: "line-home", desc: "Line start", group: "Go" },
+        { key: "gg", cmd: "buffer-home", desc: "Buffer start", group: "Go" },
+        { key: "shift+g", cmd: "buffer-end", desc: "Buffer end", group: "Go" },
       ],
     }),
   )
@@ -1233,7 +1246,7 @@ export function run(renderer: CliRenderer): void {
     id: "keymap-demo-help-text",
     content: buildHelpContent(),
     fg: P.text,
-    height: 2,
+    height: 3,
   })
   helpBox.add(helpText)
 
@@ -1379,6 +1392,7 @@ export function run(renderer: CliRenderer): void {
   registerCommandLayers(renderer, keymapInstance)
   addLog("Tab switches focus across panels and editors.")
   addLog(`${LEADER_TRIGGER_LABEL} arms the leader extension.`)
+  addLog("Editors use g/gg/shift+g for Vim-style navigation.")
   addLog(": opens the centered ex prompt.")
   renderAll(renderer)
   alphaPanel.focus()

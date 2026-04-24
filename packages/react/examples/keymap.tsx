@@ -340,7 +340,7 @@ function CounterPanel(props: {
   )
 
   useEffect(() => {
-    return manager.registerLayer({commands: commands })
+    return manager.registerLayer({ commands: commands })
   }, [commands, manager])
 
   useBindings(
@@ -599,7 +599,7 @@ const AppContent = () => {
   )
 
   useEffect(() => {
-    return manager.registerLayer({commands })
+    return manager.registerLayer({ commands })
   }, [commands, manager])
 
   const exCommands = useMemo<DemoExCommand[]>(
@@ -739,6 +739,10 @@ const AppContent = () => {
   }, [announce, manager])
 
   useEffect(() => {
+    return addons.registerNeovimDisambiguation(manager)
+  }, [manager])
+
+  useEffect(() => {
     return addons.registerEscapeClearsPendingSequence(manager)
   }, [manager])
 
@@ -747,7 +751,8 @@ const AppContent = () => {
   }, [manager])
 
   const managedTextareaLayer = useMemo(
-    () => ({enabled: () => !commandPromptVisibleRef.current && renderer.currentFocusedEditor !== null,
+    () => ({
+      enabled: () => !commandPromptVisibleRef.current && renderer.currentFocusedEditor !== null,
       bindings: [
         { key: "left", cmd: "move-left", desc: "Cursor left" },
         { key: "right", cmd: "move-right", desc: "Cursor right" },
@@ -760,6 +765,9 @@ const AppContent = () => {
         { key: "ctrl+e", cmd: "line-end", desc: "Line end" },
         { key: "d", group: "Delete" },
         { key: "dd", cmd: "delete-line", desc: "Delete line" },
+        { key: "g", cmd: "line-home", desc: "Line start", group: "Go" },
+        { key: "gg", cmd: "buffer-home", desc: "Buffer start", group: "Go" },
+        { key: "shift+g", cmd: "buffer-end", desc: "Buffer end", group: "Go" },
       ] satisfies KeymapBindingInput[],
     }),
     [renderer],
@@ -769,7 +777,8 @@ const AppContent = () => {
     return addons.registerManagedTextareaLayer(manager, renderer, managedTextareaLayer)
   }, [managedTextareaLayer, manager, renderer])
 
-  useBindings(() => ({enabled: () => !commandPromptVisibleRef.current,
+  useBindings(() => ({
+    enabled: () => !commandPromptVisibleRef.current,
     bindings: [
       { key: "tab", cmd: "focus-next", desc: "Next target" },
       { key: "shift+tab", cmd: "focus-prev", desc: "Previous target" },
@@ -781,7 +790,8 @@ const AppContent = () => {
     ] satisfies KeymapBindingInput[],
   }))
 
-  useBindings(() => ({enabled: () => !commandPromptVisibleRef.current,
+  useBindings(() => ({
+    enabled: () => !commandPromptVisibleRef.current,
     bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }] satisfies KeymapBindingInput[],
   }))
 
@@ -955,6 +965,7 @@ const AppContent = () => {
     renderer.setBackgroundColor(palette.bg)
     addLog("Tab switches focus across panels and editors.")
     addLog(`${LEADER_TRIGGER_LABEL} arms the leader extension.`)
+    addLog("Editors use g/gg/shift+g for Vim-style navigation.")
     addLog(": opens the centered ex prompt.")
     alphaPanelRef.current?.focus()
     announce("Focused Alpha panel")
@@ -1107,6 +1118,15 @@ const AppContent = () => {
               <span style={{ fg: palette.textDim }}>Panels use local j/k/enter. </span>
               <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>:</span>
               <span style={{ fg: palette.textDim }}> opens the ex prompt.</span>
+            </text>
+            <text fg={palette.text} height={1}>
+              <span style={{ fg: palette.textDim }}>Editors use </span>
+              <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>g</span>
+              <span style={{ fg: palette.textDim }}>, </span>
+              <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>gg</span>
+              <span style={{ fg: palette.textDim }}>, and </span>
+              <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>shift+g</span>
+              <span style={{ fg: palette.textDim }}> for line, buffer, and end navigation.</span>
             </text>
           </box>
 

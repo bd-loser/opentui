@@ -680,6 +680,7 @@ function KeymapDemoContent() {
       setLeaderArmed(false)
     },
   })
+  const offNeovimDisambiguation = addons.registerNeovimDisambiguation(manager)
   const offEscapePending = addons.registerEscapeClearsPendingSequence(manager)
   const offBackspacePending = addons.registerBackspacePopsPendingSequence(manager)
 
@@ -697,6 +698,9 @@ function KeymapDemoContent() {
       { key: "ctrl+e", cmd: "line-end", desc: "Line end" },
       { key: "d", group: "Delete" },
       { key: "dd", cmd: "delete-line", desc: "Delete line" },
+      { key: "g", cmd: "line-home", desc: "Line start", group: "Go" },
+      { key: "gg", cmd: "buffer-home", desc: "Buffer start", group: "Go" },
+      { key: "shift+g", cmd: "buffer-end", desc: "Buffer end", group: "Go" },
     ],
   })
 
@@ -854,6 +858,7 @@ function KeymapDemoContent() {
     renderer.on(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
     addLog("Tab switches focus across panels and editors.")
     addLog(`${LEADER_TRIGGER_LABEL} arms the leader extension.`)
+    addLog("Editors use g/gg/shift+g for Vim-style navigation.")
     addLog(": opens the centered ex prompt.")
     alphaPanelRef?.focus()
     announce("Focused Alpha panel")
@@ -864,6 +869,7 @@ function KeymapDemoContent() {
     renderer.off(CliRenderEvents.FOCUSED_EDITOR, onFocusedEditor)
     offManagedTextareas()
     offLeader()
+    offNeovimDisambiguation()
     offEscapePending()
     offBackspacePending()
     offEx()
@@ -1027,6 +1033,15 @@ function KeymapDemoContent() {
               <span style={{ fg: palette.textDim }}>Panels use local j/k/enter. </span>
               <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>:</span>
               <span style={{ fg: palette.textDim }}> opens the ex prompt.</span>
+            </text>
+            <text fg={palette.text} height={1}>
+              <span style={{ fg: palette.textDim }}>Editors use </span>
+              <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>g</span>
+              <span style={{ fg: palette.textDim }}>, </span>
+              <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>gg</span>
+              <span style={{ fg: palette.textDim }}>, and </span>
+              <span style={{ fg: palette.key, attributes: TextAttributes.BOLD }}>shift+g</span>
+              <span style={{ fg: palette.textDim }}> for line, buffer, and end navigation.</span>
             </text>
           </box>
 

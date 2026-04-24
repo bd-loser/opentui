@@ -567,7 +567,7 @@ function renderHelp(): void {
     "<div><kbd>:</kbd> opens the ex prompt as a modal overlay. Try <kbd>:help</kbd>, <kbd>:reset</kbd>, <kbd>:write alpha</kbd>, or <kbd>:focus draft</kbd>.</div>",
     "<div>The Alpha and Beta panels each install their own focus-within layers with <kbd>j</kbd>, <kbd>k</kbd>, and <kbd>Enter</kbd>.</div>",
     "<div>The Notes and Draft textareas use plain browser editing plus keymap bindings for <kbd>Ctrl+Enter</kbd>.</div>",
-    "<div>The Active Keys and Recent Actions panes can be focused and scrolled with <kbd>j</kbd>, <kbd>k</kbd>, <kbd>Ctrl+d</kbd>, <kbd>Ctrl+u</kbd>, <kbd>g</kbd>, and <kbd>Shift+g</kbd>.</div>",
+    "<div>The Active Keys and Recent Actions panes can be focused and scrolled with <kbd>j</kbd>, <kbd>k</kbd>, <kbd>Ctrl+d</kbd>, <kbd>Ctrl+u</kbd>, <kbd>g</kbd>, <kbd>gg</kbd>, and <kbd>Shift+g</kbd>.</div>",
   ].join("")
 }
 
@@ -663,6 +663,7 @@ function disposers(): void {
       renderStatus()
     },
   })
+  addons.registerNeovimDisambiguation(keymap)
   addons.registerEscapeClearsPendingSequence(keymap)
   addons.registerBackspacePopsPendingSequence(keymap)
 
@@ -917,7 +918,8 @@ function disposers(): void {
       { key: "k", cmd: "scroll-pane-up", desc: "Scroll active keys up" },
       { key: "ctrl+d", cmd: "scroll-pane-page-down", desc: "Page active keys down" },
       { key: "ctrl+u", cmd: "scroll-pane-page-up", desc: "Page active keys up" },
-      { key: "g", cmd: "scroll-pane-top", desc: "Jump to the top" },
+      { key: "g", cmd: "scroll-pane-page-up", desc: "Page active keys up", group: "Go" },
+      { key: "gg", cmd: "scroll-pane-top", desc: "Jump to the top", group: "Go" },
       { key: "shift+g", cmd: "scroll-pane-bottom", desc: "Jump to the bottom" },
     ],
   })
@@ -930,7 +932,8 @@ function disposers(): void {
       { key: "k", cmd: "scroll-pane-up", desc: "Scroll recent actions up" },
       { key: "ctrl+d", cmd: "scroll-pane-page-down", desc: "Page recent actions down" },
       { key: "ctrl+u", cmd: "scroll-pane-page-up", desc: "Page recent actions up" },
-      { key: "g", cmd: "scroll-pane-top", desc: "Jump to the top" },
+      { key: "g", cmd: "scroll-pane-page-up", desc: "Page recent actions up", group: "Go" },
+      { key: "gg", cmd: "scroll-pane-top", desc: "Jump to the top", group: "Go" },
       { key: "shift+g", cmd: "scroll-pane-bottom", desc: "Jump to the bottom" },
     ],
   })

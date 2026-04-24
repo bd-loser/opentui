@@ -25,6 +25,7 @@ import type {
   KeyInputContext,
   Layer,
   LayerFieldCompiler,
+  KeyDisambiguationResolver,
   RawInterceptOptions,
   RawInputContext,
   EventMatchResolver,
@@ -105,6 +106,11 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
       this.notify,
       this.conditions,
       this.catalog,
+      {
+        onPendingSequenceChanged: (previous, next) => {
+          this.dispatch?.handlePendingSequenceChange(previous, next)
+        },
+      },
     )
     this.runtime = new RuntimeService(this.state, this.notify, this.conditions, this.activation)
     this.executor = new CommandExecutorService(this.notify, this.runtime, this.activation, this.catalog, {
@@ -136,6 +142,8 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
       this.conditions,
       this.executor,
       this.compiler,
+      this.catalog,
+      this.layers,
     )
     this.keypressListener = (event) => {
       this.dispatch.handleKeyEvent(event, false)
@@ -401,6 +409,18 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
   public clearEventMatchResolvers(): void {
     this.dispatch.clearEventMatchResolvers()
+  }
+
+  public prependDisambiguationResolver(resolver: KeyDisambiguationResolver<TTarget, TEvent>): () => void {
+    return this.dispatch.prependDisambiguationResolver(resolver)
+  }
+
+  public appendDisambiguationResolver(resolver: KeyDisambiguationResolver<TTarget, TEvent>): () => void {
+    return this.dispatch.appendDisambiguationResolver(resolver)
+  }
+
+  public clearDisambiguationResolvers(): void {
+    this.dispatch.clearDisambiguationResolvers()
   }
 
   private handleFocusedTargetChange(_focused: TTarget | null): void {

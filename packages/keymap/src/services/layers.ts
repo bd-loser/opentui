@@ -339,6 +339,64 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     })
   }
 
+  public recompileBindings(): void {
+    this.notify.runWithStateChangeBatch(() => {
+      let recompiledLayers = 0
+      let shouldClearPending = false
+
+      for (const layer of this.state.layers.layers) {
+        if (layer.bindingInputs.length === 0) {
+          continue
+        }
+
+        const compilation = this.options.compiler.compileBindings(
+          layer.bindingInputs,
+          this.state.environment.tokens,
+          layer.target,
+          layer.order,
+          layer.compileFields,
+        )
+
+        this.runLayerAnalyzers({
+          target: layer.target,
+          order: layer.order,
+          commandLookup: layer.commandLookup,
+          bindingInputs: layer.bindingInputs,
+          compiledBindings: compilation.bindings,
+          root: compilation.root,
+          hasTokenBindings: compilation.hasTokenBindings,
+        })
+
+        for (const binding of layer.compiledBindings) {
+          this.disconnectRuntimeMatchable(binding)
+        }
+
+        layer.root = compilation.root
+        layer.compiledBindings = compilation.bindings
+        layer.hasUnkeyedBindings = compilation.bindings.some((binding) => binding.hasUnkeyedMatchers)
+        layer.hasTokenBindings = compilation.hasTokenBindings
+
+        for (const binding of layer.compiledBindings) {
+          this.connectRuntimeMatchable(binding)
+        }
+
+        if (this.state.projection.pendingSequence?.captures.some((capture) => capture.layer === layer)) {
+          shouldClearPending = true
+        }
+
+        recompiledLayers += 1
+      }
+
+      if (shouldClearPending) {
+        this.activation.setPendingSequence(null)
+      }
+
+      if (recompiledLayers > 0) {
+        this.notify.queueStateChange()
+      }
+    })
+  }
+
   public prependLayerAnalyzer(analyzer: LayerAnalyzer<TTarget, TEvent>): () => void {
     return this.state.layers.layerAnalyzers.prepend(analyzer)
   }

@@ -107,6 +107,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     const bindingExpanders = this.state.environment.bindingExpanders.values()
     const bindingParsers = this.state.environment.bindingParsers.values()
     const bindingFieldCompilers = this.state.environment.bindingFields
+    const allowExactPrefixAmbiguity = this.state.dispatch.disambiguationResolvers.has()
     const warnUnknownField = this.options.warnUnknownField
     const warnUnknownToken = this.options.warnUnknownToken
     const conditions = this.conditions
@@ -258,7 +259,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
             }
 
             if (event === "press") {
-              this.insertBinding(root, compiledBinding)
+              this.insertBinding(root, compiledBinding, allowExactPrefixAmbiguity)
             }
 
             compiledBindings.push(compiledBinding)
@@ -358,14 +359,18 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
     return [parsedBinding, ...extraBindings]
   }
 
-  private insertBinding(root: SequenceNode<TTarget, TEvent>, binding: CompiledBinding<TTarget, TEvent>): void {
+  private insertBinding(
+    root: SequenceNode<TTarget, TEvent>,
+    binding: CompiledBinding<TTarget, TEvent>,
+    allowExactPrefixAmbiguity: boolean,
+  ): void {
     let node = root
     const touchedNodes: SequenceNode<TTarget, TEvent>[] = []
     const createdNodes: Array<{ parent: SequenceNode<TTarget, TEvent>; key: KeyMatch }> = []
 
     try {
       for (const part of binding.sequence) {
-        if (node.bindings.some((candidate) => candidate.command !== undefined)) {
+        if (!allowExactPrefixAmbiguity && node.bindings.some((candidate) => candidate.command !== undefined)) {
           throw new Error(
             "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
           )
@@ -384,7 +389,7 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
         node = child
       }
 
-      if (binding.command !== undefined && node.children.size > 0) {
+      if (!allowExactPrefixAmbiguity && binding.command !== undefined && node.children.size > 0) {
         throw new Error(
           "Keymap bindings cannot use the same sequence as both an exact match and a prefix in the same layer",
         )

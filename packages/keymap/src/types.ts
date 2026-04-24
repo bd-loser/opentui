@@ -59,6 +59,56 @@ export type EventMatchResolver<TEvent extends KeymapEvent = KeymapEvent> = (
   ctx: EventMatchResolverContext,
 ) => readonly KeyMatch[] | undefined
 
+declare const KEY_DISAMBIGUATION_DECISION: unique symbol
+declare const KEY_DEFERRED_DISAMBIGUATION_DECISION: unique symbol
+
+export interface KeyDisambiguationDecision {
+  readonly [KEY_DISAMBIGUATION_DECISION]: true
+}
+
+export interface KeyDeferredDisambiguationDecision {
+  readonly [KEY_DEFERRED_DISAMBIGUATION_DECISION]: true
+}
+
+export interface KeyDisambiguationContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  readonly event: Readonly<Omit<TEvent, "preventDefault" | "stopPropagation">>
+  readonly focused: TTarget | null
+  readonly sequence: readonly KeySequencePart[]
+  readonly stroke: KeySequencePart
+  readonly exact: readonly ActiveBinding<TTarget, TEvent>[]
+  readonly continuations: readonly ActiveKey<TTarget, TEvent>[]
+  getData(name: string): unknown
+  setData(name: string, value: unknown): void
+  runExact(): KeyDisambiguationDecision
+  continueSequence(): KeyDisambiguationDecision
+  clear(): KeyDisambiguationDecision
+  defer(run: KeyDeferredDisambiguationHandler<TTarget, TEvent>): KeyDisambiguationDecision
+}
+
+export interface KeyDeferredDisambiguationContext<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+> {
+  readonly signal: AbortSignal
+  readonly sequence: readonly KeySequencePart[]
+  readonly focused: TTarget | null
+  sleep(ms: number): Promise<boolean>
+  runExact(): KeyDeferredDisambiguationDecision
+  continueSequence(): KeyDeferredDisambiguationDecision
+  clear(): KeyDeferredDisambiguationDecision
+}
+
+export type KeyDeferredDisambiguationHandler<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+> = (
+  ctx: KeyDeferredDisambiguationContext<TTarget, TEvent>,
+) => KeyDeferredDisambiguationDecision | void | Promise<KeyDeferredDisambiguationDecision | void>
+
+export type KeyDisambiguationResolver<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = (
+  ctx: KeyDisambiguationContext<TTarget, TEvent>,
+) => KeyDisambiguationDecision | undefined
+
 export interface ResolvedKeyToken {
   stroke: NormalizedKeyStroke
   match: KeyMatch
@@ -113,8 +163,10 @@ export interface RunCommandOptions<TTarget extends object = object, TEvent exten
   includeCommand?: boolean
 }
 
-export interface DispatchCommandOptions<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>
-  extends RunCommandOptions<TTarget, TEvent> {}
+export interface DispatchCommandOptions<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+> extends RunCommandOptions<TTarget, TEvent> {}
 
 export type RunCommandResult =
   | { ok: true; command?: CommandRecord }

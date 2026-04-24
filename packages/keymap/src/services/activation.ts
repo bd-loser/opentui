@@ -66,6 +66,13 @@ function isSamePendingSequence<TTarget extends object, TEvent extends KeymapEven
   return true
 }
 
+interface ActivationOptions<TTarget extends object, TEvent extends KeymapEvent> {
+  onPendingSequenceChanged?: (
+    previous: PendingSequenceState<TTarget, TEvent> | null,
+    next: PendingSequenceState<TTarget, TEvent> | null,
+  ) => void
+}
+
 export class ActivationService<TTarget extends object, TEvent extends KeymapEvent> {
   constructor(
     private readonly state: State<TTarget, TEvent>,
@@ -74,6 +81,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     private readonly notify: NotificationService<TTarget, TEvent>,
     private readonly conditions: ConditionService<TTarget, TEvent>,
     private readonly catalog: CommandCatalogService<TTarget, TEvent>,
+    private readonly options: ActivationOptions<TTarget, TEvent> = {},
   ) {}
 
   public getFocusedTarget(): TTarget | null {
@@ -85,11 +93,13 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
   }
 
   public setPendingSequence(next: PendingSequenceState<TTarget, TEvent> | null): void {
-    if (isSamePendingSequence(this.state.projection.pendingSequence, next)) {
+    const previous = this.state.projection.pendingSequence
+    if (isSamePendingSequence(previous, next)) {
       return
     }
 
     this.state.projection.pendingSequence = next
+    this.options.onPendingSequenceChanged?.(previous, next)
     this.invalidateCaches()
     this.notifyPendingSequenceChange()
     this.notify.queueStateChange()
@@ -153,6 +163,12 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     }
 
     return sequence
+  }
+
+  public getSequenceForCaptures(
+    captures: readonly PendingSequenceCapture<TTarget, TEvent>[],
+  ): readonly KeySequencePart[] {
+    return this.collectSequencePartsFromPending({ captures })
   }
 
   public popPendingSequence(): boolean {
@@ -245,6 +261,34 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     }
 
     return activeKeys
+  }
+
+  public getActiveKeysForCaptures(
+    captures: readonly PendingSequenceCapture<TTarget, TEvent>[],
+    options?: ActiveKeyOptions,
+  ): readonly ActiveKey<TTarget, TEvent>[] {
+    const includeBindings = options?.includeBindings === true
+    const includeMetadata = options?.includeMetadata === true
+    const focused = this.getFocusedTarget()
+    const activeView = this.catalog.getActiveCommandView(focused)
+
+    return this.collectActiveKeysFromPending(captures, includeBindings, includeMetadata, focused, activeView)
+  }
+
+  public getMatchingBindings(
+    bindings: readonly CompiledBinding<TTarget, TEvent>[],
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): readonly CompiledBinding<TTarget, TEvent>[] {
+    return this.collectMatchingBindings(bindings, focused, activeView)
+  }
+
+  public getActiveBindings(
+    bindings: readonly CompiledBinding<TTarget, TEvent>[],
+    focused: TTarget | null,
+    activeView: ActiveCommandView<TTarget, TEvent>,
+  ): readonly ActiveBinding<TTarget, TEvent>[] {
+    return this.collectActiveBindings(bindings, focused, activeView)
   }
 
   public nodeHasReachableBindings(node: SequenceNode<TTarget, TEvent>, focused: TTarget | null): boolean {
@@ -358,7 +402,7 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
     return parts
   }
 
-  private getMatchingBindings(
+  private collectMatchingBindings(
     bindings: readonly CompiledBinding<TTarget, TEvent>[],
     focused: TTarget | null,
     activeView: ActiveCommandView<TTarget, TEvent>,
@@ -592,13 +636,17 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
       return undefined
     }
 
-    const prefixBindings = this.getMatchingBindings(node.bindings, focused, activeView)
+    const prefixBindings = this.selectActiveBindings(node.bindings, focused, activeView)
 
     return {
       ...this.getNodePresentation(node, focused, activeView, reachableBindings),
       continues: true,
-      firstBinding: prefixBindings[0],
-      bindings: includeBindings && prefixBindings.length > 0 ? prefixBindings : undefined,
+      firstBinding: prefixBindings?.bindings[0],
+      commandBinding: prefixBindings?.commandBinding,
+      bindings:
+        includeBindings && prefixBindings && prefixBindings.bindings.length > 0
+          ? [...prefixBindings.bindings]
+          : undefined,
       stop: true,
     }
   }

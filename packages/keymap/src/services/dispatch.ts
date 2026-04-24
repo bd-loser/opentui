@@ -1,28 +1,129 @@
 import type { CompilerService } from "./compiler.js"
 import type { ActivationService } from "./activation.js"
 import type { CommandExecutorService } from "./command-executor.js"
+import type { CommandCatalogService } from "./command-catalog.js"
 import type { ConditionService } from "./conditions.js"
+import type { LayerService } from "./layers.js"
 import type { NotificationService } from "./notify.js"
 import type { RuntimeService } from "./runtime.js"
 import type { State } from "./state.js"
+import { cloneKeySequence, cloneKeyStroke, stringifyKeySequence } from "./keys.js"
 import type {
+  ActiveBinding,
+  ActiveKey,
   EventMatchResolverContext,
   EventMatchResolver,
+  KeyDeferredDisambiguationContext,
+  KeyDeferredDisambiguationDecision,
+  KeyDeferredDisambiguationHandler,
+  KeyDisambiguationContext,
+  KeyDisambiguationDecision,
+  KeyDisambiguationResolver,
   KeyMatch,
   KeyInterceptOptions,
   KeyInputContext,
   KeymapEvent,
   PendingSequenceCapture,
+  PendingSequenceState,
   RawInterceptOptions,
   RawInputContext,
   CompiledBinding,
-  PendingSequenceState,
   RegisteredLayer,
   SequenceNode,
 } from "../types.js"
 
+const DISAMBIGUATION_DECISION = Symbol("keymap-disambiguation-decision")
+const DEFERRED_DISAMBIGUATION_DECISION = Symbol("keymap-deferred-disambiguation-decision")
+
+type SyncDecisionAction = "run-exact" | "continue-sequence" | "clear" | "defer"
+type DeferredDecisionAction = "run-exact" | "continue-sequence" | "clear"
+
+interface InternalDisambiguationDecision {
+  readonly [DISAMBIGUATION_DECISION]: true
+  readonly action: SyncDecisionAction
+  readonly handler?: KeyDeferredDisambiguationHandler<any, any>
+}
+
+interface InternalDeferredDisambiguationDecision {
+  readonly [DEFERRED_DISAMBIGUATION_DECISION]: true
+  readonly action: DeferredDecisionAction
+}
+
+interface PendingDisambiguation<TTarget extends object, TEvent extends KeymapEvent> {
+  id: number
+  controller: AbortController
+  captures: readonly PendingSequenceCapture<TTarget, TEvent>[]
+  apply: (decision: InternalDeferredDisambiguationDecision | void) => void
+}
+
+function createSyncDecision(
+  action: SyncDecisionAction,
+  handler?: KeyDeferredDisambiguationHandler<any, any>,
+): KeyDisambiguationDecision {
+  return {
+    [DISAMBIGUATION_DECISION]: true,
+    action,
+    handler,
+  } as unknown as KeyDisambiguationDecision
+}
+
+function createDeferredDecision(action: DeferredDecisionAction): KeyDeferredDisambiguationDecision {
+  return {
+    [DEFERRED_DISAMBIGUATION_DECISION]: true,
+    action,
+  } as unknown as KeyDeferredDisambiguationDecision
+}
+
+function isSyncDecision(value: unknown): value is InternalDisambiguationDecision {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    (value as { [DISAMBIGUATION_DECISION]?: unknown })[DISAMBIGUATION_DECISION] === true &&
+    (value as { action?: unknown }).action !== undefined
+  )
+}
+
+function isDeferredDecision(value: unknown): value is InternalDeferredDisambiguationDecision {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    (value as { [DEFERRED_DISAMBIGUATION_DECISION]?: unknown })[DEFERRED_DISAMBIGUATION_DECISION] === true &&
+    (value as { action?: unknown }).action !== undefined
+  )
+}
+
+function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
+  return !!value && typeof value === "object" && typeof (value as PromiseLike<unknown>).then === "function"
+}
+
+function isSameCaptureList<TTarget extends object, TEvent extends KeymapEvent>(
+  left: readonly PendingSequenceCapture<TTarget, TEvent>[],
+  right: readonly PendingSequenceCapture<TTarget, TEvent>[],
+): boolean {
+  if (left.length !== right.length) {
+    return false
+  }
+
+  for (let index = 0; index < left.length; index += 1) {
+    const leftCapture = left[index]
+    const rightCapture = right[index]
+    if (
+      !leftCapture ||
+      !rightCapture ||
+      leftCapture.layer !== rightCapture.layer ||
+      leftCapture.node !== rightCapture.node
+    ) {
+      return false
+    }
+  }
+
+  return true
+}
+
 export class DispatchService<TTarget extends object, TEvent extends KeymapEvent> {
   private readonly eventMatchResolverContext: EventMatchResolverContext
+  private pendingDisambiguation: PendingDisambiguation<TTarget, TEvent> | null = null
+  private nextPendingDisambiguationId = 0
 
   constructor(
     private readonly state: State<TTarget, TEvent>,
@@ -32,6 +133,8 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     private readonly conditions: ConditionService<TTarget, TEvent>,
     private readonly executor: CommandExecutorService<TTarget, TEvent>,
     private readonly compiler: CompilerService<TTarget, TEvent>,
+    private readonly catalog: CommandCatalogService<TTarget, TEvent>,
+    private readonly layers: LayerService<TTarget, TEvent>,
   ) {
     this.eventMatchResolverContext = {
       resolveKey: (key) => {
@@ -75,6 +178,47 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     this.state.dispatch.eventMatchResolvers.clear()
   }
 
+  public prependDisambiguationResolver(resolver: KeyDisambiguationResolver<TTarget, TEvent>): () => void {
+    return this.mutateDisambiguationResolvers(
+      () => this.state.dispatch.disambiguationResolvers.prepend(resolver as KeyDisambiguationResolver<any, TEvent>),
+      resolver as KeyDisambiguationResolver<any, TEvent>,
+    )
+  }
+
+  public appendDisambiguationResolver(resolver: KeyDisambiguationResolver<TTarget, TEvent>): () => void {
+    return this.mutateDisambiguationResolvers(
+      () => this.state.dispatch.disambiguationResolvers.append(resolver as KeyDisambiguationResolver<any, TEvent>),
+      resolver as KeyDisambiguationResolver<any, TEvent>,
+    )
+  }
+
+  public clearDisambiguationResolvers(): void {
+    if (!this.state.dispatch.disambiguationResolvers.has()) {
+      return
+    }
+
+    this.notify.runWithStateChangeBatch(() => {
+      this.state.dispatch.disambiguationResolvers.clear()
+      this.layers.recompileBindings()
+    })
+  }
+
+  public handlePendingSequenceChange(
+    _previous: PendingSequenceState<TTarget, TEvent> | null,
+    next: PendingSequenceState<TTarget, TEvent> | null,
+  ): void {
+    const pending = this.pendingDisambiguation
+    if (!pending) {
+      return
+    }
+
+    if (next && isSameCaptureList(pending.captures, next.captures)) {
+      return
+    }
+
+    this.cancelPendingDisambiguation()
+  }
+
   public handleRawSequence(sequence: string): boolean {
     const hooks = this.state.dispatch.rawHooks.entries()
     if (hooks.length === 0) {
@@ -105,6 +249,10 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
   }
 
   public handleKeyEvent(event: TEvent, release: boolean): void {
+    if (!release) {
+      this.cancelPendingDisambiguation()
+    }
+
     const hooks = this.state.dispatch.keyHooks.entries()
     const context: KeyInputContext<TEvent> = {
       event,
@@ -150,6 +298,35 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     }
 
     this.dispatchLayers(event)
+  }
+
+  private mutateDisambiguationResolvers(
+    register: () => () => void,
+    resolver: KeyDisambiguationResolver<any, TEvent>,
+  ): () => void {
+    return this.notify.runWithStateChangeBatch(() => {
+      const hadResolvers = this.state.dispatch.disambiguationResolvers.has()
+      const off = register()
+
+      if (!hadResolvers && this.state.dispatch.disambiguationResolvers.has()) {
+        this.layers.recompileBindings()
+      }
+
+      return () => {
+        this.notify.runWithStateChangeBatch(() => {
+          const hadBeforeRemoval = this.state.dispatch.disambiguationResolvers.has()
+          off()
+
+          if (this.state.dispatch.disambiguationResolvers.values().includes(resolver)) {
+            return
+          }
+
+          if (hadBeforeRemoval && !this.state.dispatch.disambiguationResolvers.has()) {
+            this.layers.recompileBindings()
+          }
+        })
+      }
+    })
   }
 
   private dispatchReleaseLayers(event: TEvent): void {
@@ -221,24 +398,45 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       return
     }
 
-    let handledExact = false
+    this.dispatchPendingCapturesFromIndex(advancedCaptures, 0, false, event, focused)
+  }
 
-    captureLoop: for (let index = 0; index < advancedCaptures.length; index += 1) {
+  private dispatchPendingCapturesFromIndex(
+    advancedCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[],
+    startIndex: number,
+    handledExact: boolean,
+    event: TEvent,
+    focused: TTarget | null,
+  ): void {
+    let hasHandledExact = handledExact
+
+    for (let index = startIndex; index < advancedCaptures.length; index += 1) {
       const capture = advancedCaptures[index]
       if (!capture) {
         continue
       }
 
       if (capture.node.children.size > 0) {
-        if (handledExact) {
+        if (hasHandledExact) {
           continue
         }
 
-        this.activation.setPendingSequence({
-          captures: advancedCaptures.filter((candidate, candidateIndex) => {
-            return candidateIndex >= index && candidate.node.children.size > 0
-          }),
-        })
+        const continuationCaptures = this.collectPendingCapturesFromAdvanced(advancedCaptures, index)
+        if (
+          this.tryResolvePendingAmbiguity(
+            advancedCaptures,
+            index,
+            continuationCaptures,
+            capture,
+            event,
+            focused,
+            hasHandledExact,
+          )
+        ) {
+          return
+        }
+
+        this.activation.setPendingSequence({ captures: continuationCaptures })
         event.preventDefault()
         event.stopPropagation()
         return
@@ -249,13 +447,11 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
         continue
       }
 
-      handledExact = true
+      hasHandledExact = true
       if (result.stop) {
         this.activation.setPendingSequence(null)
         return
       }
-
-      continue captureLoop
     }
 
     this.activation.setPendingSequence(null)
@@ -267,9 +463,19 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     event: TEvent,
     focused: TTarget | null,
   ): void {
+    this.dispatchFromRootAtIndex(activeLayers, 0, matchKeys, event, focused)
+  }
+
+  private dispatchFromRootAtIndex(
+    activeLayers: RegisteredLayer<TTarget, TEvent>[],
+    startIndex: number,
+    matchKeys: readonly KeyMatch[],
+    event: TEvent,
+    focused: TTarget | null,
+  ): void {
     const hasLayerConditions = this.state.layers.layersWithConditions > 0
 
-    layerLoop: for (let index = 0; index < activeLayers.length; index += 1) {
+    for (let index = startIndex; index < activeLayers.length; index += 1) {
       const layer = activeLayers[index]
       if (!layer) {
         continue
@@ -289,9 +495,23 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       }
 
       if (nextNode.children.size > 0) {
-        this.activation.setPendingSequence({
-          captures: this.collectPendingCapturesFromRoot(activeLayers, index, matchKeys, focused),
-        })
+        const continuationCaptures = this.collectPendingCapturesFromRoot(activeLayers, index, matchKeys, focused)
+        if (
+          this.tryResolveRootAmbiguity(
+            activeLayers,
+            index,
+            matchKeys,
+            continuationCaptures,
+            layer,
+            nextNode,
+            event,
+            focused,
+          )
+        ) {
+          return
+        }
+
+        this.activation.setPendingSequence({ captures: continuationCaptures })
         event.preventDefault()
         event.stopPropagation()
         return
@@ -305,9 +525,438 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       if (result.stop) {
         return
       }
-
-      continue layerLoop
     }
+  }
+
+  private tryResolveRootAmbiguity(
+    activeLayers: RegisteredLayer<TTarget, TEvent>[],
+    layerIndex: number,
+    matchKeys: readonly KeyMatch[],
+    continuationCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[],
+    layer: RegisteredLayer<TTarget, TEvent>,
+    node: SequenceNode<TTarget, TEvent>,
+    event: TEvent,
+    focused: TTarget | null,
+  ): boolean {
+    if (!this.state.dispatch.disambiguationResolvers.has() || continuationCaptures.length === 0) {
+      return false
+    }
+
+    const activeView = this.catalog.getActiveCommandView(focused)
+    const exactBindings = this.activation.getMatchingBindings(node.bindings, focused, activeView)
+    if (!exactBindings.some((binding) => binding.command !== undefined)) {
+      return false
+    }
+
+    const applyContinue = (): void => {
+      this.activation.setPendingSequence({ captures: continuationCaptures })
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    const applyClear = (): void => {
+      this.activation.setPendingSequence(null)
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    const applyExact = (): void => {
+      this.activation.setPendingSequence(null)
+      const result = this.runBindings(layer, node.bindings, event, focused)
+      if (!result.stop) {
+        this.dispatchFromRootAtIndex(activeLayers, layerIndex + 1, matchKeys, event, focused)
+      }
+    }
+
+    const sequence = this.activation.getSequenceForCaptures(continuationCaptures)
+    const decision = this.resolveDisambiguation({
+      event,
+      focused,
+      sequence,
+      exactBindings,
+      continuationCaptures,
+      activeView,
+    })
+
+    if (!decision) {
+      this.warnUnresolvedAmbiguity(sequence)
+      applyContinue()
+      return true
+    }
+
+    return this.applySyncDecision(
+      decision,
+      continuationCaptures,
+      applyExact,
+      applyContinue,
+      applyClear,
+      focused,
+      sequence,
+    )
+  }
+
+  private tryResolvePendingAmbiguity(
+    advancedCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[],
+    captureIndex: number,
+    continuationCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[],
+    capture: PendingSequenceCapture<TTarget, TEvent>,
+    event: TEvent,
+    focused: TTarget | null,
+    handledExact: boolean,
+  ): boolean {
+    if (!this.state.dispatch.disambiguationResolvers.has() || continuationCaptures.length === 0) {
+      return false
+    }
+
+    const activeView = this.catalog.getActiveCommandView(focused)
+    const exactBindings = this.activation.getMatchingBindings(capture.node.bindings, focused, activeView)
+    if (!exactBindings.some((binding) => binding.command !== undefined)) {
+      return false
+    }
+
+    const applyContinue = (): void => {
+      this.activation.setPendingSequence({ captures: continuationCaptures })
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    const applyClear = (): void => {
+      this.activation.setPendingSequence(null)
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    const applyExact = (): void => {
+      this.activation.setPendingSequence(null)
+      const result = this.runBindings(capture.layer, capture.node.bindings, event, focused)
+      if (result.stop) {
+        return
+      }
+
+      this.dispatchPendingCapturesFromIndex(
+        advancedCaptures,
+        captureIndex + 1,
+        handledExact || result.handled,
+        event,
+        focused,
+      )
+    }
+
+    const sequence = this.activation.getSequenceForCaptures(continuationCaptures)
+    const decision = this.resolveDisambiguation({
+      event,
+      focused,
+      sequence,
+      exactBindings,
+      continuationCaptures,
+      activeView,
+    })
+
+    if (!decision) {
+      this.warnUnresolvedAmbiguity(sequence)
+      applyContinue()
+      return true
+    }
+
+    return this.applySyncDecision(
+      decision,
+      continuationCaptures,
+      applyExact,
+      applyContinue,
+      applyClear,
+      focused,
+      sequence,
+    )
+  }
+
+  private applySyncDecision(
+    decision: InternalDisambiguationDecision,
+    continuationCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[],
+    runExact: () => void,
+    continueSequence: () => void,
+    clear: () => void,
+    focused: TTarget | null,
+    sequence: ReturnType<ActivationService<TTarget, TEvent>["getSequenceForCaptures"]>,
+  ): boolean {
+    if (decision.action === "run-exact") {
+      runExact()
+      return true
+    }
+
+    if (decision.action === "continue-sequence") {
+      continueSequence()
+      return true
+    }
+
+    if (decision.action === "clear") {
+      clear()
+      return true
+    }
+
+    continueSequence()
+    this.scheduleDeferredDisambiguation(continuationCaptures, decision.handler!, focused, sequence, (nextDecision) => {
+      if (!nextDecision) {
+        return
+      }
+
+      if (nextDecision.action === "run-exact") {
+        runExact()
+        return
+      }
+
+      if (nextDecision.action === "continue-sequence") {
+        continueSequence()
+        return
+      }
+
+      clear()
+    })
+    return true
+  }
+
+  private resolveDisambiguation(options: {
+    event: TEvent
+    focused: TTarget | null
+    sequence: ReturnType<ActivationService<TTarget, TEvent>["getSequenceForCaptures"]>
+    exactBindings: readonly CompiledBinding<TTarget, TEvent>[]
+    continuationCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[]
+    activeView: ReturnType<CommandCatalogService<TTarget, TEvent>["getActiveCommandView"]>
+  }): InternalDisambiguationDecision | undefined {
+    const exact = this.activation.getActiveBindings(options.exactBindings, options.focused, options.activeView)
+    const continuations = this.activation.getActiveKeysForCaptures(options.continuationCaptures, {
+      includeBindings: true,
+      includeMetadata: true,
+    })
+    const stroke = options.sequence.at(-1)
+    if (!stroke) {
+      return undefined
+    }
+
+    const ctx: KeyDisambiguationContext<TTarget, TEvent> = {
+      event: options.event as Readonly<Omit<TEvent, "preventDefault" | "stopPropagation">>,
+      focused: options.focused,
+      sequence: cloneKeySequence(options.sequence),
+      stroke: {
+        ...stroke,
+        stroke: cloneKeyStroke(stroke.stroke),
+      },
+      exact: exact.map((binding) => ({
+        ...binding,
+        sequence: cloneKeySequence(binding.sequence),
+      })) as readonly ActiveBinding<TTarget, TEvent>[],
+      continuations: continuations as readonly ActiveKey<TTarget, TEvent>[],
+      getData: (name) => {
+        return this.runtime.getData(name)
+      },
+      setData: (name, value) => {
+        this.runtime.setData(name, value)
+      },
+      runExact: () => createSyncDecision("run-exact"),
+      continueSequence: () => createSyncDecision("continue-sequence"),
+      clear: () => createSyncDecision("clear"),
+      defer: (run) => createSyncDecision("defer", run),
+    }
+
+    for (const resolver of this.state.dispatch.disambiguationResolvers.values()) {
+      let result: KeyDisambiguationDecision | undefined
+
+      try {
+        result = (resolver as KeyDisambiguationResolver<TTarget, TEvent>)(ctx)
+      } catch (error) {
+        this.notify.emitError("disambiguation-resolver-error", error, "[Keymap] Error in disambiguation resolver:")
+        continue
+      }
+
+      if (result === undefined) {
+        continue
+      }
+
+      if (isPromiseLike(result)) {
+        this.notify.emitError(
+          "invalid-disambiguation-resolver-return",
+          result,
+          "[Keymap] Disambiguation resolvers must return synchronously; use ctx.defer(...) for async handling",
+        )
+        continue
+      }
+
+      if (!isSyncDecision(result)) {
+        this.notify.emitError(
+          "invalid-disambiguation-decision",
+          result,
+          "[Keymap] Invalid disambiguation decision returned by resolver:",
+        )
+        continue
+      }
+
+      return result
+    }
+
+    return undefined
+  }
+
+  private scheduleDeferredDisambiguation(
+    captures: readonly PendingSequenceCapture<TTarget, TEvent>[],
+    handler: KeyDeferredDisambiguationHandler<TTarget, TEvent>,
+    focused: TTarget | null,
+    sequence: ReturnType<ActivationService<TTarget, TEvent>["getSequenceForCaptures"]>,
+    apply: (decision: InternalDeferredDisambiguationDecision | void) => void,
+  ): void {
+    this.cancelPendingDisambiguation()
+
+    const controller = new AbortController()
+    const pending: PendingDisambiguation<TTarget, TEvent> = {
+      id: this.nextPendingDisambiguationId++,
+      controller,
+      captures,
+      apply,
+    }
+    this.pendingDisambiguation = pending
+
+    queueMicrotask(() => {
+      this.executeDeferredDisambiguation(pending, handler, focused, sequence)
+    })
+  }
+
+  private executeDeferredDisambiguation(
+    pending: PendingDisambiguation<TTarget, TEvent>,
+    handler: KeyDeferredDisambiguationHandler<TTarget, TEvent>,
+    focused: TTarget | null,
+    sequence: ReturnType<ActivationService<TTarget, TEvent>["getSequenceForCaptures"]>,
+  ): void {
+    if (!this.isPendingDisambiguationCurrent(pending)) {
+      return
+    }
+
+    const ctx: KeyDeferredDisambiguationContext<TTarget, TEvent> = {
+      signal: pending.controller.signal,
+      sequence: cloneKeySequence(sequence),
+      focused,
+      sleep: (ms) => {
+        return this.sleepWithSignal(ms, pending.controller.signal)
+      },
+      runExact: () => createDeferredDecision("run-exact"),
+      continueSequence: () => createDeferredDecision("continue-sequence"),
+      clear: () => createDeferredDecision("clear"),
+    }
+
+    let result: KeyDeferredDisambiguationDecision | void | Promise<KeyDeferredDisambiguationDecision | void>
+    try {
+      result = handler(ctx)
+    } catch (error) {
+      if (this.isPendingDisambiguationCurrent(pending)) {
+        this.notify.emitError(
+          "deferred-disambiguation-error",
+          error,
+          "[Keymap] Error in deferred disambiguation handler:",
+        )
+        this.finishPendingDisambiguation(pending)
+      }
+      return
+    }
+
+    if (isPromiseLike(result)) {
+      result
+        .then((resolved) => {
+          this.applyDeferredDisambiguationResult(pending, resolved)
+        })
+        .catch((error) => {
+          if (!this.isPendingDisambiguationCurrent(pending)) {
+            return
+          }
+
+          this.notify.emitError(
+            "deferred-disambiguation-error",
+            error,
+            "[Keymap] Error in deferred disambiguation handler:",
+          )
+          this.finishPendingDisambiguation(pending)
+        })
+      return
+    }
+
+    this.applyDeferredDisambiguationResult(pending, result)
+  }
+
+  private applyDeferredDisambiguationResult(
+    pending: PendingDisambiguation<TTarget, TEvent>,
+    result: KeyDeferredDisambiguationDecision | void,
+  ): void {
+    if (!this.isPendingDisambiguationCurrent(pending)) {
+      return
+    }
+
+    if (result !== undefined && !isDeferredDecision(result)) {
+      this.notify.emitError(
+        "invalid-deferred-disambiguation-decision",
+        result,
+        "[Keymap] Invalid deferred disambiguation decision returned by handler:",
+      )
+      this.finishPendingDisambiguation(pending)
+      return
+    }
+
+    this.finishPendingDisambiguation(pending)
+    pending.apply(result as InternalDeferredDisambiguationDecision | void)
+  }
+
+  private finishPendingDisambiguation(pending: PendingDisambiguation<TTarget, TEvent>): void {
+    if (!this.isPendingDisambiguationCurrent(pending)) {
+      return
+    }
+
+    this.pendingDisambiguation = null
+  }
+
+  private cancelPendingDisambiguation(): void {
+    const pending = this.pendingDisambiguation
+    if (!pending) {
+      return
+    }
+
+    this.pendingDisambiguation = null
+    pending.controller.abort()
+  }
+
+  private isPendingDisambiguationCurrent(pending: PendingDisambiguation<TTarget, TEvent>): boolean {
+    return this.pendingDisambiguation === pending
+  }
+
+  private sleepWithSignal(ms: number, signal: AbortSignal): Promise<boolean> {
+    if (signal.aborted) {
+      return Promise.resolve(false)
+    }
+
+    return new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(
+        () => {
+          signal.removeEventListener("abort", onAbort)
+          resolve(true)
+        },
+        Math.max(0, ms),
+      )
+
+      const onAbort = () => {
+        clearTimeout(timeout)
+        signal.removeEventListener("abort", onAbort)
+        resolve(false)
+      }
+
+      signal.addEventListener("abort", onAbort, { once: true })
+    })
+  }
+
+  private warnUnresolvedAmbiguity(
+    sequence: ReturnType<ActivationService<TTarget, TEvent>["getSequenceForCaptures"]>,
+  ): void {
+    const display = stringifyKeySequence(sequence, { preferDisplay: true })
+
+    this.notify.warnOnce(
+      `unresolved-disambiguation:${display}`,
+      "unresolved-disambiguation",
+      { sequence: display },
+      `[Keymap] Ambiguous exact/prefix sequence "${display}" fell back to prefix handling because no disambiguation resolver resolved it`,
+    )
   }
 
   private collectPendingCapturesFromRoot(
@@ -341,6 +990,15 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     }
 
     return captures
+  }
+
+  private collectPendingCapturesFromAdvanced(
+    advancedCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[],
+    startIndex: number,
+  ): PendingSequenceCapture<TTarget, TEvent>[] {
+    return advancedCaptures.filter((candidate, candidateIndex) => {
+      return candidateIndex >= startIndex && candidate.node.children.size > 0
+    })
   }
 
   private resolveEventMatchKeys(event: TEvent): KeyMatch[] {

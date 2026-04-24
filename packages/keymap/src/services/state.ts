@@ -7,6 +7,7 @@ import type {
   CommandFieldCompiler,
   CommandResolver,
   EventData,
+  KeyDisambiguationResolver,
   EventMatchResolver,
   Hooks,
   KeyInputContext,
@@ -41,6 +42,7 @@ export interface EnvironmentState<TTarget extends object, TEvent extends KeymapE
 
 export interface DispatchState<TEvent extends KeymapEvent> {
   eventMatchResolvers: OrderedRegistry<EventMatchResolver<TEvent>>
+  disambiguationResolvers: OrderedRegistry<KeyDisambiguationResolver<any, TEvent>>
   keyHooks: PriorityRegistry<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>
   rawHooks: PriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>
 }
@@ -76,8 +78,10 @@ export interface CommandChainCacheState<TTarget extends object, TEvent extends K
   fallbackWithRecordErrors: Set<string>
 }
 
-export interface ActiveCommandView<TTarget extends object, TEvent extends KeymapEvent>
-  extends CommandChainCacheState<TTarget, TEvent> {
+export interface ActiveCommandView<TTarget extends object, TEvent extends KeymapEvent> extends CommandChainCacheState<
+  TTarget,
+  TEvent
+> {
   cacheable: boolean
   entries: readonly LayerCommandEntry<TTarget, TEvent>[]
   reachable: readonly LayerCommandEntry<TTarget, TEvent>[]
@@ -85,8 +89,10 @@ export interface ActiveCommandView<TTarget extends object, TEvent extends Keymap
   chainsByName: ReadonlyMap<string, readonly LayerCommandEntry<TTarget, TEvent>[]>
 }
 
-export interface RegisteredCommandView<TTarget extends object, TEvent extends KeymapEvent>
-  extends CommandChainCacheState<TTarget, TEvent> {
+export interface RegisteredCommandView<
+  TTarget extends object,
+  TEvent extends KeymapEvent,
+> extends CommandChainCacheState<TTarget, TEvent> {
   entries: readonly LayerCommandEntry<TTarget, TEvent>[]
   chainsByName: ReadonlyMap<string, readonly LayerCommandEntry<TTarget, TEvent>[]>
 }
@@ -164,6 +170,7 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     },
     dispatch: {
       eventMatchResolvers: new OrderedRegistry<EventMatchResolver<TEvent>>(),
+      disambiguationResolvers: new OrderedRegistry<KeyDisambiguationResolver<any, TEvent>>(),
       keyHooks: new PriorityRegistry<(ctx: KeyInputContext<TEvent>) => void, { priority: number; release: boolean }>(),
       rawHooks: new PriorityRegistry<(ctx: RawInputContext) => void, { priority: number }>(),
     },

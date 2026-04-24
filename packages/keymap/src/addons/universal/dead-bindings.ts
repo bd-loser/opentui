@@ -31,10 +31,9 @@ function warnDeadMetadataOnlyBinding<TTarget extends object, TEvent extends Keym
     "dead-binding",
     {
       binding: binding.sourceBinding,
-      scope: binding.sourceScope,
       target: binding.sourceTarget,
     },
-    `[Keymap] Binding "${sequence}" in ${binding.sourceScope} layer has no command and no reachable continuations; it will never trigger`,
+    `[Keymap] Binding "${sequence}" has no command and no reachable continuations; it will never trigger`,
   )
 }
 

@@ -345,7 +345,7 @@ function CounterPanel(props: {
   )
 
   useEffect(() => {
-    return manager.registerLayer({ scope: "global", commands: commands })
+    return manager.registerLayer({commands: commands })
   }, [commands, manager])
 
   useBindings(
@@ -604,7 +604,7 @@ const AppContent = () => {
   )
 
   useEffect(() => {
-    return manager.registerLayer({ scope: "global", commands })
+    return manager.registerLayer({commands })
   }, [commands, manager])
 
   const exCommands = useMemo<DemoExCommand[]>(
@@ -752,9 +752,7 @@ const AppContent = () => {
   }, [manager])
 
   const managedTextareaLayer = useMemo(
-    () => ({
-      scope: "global" as const,
-      enabled: () => !commandPromptVisibleRef.current && renderer.currentFocusedEditor !== null,
+    () => ({enabled: () => !commandPromptVisibleRef.current && renderer.currentFocusedEditor !== null,
       bindings: [
         { key: "left", cmd: "move-left", desc: "Cursor left" },
         { key: "right", cmd: "move-right", desc: "Cursor right" },
@@ -776,9 +774,7 @@ const AppContent = () => {
     return addons.registerManagedTextareaLayer(manager, renderer, managedTextareaLayer)
   }, [managedTextareaLayer, manager, renderer])
 
-  useBindings(() => ({
-    scope: "global" as const,
-    enabled: () => !commandPromptVisibleRef.current,
+  useBindings(() => ({enabled: () => !commandPromptVisibleRef.current,
     bindings: [
       { key: "tab", cmd: "focus-next", desc: "Next target" },
       { key: "shift+tab", cmd: "focus-prev", desc: "Previous target" },
@@ -790,9 +786,7 @@ const AppContent = () => {
     ] satisfies KeymapBindingInput[],
   }))
 
-  useBindings(() => ({
-    scope: "global" as const,
-    enabled: () => !commandPromptVisibleRef.current,
+  useBindings(() => ({enabled: () => !commandPromptVisibleRef.current,
     bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }] satisfies KeymapBindingInput[],
   }))
 

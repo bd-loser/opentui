@@ -6,6 +6,7 @@ import {
   type Keymap,
   type ReactiveMatcher,
   type KeySequencePart,
+  type TargetMode,
 } from "../index.js"
 import {
   createElement,
@@ -41,24 +42,22 @@ export interface UseBindingsTargetRef<TRenderable extends Renderable = Renderabl
 type UseBindingsLayerBase = LayerFields<Renderable, KeyEvent>
 
 export interface UseGlobalBindingsLayer extends UseBindingsLayerBase {
-  scope?: "global"
   targetRef?: undefined
 }
 
 export interface UseFocusBindingsLayer<TRenderable extends Renderable = Renderable> extends UseBindingsLayerBase {
-  scope: "focus"
+  targetMode: "focus"
   targetRef: UseBindingsTargetRef<TRenderable>
 }
 
 export interface UseFocusWithinBindingsLayer<TRenderable extends Renderable = Renderable> extends UseBindingsLayerBase {
-  scope: "focus-within"
+  targetMode?: "focus-within"
   targetRef: UseBindingsTargetRef<TRenderable>
 }
 
 export interface UseInferredFocusWithinBindingsLayer<
   TRenderable extends Renderable = Renderable,
 > extends UseBindingsLayerBase {
-  scope?: undefined
   targetRef: UseBindingsTargetRef<TRenderable>
 }
 
@@ -140,7 +139,7 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
   const layerRef = useRef(layer)
   const disposeRef = useRef<(() => void) | undefined>(undefined)
   const registeredLayerRef = useRef<UseBindingsLayer<TRenderable> | undefined>(undefined)
-  const registeredScopeRef = useRef<"global" | "focus" | "focus-within" | undefined>(undefined)
+  const registeredTargetModeRef = useRef<TargetMode | undefined>(undefined)
   const registeredTargetRef = useRef<Renderable | undefined>(undefined)
 
   layerRef.current = layer
@@ -149,7 +148,7 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
     disposeRef.current?.()
     disposeRef.current = undefined
     registeredLayerRef.current = undefined
-    registeredScopeRef.current = undefined
+    registeredTargetModeRef.current = undefined
     registeredTargetRef.current = undefined
   }, [])
 
@@ -157,16 +156,16 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
     const currentLayer = layerRef.current
     const hasExplicitTarget = currentLayer.targetRef !== undefined
     const explicitTarget = resolveBindingsTarget(currentLayer.targetRef)
-    const resolvedScope = currentLayer.scope ?? (hasExplicitTarget ? "focus-within" : "global")
-    const nextTarget = resolvedScope === "global" ? undefined : explicitTarget
+    const nextTargetMode = currentLayer.targetMode ?? (hasExplicitTarget ? "focus-within" : undefined)
+    const nextTarget = nextTargetMode ? explicitTarget : undefined
 
-    if (!hasExplicitTarget && resolvedScope !== "global") {
+    if (!hasExplicitTarget && nextTargetMode) {
       throw new Error("useBindings local bindings need a targetRef")
     }
 
     if (
       registeredLayerRef.current === currentLayer &&
-      registeredScopeRef.current === resolvedScope &&
+      registeredTargetModeRef.current === nextTargetMode &&
       registeredTargetRef.current === nextTarget
     ) {
       return
@@ -174,28 +173,27 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
 
     unregister()
 
-    if (!nextTarget && resolvedScope !== "global") {
+    if (!nextTarget && nextTargetMode) {
       registeredLayerRef.current = currentLayer
-      registeredScopeRef.current = resolvedScope
+      registeredTargetModeRef.current = nextTargetMode
       registeredTargetRef.current = undefined
       return
     }
 
-    const { scope: _scope, targetRef: _targetRef, ...baseLayer } = currentLayer
+    const { targetRef: _targetRef, targetMode: _targetMode, ...baseLayer } = currentLayer
     disposeRef.current = keymap.registerLayer(
-      resolvedScope === "global"
+      !nextTargetMode
         ? {
             ...baseLayer,
-            scope: "global",
           }
         : {
             ...baseLayer,
-            scope: resolvedScope,
             target: nextTarget!,
+            targetMode: nextTargetMode,
           },
     )
     registeredLayerRef.current = currentLayer
-    registeredScopeRef.current = resolvedScope
+    registeredTargetModeRef.current = nextTargetMode
     registeredTargetRef.current = nextTarget
   })
 

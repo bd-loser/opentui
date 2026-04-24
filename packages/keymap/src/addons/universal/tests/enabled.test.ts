@@ -30,7 +30,6 @@ describe("enabled addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "noop",
@@ -43,7 +42,6 @@ describe("enabled addon", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         enabled: false,
         bindings: [{ key: "x", cmd: "noop" }],
       })
@@ -62,7 +60,6 @@ describe("enabled addon", () => {
 
     registerEnabledField(keymap)
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "always-off",
@@ -80,12 +77,10 @@ describe("enabled addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       enabled: false,
       bindings: [{ key: "x", cmd: "always-off" }],
     })
     keymap.registerLayer({
-      scope: "global",
       enabled: () => enabled,
       bindings: [{ key: "y", cmd: "dynamic" }],
     })
@@ -139,9 +134,8 @@ describe("enabled addon", () => {
     }
 
     registerEnabledField(keymap)
-    keymap.registerLayer({ scope: "global", commands: [{ name: "dynamic", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "dynamic", run() {} }] })
     const off = keymap.registerLayer({
-      scope: "global",
       enabled: enabledMatcher,
       bindings: [{ key: "y", cmd: "dynamic" }],
     })
@@ -174,9 +168,8 @@ describe("enabled addon", () => {
     let enabled = true
 
     registerEnabledField(keymap)
-    keymap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       enabled: () => enabled,
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
@@ -201,7 +194,6 @@ describe("enabled addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "noop",
@@ -214,7 +206,6 @@ describe("enabled addon", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         enabled: "yes",
         bindings: [{ key: "x", cmd: "noop" }],
       })
@@ -227,7 +218,6 @@ describe("enabled addon", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         enabled: true,
         bindings: [{ key: "x", cmd: "noop" }],
       })
@@ -245,7 +235,6 @@ describe("enabled addon", () => {
 
     registerEnabledField(keymap)
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "noop",
@@ -256,7 +245,6 @@ describe("enabled addon", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       enabled: () => {
         throw new Error("boom")
       },
@@ -275,7 +263,6 @@ describe("enabled addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "noop",
@@ -302,7 +289,6 @@ describe("enabled addon", () => {
 
     registerEnabledCommandField(keymap)
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "always-off",
@@ -377,7 +363,6 @@ describe("enabled addon", () => {
 
     registerEnabledCommandField(keymap)
     const off = keymap.registerLayer({
-      scope: "global",
       commands: [{ name: "dynamic", enabled: enabledMatcher, run() {} }],
       bindings: [{ key: "y", cmd: "dynamic" }],
     })
@@ -422,7 +407,6 @@ describe("enabled addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "bad-command",
@@ -440,7 +424,6 @@ describe("enabled addon", () => {
     offEnabled()
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "active-command",

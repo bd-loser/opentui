@@ -191,7 +191,6 @@ describe("generic keymap host", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "run",
@@ -201,7 +200,7 @@ describe("generic keymap host", () => {
         },
       ],
     })
-    keymap.registerLayer({ scope: "global", bindings: [{ key: "x", cmd: "run" }] })
+    keymap.registerLayer({ bindings: [{ key: "x", cmd: "run" }] })
 
     const event = host.press("x")
 
@@ -249,7 +248,6 @@ describe("generic keymap host", () => {
     const calls: string[] = []
 
     localKeymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "run",
@@ -272,7 +270,7 @@ describe("generic keymap host", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "focus-within",
+      targetMode: "focus-within",
       target: parent,
       commands: [
         {
@@ -299,7 +297,7 @@ describe("generic keymap host", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "focus-within",
+      targetMode: "focus-within",
       target,
       commands: [
         {
@@ -327,7 +325,6 @@ describe("generic keymap host", () => {
     const events: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "run",
@@ -356,7 +353,6 @@ describe("generic keymap host", () => {
 
   test("keeps command metadata after host destroy but blocks host-backed reads", () => {
     keymap.registerLayer({
-      scope: "global",
       commands: [{ name: "run", run() {} }],
       bindings: [{ key: "x", cmd: "run" }],
     })

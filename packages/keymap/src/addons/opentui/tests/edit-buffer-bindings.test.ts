@@ -27,7 +27,6 @@ describe("edit buffer bindings addon", () => {
     const keymap = getKeymap(renderer)
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
     })
 
@@ -60,7 +59,6 @@ describe("edit buffer bindings addon", () => {
 
     registerEditBufferCommands(keymap, renderer)
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
@@ -84,7 +82,6 @@ describe("edit buffer bindings addon", () => {
 
     registerEditBufferCommands(keymap, renderer)
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "left", cmd: "move-left" }],
     })
 
@@ -210,7 +207,6 @@ describe("edit buffer bindings addon", () => {
 
     registerEditBufferCommands(keymap, renderer)
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "backspace", cmd: "backspace" }],
     })
 
@@ -235,7 +231,6 @@ describe("edit buffer bindings addon", () => {
 
     registerEditBufferCommands(keymap, renderer)
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
     })
 
@@ -262,7 +257,6 @@ describe("edit buffer bindings addon", () => {
     const offFirst = registerEditBufferCommands(keymap, renderer)
     const offSecond = registerEditBufferCommands(keymap, renderer)
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
     })
 
@@ -289,7 +283,6 @@ describe("edit buffer bindings addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "fallback",
@@ -300,13 +293,11 @@ describe("edit buffer bindings addon", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "fallback" }],
     })
 
     registerEditBufferCommands(keymap, renderer)
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
     })
 
@@ -339,7 +330,6 @@ describe("edit buffer bindings addon", () => {
     const keymap = getKeymap(renderer)
 
     const off = registerManagedTextareaLayer(keymap, renderer, {
-      scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
@@ -374,7 +364,6 @@ describe("edit buffer bindings addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "custom-left",
@@ -386,7 +375,6 @@ describe("edit buffer bindings addon", () => {
     })
 
     const off = registerManagedTextareaLayer(keymap, renderer, {
-      scope: "global",
       bindings: [{ key: "left", cmd: "custom-left" }],
     })
 
@@ -421,7 +409,6 @@ describe("edit buffer bindings addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "input_delete_line" }],
     })
 
@@ -455,9 +442,7 @@ describe("edit buffer bindings addon", () => {
     const off = registerManagedTextareaLayer(
       keymap,
       renderer,
-      {
-        scope: "global",
-      },
+      {},
       {
         commandNames: {
           "move-left": "input_move_left",
@@ -554,7 +539,6 @@ describe("edit buffer bindings addon", () => {
     const keymap = getKeymap(renderer)
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
     })
 
@@ -595,7 +579,6 @@ describe("edit buffer bindings addon", () => {
     const keymap = getKeymap(renderer)
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "ctrl+d", cmd: "delete-line" }],
     })
 
@@ -630,7 +613,6 @@ describe("edit buffer bindings addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "delete-line",
@@ -639,7 +621,6 @@ describe("edit buffer bindings addon", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
     })
 

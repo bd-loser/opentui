@@ -450,7 +450,6 @@ export function registerEditBufferCommands(
 
   return keymap.acquireResource(EDIT_BUFFER_COMMANDS_RESOURCE, () => {
     return keymap.registerLayer({
-      scope: "global",
       commands: createEditBufferCommands(renderer, commandNames, descriptions),
     })
   })

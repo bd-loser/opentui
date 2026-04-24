@@ -175,7 +175,6 @@ describe("html keymap adapter", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "noop",
@@ -188,7 +187,6 @@ describe("html keymap adapter", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "x", cmd: "noop" }],
       })
     }).not.toThrow()
@@ -199,7 +197,6 @@ describe("html keymap adapter", () => {
 
     const configuredKeymap = getKeymap(root as unknown as HTMLElement)
     configuredKeymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "configured",
@@ -224,7 +221,6 @@ describe("html keymap adapter", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-file",
@@ -237,7 +233,6 @@ describe("html keymap adapter", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
     })
 
@@ -256,7 +251,7 @@ describe("html keymap adapter", () => {
 
     keymap.registerLayer({
       target: panel as unknown as HTMLElement,
-      scope: "focus-within",
+      targetMode: "focus-within",
       commands: [
         {
           name: "panel-run",
@@ -280,7 +275,6 @@ describe("html keymap adapter", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "prompt-open",
@@ -314,7 +308,7 @@ describe("html keymap adapter", () => {
 
     keymap.registerLayer({
       target: first as unknown as HTMLElement,
-      scope: "focus-within",
+      targetMode: "focus-within",
       commands: [{ name: "noop", run() {} }],
       bindings: [{ key: "ga", cmd: "noop" }],
     })
@@ -336,7 +330,7 @@ describe("html keymap adapter", () => {
 
     keymap.registerLayer({
       target: panel as unknown as HTMLElement,
-      scope: "focus-within",
+      targetMode: "focus-within",
       commands: [{ name: "noop", run() {} }],
       bindings: [{ key: "x", cmd: "noop" }],
     })

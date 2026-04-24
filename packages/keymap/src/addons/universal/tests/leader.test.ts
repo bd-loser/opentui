@@ -22,7 +22,6 @@ describe("leader addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "leader-action",
@@ -44,7 +43,6 @@ describe("leader addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "<leader>a", cmd: "leader-action" },
         { key: "a", cmd: "plain-action" },
@@ -66,7 +64,6 @@ describe("leader addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "leader-action",
@@ -78,7 +75,6 @@ describe("leader addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })
 
@@ -105,7 +101,6 @@ describe("leader addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "leader-only",
@@ -121,7 +116,6 @@ describe("leader addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>", cmd: "leader-only" }],
     })
 

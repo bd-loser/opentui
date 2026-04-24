@@ -190,7 +190,6 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
 
       layer.offTargetDestroy?.()
       layer.offTargetDestroy = undefined
-      layer.bucket = undefined
     }
 
     for (const cleanupListener of this.cleanupListeners.splice(0)) {
@@ -417,6 +416,8 @@ export class Keymap<TTarget extends object, TEvent extends KeymapEvent = KeymapE
       // against the state that started it, and changing focus can change the
       // active bindings and their precedence.
       this.activation.setPendingSequence(null)
+      this.activation.invalidateActiveLayers()
+      this.activation.refreshActiveLayers(_focused)
       this.notify.queueStateChange()
     })
   }

@@ -14,7 +14,6 @@ import type {
   EventData,
   ParsedBindingInput,
   ReactiveMatcher,
-  Scope,
   CompiledBinding,
   CompiledBindingsResult,
   KeyLike,
@@ -98,7 +97,6 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
   public compileBindings(
     bindings: readonly BindingInput<TTarget, TEvent>[],
     tokens: ReadonlyMap<string, ResolvedKeyToken>,
-    sourceScope: Scope,
     sourceTarget: TTarget | undefined,
     sourceLayerOrder: number,
     compileFields?: Readonly<Record<string, unknown>>,
@@ -231,7 +229,6 @@ export class CompilerService<TTarget extends object, TEvent extends KeymapEvent>
               command,
               event,
               sourceBinding: snapshotParsedBindingInput(compiledInput),
-              sourceScope,
               sourceTarget,
               sourceLayerOrder,
               sourceBindingIndex: bindingIndex,

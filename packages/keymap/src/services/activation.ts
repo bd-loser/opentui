@@ -18,8 +18,9 @@ import type {
   SequenceNode,
 } from "../types.js"
 import {
-  getActiveLayersForFocused,
+  getCachedActiveLayersForFocused,
   getFocusedTargetIfAvailable,
+  invalidateCachedActiveLayers,
   isLayerActiveForFocused,
 } from "./primitives/active-layers.js"
 import type { CommandCatalogService } from "./command-catalog.js"
@@ -239,7 +240,15 @@ export class ActivationService<TTarget extends object, TEvent extends KeymapEven
   }
 
   public getActiveLayers(focused: TTarget | null): RegisteredLayer<TTarget, TEvent>[] {
-    return getActiveLayersForFocused(this.state.layers.targetLayers, this.host, focused)
+    return getCachedActiveLayersForFocused(this.state.layers, this.host, focused) as RegisteredLayer<TTarget, TEvent>[]
+  }
+
+  public refreshActiveLayers(focused: TTarget | null = this.getFocusedTargetIfAvailable()): void {
+    getCachedActiveLayersForFocused(this.state.layers, this.host, focused)
+  }
+
+  public invalidateActiveLayers(): void {
+    invalidateCachedActiveLayers(this.state.layers)
   }
 
   public isLayerActiveForFocused(layer: RegisteredLayer<TTarget, TEvent>, focused: TTarget | null): boolean {

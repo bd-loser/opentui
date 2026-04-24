@@ -214,7 +214,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "noop",
@@ -227,7 +226,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "x", cmd: "noop" }],
       })
     }).not.toThrow()
@@ -238,7 +236,6 @@ describe("keymap", () => {
 
     addons.registerDefaultKeys(keymap)
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "noop" }],
     })
 
@@ -251,7 +248,6 @@ describe("keymap", () => {
     const { warnings } = captureDiagnostics(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-file",
@@ -264,7 +260,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
     })
 
@@ -279,9 +274,8 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
 
     keymap.setData("mode", "normal")
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "noop" }],
     })
 
@@ -303,12 +297,11 @@ describe("keymap", () => {
     expect(() => keymap.getActiveKeys()).toThrow("Cannot use a keymap after its host was destroyed")
   })
 
-  test("defaults targetless layers to global scope", () => {
+  test("defaults targetless layers to always active", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "global-default",
@@ -353,7 +346,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-file",
@@ -466,7 +458,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "shared-command",
@@ -490,7 +481,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "shared-command" }],
     })
 
@@ -559,7 +549,6 @@ describe("keymap", () => {
     renderer.root.add(target)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "submit",
@@ -652,7 +641,6 @@ describe("keymap", () => {
     renderer.root.add(target)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "submit",
@@ -734,7 +722,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "shared",
@@ -748,7 +735,7 @@ describe("keymap", () => {
     target.focus()
     mockInput.pressKey("x")
 
-    expect(calls).toEqual(["local"])
+    expect(calls).toEqual(["global"])
   })
 
   test("treats thrown command resolvers as errors without emitting unresolved warnings", () => {
@@ -761,7 +748,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "x", cmd: "external-run" }],
       })
     }).not.toThrow()
@@ -786,7 +772,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "fallback",
@@ -804,7 +789,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "y", cmd: "fallback" },
         { key: "x", cmd: "direct" },
@@ -829,7 +813,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "delete-line",
@@ -841,7 +824,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "ga", cmd: "delete-line" }],
     })
 
@@ -862,7 +844,6 @@ describe("keymap", () => {
 
     keymap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "leader-action",
@@ -873,7 +854,6 @@ describe("keymap", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "[leader]d", cmd: "leader-action" }],
     })
 
@@ -892,7 +872,6 @@ describe("keymap", () => {
 
     keymap.registerToken({ name: "[leader]", key: { name: "x", ctrl: true } })
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "leader-only",
@@ -903,7 +882,6 @@ describe("keymap", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "[leader]", cmd: "leader-only" }],
     })
 
@@ -920,7 +898,6 @@ describe("keymap", () => {
     keymap.appendBindingParser(addons.defaultBindingParser)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "case-token",
@@ -929,7 +906,6 @@ describe("keymap", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "[Leader]d", cmd: "case-token" }],
     })
 
@@ -948,7 +924,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "run",
@@ -959,7 +934,6 @@ describe("keymap", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "run" }],
     })
 
@@ -992,7 +966,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "fallback",
@@ -1003,7 +976,6 @@ describe("keymap", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "y", cmd: "fallback" }],
     })
 
@@ -1036,7 +1008,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "fallback",
@@ -1047,7 +1018,6 @@ describe("keymap", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "z", cmd: "fallback" }],
     })
 
@@ -1085,7 +1055,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "custom-match",
@@ -1096,7 +1065,6 @@ describe("keymap", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "@", cmd: "custom-match" }],
     })
 
@@ -1122,7 +1090,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "split-command",
@@ -1134,7 +1101,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x, y", cmd: "split-command" }],
     })
 
@@ -1169,7 +1135,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "prepend-append",
@@ -1181,7 +1146,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "~x,~y", cmd: "prepend-append" }],
     })
 
@@ -1206,10 +1170,9 @@ describe("keymap", () => {
       ctx.skipOriginal()
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "submit", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "submit", run() {} }] })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "z", cmd: "submit" }],
     })
 
@@ -1227,7 +1190,6 @@ describe("keymap", () => {
     keymap.clearBindingTransformers()
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "submit",
@@ -1239,7 +1201,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "z", cmd: "submit" }],
     })
 
@@ -1289,7 +1250,6 @@ describe("keymap", () => {
     keymap.registerToken({ name: "<c-x>", key: { name: "x", ctrl: true } })
     keymap.registerToken({ name: "<c-s>", key: { name: "s", ctrl: true } })
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-buffer",
@@ -1301,7 +1261,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       emacsStyle: true,
       bindings: [{ key: "ctrl+x ctrl+s", cmd: "save-buffer" }],
     })
@@ -1313,7 +1272,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "ctrl+x ctrl+s", cmd: "save-buffer" }],
       })
     }).not.toThrow()
@@ -1349,7 +1307,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "comma-command",
@@ -1367,11 +1324,9 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "a,b", cmd: "comma-command" }],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x|y", cmd: "pipe-command" }],
     })
 
@@ -1399,7 +1354,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "blocked",
@@ -1417,7 +1371,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", blocked: true, cmd: "blocked" }],
     })
 
@@ -1427,7 +1380,6 @@ describe("keymap", () => {
     offTransformer()
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "y", blocked: true, cmd: "active" }],
     })
 
@@ -1448,7 +1400,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "submit",
@@ -1460,7 +1411,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "submit" }],
     })
 
@@ -1489,7 +1439,6 @@ describe("keymap", () => {
 
     keymap.registerToken({ name: "[Leader]", key: { name: "x", ctrl: true } })
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "submit",
@@ -1501,7 +1450,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "z", cmd: "submit" }],
     })
 
@@ -1532,7 +1480,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "submit",
@@ -1543,7 +1490,6 @@ describe("keymap", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "@", cmd: "submit" }],
     })
 
@@ -1563,7 +1509,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "x", cmd: "noop" }],
       })
     }).not.toThrow()
@@ -1583,7 +1528,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "x", cmd: "noop" }],
       })
     }).not.toThrow()
@@ -1605,7 +1549,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "release-action",
@@ -1617,7 +1560,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "y", event: "release", cmd: "release-action" }],
     })
 
@@ -1653,7 +1595,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "submit",
@@ -1664,7 +1605,6 @@ describe("keymap", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "return", cmd: "submit" }],
     })
 
@@ -1691,7 +1631,6 @@ describe("keymap", () => {
 
     keymap.registerToken({ name: "[Leader]", key: { name: "z" } })
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "leader-fallback",
@@ -1702,7 +1641,6 @@ describe("keymap", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "[Leader]", cmd: "leader-fallback" }],
     })
 
@@ -1716,7 +1654,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "plain",
@@ -1734,7 +1671,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "x", cmd: "plain" },
         { key: "hyper+x", cmd: "hyper" },
@@ -1757,7 +1693,6 @@ describe("keymap", () => {
     const calls: Array<{ capsLock: boolean; numLock: boolean }> = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "inspect-locks",
@@ -1772,7 +1707,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "a", cmd: "inspect-locks" }],
     })
 
@@ -1791,7 +1725,6 @@ describe("keymap", () => {
     renderer.root.add(parent)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "parent-action",
@@ -1823,7 +1756,6 @@ describe("keymap", () => {
     renderer.root.add(parent)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "focus-only",
@@ -1836,7 +1768,7 @@ describe("keymap", () => {
 
     keymap.registerLayer({
       target: parent,
-      scope: "focus",
+      targetMode: "focus",
       bindings: [{ key: "x", cmd: "focus-only" }],
     })
 
@@ -1854,7 +1786,6 @@ describe("keymap", () => {
     renderer.root.add(target)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "global-action",
@@ -1878,7 +1809,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "x", cmd: "global-action" },
         { key: "y", cmd: "global-action" },
@@ -1918,7 +1848,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "consume",
@@ -1952,7 +1881,6 @@ describe("keymap", () => {
     function register(keyName: "a" | "b" | "c" | "d", preventDefault: boolean, fallthrough: boolean): void {
       const bucket = runs[keyName]!
       keymap.registerLayer({
-        scope: "global",
         commands: [
           {
             name: `primary-${keyName}`,
@@ -1971,7 +1899,6 @@ describe("keymap", () => {
       // Keep both bindings on the same `preventDefault` value so each case
       // varies only one axis.
       keymap.registerLayer({
-        scope: "global",
         bindings: [
           { key: keyName, cmd: `primary-${keyName}`, preventDefault, fallthrough },
           { key: keyName, cmd: `followup-${keyName}`, preventDefault },
@@ -2025,7 +1952,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "passthrough",
@@ -2054,7 +1980,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "shorthand",
@@ -2066,7 +1991,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: {
         x: "shorthand",
       },
@@ -2083,12 +2007,10 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [{ name: "dup", run: () => calls.push("first") }],
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [{ name: "dup", run: () => calls.push("second") }],
     })
 
@@ -2105,7 +2027,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "external-run" }],
     })
 
@@ -2153,7 +2074,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "typed-field",
@@ -2165,7 +2085,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", mode: "normal", cmd: "typed-field" }],
     })
 
@@ -2179,7 +2098,6 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-file",
@@ -2189,7 +2107,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "Save file", group: "File" }],
     })
 
@@ -2215,7 +2132,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "record-mode",
@@ -2227,7 +2143,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", mode: "normal", cmd: "record-mode" }],
     })
 
@@ -2259,7 +2174,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "runtime-binding",
@@ -2271,7 +2185,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
     })
 
@@ -2305,9 +2218,8 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "runtime-binding", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "runtime-binding", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
     })
 
@@ -2334,9 +2246,8 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dd", active: true, cmd: "delete-line" }],
     })
 
@@ -2367,7 +2278,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "runtime-binding",
@@ -2379,7 +2289,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
     })
 
@@ -2416,7 +2325,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "runtime-binding",
@@ -2427,7 +2335,6 @@ describe("keymap", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
     })
 
@@ -2469,13 +2376,12 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
 
     expect(enabled.subscribeCalls).toBe(0)
     expect(enabled.subscriptions).toBe(0)
 
     const off = keymap.registerLayer({
-      scope: "global",
       active: true,
       bindings: [{ key: "x", cmd: "noop" }],
     })
@@ -2500,9 +2406,8 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       active: true,
       bindings: [{ key: "x", cmd: "noop" }],
     })
@@ -2544,14 +2449,12 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       first: true,
       bindings: [{ key: "a", cmd: "noop" }],
     })
     keymap.registerLayer({
-      scope: "global",
       second: true,
       bindings: [{ key: "b", cmd: "noop" }],
     })
@@ -2593,11 +2496,10 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         active: true,
         bindings: [{ key: "x", cmd: "noop" }],
       })
@@ -2631,9 +2533,8 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
     const off = keymap.registerLayer({
-      scope: "global",
       active: true,
       bindings: [{ key: "x", cmd: "noop" }],
     })
@@ -2664,9 +2565,8 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       active: true,
       bindings: [{ key: "x", cmd: "noop" }],
     })
@@ -2695,9 +2595,8 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       mode: "normal",
       active: true,
       bindings: [{ key: "x", cmd: "noop" }],
@@ -2733,9 +2632,8 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       active: true,
       bindings: [{ key: "x", cmd: "noop" }],
     })
@@ -2764,11 +2662,10 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         active: true,
         bindings: [{ key: "x", cmd: "noop" }],
       })
@@ -2787,11 +2684,10 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
 
     const offToken = keymap.registerToken({ name: "<leader>", key: { name: "x", ctrl: true } })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>a", active: true, cmd: "noop" }],
     })
 
@@ -2819,7 +2715,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "local-mode",
@@ -2870,7 +2765,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "runtime-layer",
@@ -2882,7 +2776,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       active: true,
       bindings: [{ key: "x", cmd: "runtime-layer" }],
     })
@@ -2916,9 +2809,8 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       active: true,
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
@@ -2947,9 +2839,8 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       active: true,
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
@@ -2976,7 +2867,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-file",
@@ -3022,7 +2912,6 @@ describe("keymap", () => {
     expect(enabled.subscriptions).toBe(0)
 
     const off = keymap.registerLayer({
-      scope: "global",
       commands: [{ name: "save-file", active: true, run() {} }],
       bindings: [{ key: "x", cmd: "save-file" }],
     })
@@ -3054,7 +2943,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [{ name: "save-file", active: true, run() {} }],
       bindings: [{ key: "x", cmd: "save-file" }],
     })
@@ -3085,7 +2973,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "submit",
@@ -3149,7 +3036,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "composed",
@@ -3161,7 +3047,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       mode: "normal",
       bindings: [{ key: "x", state: "idle", cmd: "composed" }],
     })
@@ -3186,7 +3071,6 @@ describe("keymap", () => {
     const seen: Record<string, unknown>[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-file",
@@ -3201,7 +3085,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "save-file" }],
     })
 
@@ -3232,7 +3115,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-current",
@@ -3289,7 +3171,6 @@ describe("keymap", () => {
     })
 
     const offCommands = keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-current",
@@ -3381,7 +3262,6 @@ describe("keymap", () => {
     renderer.root.add(target)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         { name: "save", title: "Global Save", run() {} },
         { name: "quit", title: "Quit", run() {} },
@@ -3425,7 +3305,6 @@ describe("keymap", () => {
     renderer.root.add(target)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         { name: "save", title: "Global Save", run() {} },
         { name: "quit", title: "Quit", run() {} },
@@ -3477,7 +3356,6 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-file",
@@ -3554,7 +3432,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-current",
@@ -3597,7 +3474,6 @@ describe("keymap", () => {
     const { errors } = captureDiagnostics(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         { name: "save-current", usage: ":write <file>", run() {} },
         { name: "palette-help", usage: ":help", run() {} },
@@ -3637,7 +3513,6 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-current",
@@ -3678,7 +3553,6 @@ describe("keymap", () => {
     }
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-current",
@@ -3718,7 +3592,6 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-file",
@@ -3731,7 +3604,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
     })
 
@@ -3786,7 +3658,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "delete-line",
@@ -3798,7 +3669,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
@@ -3825,9 +3695,8 @@ describe("keymap", () => {
   test("hasPendingSequence reflects pending lifecycle", () => {
     const keymap = getKeymap(renderer)
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
@@ -3851,7 +3720,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "delete-line",
@@ -3862,7 +3730,6 @@ describe("keymap", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
@@ -3895,7 +3762,6 @@ describe("keymap", () => {
     const changes: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "delete-ca",
@@ -3905,7 +3771,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
@@ -3926,7 +3791,6 @@ describe("keymap", () => {
     const snapshots: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "delete-ca",
@@ -3936,7 +3800,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
@@ -3964,9 +3827,8 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       mode: "normal",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
@@ -3993,7 +3855,7 @@ describe("keymap", () => {
 
     renderer.root.add(target)
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "local", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "local", run() {} }] })
     keymap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "local" }],
@@ -4016,7 +3878,7 @@ describe("keymap", () => {
 
     renderer.root.add(target)
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
     keymap.registerLayer({
       target,
       bindings: [{ key: "dd", cmd: "delete-line" }],
@@ -4047,7 +3909,6 @@ describe("keymap", () => {
     renderer.root.add(second)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "global-delete",
@@ -4065,7 +3926,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dd", cmd: "global-delete" }],
     })
     keymap.registerLayer({
@@ -4093,9 +3953,8 @@ describe("keymap", () => {
 
     renderer.root.add(target)
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "global-delete", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "global-delete", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dd", cmd: "global-delete" }],
     })
 
@@ -4116,7 +3975,7 @@ describe("keymap", () => {
 
     renderer.root.add(target)
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "local", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "local", run() {} }] })
     keymap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "local" }],
@@ -4139,7 +3998,7 @@ describe("keymap", () => {
 
     renderer.root.add(target)
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "local", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "local", run() {} }] })
     keymap.registerLayer({
       target,
       bindings: [{ key: "x", cmd: "local" }],
@@ -4172,7 +4031,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "go-definition",
@@ -4184,7 +4042,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>gd", cmd: "go-definition" }],
     })
 
@@ -4221,7 +4078,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         { name: "save", run() {} },
         { name: "help", run() {} },
@@ -4229,7 +4085,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "<leader>s", cmd: "save" },
         { key: "<leader>h", cmd: "help" },
@@ -4249,7 +4104,6 @@ describe("keymap", () => {
 
     keymap.registerToken({ name: "<leader>", key: { name: "space" } })
     keymap.registerLayer({
-      scope: "global",
       commands: [
         { name: "token-command", run() {} },
         { name: "literal-command", run() {} },
@@ -4272,7 +4126,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "delete-a",
@@ -4302,7 +4155,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "da", cmd: "delete-a" },
         { key: "db", cmd: "delete-b" },
@@ -4330,7 +4182,6 @@ describe("keymap", () => {
     renderer.root.add(target)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "local-delete",
@@ -4348,7 +4199,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "da", cmd: "global-delete" }],
     })
 
@@ -4380,7 +4230,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "global-model",
@@ -4398,7 +4247,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>m", cmd: "global-model" }],
     })
     keymap.registerLayer({
@@ -4423,7 +4271,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "delete-ca",
@@ -4435,7 +4282,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
@@ -4484,9 +4330,8 @@ describe("keymap", () => {
   test("clears pending sequences on invalid continuation", () => {
     const keymap = getKeymap(renderer)
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
@@ -4509,7 +4354,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         { name: "normal-delete", run() {} },
         { name: "visual-delete", run() {} },
@@ -4517,7 +4361,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "dd", mode: "normal", cmd: "normal-delete" },
         { key: "vv", mode: "visual", cmd: "visual-delete" },
@@ -4548,7 +4391,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "x", mode: "normal", state: "visual", cmd: "noop" }],
       })
     }).not.toThrow()
@@ -4572,7 +4414,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         mode: "normal",
         state: "visual",
         bindings: [{ key: "x", cmd: "noop" }],
@@ -4598,7 +4439,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "x", desc: "Delete line", title: "Delete", cmd: "noop" }],
       })
     }).not.toThrow()
@@ -4612,7 +4452,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "noop",
@@ -4625,7 +4464,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "x", mode: "normal", cmd: "noop" }],
       })
     }).not.toThrow()
@@ -4642,7 +4480,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "noop",
@@ -4655,7 +4492,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         mode: "normal",
         bindings: [{ key: "x", cmd: "noop" }],
       })
@@ -4674,7 +4510,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         commands: [
           {
             name: "save-file",
@@ -4690,7 +4525,6 @@ describe("keymap", () => {
     }).not.toThrow()
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "save-file" }],
     })
 
@@ -4715,7 +4549,6 @@ describe("keymap", () => {
     const { warnings } = captureDiagnostics(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-file",
@@ -4731,7 +4564,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       mode: "normal",
       bindings: [
         { key: "x", when: "normal", cmd: "save-file" },
@@ -4749,9 +4581,8 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
     const { warningEvents, warnings } = captureDiagnostics(keymap)
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "<leader>x", cmd: "noop" },
         { key: "<leader>y", cmd: "noop" },
@@ -4773,7 +4604,6 @@ describe("keymap", () => {
     const { warnings } = captureDiagnostics(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x" }],
     })
 
@@ -4785,22 +4615,20 @@ describe("keymap", () => {
     const calls: string[] = []
 
     const off = keymap.appendLayerAnalyzer((ctx) => {
-      calls.push(`${ctx.scope}:${ctx.order}:${ctx.bindings.length}:${ctx.hasTokenBindings ? "tokens" : "plain"}`)
+      calls.push(`${ctx.order}:${ctx.bindings.length}:${ctx.hasTokenBindings ? "tokens" : "plain"}`)
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: () => {} }],
     })
 
     off()
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "y", cmd: () => {} }],
     })
 
-    expect(calls).toEqual(["global:0:1:plain"])
+    expect(calls).toEqual(["0:1:plain"])
   })
 
   test("prependLayerAnalyzer runs before appended analyzers", () => {
@@ -4815,7 +4643,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: () => {} }],
     })
 
@@ -4832,7 +4659,6 @@ describe("keymap", () => {
     keymap.clearLayerAnalyzers()
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: () => {} }],
     })
 
@@ -4848,7 +4674,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>x", cmd: () => {} }],
     })
 
@@ -4866,7 +4691,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: () => {} }],
     })
 
@@ -4883,7 +4707,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: () => {} }],
     })
 
@@ -4909,9 +4732,8 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "runtime-binding", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "runtime-binding", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", active: true, cmd: "runtime-binding" }],
     })
 
@@ -4925,7 +4747,7 @@ describe("keymap", () => {
     const warnings: string[] = []
     const errors: string[] = []
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
 
     keymap.on("warning", () => {
       throw new Error("warning listener boom")
@@ -4942,12 +4764,10 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         mode: "normal",
         bindings: [{ key: "x", cmd: "noop" }],
       })
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "y", cmd: "   " }],
       })
     }).not.toThrow()
@@ -4977,7 +4797,6 @@ describe("keymap", () => {
       offError()
 
       keymap.registerLayer({
-        scope: "global",
         mode: "normal",
         bindings: [{ key: "x", cmd: "   " }],
       })
@@ -5000,7 +4819,6 @@ describe("keymap", () => {
 
     try {
       keymap.registerLayer({
-        scope: "global",
         mode: "normal",
         bindings: [],
       })
@@ -5040,7 +4858,7 @@ describe("keymap", () => {
       errors.push(args)
     }
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
 
     try {
       keymap.getCommands({
@@ -5080,7 +4898,6 @@ describe("keymap", () => {
 
     try {
       keymap.registerLayer({
-        scope: "global",
         mode: "normal",
         bindings: [{ key: "y", cmd: "   " }],
       })
@@ -5114,11 +4931,11 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayerFields({
-        scope() {},
+        targetMode() {},
       })
     }).not.toThrow()
 
-    expect(errors).toEqual(['Keymap layer field "scope" is reserved'])
+    expect(errors).toEqual(['Keymap layer field "targetMode" is reserved'])
   })
 
   test("ignores reserved and duplicate binding field registrations", () => {
@@ -5157,7 +4974,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         commands: [
           {
             name: "save-file",
@@ -5178,7 +4994,6 @@ describe("keymap", () => {
     const { errors } = captureDiagnostics(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         { name: "one", run() {} },
         { name: "two", run() {} },
@@ -5187,7 +5002,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [
           { key: "d", cmd: "one" },
           { key: "dd", cmd: "two" },
@@ -5204,9 +5018,8 @@ describe("keymap", () => {
   test("allows a non-dispatch binding to label a prefix", () => {
     const keymap = getKeymap(renderer)
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "d", group: "Delete" },
         { key: "dd", cmd: "delete-line" },
@@ -5272,7 +5085,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "release-command",
@@ -5290,7 +5102,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "a", cmd: "release-command", event: "release" },
         { key: "b", cmd: "press-command" },
@@ -5313,11 +5124,10 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
     const { errors } = captureDiagnostics(keymap)
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "dd", cmd: "noop", event: "release" }],
       })
     }).not.toThrow()
@@ -5331,7 +5141,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "local",
@@ -5357,7 +5166,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "global" }],
     })
 
@@ -5384,7 +5192,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "record",
@@ -5420,7 +5227,6 @@ describe("keymap", () => {
     const seen: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "record-mode",
@@ -5432,7 +5238,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "record-mode" }],
     })
 
@@ -5582,12 +5387,11 @@ describe("keymap", () => {
     expect(calls).toEqual(["high:first:y", "high:second:y"])
   })
 
-  test("prefers higher-priority layers and newer layers within the same scope", () => {
+  test("prefers higher-priority layers and newer layers within the same priority", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "global-low",
@@ -5617,21 +5421,17 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       priority: 1,
       bindings: [{ key: "x", cmd: "global-low" }],
     })
     keymap.registerLayer({
-      scope: "global",
       priority: 2,
       bindings: [{ key: "x", cmd: "global-high" }],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "y", cmd: "older" }],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "y", cmd: "newer" }],
     })
 
@@ -5658,7 +5458,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "local-decline",
@@ -5677,12 +5476,11 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      target,
-      bindings: [{ key: "x", cmd: "local-decline" }],
+      bindings: [{ key: "x", cmd: "global-handle" }],
     })
     keymap.registerLayer({
-      scope: "global",
-      bindings: [{ key: "x", cmd: "global-handle" }],
+      target,
+      bindings: [{ key: "x", cmd: "local-decline" }],
     })
 
     target.focus()
@@ -5710,7 +5508,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "async-command",
@@ -5741,10 +5538,9 @@ describe("keymap", () => {
   test("clears pending sequences when a layer is disposed", () => {
     const keymap = getKeymap(renderer)
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
 
     const offLayer = keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 
@@ -5765,9 +5561,8 @@ describe("keymap", () => {
       },
     })
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       mode: "normal",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
@@ -5785,9 +5580,8 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
     const changes: string[] = []
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "delete-ca", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "delete-ca", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
@@ -5807,9 +5601,8 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "delete-ca", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "delete-ca", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
@@ -5835,9 +5628,8 @@ describe("keymap", () => {
     const keymap = getKeymap(renderer)
     const { errors } = captureDiagnostics(keymap)
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "delete-ca", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "delete-ca", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "dca", cmd: "delete-ca" }],
     })
 
@@ -5859,7 +5651,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "leader-action",
@@ -5871,7 +5662,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })
 
@@ -5911,7 +5701,6 @@ describe("keymap", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "leader-only",
@@ -5923,7 +5712,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>", cmd: "leader-only" }],
     })
 
@@ -5944,9 +5732,8 @@ describe("keymap", () => {
   test("clears pending tokenized sequences when token registration recompiles their layer", () => {
     const keymap = getKeymap(renderer)
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "leader-action", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "leader-action", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>ab", cmd: "leader-action" }],
     })
 
@@ -5973,7 +5760,6 @@ describe("keymap", () => {
     const { errors } = captureDiagnostics(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         { name: "plain", run() {} },
         { name: "tokenized", run() {} },
@@ -5981,7 +5767,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "a", cmd: "plain" },
         { key: "<leader>b", cmd: "tokenized" },
@@ -6006,7 +5791,7 @@ describe("keymap", () => {
   test("can dispose layer, binding, and command field registrations", () => {
     const keymap = getKeymap(renderer)
 
-    keymap.registerLayer({ scope: "global", commands: [{ name: "noop", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "noop", run() {} }] })
 
     const offLayerFields = keymap.registerLayerFields({
       mode(value, ctx) {
@@ -6017,7 +5802,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         mode: "normal",
         bindings: [{ key: "x", cmd: "noop" }],
       })
@@ -6034,7 +5818,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "y", mode: "normal", cmd: "noop" }],
       })
     }).not.toThrow()
@@ -6050,7 +5833,6 @@ describe("keymap", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         commands: [
           {
             name: "noop-with-desc",
@@ -6062,7 +5844,6 @@ describe("keymap", () => {
     }).not.toThrow()
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "z", cmd: "noop-with-desc" }],
     })
 
@@ -6076,7 +5857,6 @@ describe("keymap", () => {
     renderer.root.add(target)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         { name: "save", category: "File", run() {} },
         { name: "help", category: "Help", run() {} },
@@ -6084,7 +5864,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "x", cmd: "save", desc: "Global x" },
         { key: "y", cmd: "help", desc: "Global y" },
@@ -6125,7 +5904,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         { name: "plain", run() {} },
         { name: "leader", run() {} },
@@ -6133,7 +5911,6 @@ describe("keymap", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "ctrl+x", cmd: "plain" }],
     })
     keymap.registerLayer({
@@ -6154,16 +5931,15 @@ describe("keymap", () => {
     const { errors } = captureDiagnostics(keymap)
 
     expect(() => {
-      keymap.registerLayer({ scope: "global", commands: [{ name: "", run() {} }] })
+      keymap.registerLayer({ commands: [{ name: "", run() {} }] })
     }).not.toThrow()
 
     expect(() => {
-      keymap.registerLayer({ scope: "global", commands: [{ name: "bad name", run() {} }] })
+      keymap.registerLayer({ commands: [{ name: "bad name", run() {} }] })
     }).not.toThrow()
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "x", cmd: "   " }],
       })
     }).not.toThrow()

@@ -22,7 +22,6 @@ describe("base layout fallback addon", () => {
 
     registerBaseLayoutFallback(keymap)
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "copy",
@@ -32,10 +31,7 @@ describe("base layout fallback addon", () => {
         },
       ],
     })
-    keymap.registerLayer({
-      scope: "global",
-      bindings: [{ key: "ctrl+c", cmd: "copy" }],
-    })
+    keymap.registerLayer({ bindings: [{ key: "ctrl+c", cmd: "copy" }] })
 
     renderer.stdin.emit("data", Buffer.from("\x1b[12618::99;5u"))
 
@@ -48,7 +44,6 @@ describe("base layout fallback addon", () => {
 
     registerBaseLayoutFallback(keymap)
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "fallback-copy",
@@ -65,7 +60,6 @@ describe("base layout fallback addon", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "ctrl+c", cmd: "fallback-copy" },
         { key: { name: "\u314a", ctrl: true }, cmd: "direct-copy" },
@@ -85,7 +79,6 @@ describe("base layout fallback addon", () => {
     offFallback()
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "copy",
@@ -95,10 +88,7 @@ describe("base layout fallback addon", () => {
         },
       ],
     })
-    keymap.registerLayer({
-      scope: "global",
-      bindings: [{ key: "ctrl+c", cmd: "copy" }],
-    })
+    keymap.registerLayer({ bindings: [{ key: "ctrl+c", cmd: "copy" }] })
 
     renderer.stdin.emit("data", Buffer.from("\x1b[12618::99;5u"))
 

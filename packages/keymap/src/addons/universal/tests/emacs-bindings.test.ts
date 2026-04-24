@@ -24,7 +24,6 @@ describe("emacs bindings addon", () => {
 
     registerEmacsBindings(keymap)
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-buffer",
@@ -36,7 +35,6 @@ describe("emacs bindings addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "ctrl+x ctrl+s", cmd: "save-buffer" }],
     })
 
@@ -57,7 +55,6 @@ describe("emacs bindings addon", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "ctrl+x ctrl+s", cmd() {} }],
       })
     }).not.toThrow()
@@ -79,7 +76,6 @@ describe("emacs bindings addon", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "ctrl+x ctrl+s", cmd() {} }],
       })
     }).not.toThrow()

@@ -22,7 +22,6 @@ describe("backspace pops pending sequence addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "delete-ca",
@@ -40,7 +39,6 @@ describe("backspace pops pending sequence addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "dca", cmd: "delete-ca" },
         { key: "backspace", cmd: "backspace-command" },
@@ -84,7 +82,6 @@ describe("backspace pops pending sequence addon", () => {
     const keymap = getKeymap(renderer)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "delete-ca",
@@ -98,7 +95,6 @@ describe("backspace pops pending sequence addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "dca", cmd: "delete-ca" },
         { key: "backspace", cmd: "backspace-command" },
@@ -118,7 +114,6 @@ describe("backspace pops pending sequence addon", () => {
     const keymap = getKeymap(renderer)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "backspace-command",
@@ -128,7 +123,6 @@ describe("backspace pops pending sequence addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "dd", cmd: () => {} },
         { key: "backspace", cmd: "backspace-command" },

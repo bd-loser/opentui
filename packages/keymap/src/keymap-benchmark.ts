@@ -216,7 +216,6 @@ function createBracketTokenParser(): BindingParser {
 function registerGlobalLayers(keymap: OpenTuiKeymap, count: number, cmd = "noop"): void {
   for (let index = 0; index < count; index += 1) {
     keymap.registerLayer({
-      scope: "global",
       priority: index % 3,
       bindings: [{ key: createKey(index), cmd }],
     })
@@ -232,7 +231,7 @@ function registerTargetLayer(
 ): void {
   keymap.registerLayer({
     target,
-    scope: index % 2 === 0 ? "focus-within" : "focus",
+    targetMode: index % 2 === 0 ? "focus-within" : "focus",
     priority: index % 4,
     bindings: [{ key, cmd }],
   })
@@ -479,7 +478,7 @@ function setupMetadataFocusTree(resources: ScenarioResources): BoxRenderable[] {
     run() {},
   }))
 
-  resources.keymap.registerLayer({ scope: "global", commands: commands })
+  resources.keymap.registerLayer({ commands: commands })
 
   const focusChain = createFocusTree(resources, 6)
   let commandIndex = 0
@@ -493,7 +492,7 @@ function setupMetadataFocusTree(resources: ScenarioResources): BoxRenderable[] {
     for (let layerIndex = 0; layerIndex < 6; layerIndex += 1) {
       resources.keymap.registerLayer({
         target,
-        scope: index % 2 === 0 ? "focus-within" : "focus",
+        targetMode: index % 2 === 0 ? "focus-within" : "focus",
         priority: layerIndex % 4,
         bindings: [
           {
@@ -514,7 +513,7 @@ function setupMetadataFocusTree(resources: ScenarioResources): BoxRenderable[] {
     resources.renderer.root.add(sibling)
     resources.keymap.registerLayer({
       target: sibling,
-      scope: index % 2 === 0 ? "focus-within" : "focus",
+      targetMode: index % 2 === 0 ? "focus-within" : "focus",
       priority: index % 4,
       bindings: [
         {
@@ -530,7 +529,6 @@ function setupMetadataFocusTree(resources: ScenarioResources): BoxRenderable[] {
 
   for (let index = 0; index < 150; index += 1) {
     resources.keymap.registerLayer({
-      scope: "global",
       priority: index % 3,
       bindings: [
         {
@@ -551,7 +549,6 @@ async function createScenarioResources(): Promise<ScenarioResources> {
   const testSetup = await createTestRenderer({ width: 80, height: 24 })
   const keymap = getKeymap(testSetup.renderer)
   keymap.registerLayer({
-    scope: "global",
     commands: [
       {
         name: "noop",
@@ -594,7 +591,6 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           const off = resources.keymap.registerLayer({
-            scope: "global",
             bindings: [{ key: "g<leader>d", cmd: "noop" }],
           })
           off()
@@ -616,7 +612,6 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           const off = resources.keymap.registerLayer({
-            scope: "global",
             commands: [
               {
                 name: "bench-local",
@@ -648,7 +643,6 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           const off = resources.keymap.registerLayer({
-            scope: "global",
             bindings: [{ key: "g<leader>d", cmd: "noop" }],
           })
           off()
@@ -674,7 +668,6 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           const off = resources.keymap.registerLayer({
-            scope: "global",
             bindings: [{ key: "g[leader]d", cmd: "noop" }],
           })
           off()
@@ -707,7 +700,6 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           const off = resources.keymap.registerLayer({
-            scope: "global",
             commands: [
               {
                 name: "bench-command",
@@ -758,7 +750,6 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           const off = resources.keymap.registerLayer({
-            scope: "global",
             commands: [
               {
                 name: "bench-command",
@@ -796,7 +787,6 @@ const scenarios: BenchmarkScenario[] = [
       })
 
       resources.keymap.registerLayer({
-        scope: "global",
         commands: Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           namespace: index % 2 === 0 ? "bench" : "other",
@@ -838,7 +828,6 @@ const scenarios: BenchmarkScenario[] = [
       })
 
       resources.keymap.registerLayer({
-        scope: "global",
         commands: Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           namespace: index % 2 === 0 ? "bench" : "other",
@@ -878,7 +867,6 @@ const scenarios: BenchmarkScenario[] = [
       })
 
       resources.keymap.registerLayer({
-        scope: "global",
         commands: Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           namespace: index % 2 === 0 ? "bench" : "other",
@@ -924,7 +912,6 @@ const scenarios: BenchmarkScenario[] = [
 
       for (let layerIndex = 0; layerIndex < 64; layerIndex += 1) {
         resources.keymap.registerLayer({
-          scope: "global",
           commands: Array.from({ length: 8 }, (_, index) => ({
             name: `command-${layerIndex}-${index}`,
             namespace: index % 2 === 0 ? "bench" : "other",
@@ -959,7 +946,6 @@ const scenarios: BenchmarkScenario[] = [
       })
 
       resources.keymap.registerLayer({
-        scope: "global",
         commands: Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           namespace: index % 2 === 0 ? "bench" : "other",
@@ -1007,7 +993,6 @@ const scenarios: BenchmarkScenario[] = [
 
       for (let layerIndex = 0; layerIndex < 64; layerIndex += 1) {
         resources.keymap.registerLayer({
-          scope: "global",
           commands: Array.from({ length: 8 }, (_, index) => ({
             name: `command-${layerIndex}-${index}`,
             namespace: index % 2 === 0 ? "bench" : "other",
@@ -1045,7 +1030,6 @@ const scenarios: BenchmarkScenario[] = [
       }
 
       resources.keymap.registerLayer({
-        scope: "global",
         commands: Array.from({ length: 128 }, (_, index) => ({
           name: `command-${index}`,
           title: `Global ${index}`,
@@ -1088,7 +1072,6 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       resources.keymap.registerLayer({
-        scope: "global",
         commands: [
           {
             name: "bench-run-command",
@@ -1117,7 +1100,6 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       resources.keymap.registerLayer({
-        scope: "global",
         commands: [
           {
             name: "bench-run-command",
@@ -1334,7 +1316,6 @@ const scenarios: BenchmarkScenario[] = [
 
       registerGlobalLayers(resources.keymap, 120)
       resources.keymap.registerLayer({
-        scope: "global",
         bindings: [
           { key: "ga", cmd: "noop" },
           { key: "gb", cmd: "noop" },
@@ -1376,7 +1357,6 @@ const scenarios: BenchmarkScenario[] = [
 
       registerGlobalLayers(resources.keymap, 120)
       resources.keymap.registerLayer({
-        scope: "global",
         bindings: [
           { key: "ga", cmd: "noop" },
           { key: "gb", cmd: "noop" },
@@ -1406,7 +1386,6 @@ const scenarios: BenchmarkScenario[] = [
 
       for (let index = 0; index < 320; index += 1) {
         resources.keymap.registerLayer({
-          scope: "global",
           bindings: [{ key: `<leader>${createKey(index)}`, cmd: "noop" }],
         })
       }
@@ -1439,7 +1418,6 @@ const scenarios: BenchmarkScenario[] = [
 
       for (let index = 0; index < 320; index += 1) {
         resources.keymap.registerLayer({
-          scope: "global",
           bindings: [
             {
               key: createKey(index),
@@ -1479,7 +1457,6 @@ const scenarios: BenchmarkScenario[] = [
 
       for (let index = 0; index < 320; index += 1) {
         resources.keymap.registerLayer({
-          scope: "global",
           mode: index % 2 === 0 ? "normal" : "visual",
           state: index % 3 === 0 ? "idle" : "busy",
           bindings: [
@@ -1512,7 +1489,6 @@ const scenarios: BenchmarkScenario[] = [
       for (let index = 0; index < 320; index += 1) {
         enabledStates.push(index % 3 !== 0)
         resources.keymap.registerLayer({
-          scope: "global",
           enabled: () => enabledStates[index] ?? false,
           bindings: [
             { key: createKey(index), cmd: "noop" },
@@ -1542,7 +1518,6 @@ const scenarios: BenchmarkScenario[] = [
       resources.keymap.setData("vim.state", "idle")
 
       resources.keymap.registerLayer({
-        scope: "global",
         commands: Array.from({ length: 512 }, (_, index) => ({
           name: `command-${index}`,
           mode: index % 2 === 0 ? "normal" : "visual",
@@ -1573,7 +1548,6 @@ const scenarios: BenchmarkScenario[] = [
       addons.registerEnabledCommandField(resources.keymap)
 
       resources.keymap.registerLayer({
-        scope: "global",
         commands: Array.from({ length: 512 }, (_, index) => {
           enabledStates.push(index % 3 !== 0)
 
@@ -1607,7 +1581,6 @@ const scenarios: BenchmarkScenario[] = [
       for (let index = 0; index < 320; index += 1) {
         resources.keymap.setData(createFlagKey(index), true)
         resources.keymap.registerLayer({
-          scope: "global",
           bindings: [
             {
               key: createKey(index),
@@ -1645,7 +1618,6 @@ const scenarios: BenchmarkScenario[] = [
       for (let index = 0; index < 320; index += 1) {
         resources.keymap.setData(createFlagKey(index), true)
         resources.keymap.registerLayer({
-          scope: "global",
           activeWhen: createFlagKey(index),
           bindings: [{ key: createKey(index), cmd: "noop" }],
         })
@@ -1866,7 +1838,6 @@ const scenarios: BenchmarkScenario[] = [
         const key = createFlagKey(index)
         store.flags[key] = true
         resources.keymap.registerLayer({
-          scope: "global",
           bindings: [
             {
               key: createKey(index),
@@ -1901,7 +1872,6 @@ const scenarios: BenchmarkScenario[] = [
 
       for (let index = 0; index < 160; index += 1) {
         resources.keymap.registerLayer({
-          scope: "global",
           bindings: [
             { key: "ga", cmd: "noop" },
             { key: "gb", cmd: "noop" },
@@ -1958,7 +1928,6 @@ const scenarios: BenchmarkScenario[] = [
       const resources = await createScenarioResources()
 
       resources.keymap.registerLayer({
-        scope: "global",
         commands: [
           {
             name: "consume-data",
@@ -1976,7 +1945,6 @@ const scenarios: BenchmarkScenario[] = [
       }
 
       resources.keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "x", cmd: "consume-data" }],
       })
 

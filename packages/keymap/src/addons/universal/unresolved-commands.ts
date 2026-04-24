@@ -1,10 +1,9 @@
-import type { Keymap, KeymapEvent, LayerAnalysisContext, ParsedBindingInput, Scope } from "../../index.js"
+import type { Keymap, KeymapEvent, LayerAnalysisContext, ParsedBindingInput } from "../../index.js"
 import { stringifyKeySequence, stringifyKeyStroke } from "../../index.js"
 
 interface UnresolvedCommandWarning<TTarget extends object, TEvent extends KeymapEvent> {
   command: string
   binding: ParsedBindingInput<TTarget, TEvent>
-  scope: Scope
   target?: TTarget
 }
 
@@ -28,7 +27,6 @@ function warnUnresolvedCommand<TTarget extends object, TEvent extends KeymapEven
   const warning: UnresolvedCommandWarning<TTarget, TEvent> = {
     command: binding.command,
     binding: binding.sourceBinding,
-    scope: binding.sourceScope,
     target: binding.sourceTarget,
   }
 
@@ -36,7 +34,7 @@ function warnUnresolvedCommand<TTarget extends object, TEvent extends KeymapEven
     `unresolved:${binding.sourceLayerOrder}:${binding.sourceBindingIndex}:${binding.command}:${sourceKey}`,
     "unresolved-command",
     warning,
-    `[Keymap] Unresolved command "${binding.command}" for binding "${sequence}" in ${binding.sourceScope} layer`,
+    `[Keymap] Unresolved command "${binding.command}" for binding "${sequence}"`,
   )
 }
 

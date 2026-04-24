@@ -26,7 +26,6 @@ describe("metadata addon", () => {
     registerMetadataFields(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-file",
@@ -39,7 +38,6 @@ describe("metadata addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
     })
 
@@ -55,7 +53,6 @@ describe("metadata addon", () => {
     registerMetadataFields(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-file",
@@ -68,7 +65,6 @@ describe("metadata addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
     })
 
@@ -85,7 +81,6 @@ describe("metadata addon", () => {
     registerMetadataFields(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-file",
@@ -98,7 +93,6 @@ describe("metadata addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
     })
 
@@ -121,7 +115,6 @@ describe("metadata addon", () => {
     registerMetadataFields(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-file",
@@ -134,7 +127,6 @@ describe("metadata addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "  Write file  ", group: "  File  " }],
     })
 
@@ -145,7 +137,6 @@ describe("metadata addon", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         commands: [
           {
             name: "bad-command",
@@ -158,7 +149,6 @@ describe("metadata addon", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "y", cmd: "save-file", group: "   " }],
       })
     }).not.toThrow()
@@ -178,7 +168,6 @@ describe("metadata addon", () => {
     offMetadata()
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "save-file",
@@ -191,7 +180,6 @@ describe("metadata addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "save-file", desc: "Write current file", group: "File" }],
     })
 

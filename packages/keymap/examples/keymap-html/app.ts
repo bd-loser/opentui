@@ -668,7 +668,6 @@ function disposers(): void {
   addons.registerBackspacePopsPendingSequence(keymap)
 
   keymap.registerLayer({
-    scope: "global",
     commands: [
       {
         name: "focus-next",
@@ -866,7 +865,6 @@ function disposers(): void {
   })
 
   keymap.registerLayer({
-    scope: "global",
     enabled: () => !promptVisible,
     bindings: [
       { key: "tab", cmd: "focus-next", desc: "Next focus target" },
@@ -882,7 +880,7 @@ function disposers(): void {
 
   keymap.registerLayer({
     target: alphaPanel,
-    scope: "focus-within",
+    targetMode: "focus-within",
     bindings: [
       { key: "j", cmd: "alpha-down", desc: "Alpha -1" },
       { key: "k", cmd: "alpha-up", desc: "Alpha +1" },
@@ -892,7 +890,7 @@ function disposers(): void {
 
   keymap.registerLayer({
     target: betaPanel,
-    scope: "focus-within",
+    targetMode: "focus-within",
     bindings: [
       { key: "j", cmd: "beta-down", desc: "Beta -1" },
       { key: "k", cmd: "beta-up", desc: "Beta +1" },
@@ -902,19 +900,19 @@ function disposers(): void {
 
   keymap.registerLayer({
     target: notesCard,
-    scope: "focus-within",
+    targetMode: "focus-within",
     bindings: [{ key: "ctrl+return", cmd: "capture-notes", desc: "Capture notes snapshot" }],
   })
 
   keymap.registerLayer({
     target: draftCard,
-    scope: "focus-within",
+    targetMode: "focus-within",
     bindings: [{ key: "ctrl+return", cmd: "capture-draft", desc: "Capture draft snapshot" }],
   })
 
   keymap.registerLayer({
     target: activeKeysCard,
-    scope: "focus-within",
+    targetMode: "focus-within",
     bindings: [
       { key: "j", cmd: "scroll-pane-down", desc: "Scroll active keys down" },
       { key: "k", cmd: "scroll-pane-up", desc: "Scroll active keys up" },
@@ -927,7 +925,7 @@ function disposers(): void {
 
   keymap.registerLayer({
     target: logCard,
-    scope: "focus-within",
+    targetMode: "focus-within",
     bindings: [
       { key: "j", cmd: "scroll-pane-down", desc: "Scroll recent actions down" },
       { key: "k", cmd: "scroll-pane-up", desc: "Scroll recent actions up" },
@@ -940,7 +938,7 @@ function disposers(): void {
 
   keymap.registerLayer({
     target: promptShell,
-    scope: "focus-within",
+    targetMode: "focus-within",
     enabled: () => promptVisible,
     bindings: [
       { key: "escape", cmd: "prompt-close", desc: "Close prompt" },

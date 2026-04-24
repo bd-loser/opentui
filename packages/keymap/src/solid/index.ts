@@ -1,5 +1,5 @@
 import type { KeyEvent, Renderable } from "@opentui/core"
-import { type Keymap, type LayerFields, type ReactiveMatcher } from "../index.js"
+import { type Keymap, type LayerFields, type ReactiveMatcher, type TargetMode } from "../index.js"
 import {
   createComponent,
   createContext,
@@ -40,24 +40,22 @@ export type UseBindingsTarget<TRenderable extends Renderable = Renderable> = () 
 type UseBindingsLayerBase = LayerFields<Renderable, KeyEvent>
 
 export interface UseGlobalBindingsLayer extends UseBindingsLayerBase {
-  scope?: "global"
   target?: undefined
 }
 
 export interface UseFocusBindingsLayer<TRenderable extends Renderable = Renderable> extends UseBindingsLayerBase {
-  scope: "focus"
+  targetMode: "focus"
   target: UseBindingsTarget<TRenderable>
 }
 
 export interface UseFocusWithinBindingsLayer<TRenderable extends Renderable = Renderable> extends UseBindingsLayerBase {
-  scope: "focus-within"
+  targetMode?: "focus-within"
   target: UseBindingsTarget<TRenderable>
 }
 
 export interface UseInferredFocusWithinBindingsLayer<
   TRenderable extends Renderable = Renderable,
 > extends UseBindingsLayerBase {
-  scope?: undefined
   target: UseBindingsTarget<TRenderable>
 }
 
@@ -144,13 +142,12 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
     const layer = createLayer()
     const hasExplicitTarget = layer.target !== undefined
     const explicitTarget = resolveBindingsTarget(layer.target)
-    const resolvedScope = layer.scope ?? (hasExplicitTarget ? "focus-within" : "global")
+    const nextTargetMode: TargetMode | undefined = layer.targetMode ?? (hasExplicitTarget ? "focus-within" : undefined)
 
-    const { scope: _scope, target: _target, ...baseLayer } = layer
-    if (resolvedScope === "global") {
+    const { target: _target, targetMode: _targetMode, ...baseLayer } = layer
+    if (!nextTargetMode) {
       const dispose = keymap.registerLayer({
         ...baseLayer,
-        scope: "global",
       })
 
       onCleanup(() => {
@@ -170,8 +167,8 @@ export function useBindings<TRenderable extends Renderable = Renderable>(
 
     const dispose = keymap.registerLayer({
       ...baseLayer,
-      scope: resolvedScope,
       target: explicitTarget,
+      targetMode: nextTargetMode,
     })
 
     onCleanup(() => {

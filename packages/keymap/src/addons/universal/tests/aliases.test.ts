@@ -24,7 +24,6 @@ describe("aliases field addon", () => {
 
     registerAliasesField(keymap)
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "submit",
@@ -35,7 +34,6 @@ describe("aliases field addon", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       aliases: { myenter: "return" },
       bindings: [{ key: { name: "myenter" }, cmd: "submit" }],
     })
@@ -53,7 +51,6 @@ describe("aliases field addon", () => {
 
     registerAliasesField(keymap)
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "submit",
@@ -64,7 +61,6 @@ describe("aliases field addon", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       aliases: { enter: "return" },
       bindings: [{ key: { name: "enter" }, cmd: "submit" }],
     })
@@ -78,9 +74,8 @@ describe("aliases field addon", () => {
     const keymap = getKeymap(renderer)
 
     registerAliasesField(keymap)
-    keymap.registerLayer({ scope: "global", commands: [{ name: "submit", run() {} }] })
+    keymap.registerLayer({ commands: [{ name: "submit", run() {} }] })
     keymap.registerLayer({
-      scope: "global",
       aliases: { enter: "return" },
       bindings: [{ key: { name: "enter" }, cmd: "submit" }],
     })
@@ -97,7 +92,6 @@ describe("aliases field addon", () => {
 
     registerAliasesField(keymap)
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "aliased",
@@ -114,12 +108,10 @@ describe("aliases field addon", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       aliases: { myenter: "return" },
       bindings: [{ key: { name: "myenter" }, cmd: "aliased" }],
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: { name: "myenter" }, cmd: "plain", preventDefault: false }],
     })
 
@@ -137,7 +129,6 @@ describe("aliases field addon", () => {
     offAliases()
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "submit",
@@ -148,7 +139,6 @@ describe("aliases field addon", () => {
       ],
     })
     keymap.registerLayer({
-      scope: "global",
       aliases: { enter: "return" },
       bindings: [{ key: { name: "enter" }, cmd: "submit" }],
     })
@@ -166,7 +156,6 @@ describe("aliases field addon", () => {
     registerAliasesField(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         { name: "submit-enter", run() {} },
         { name: "submit-return", run() {} },
@@ -174,7 +163,6 @@ describe("aliases field addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       aliases: { enter: "return" },
       bindings: [
         { key: { name: "enter" }, cmd: "submit-enter" },

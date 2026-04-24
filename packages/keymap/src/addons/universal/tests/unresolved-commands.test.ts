@@ -35,17 +35,15 @@ describe("unresolved command warnings addon", () => {
 
     registerUnresolvedCommandWarnings(keymap)
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "missing-command" }],
     })
 
-    expect(warnings).toEqual(['[Keymap] Unresolved command "missing-command" for binding "x" in global layer'])
+    expect(warnings).toEqual(['[Keymap] Unresolved command "missing-command" for binding "x"'])
     expect(events).toHaveLength(1)
     expect(events[0]).toMatchObject({
       code: "unresolved-command",
       warning: {
         command: "missing-command",
-        scope: "global",
         target: undefined,
         binding: {
           cmd: "missing-command",
@@ -61,7 +59,6 @@ describe("unresolved command warnings addon", () => {
 
     registerUnresolvedCommandWarnings(keymap)
     keymap.registerLayer({
-      scope: "global",
       commands: [{ name: "local-run", run() {} }],
       bindings: [{ key: "x", cmd: "local-run" }],
     })
@@ -82,7 +79,6 @@ describe("unresolved command warnings addon", () => {
       return { run() {} }
     })
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "resolved-by-resolver" }],
     })
 
@@ -95,7 +91,6 @@ describe("unresolved command warnings addon", () => {
 
     registerUnresolvedCommandWarnings(keymap)
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>x", cmd: "missing-command" }],
     })
 
@@ -103,7 +98,7 @@ describe("unresolved command warnings addon", () => {
 
     expect(warnings).toEqual([
       '[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored',
-      '[Keymap] Unresolved command "missing-command" for binding "x" in global layer',
+      '[Keymap] Unresolved command "missing-command" for binding "x"',
     ])
   })
 })

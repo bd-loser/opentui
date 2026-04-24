@@ -14,13 +14,12 @@ import type {
   LayerAnalyzer,
   LayerAnalysisContext,
   LayerBindingAnalysis,
-  Scope,
   ResolvedKeyToken,
   RegisteredCommand,
   RegisteredLayer,
-  RegisteredLayerBucket,
   RuntimeMatcher,
   SequenceNode,
+  TargetMode,
 } from "../types.js"
 import { RESERVED_LAYER_FIELDS } from "../schema.js"
 import type { State } from "./state.js"
@@ -32,19 +31,16 @@ import { getErrorMessage, snapshotDataValue } from "./values.js"
 
 const NOOP = (): void => {}
 
-function sortByPriorityAndOrder<T extends { priority: number; order: number }>(
-  items: T[],
-  options?: { order?: "asc" | "desc" },
-): T[] {
-  const orderDirection = options?.order ?? "asc"
-
-  return [...items].sort((a, b) => {
-    const priorityDiff = b.priority - a.priority
+function sortLayers<TTarget extends object, TEvent extends KeymapEvent>(
+  layers: readonly RegisteredLayer<TTarget, TEvent>[],
+): RegisteredLayer<TTarget, TEvent>[] {
+  return [...layers].sort((left, right) => {
+    const priorityDiff = right.priority - left.priority
     if (priorityDiff !== 0) {
       return priorityDiff
     }
 
-    return orderDirection === "desc" ? b.order - a.order : a.order - b.order
+    return right.order - left.order
   })
 }
 
@@ -103,7 +99,6 @@ interface LayersOptions<TTarget extends object, TEvent extends KeymapEvent> {
 }
 
 interface AnalyzeLayerOptions<TTarget extends object, TEvent extends KeymapEvent> {
-  scope: Scope
   target?: TTarget
   order: number
   commandLookup?: ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>>
@@ -144,7 +139,6 @@ function buildLayerBindingAnalyses<TTarget extends object, TEvent extends Keymap
       preventDefault: binding.preventDefault,
       fallthrough: binding.fallthrough,
       sourceBinding: snapshotParsedBindingInput(binding.sourceBinding),
-      sourceScope: binding.sourceScope,
       sourceTarget: binding.sourceTarget,
       sourceLayerOrder: binding.sourceLayerOrder,
       sourceBindingIndex: binding.sourceBindingIndex,
@@ -175,7 +169,6 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         return NOOP
       }
 
-      let scope: Scope
       let bindingInputs: BindingInput<TTarget, TEvent>[]
       let requires: readonly [name: string, value: unknown][]
       let matchers: readonly RuntimeMatcher[]
@@ -184,11 +177,10 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       let compileFields: Readonly<Record<string, unknown>> | undefined
       let commands: readonly RegisteredCommand<TTarget, TEvent>[]
       let commandLookup: ReadonlyMap<string, RegisteredCommand<TTarget, TEvent>> | undefined
-      let indexTarget: TTarget
+      let targetMode: TargetMode | undefined
 
       try {
-        scope = this.normalizeScope(layer)
-        indexTarget = layer.target ?? this.options.host.rootTarget
+        targetMode = this.normalizeTargetMode(layer)
         bindingInputs = snapshotBindingInputs(layer.bindings ?? [])
         commands =
           !layer.commands || layer.commands.length === 0 ? [] : this.options.commands.normalizeCommands(layer.commands)
@@ -204,7 +196,6 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       const compiledBindings = this.options.compiler.compileBindings(
         bindingInputs,
         this.state.environment.tokens,
-        scope,
         target,
         order,
         compileFields,
@@ -215,7 +206,6 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       }
 
       this.runLayerAnalyzers({
-        scope,
         target,
         order,
         commandLookup,
@@ -228,8 +218,7 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       const registeredLayer: RegisteredLayer<TTarget, TEvent> = {
         order,
         target,
-        indexTarget,
-        scope,
+        targetMode,
         priority: layer.priority ?? 0,
         requires,
         matchers,
@@ -265,6 +254,8 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
         this.conditions.registerRuntimeMatchable(binding)
       }
       this.indexLayer(registeredLayer)
+      this.activation.invalidateActiveLayers()
+      this.activation.refreshActiveLayers()
 
       if (target) {
         const onTargetDestroy = () => {
@@ -300,7 +291,6 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
           this.options.compiler.compileBindings(
             layer.bindingInputs,
             nextTokens,
-            layer.scope,
             layer.target,
             layer.order,
             layer.compileFields,
@@ -313,7 +303,6 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       let shouldClearPending = false
       for (const [layer, compilation] of nextCompilations) {
         this.runLayerAnalyzers({
-          scope: layer.scope,
           target: layer.target,
           order: layer.order,
           commandLookup: layer.commandLookup,
@@ -361,21 +350,18 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     this.state.layers.layerAnalyzers.clear()
   }
 
-  private normalizeScope(layer: Layer<TTarget, TEvent>): Scope {
-    if (layer.scope) {
-      if (layer.scope !== "global" && !layer.target) {
-        throw new Error(`Keymap scope "${layer.scope}" requires a target`)
+  private normalizeTargetMode(layer: Layer<TTarget, TEvent>): TargetMode | undefined {
+    if (layer.targetMode) {
+      if (!layer.target) {
+        throw new Error(`Keymap targetMode "${layer.targetMode}" requires a target`)
       }
 
-      return layer.scope
+      return layer.targetMode
     }
 
-    if (layer.target) {
-      return "focus-within"
-    }
-
-    return "global"
+    return layer.target ? "focus-within" : undefined
   }
+
   private runLayerAnalyzers(options: AnalyzeLayerOptions<TTarget, TEvent>): void {
     const analyzers = this.state.layers.layerAnalyzers.values()
     if (analyzers.length === 0) {
@@ -385,7 +371,6 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     const bindings = buildLayerBindingAnalyses(options.root, options.compiledBindings)
 
     const ctx: LayerAnalysisContext<TTarget, TEvent> = {
-      scope: options.scope,
       target: options.target,
       order: options.order,
       bindingInputs: options.bindingInputs,
@@ -462,48 +447,14 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
     }
   }
 
-  private getOrCreateTargetBucket(target: TTarget): RegisteredLayerBucket<TTarget, TEvent> {
-    const existing = this.state.layers.targetLayers.get(target)
-    if (existing) {
-      return existing
-    }
-
-    const bucket: RegisteredLayerBucket<TTarget, TEvent> = {
-      focusLayers: [],
-      focusWithinLayers: [],
-    }
-    this.state.layers.targetLayers.set(target, bucket)
-    return bucket
-  }
-
   private indexLayer(layer: RegisteredLayer<TTarget, TEvent>): void {
-    const bucket = this.getOrCreateTargetBucket(layer.indexTarget)
-    if (layer.scope === "focus") {
-      bucket.focusLayers = sortByPriorityAndOrder([...bucket.focusLayers, layer], { order: "desc" })
-    } else {
-      bucket.focusWithinLayers = sortByPriorityAndOrder([...bucket.focusWithinLayers, layer], { order: "desc" })
-    }
-
-    layer.bucket = bucket
+    this.state.layers.sortedLayers = sortLayers([...this.state.layers.sortedLayers, layer])
+    this.state.layers.activeLayersVersion += 1
   }
 
   private removeLayerFromIndex(layer: RegisteredLayer<TTarget, TEvent>): void {
-    const bucket = layer.bucket
-    if (!bucket) {
-      return
-    }
-
-    if (layer.scope === "focus") {
-      bucket.focusLayers = bucket.focusLayers.filter((candidate) => candidate !== layer)
-    } else {
-      bucket.focusWithinLayers = bucket.focusWithinLayers.filter((candidate) => candidate !== layer)
-    }
-
-    if (bucket.focusLayers.length === 0 && bucket.focusWithinLayers.length === 0) {
-      this.state.layers.targetLayers.delete(layer.indexTarget)
-    }
-
-    layer.bucket = undefined
+    this.state.layers.sortedLayers = this.state.layers.sortedLayers.filter((candidate) => candidate !== layer)
+    this.state.layers.activeLayersVersion += 1
   }
 
   private unregisterLayer(layer: RegisteredLayer<TTarget, TEvent>): void {
@@ -531,6 +482,8 @@ export class LayerService<TTarget extends object, TEvent extends KeymapEvent> {
       }
 
       this.removeLayerFromIndex(layer)
+      this.activation.invalidateActiveLayers()
+      this.activation.refreshActiveLayers()
       layer.offTargetDestroy?.()
       layer.offTargetDestroy = undefined
 

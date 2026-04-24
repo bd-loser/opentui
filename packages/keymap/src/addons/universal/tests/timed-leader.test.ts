@@ -23,7 +23,6 @@ describe("timed leader addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "leader-action",
@@ -39,7 +38,6 @@ describe("timed leader addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })
 
@@ -54,7 +52,6 @@ describe("timed leader addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "leader-action",
@@ -70,7 +67,6 @@ describe("timed leader addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })
 
@@ -86,7 +82,6 @@ describe("timed leader addon", () => {
     const states: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "leader-action",
@@ -109,7 +104,6 @@ describe("timed leader addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })
 
@@ -137,7 +131,6 @@ describe("timed leader addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "leader-action",
@@ -147,7 +140,6 @@ describe("timed leader addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>a", cmd: "leader-action" }],
     })
 

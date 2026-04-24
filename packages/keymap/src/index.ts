@@ -71,7 +71,7 @@ export type {
   ReactiveMatcher,
   WarningEvent,
   ResolvedBindingCommand,
-  Scope,
+  TargetMode,
   EventMatchResolverContext,
   EventMatchResolver,
   TargetLayer,

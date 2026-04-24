@@ -32,7 +32,6 @@ describe("ex commands addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "fallback",
@@ -58,7 +57,6 @@ describe("ex commands addon", () => {
     renderer.root.add(target)
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "x", cmd: "fallback" },
         { key: "y", cmd: ":w file.txt" },
@@ -174,7 +172,6 @@ describe("ex commands addon", () => {
     ])
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: ":w file.txt" }],
     })
 
@@ -227,7 +224,6 @@ describe("ex commands addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "fallback",
@@ -239,7 +235,6 @@ describe("ex commands addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: "fallback" }],
     })
 
@@ -254,7 +249,6 @@ describe("ex commands addon", () => {
     ])
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", cmd: ":w file.txt" }],
     })
 

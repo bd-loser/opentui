@@ -776,7 +776,6 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
 
   disposers.push(
     keymapInstance.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "focus-next",
@@ -908,7 +907,6 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
 
   disposers.push(
     keymapInstance.registerLayer({
-      scope: "global",
       enabled: () => !commandPromptVisible,
       bindings: [
         { key: "tab", cmd: "focus-next", desc: "Next target" },
@@ -924,7 +922,6 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
 
   disposers.push(
     keymapInstance.registerLayer({
-      scope: "global",
       enabled: () => !commandPromptVisible,
       bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }],
     }),
@@ -987,7 +984,6 @@ function registerCommandLayers(renderer: CliRenderer, keymapInstance: Keymap<Ren
 
   disposers.push(
     addons.registerManagedTextareaLayer(keymapInstance, renderer, {
-      scope: "global",
       enabled: () => !commandPromptVisible && renderer.currentFocusedEditor !== null,
       bindings: [
         { key: "left", cmd: "move-left", desc: "Cursor left" },

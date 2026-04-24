@@ -37,19 +37,17 @@ describe("dead binding warnings addon", () => {
     registerDeadBindingWarnings(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x" }],
     })
 
     expect(warnings).toEqual([
-      '[Keymap] Binding "x" in global layer has no command and no reachable continuations; it will never trigger',
+      '[Keymap] Binding "x" has no command and no reachable continuations; it will never trigger',
     ])
     expect(events).toHaveLength(1)
     expect(events[0]).toMatchObject({
       code: "dead-binding",
       warning: {
         binding: { key: "x" },
-        scope: "global",
         target: undefined,
       },
     })
@@ -61,7 +59,6 @@ describe("dead binding warnings addon", () => {
     registerDeadBindingWarnings(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "g" }, { key: "gd", cmd: () => {} }],
     })
 
@@ -74,12 +71,11 @@ describe("dead binding warnings addon", () => {
     registerDeadBindingWarnings(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x", event: "release" }],
     })
 
     expect(warnings).toEqual([
-      '[Keymap] Binding "x" in global layer has no command and no reachable continuations; it will never trigger',
+      '[Keymap] Binding "x" has no command and no reachable continuations; it will never trigger',
     ])
   })
 
@@ -89,7 +85,6 @@ describe("dead binding warnings addon", () => {
     registerDeadBindingWarnings(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "<leader>x" }],
     })
 
@@ -97,7 +92,7 @@ describe("dead binding warnings addon", () => {
 
     expect(warnings).toEqual([
       '[Keymap] Unknown token "<leader>" in key sequence "<leader>x" was ignored',
-      '[Keymap] Binding "x" in global layer has no command and no reachable continuations; it will never trigger',
+      '[Keymap] Binding "x" has no command and no reachable continuations; it will never trigger',
     ])
   })
 
@@ -108,7 +103,6 @@ describe("dead binding warnings addon", () => {
 
     registerDeadBindingWarnings(keymap)
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "run",

@@ -67,7 +67,6 @@ describe("solid keymap hooks", () => {
     function GlobalBindings() {
       const manager = useKeymap()
       const offCommands = manager.registerLayer({
-        scope: "global",
         commands: [
           {
             name: "global",
@@ -79,7 +78,6 @@ describe("solid keymap hooks", () => {
       })
 
       useBindings(() => ({
-        scope: "global",
         bindings: {
           x: "global",
         },
@@ -126,7 +124,7 @@ describe("solid keymap hooks", () => {
       const [tick, setTickSignal] = createSignal(0)
       setTick = setTickSignal
 
-      const offCommands = manager.registerLayer({ scope: "global", commands: [{ name: "probe", run() {} }] })
+      const offCommands = manager.registerLayer({ commands: [{ name: "probe", run() {} }] })
       const original = manager.registerLayer.bind(manager)
       manager.registerLayer = ((layer) => {
         registerCalls += 1
@@ -134,7 +132,6 @@ describe("solid keymap hooks", () => {
       }) as typeof manager.registerLayer
 
       useBindings(() => ({
-        scope: "global",
         bindings: { x: "probe" },
       }))
 
@@ -166,7 +163,6 @@ describe("solid keymap hooks", () => {
       const [secondBindingTarget, setSecondBindingTarget] = createSignal<Renderable | undefined>(undefined)
       const activeKeys = useKeymapSelector((keymap) => keymap.getActiveKeys())
       const offCommands = manager.registerLayer({
-        scope: "global",
         commands: [
           { name: "first", run() {} },
           { name: "second", run() {} },
@@ -174,12 +170,12 @@ describe("solid keymap hooks", () => {
       })
 
       useBindings(() => ({
-        scope: "focus-within",
+        targetMode: "focus-within",
         target: firstBindingTarget,
         bindings: { x: "first" },
       }))
       useBindings(() => ({
-        scope: "focus-within",
+        targetMode: "focus-within",
         target: secondBindingTarget,
         bindings: { y: "second" },
       }))
@@ -240,10 +236,9 @@ describe("solid keymap hooks", () => {
     function App() {
       const manager = useKeymap()
       const pendingSequence = useKeymapSelector((keymap) => keymap.getPendingSequence())
-      const offCommands = manager.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
+      const offCommands = manager.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
 
       useBindings(() => ({
-        scope: "global",
         bindings: [{ key: "dd", cmd: "delete-line" }],
       }))
 
@@ -281,7 +276,6 @@ describe("solid keymap hooks", () => {
       setActive = setActiveSignal
 
       const offCommands = manager.registerLayer({
-        scope: "global",
         commands: [
           {
             name: "target",
@@ -297,7 +291,7 @@ describe("solid keymap hooks", () => {
       })
 
       useBindings(() => ({
-        scope: "focus-within",
+        targetMode: "focus-within",
         target,
         bindings: [{ key: "x", cmd: "target" }],
       }))
@@ -333,7 +327,6 @@ describe("solid keymap hooks", () => {
 
       const offEnabled = addons.registerEnabledField(manager)
       const offCommands = manager.registerLayer({
-        scope: "global",
         commands: [
           {
             name: "reactive",
@@ -345,7 +338,6 @@ describe("solid keymap hooks", () => {
       })
 
       useBindings(() => ({
-        scope: "global",
         enabled: reactiveMatcherFromSignal(enabled),
         bindings: { x: "reactive" },
       }))
@@ -375,7 +367,7 @@ describe("solid keymap hooks", () => {
   test("useBindings rejects local bindings without a target accessor", async () => {
     function App() {
       useBindings(() => ({
-        scope: "focus-within",
+        targetMode: "focus-within",
         bindings: { x: "target" },
       }))
 
@@ -401,7 +393,6 @@ describe("solid keymap hooks", () => {
       setVisible = setVisibleSignal
 
       const offCommands = manager.registerLayer({
-        scope: "global",
         commands: [
           {
             name: "target",
@@ -413,7 +404,7 @@ describe("solid keymap hooks", () => {
       })
 
       useBindings<Renderable>(() => ({
-        scope: "focus-within",
+        targetMode: "focus-within",
         target,
         bindings: { x: "target" },
       }))
@@ -467,7 +458,7 @@ describe("solid keymap hooks", () => {
       const [target, setTarget] = createSignal<Renderable | undefined>(undefined)
 
       useBindings<Renderable>(() => ({
-        scope: "focus-within",
+        targetMode: "focus-within",
         target,
         commands: [
           {
@@ -497,7 +488,6 @@ describe("solid keymap hooks", () => {
       setDialogOpen = setDialogOpenSignal
 
       useBindings(() => ({
-        scope: "global",
         commands: [
           {
             name: "root-refresh",
@@ -624,7 +614,7 @@ describe("solid keymap hooks", () => {
       const [target, setTarget] = createSignal<Renderable | undefined>(undefined)
 
       useBindings<Renderable>(() => ({
-        scope: "focus-within",
+        targetMode: "focus-within",
         target,
         commands: [
           {
@@ -654,7 +644,6 @@ describe("solid keymap hooks", () => {
       setDialogOpen = setDialogOpenSignal
 
       useBindings(() => ({
-        scope: "global",
         commands: [
           {
             name: "root-refresh",
@@ -672,7 +661,6 @@ describe("solid keymap hooks", () => {
       }))
 
       useBindings(() => ({
-        scope: "global",
         bindings: [
           { key: "<leader>r", cmd: "root-refresh", desc: "root-refresh" },
           { key: "<leader>s", cmd: "root-save", desc: "root-save" },
@@ -769,7 +757,6 @@ describe("solid keymap hooks", () => {
     function App() {
       const manager = useKeymap()
       const offCommands = manager.registerLayer({
-        scope: "global",
         commands: [
           {
             name: "guarded",
@@ -787,7 +774,6 @@ describe("solid keymap hooks", () => {
       setEnabled = setter
 
       useBindings(() => ({
-        scope: "global",
         enabled: reactiveMatcherFromSignal(enabled),
         bindings: { x: "guarded" },
       }))
@@ -825,7 +811,6 @@ describe("solid keymap hooks", () => {
       })
 
       useBindings(() => ({
-        scope: "global",
         enabled: matcher,
         bindings: { x: "probe" },
       }))
@@ -839,7 +824,7 @@ describe("solid keymap hooks", () => {
 
       const manager = useKeymap()
       addons.registerEnabledField(manager)
-      const offCommands = manager.registerLayer({ scope: "global", commands: [{ name: "probe", run() {} }] })
+      const offCommands = manager.registerLayer({ commands: [{ name: "probe", run() {} }] })
       onCleanup(offCommands)
 
       return <Show when={mounted()}>{() => <Child />}</Show>
@@ -867,7 +852,6 @@ describe("solid keymap hooks", () => {
     function App() {
       const manager = useKeymap()
       const offCommands = manager.registerLayer({
-        scope: "global",
         commands: [
           {
             name: "normal-only",
@@ -885,7 +869,6 @@ describe("solid keymap hooks", () => {
       setMode = setter
 
       useBindings(() => ({
-        scope: "global",
         enabled: reactiveMatcherFromSignal(mode, (value) => value === "normal"),
         bindings: { x: "normal-only" },
       }))

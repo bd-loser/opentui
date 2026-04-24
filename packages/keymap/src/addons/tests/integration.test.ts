@@ -80,7 +80,6 @@ describe("keymap addon composition", () => {
     ])
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "focus-next",
@@ -150,7 +149,6 @@ describe("keymap addon composition", () => {
     })
 
     const offManagedTextareas = registerManagedTextareaLayer(keymap, renderer, {
-      scope: "global",
       bindings: [{ key: "dd", cmd: "delete-line" }],
     })
 

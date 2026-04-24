@@ -303,7 +303,6 @@ function CounterPanel(props: {
   const decrementCommand = `${props.id}-down`
 
   const offCommands = manager.registerLayer({
-    scope: "global",
     commands: [
       {
         name: incrementCommand,
@@ -509,7 +508,6 @@ function KeymapDemoContent() {
   }
 
   const offCommands = manager.registerLayer({
-    scope: "global",
     commands: [
       {
         name: "focus-next",
@@ -691,7 +689,6 @@ function KeymapDemoContent() {
   const offBackspacePending = addons.registerBackspacePopsPendingSequence(manager)
 
   const offManagedTextareas = addons.registerManagedTextareaLayer(manager, renderer, {
-    scope: "global",
     enabled: () => !commandPromptVisible() && renderer.currentFocusedEditor !== null,
     bindings: [
       { key: "left", cmd: "move-left", desc: "Cursor left" },
@@ -709,7 +706,6 @@ function KeymapDemoContent() {
   })
 
   useBindings(() => ({
-    scope: "global",
     enabled: () => !commandPromptVisible(),
     bindings: [
       { key: "tab", cmd: "focus-next", desc: "Next target" },
@@ -723,7 +719,6 @@ function KeymapDemoContent() {
   }))
 
   useBindings(() => ({
-    scope: "global",
     enabled: () => !commandPromptVisible(),
     bindings: [{ key: ":", cmd: "open-ex-prompt", desc: "Open ex prompt" }],
   }))

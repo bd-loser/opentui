@@ -22,7 +22,6 @@ describe("escape clears pending sequence addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "delete-line",
@@ -40,7 +39,6 @@ describe("escape clears pending sequence addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "dd", cmd: "delete-line" },
         { key: "escape", cmd: "escape-command" },
@@ -74,7 +72,6 @@ describe("escape clears pending sequence addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "delete-line",
@@ -92,7 +89,6 @@ describe("escape clears pending sequence addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "dd", cmd: "delete-line" },
         { key: "escape", cmd: "escape-command" },
@@ -115,7 +111,6 @@ describe("escape clears pending sequence addon", () => {
     const calls: string[] = []
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "delete-line",
@@ -133,7 +128,6 @@ describe("escape clears pending sequence addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [
         { key: "dd", cmd: "delete-line" },
         { key: "escape", cmd: "escape-command" },

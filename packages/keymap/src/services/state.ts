@@ -18,7 +18,6 @@ import type {
   RawInputContext,
   RegisteredCommand,
   RegisteredLayer,
-  RegisteredLayerBucket,
   ResolvedBindingCommand,
   RuntimeMatchable,
 } from "../types.js"
@@ -48,7 +47,11 @@ export interface DispatchState<TEvent extends KeymapEvent> {
 
 export interface LayersState<TTarget extends object, TEvent extends KeymapEvent> {
   layers: Set<RegisteredLayer<TTarget, TEvent>>
-  targetLayers: WeakMap<TTarget, RegisteredLayerBucket<TTarget, TEvent>>
+  sortedLayers: RegisteredLayer<TTarget, TEvent>[]
+  activeLayersVersion: number
+  activeLayersCacheVersion: number
+  activeLayersCacheFocused: TTarget | null | undefined
+  activeLayersCache: readonly RegisteredLayer<TTarget, TEvent>[]
   layersWithConditions: number
   layersWithCommands: number
   layerAnalyzers: OrderedRegistry<LayerAnalyzer<TTarget, TEvent>>
@@ -154,7 +157,11 @@ export function createKeymapState<TTarget extends object, TEvent extends KeymapE
     },
     layers: {
       layers: new Set<RegisteredLayer<TTarget, TEvent>>(),
-      targetLayers: new WeakMap<TTarget, RegisteredLayerBucket<TTarget, TEvent>>(),
+      sortedLayers: [],
+      activeLayersVersion: 0,
+      activeLayersCacheVersion: -1,
+      activeLayersCacheFocused: undefined,
+      activeLayersCache: [],
       layersWithConditions: 0,
       layersWithCommands: 0,
       layerAnalyzers: new OrderedRegistry<LayerAnalyzer<TTarget, TEvent>>(),

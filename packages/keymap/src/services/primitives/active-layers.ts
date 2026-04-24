@@ -1,4 +1,12 @@
-import type { KeymapEvent, KeymapHost, RegisteredLayer, RegisteredLayerBucket } from "../../types.js"
+import type { KeymapEvent, KeymapHost, RegisteredLayer } from "../../types.js"
+
+export interface ActiveLayerCacheState<TTarget extends object, TEvent extends KeymapEvent> {
+  sortedLayers: readonly RegisteredLayer<TTarget, TEvent>[]
+  activeLayersVersion: number
+  activeLayersCacheVersion: number
+  activeLayersCacheFocused: TTarget | null | undefined
+  activeLayersCache: readonly RegisteredLayer<TTarget, TEvent>[]
+}
 
 export function getFocusedTargetIfAvailable<TTarget extends object, TEvent extends KeymapEvent>(
   host: KeymapHost<TTarget, TEvent>,
@@ -29,52 +37,77 @@ export function forEachActivationTarget<TTarget extends object, TEvent extends K
   }
 }
 
+export function getActivationPath<TTarget extends object, TEvent extends KeymapEvent>(
+  host: KeymapHost<TTarget, TEvent>,
+  focused: TTarget | null,
+): Set<TTarget> {
+  const path = new Set<TTarget>()
+  forEachActivationTarget(host, focused, (current) => {
+    path.add(current)
+  })
+
+  return path
+}
+
 export function getActiveLayersForFocused<TTarget extends object, TEvent extends KeymapEvent>(
-  targetLayers: WeakMap<TTarget, RegisteredLayerBucket<TTarget, TEvent>>,
+  sortedLayers: readonly RegisteredLayer<TTarget, TEvent>[],
   host: KeymapHost<TTarget, TEvent>,
   focused: TTarget | null,
 ): RegisteredLayer<TTarget, TEvent>[] {
   const activeLayers: RegisteredLayer<TTarget, TEvent>[] = []
+  const activationPath = getActivationPath(host, focused)
 
-  forEachActivationTarget(host, focused, (current, isFocusedTarget) => {
-    const bucket = targetLayers.get(current)
-    if (!bucket) {
-      return
+  for (const layer of sortedLayers) {
+    if (isLayerActiveForFocused(host, layer, focused, activationPath)) {
+      activeLayers.push(layer)
     }
-
-    if (isFocusedTarget) {
-      activeLayers.push(...bucket.focusLayers)
-    }
-
-    activeLayers.push(...bucket.focusWithinLayers)
-  })
+  }
 
   return activeLayers
+}
+
+export function getCachedActiveLayersForFocused<TTarget extends object, TEvent extends KeymapEvent>(
+  state: ActiveLayerCacheState<TTarget, TEvent>,
+  host: KeymapHost<TTarget, TEvent>,
+  focused: TTarget | null,
+): readonly RegisteredLayer<TTarget, TEvent>[] {
+  if (state.activeLayersCacheVersion === state.activeLayersVersion && state.activeLayersCacheFocused === focused) {
+    return state.activeLayersCache
+  }
+
+  const activeLayers = getActiveLayersForFocused(state.sortedLayers, host, focused)
+  state.activeLayersCacheVersion = state.activeLayersVersion
+  state.activeLayersCacheFocused = focused
+  state.activeLayersCache = activeLayers
+  return activeLayers
+}
+
+export function invalidateCachedActiveLayers<TTarget extends object, TEvent extends KeymapEvent>(
+  state: ActiveLayerCacheState<TTarget, TEvent>,
+): void {
+  state.activeLayersCacheVersion = -1
+  state.activeLayersCacheFocused = undefined
+  state.activeLayersCache = []
 }
 
 export function isLayerActiveForFocused<TTarget extends object, TEvent extends KeymapEvent>(
   host: KeymapHost<TTarget, TEvent>,
   layer: RegisteredLayer<TTarget, TEvent>,
   focused: TTarget | null,
+  activationPath: ReadonlySet<TTarget> = getActivationPath(host, focused),
 ): boolean {
-  const target = layer.indexTarget
+  const target = layer.target
+  if (!target) {
+    return true
+  }
+
   if (host.isTargetDestroyed(target)) {
     return false
   }
 
-  if (layer.scope === "focus") {
+  if (layer.targetMode === "focus") {
     return target === focused
   }
 
-  let isActive = false
-  forEachActivationTarget(host, focused, (current) => {
-    if (current === target) {
-      isActive = true
-      return false
-    }
-
-    return true
-  })
-
-  return isActive
+  return activationPath.has(target)
 }

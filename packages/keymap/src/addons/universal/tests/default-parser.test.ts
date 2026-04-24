@@ -28,7 +28,6 @@ describe("default parser addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       commands: [{ name: "run", run() {} }],
       bindings: [{ key: "x", cmd: "run" }],
     })
@@ -44,7 +43,6 @@ describe("default parser addon", () => {
     registerDefaultKeys(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "run",
@@ -70,7 +68,6 @@ describe("default parser addon", () => {
     registerDefaultKeys(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "space",
@@ -93,7 +90,6 @@ describe("default parser addon", () => {
     registerDefaultKeys(keymap)
 
     keymap.registerLayer({
-      scope: "global",
       commands: [{ name: "run", run() {} }],
       bindings: terminalNamedSingleStrokeKeys.map((key) => ({ key, cmd: "run" })),
     })

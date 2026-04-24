@@ -127,7 +127,7 @@ export function registerExCommands<TTarget extends object, TEvent extends Keymap
     }
   }
 
-  const offCommands = keymap.registerLayer({ scope: "global", commands: registrations })
+  const offCommands = keymap.registerLayer({ commands: registrations })
   const offResolver = keymap.appendCommandResolver((input, ctx) => {
     if (!input.startsWith(":")) {
       return undefined

@@ -84,7 +84,6 @@ describe("solid keymap leader behavior", () => {
         const [bindingsEnabled] = createSignal(true)
 
         useBindings(() => ({
-          scope: "global",
           commands: [
             {
               name: "command.palette.show",
@@ -180,7 +179,6 @@ describe("solid keymap leader behavior", () => {
         }))
 
         useBindings(() => ({
-          scope: "global",
           enabled: reactiveMatcherFromSignal(bindingsEnabled),
           bindings: [
             { key: "ctrl+p", cmd: "command.palette.show", desc: "command.palette.show" },
@@ -202,13 +200,12 @@ describe("solid keymap leader behavior", () => {
         }))
 
         useBindings(() => ({
-          scope: "focus-within",
+          targetMode: "focus-within",
           target: () => editor,
           bindings: [{ key: "!", cmd: () => calls.push("prompt.shell") }],
         }))
 
         useBindings(() => ({
-          scope: "global",
           commands: [
             {
               name: "tips.toggle",
@@ -252,9 +249,7 @@ describe("solid keymap leader behavior", () => {
             trigger: { name: "x", ctrl: true },
             timeoutMs: 1_000,
           })
-          offManagedTextarea = registerManagedTextareaLayer(keymap, renderer, {
-            scope: "global",
-          })
+          offManagedTextarea = registerManagedTextareaLayer(keymap, renderer, {})
         },
       },
     )
@@ -292,7 +287,6 @@ describe("solid keymap leader behavior", () => {
         setBindingsEnabled = setBindingsEnabledSignal
 
         useBindings(() => ({
-          scope: "global",
           commands: [
             {
               name: "console-toggle",
@@ -310,7 +304,6 @@ describe("solid keymap leader behavior", () => {
         }))
 
         useBindings(() => ({
-          scope: "global",
           enabled: reactiveMatcherFromSignal(bindingsEnabled),
           bindings: [
             { key: "ctrl+p", cmd: "console-toggle", desc: "console-toggle" },
@@ -364,7 +357,6 @@ describe("solid keymap leader behavior", () => {
 
     function GlobalCommands() {
       useBindings(() => ({
-        scope: "global",
         commands: [
           {
             name: "session.list",
@@ -394,7 +386,6 @@ describe("solid keymap leader behavior", () => {
       const [bindingsEnabled] = createSignal(true)
 
       useBindings(() => ({
-        scope: "global",
         enabled: reactiveMatcherFromSignal(bindingsEnabled),
         bindings: [
           { key: "<leader>l", cmd: "session.list", desc: "session.list" },
@@ -408,7 +399,6 @@ describe("solid keymap leader behavior", () => {
 
     function TipsBindings() {
       useBindings(() => ({
-        scope: "global",
         commands: [
           {
             name: "tips.toggle",
@@ -425,7 +415,7 @@ describe("solid keymap leader behavior", () => {
 
     function PromptBindings() {
       useBindings(() => ({
-        scope: "focus-within",
+        targetMode: "focus-within",
         target: () => editor,
         bindings: [
           { key: "!", cmd: () => calls.push("prompt.shell") },
@@ -435,7 +425,7 @@ describe("solid keymap leader behavior", () => {
       }))
 
       useBindings(() => ({
-        scope: "focus-within",
+        targetMode: "focus-within",
         target: () => editor,
         bindings: [{ key: "tab", cmd: () => calls.push("prompt.tab") }],
       }))
@@ -480,9 +470,7 @@ describe("solid keymap leader behavior", () => {
             trigger: { name: "x", ctrl: true },
             timeoutMs: 1_000,
           })
-          offManagedTextarea = registerManagedTextareaLayer(keymap, renderer, {
-            scope: "global",
-          })
+          offManagedTextarea = registerManagedTextareaLayer(keymap, renderer, {})
         },
       },
     )

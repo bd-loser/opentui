@@ -23,7 +23,6 @@ describe("comma bindings addon", () => {
 
     registerCommaBindings(keymap)
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "command",
@@ -35,7 +34,6 @@ describe("comma bindings addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x, y", cmd: "command" }],
     })
 
@@ -56,7 +54,6 @@ describe("comma bindings addon", () => {
 
     expect(() => {
       keymap.registerLayer({
-        scope: "global",
         bindings: [{ key: "x,,y", cmd() {} }],
       })
     }).not.toThrow()
@@ -73,7 +70,6 @@ describe("comma bindings addon", () => {
     offCommaBindings()
 
     keymap.registerLayer({
-      scope: "global",
       commands: [
         {
           name: "sequence",
@@ -85,7 +81,6 @@ describe("comma bindings addon", () => {
     })
 
     keymap.registerLayer({
-      scope: "global",
       bindings: [{ key: "x,y", cmd: "sequence" }],
     })
 

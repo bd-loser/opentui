@@ -172,13 +172,21 @@ export type Bindings<TTarget extends object = object, TEvent extends KeymapEvent
   | BindingInput<TTarget, TEvent>[]
   | BindingShorthand<TTarget, TEvent>
 
-export type Scope = "global" | "focus" | "focus-within"
+export type TargetMode = "focus" | "focus-within"
 
 export interface LayerFields<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   priority?: number
   bindings?: Bindings<TTarget, TEvent>
   commands?: readonly CommandDefinition<TTarget, TEvent>[]
+  targetMode?: TargetMode
   [key: string]: unknown
+}
+
+export interface Layer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> extends LayerFields<
+  TTarget,
+  TEvent
+> {
+  target?: TTarget
 }
 
 export interface GlobalLayer<
@@ -186,7 +194,6 @@ export interface GlobalLayer<
   TEvent extends KeymapEvent = KeymapEvent,
 > extends LayerFields<TTarget, TEvent> {
   target?: undefined
-  scope?: "global"
 }
 
 export interface FocusWithinLayer<
@@ -194,7 +201,7 @@ export interface FocusWithinLayer<
   TEvent extends KeymapEvent = KeymapEvent,
 > extends LayerFields<TTarget, TEvent> {
   target: TTarget
-  scope?: "focus-within"
+  targetMode?: TargetMode
 }
 
 export interface FocusLayer<
@@ -202,16 +209,12 @@ export interface FocusLayer<
   TEvent extends KeymapEvent = KeymapEvent,
 > extends LayerFields<TTarget, TEvent> {
   target: TTarget
-  scope: "focus"
+  targetMode?: TargetMode
 }
 
 export type TargetLayer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
   | FocusWithinLayer<TTarget, TEvent>
   | FocusLayer<TTarget, TEvent>
-
-export type Layer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> =
-  | GlobalLayer<TTarget, TEvent>
-  | TargetLayer<TTarget, TEvent>
 
 export interface ParsedCommand {
   input: string
@@ -324,7 +327,6 @@ export interface LayerFieldContext {
 export type LayerFieldCompiler = (value: unknown, ctx: LayerFieldContext) => void
 
 export interface LayerAnalysisContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
-  scope: Scope
   target?: TTarget
   order: number
   bindingInputs: readonly BindingInput<TTarget, TEvent>[]
@@ -344,7 +346,6 @@ export interface LayerBindingAnalysis<TTarget extends object = object, TEvent ex
   preventDefault: boolean
   fallthrough: boolean
   sourceBinding: ParsedBindingInput<TTarget, TEvent>
-  sourceScope: Scope
   sourceTarget?: TTarget
   sourceLayerOrder: number
   sourceBindingIndex: number
@@ -541,7 +542,6 @@ export interface CompiledBinding<TTarget extends object = object, TEvent extends
   extends ActiveBinding<TTarget, TEvent>, RuntimeMatchable {
   run?: CommandHandler<TTarget, TEvent>
   sourceBinding: ParsedBindingInput<TTarget, TEvent>
-  sourceScope: Scope
   sourceTarget?: TTarget
   sourceLayerOrder: number
   sourceBindingIndex: number
@@ -595,8 +595,7 @@ export interface SequenceNode<TTarget extends object = object, TEvent extends Ke
 export interface RegisteredLayer<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   order: number
   target?: TTarget
-  indexTarget: TTarget
-  scope: Scope
+  targetMode?: TargetMode
   priority: number
   requires: readonly [name: string, value: unknown][]
   matchers: readonly RuntimeMatcher[]
@@ -614,12 +613,6 @@ export interface RegisteredLayer<TTarget extends object = object, TEvent extends
   hasTokenBindings: boolean
   root: SequenceNode<TTarget, TEvent>
   offTargetDestroy?: () => void
-  bucket?: RegisteredLayerBucket<TTarget, TEvent>
-}
-
-export interface RegisteredLayerBucket<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
-  focusLayers: RegisteredLayer<TTarget, TEvent>[]
-  focusWithinLayers: RegisteredLayer<TTarget, TEvent>[]
 }
 
 export interface PendingSequenceCapture<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {

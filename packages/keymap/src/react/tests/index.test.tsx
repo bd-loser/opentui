@@ -95,7 +95,6 @@ describe("React keymap hooks", () => {
 
       useEffect(() => {
         return manager.registerLayer({
-          scope: "global",
           commands: [
             {
               name: "global",
@@ -107,10 +106,7 @@ describe("React keymap hooks", () => {
         })
       }, [manager])
 
-      useBindings(() => ({
-        scope: "global" as const,
-        bindings: { x: "global" },
-      }))
+      useBindings(() => ({ bindings: { x: "global" } }))
 
       return <text>bindings</text>
     }
@@ -156,7 +152,7 @@ describe("React keymap hooks", () => {
       setTick = setTickSignal
 
       useEffect(() => {
-        return manager.registerLayer({ scope: "global", commands: [{ name: "probe", run() {} }] })
+        return manager.registerLayer({ commands: [{ name: "probe", run() {} }] })
       }, [manager])
 
       useEffect(() => {
@@ -171,10 +167,7 @@ describe("React keymap hooks", () => {
         }
       }, [manager])
 
-      useBindings(() => ({
-        scope: "global" as const,
-        bindings: { x: "probe" },
-      }))
+      useBindings(() => ({ bindings: { x: "probe" } }))
 
       return <text>{tick}</text>
     }
@@ -205,7 +198,6 @@ describe("React keymap hooks", () => {
 
       useEffect(() => {
         return manager.registerLayer({
-          scope: "global",
           commands: [
             { name: "first", run() {} },
             { name: "second", run() {} },
@@ -214,12 +206,12 @@ describe("React keymap hooks", () => {
       }, [manager])
 
       useBindings(() => ({
-        scope: "focus-within" as const,
+        targetMode: "focus-within" as const,
         targetRef: firstTargetRef,
         bindings: { x: "first" },
       }))
       useBindings(() => ({
-        scope: "focus-within" as const,
+        targetMode: "focus-within" as const,
         targetRef: secondTargetRef,
         bindings: { y: "second" },
       }))
@@ -282,13 +274,10 @@ describe("React keymap hooks", () => {
       const pendingSequence = usePendingSequence()
 
       useEffect(() => {
-        return manager.registerLayer({ scope: "global", commands: [{ name: "delete-line", run() {} }] })
+        return manager.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
       }, [manager])
 
-      useBindings(() => ({
-        scope: "global" as const,
-        bindings: [{ key: "dd", cmd: "delete-line" }],
-      }))
+      useBindings(() => ({ bindings: [{ key: "dd", cmd: "delete-line" }] }))
 
       return <text>{`Pending: ${stringifyKeySequence(pendingSequence, { preferDisplay: true }) || "<root>"}`}</text>
     }
@@ -327,7 +316,6 @@ describe("React keymap hooks", () => {
 
       useEffect(() => {
         return manager.registerLayer({
-          scope: "global",
           commands: [
             {
               name: "target",
@@ -340,7 +328,7 @@ describe("React keymap hooks", () => {
       }, [manager])
 
       useBindings(() => ({
-        scope: "focus-within" as const,
+        targetMode: "focus-within" as const,
         targetRef,
         bindings: [{ key: "x", cmd: "target" }],
       }))
@@ -385,7 +373,6 @@ describe("React keymap hooks", () => {
 
       useEffect(() => {
         return manager.registerLayer({
-          scope: "global",
           commands: [
             {
               name: "target",
@@ -398,7 +385,7 @@ describe("React keymap hooks", () => {
       }, [manager])
 
       useBindings(() => ({
-        scope: "focus-within" as const,
+        targetMode: "focus-within" as const,
         targetRef,
         bindings: [{ key: "x", cmd: "target" }],
       }))
@@ -465,7 +452,6 @@ describe("React keymap hooks", () => {
       useEffect(() => {
         const offEnabled = addons.registerEnabledField(manager)
         const offCommands = manager.registerLayer({
-          scope: "global",
           commands: [
             {
               name: "reactive",
@@ -484,14 +470,7 @@ describe("React keymap hooks", () => {
 
       const matcher = useMemo(() => reactiveMatcherFromStore(store.subscribe, store.getSnapshot), [])
 
-      useBindings(
-        () => ({
-          scope: "global" as const,
-          enabled: matcher,
-          bindings: { x: "reactive" },
-        }),
-        [matcher],
-      )
+      useBindings(() => ({ enabled: matcher, bindings: { x: "reactive" } }), [matcher])
 
       return <box width={20} height={6} />
     }
@@ -552,7 +531,6 @@ describe("React keymap hooks", () => {
       useEffect(() => {
         const offEnabled = addons.registerEnabledField(manager)
         const offCommands = manager.registerLayer({
-          scope: "global",
           commands: [
             {
               name: "normal-only",
@@ -573,7 +551,7 @@ describe("React keymap hooks", () => {
         [],
       )
 
-      useBindings(() => ({ scope: "global" as const, enabled: matcher, bindings: { x: "normal-only" } }), [matcher])
+      useBindings(() => ({ enabled: matcher, bindings: { x: "normal-only" } }), [matcher])
 
       return <box width={20} height={6} />
     }
@@ -613,7 +591,7 @@ describe("React keymap hooks", () => {
 
     function Child() {
       const matcher = useMemo(() => reactiveMatcherFromStore(store.subscribe, store.getSnapshot), [])
-      useBindings(() => ({ scope: "global", enabled: matcher, bindings: { x: "probe" } }), [matcher])
+      useBindings(() => ({ enabled: matcher, bindings: { x: "probe" } }), [matcher])
       return <box width={10} height={2} />
     }
 
@@ -626,7 +604,7 @@ describe("React keymap hooks", () => {
       // Install these before the child's `useBindings` effect runs.
       useMemo(() => {
         addons.registerEnabledField(manager)
-        manager.registerLayer({ scope: "global", commands: [{ name: "probe", run() {} }] })
+        manager.registerLayer({ commands: [{ name: "probe", run() {} }] })
       }, [manager])
 
       return <>{mounted ? <Child /> : null}</>
@@ -653,7 +631,7 @@ describe("React keymap hooks", () => {
     try {
       function App() {
         useBindings(() => ({
-          scope: "focus-within",
+          targetMode: "focus-within",
           bindings: { x: "target" },
         }))
 
@@ -686,7 +664,6 @@ describe("React keymap hooks", () => {
       setVisible = setVisibleState
 
       const offCommands = manager.registerLayer({
-        scope: "global",
         commands: [
           {
             name: "target",
@@ -701,7 +678,7 @@ describe("React keymap hooks", () => {
 
       useBindings<Renderable>(
         () => ({
-          scope: "focus-within",
+          targetMode: "focus-within",
           targetRef,
           bindings: { x: "target" },
         }),

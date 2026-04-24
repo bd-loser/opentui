@@ -42,23 +42,6 @@ export function getActivationPath<TTarget extends object, TEvent extends KeymapE
   return path
 }
 
-function buildActiveLayersForFocused<TTarget extends object, TEvent extends KeymapEvent>(
-  sortedLayers: readonly RegisteredLayer<TTarget, TEvent>[],
-  host: KeymapHost<TTarget, TEvent>,
-  focused: TTarget | null,
-): RegisteredLayer<TTarget, TEvent>[] {
-  const activeLayers: RegisteredLayer<TTarget, TEvent>[] = []
-  const activationPath = getActivationPath(host, focused)
-
-  for (const layer of sortedLayers) {
-    if (isLayerActiveForFocused(host, layer, focused, activationPath)) {
-      activeLayers.push(layer)
-    }
-  }
-
-  return activeLayers
-}
-
 export function getActiveLayersForFocused<TTarget extends object, TEvent extends KeymapEvent>(
   state: LayersState<TTarget, TEvent>,
   host: KeymapHost<TTarget, TEvent>,
@@ -68,7 +51,15 @@ export function getActiveLayersForFocused<TTarget extends object, TEvent extends
     return state.activeLayersCache
   }
 
-  const activeLayers = buildActiveLayersForFocused(state.sortedLayers, host, focused)
+  const activeLayers: RegisteredLayer<TTarget, TEvent>[] = []
+  const activationPath = getActivationPath(host, focused)
+
+  for (const layer of state.sortedLayers) {
+    if (isLayerActiveForFocused(host, layer, focused, activationPath)) {
+      activeLayers.push(layer)
+    }
+  }
+
   state.activeLayersCacheVersion = state.activeLayersVersion
   state.activeLayersCacheFocused = focused
   state.activeLayersCache = activeLayers

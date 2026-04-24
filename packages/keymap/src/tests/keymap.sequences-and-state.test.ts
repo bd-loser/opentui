@@ -440,6 +440,34 @@ describe("keymap: sequences and state", () => {
     expect(takeErrors().errors).toEqual([])
   })
 
+  test("pending sequence listeners can update runtime data and clear pending state during dispatch", () => {
+    const keymap = getKeymap(renderer)
+    const { takeErrors } = captureDiagnostics(keymap)
+    const calls: string[] = []
+
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
+
+    keymap.on("pendingSequence", (sequence) => {
+      const display = stringifyKeySequence(sequence, { preferDisplay: true })
+      calls.push(`pending:${display}`)
+
+      if (sequence.length > 0) {
+        keymap.setData("vim.pending", display)
+        keymap.clearPendingSequence()
+      }
+    })
+
+    mockInput.pressKey("d")
+
+    expect(calls).toEqual(["pending:d", "pending:"])
+    expect(keymap.getData("vim.pending")).toBe("d")
+    expect(keymap.getPendingSequence()).toEqual([])
+    expect(takeErrors().errors).toEqual([])
+  })
+
   test("state listener feedback loops are cut off and reported", () => {
     const keymap = getKeymap(renderer)
     const { takeErrors } = captureDiagnostics(keymap)

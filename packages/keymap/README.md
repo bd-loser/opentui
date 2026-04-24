@@ -35,6 +35,24 @@ createRoot(renderer).render(
 )
 ```
 
+## Field Model
+
+Layer fields are for activation requirements and binding-compilation inputs.
+They do not compile into public attrs.
+
+Binding and command fields can compile metadata into attrs that later appear on
+active bindings, active keys, and command query results.
+
+## Re-entry
+
+Runtime/data-style re-entry is supported during dispatch. For example, command
+handlers, intercepts, and pending-sequence listeners may read or write runtime
+data and manage pending-sequence state.
+
+Structural re-entry is currently unsupported. Do not register or unregister
+layers, tokens, parsers, resolvers, or other environment-shaping state while a
+dispatch is in flight.
+
 ## Installation
 
 ```bash

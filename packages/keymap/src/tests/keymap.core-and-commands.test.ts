@@ -582,6 +582,46 @@ describe("keymap: core and commands", () => {
     expect(calls).toEqual(["local", "global"])
   })
 
+  test("command handlers can update runtime data during dispatch and affect later fallthrough bindings", () => {
+    const keymap = getKeymap(renderer)
+    const { errors } = captureDiagnostics(keymap)
+    const calls: string[] = []
+
+    keymap.registerBindingFields({
+      mode(value, ctx) {
+        ctx.require("vim.mode", value)
+      },
+    })
+
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "enter-insert",
+          run(ctx) {
+            calls.push(`before:${String(ctx.keymap.getData("vim.mode"))}`)
+            ctx.keymap.setData("vim.mode", "insert")
+            calls.push(`after:${String(ctx.keymap.getData("vim.mode"))}`)
+          },
+        },
+        {
+          name: "follow-up",
+          run(ctx) {
+            calls.push(`follow:${String(ctx.data["vim.mode"])}`)
+          },
+        },
+      ],
+      bindings: [
+        { key: "x", cmd: "enter-insert", fallthrough: true },
+        { key: "x", mode: "insert", cmd: "follow-up" },
+      ],
+    })
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["before:undefined", "after:insert", "follow:insert"])
+    expect(errors).toEqual([])
+  })
+
   test("dispatchCommand reports inactive command-only layers while runCommand can execute them programmatically", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []

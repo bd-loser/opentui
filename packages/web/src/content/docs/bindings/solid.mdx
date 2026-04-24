@@ -2,6 +2,9 @@
 title: Solid.js
 description: Build terminal UIs with Solid.js and OpenTUI
 order: 1
+skill:
+  entry: true
+  intents: [solid, jsx, signals, hooks, keyboard, animation, testing]
 ---
 
 # Solid.js bindings
@@ -210,16 +213,18 @@ const App = () => {
 Subscribe to keyboard events.
 
 ```tsx
-import { useKeyboard } from "@opentui/solid"
+import { useKeyboard, useRenderer } from "@opentui/solid"
 
 const App = () => {
+  const renderer = useRenderer()
+
   useKeyboard((key) => {
     if (key.name === "escape") {
-      process.exit(0)
+      renderer.destroy()
     }
   })
 
-  return <text>Press ESC to exit</text>
+  return <text>Press ESC to close</text>
 }
 ```
 
@@ -457,22 +462,23 @@ If that executable loads external plugins/modules at runtime, keep `import "@ope
 ## Example: counter
 
 ```tsx
-import { render, useKeyboard } from "@opentui/solid"
+import { render, useKeyboard, useRenderer } from "@opentui/solid"
 import { createSignal } from "solid-js"
 
 const App = () => {
   const [count, setCount] = createSignal(0)
+  const renderer = useRenderer()
 
   useKeyboard((key) => {
     if (key.name === "up") setCount((c) => c + 1)
     if (key.name === "down") setCount((c) => c - 1)
-    if (key.name === "escape") process.exit(0)
+    if (key.name === "escape") renderer.destroy()
   })
 
   return (
     <box border padding={2}>
       <text>Count: {count()}</text>
-      <text fg="#888">Up/Down to change, ESC to exit</text>
+      <text fg="#888">Up/Down to change, ESC to close</text>
     </box>
   )
 }

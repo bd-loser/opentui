@@ -9,7 +9,7 @@
   "types": "src/index.ts",
   "module": "src/index.ts",
   "main": "src/index.ts",
-  "version": "0.1.102",
+  "version": "0.1.103",
   "type": "module",
   "scripts": {
     "build": "bun run build:native && bun run build:lib",
@@ -51,12 +51,12 @@
     "bun-webgpu": "0.1.5",
     "planck": "^1.4.2",
     "three": "0.177.0",
-    "@opentui/core-darwin-x64": "0.1.102",
-    "@opentui/core-darwin-arm64": "0.1.102",
-    "@opentui/core-linux-x64": "0.1.102",
-    "@opentui/core-linux-arm64": "0.1.102",
-    "@opentui/core-win32-x64": "0.1.102",
-    "@opentui/core-win32-arm64": "0.1.102"
+    "@opentui/core-darwin-x64": "0.1.103",
+    "@opentui/core-darwin-arm64": "0.1.103",
+    "@opentui/core-linux-x64": "0.1.103",
+    "@opentui/core-linux-arm64": "0.1.103",
+    "@opentui/core-win32-x64": "0.1.103",
+    "@opentui/core-win32-arm64": "0.1.103"
   },
   "exports": {
     ".": {

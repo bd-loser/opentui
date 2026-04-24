@@ -153,7 +153,13 @@ Because `SlotRenderable` extends `Renderable`, it accepts all standard layout op
 Resolve slot entries without mounting them. Useful when you need to inspect or render plugin output manually.
 
 ```typescript
-import { resolveCoreSlot } from "@opentui/core"
+import { createCliRenderer, createCoreSlotRegistry, resolveCoreSlot } from "@opentui/core"
+
+const renderer = await createCliRenderer()
+const registry = createCoreSlotRegistry<"statusbar">(renderer, {
+  appName: "core-app",
+  version: "1.0.0",
+})
 
 const entries = resolveCoreSlot(registry, "statusbar")
 // Array<{ id: string, renderer: (ctx, data) => BaseRenderable }>

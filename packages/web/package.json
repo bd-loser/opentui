@@ -8,7 +8,12 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "scaffold": "bun scripts/test-doc-examples.ts"
+    "scaffold": "bun scripts/test-doc-examples.ts",
+    "validate:docs:metadata": "bun scripts/validate-doc-metadata.ts",
+    "validate:docs:links": "bun scripts/validate-doc-links.ts",
+    "validate:docs:skill": "bun scripts/validate-skill-docs.ts",
+    "validate:docs:examples": "bun scripts/verify-doc-examples.ts",
+    "validate:docs": "bun run validate:docs:metadata && bun run validate:docs:links && bun run validate:docs:skill && bun run validate:docs:examples"
   },
   "dependencies": {
     "@astrojs/mdx": "^4.3.1",

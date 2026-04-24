@@ -2,6 +2,9 @@
 title: React
 description: Build terminal UIs with React and OpenTUI
 order: 2
+skill:
+  entry: true
+  intents: [react, jsx, hooks, keyboard, animation, testing]
 ---
 
 # React bindings
@@ -144,16 +147,18 @@ function App() {
 Handle keyboard events.
 
 ```tsx
-import { useKeyboard } from "@opentui/react"
+import { useKeyboard, useRenderer } from "@opentui/react"
 
 function App() {
+  const renderer = useRenderer()
+
   useKeyboard((key) => {
     if (key.name === "escape") {
-      process.exit(0)
+      renderer.destroy()
     }
   })
 
-  return <text>Press ESC to exit</text>
+  return <text>Press ESC to close</text>
 }
 ```
 

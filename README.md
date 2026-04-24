@@ -36,17 +36,19 @@ bun install @opentui/core
 
 Teach your AI coding assistant OpenTUI's APIs and patterns.
 
-**For [OpenCode](https://opencode.ai) (includes `/opentui` command):**
+**Universal skill install with [`npx skills`](https://skills.sh):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/msmps/opentui-skill/main/install.sh | bash
+npx skills add anomalyco/opentui --skill opentui
 ```
 
-**For other AI coding assistants:**
+Install globally for every project:
 
 ```bash
-npx skills add msmps/opentui-skill
+npx skills add anomalyco/opentui --skill opentui -g
 ```
+
+OpenCode uses the same install command. No separate installer is needed.
 
 ## Try Examples
 

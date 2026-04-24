@@ -1,7 +1,10 @@
 ---
 title: Keyboard input
 description: Handling keyboard events in OpenTUI
-order: 3
+order: 6
+skill:
+  entry: true
+  intents: [keyboard, input, keybindings, paste, focus]
 ---
 
 # Keyboard input
@@ -187,9 +190,9 @@ const renderer = await createCliRenderer({
 
 renderer.keyInput.on("keypress", (key: KeyEvent) => {
   if (key.ctrl && key.name === "c") {
-    // Custom cleanup before exit
+    // Custom cleanup before shutdown
     cleanup()
-    process.exit(0)
+    renderer.destroy()
   }
 })
 ```

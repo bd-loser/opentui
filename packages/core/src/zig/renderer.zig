@@ -566,17 +566,12 @@ pub const CliRenderer = struct {
         self.backgroundColor = rgba;
         self.nextRenderBuffer.setBlendBackdropColor(.{ rgba[0], rgba[1], rgba[2], 1.0 });
 
-        // Emit OSC 11 to sync terminal background color with the renderer background.
-        // Skip if alpha is 0 (fully transparent — let terminal use its own default).
-        if (rgba[3] > 0 and !self.testing) {
-            var colorBuf: [64]u8 = undefined;
-            var stream = std.io.fixedBufferStream(&colorBuf);
-            const r: u8 = @intFromFloat(@round(@min(rgba[0] * 255.0, 255.0)));
-            const g: u8 = @intFromFloat(@round(@min(rgba[1] * 255.0, 255.0)));
-            const b: u8 = @intFromFloat(@round(@min(rgba[2] * 255.0, 255.0)));
-            ansi.ANSI.setTerminalBgColorOutput(stream.writer(), r, g, b) catch {};
-            self.backend.writeOut(stream.getWritten());
-        }
+<<<<<<< HEAD
+        // Do not mirror renderer background to terminal default background via
+        // OSC 11 for now. In Ghostty, once OSC 11 has been used, later system
+        // light/dark theme changes can leave OSC 11 queries stuck on stale bg
+        // values even after OSC 111 resets. Theme detection relies on fresh
+        // OSC 10/11 replies, so mutating terminal default bg here breaks that.
     }
 
     fn resetFallbackPaletteState(self: *CliRenderer) void {
@@ -1791,6 +1786,12 @@ pub const CliRenderer = struct {
 
     pub fn queryPixelResolution(self: *CliRenderer) void {
         self.writeOut(ansi.ANSI.queryPixelSize);
+    }
+
+    pub fn queryThemeColors(self: *CliRenderer) void {
+        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
+        self.terminal.queryThemeColors(stream.writer()) catch {};
+        self.writeOut(stream.getWritten());
     }
 
     pub fn disableMouse(self: *CliRenderer) void {

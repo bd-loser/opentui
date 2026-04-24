@@ -89,7 +89,11 @@ markdown.streaming = false
 To use it, render with `internalBlockMode: "top-level"`. The renderable keeps each top-level markdown block (heading, paragraph, list, table, fenced code) as its own child renderable, and exposes `markdown._stableBlockCount` — the number of blocks at the head of the tree that are stable right now. This matches the shape [`ScrollbackSurface`](/docs/core-concepts/renderer#writing-to-scrollback) expects when you commit streamed output row-by-row.
 
 ```typescript
-import { MarkdownRenderable } from "@opentui/core"
+import { MarkdownRenderable, RGBA, SyntaxStyle } from "@opentui/core"
+
+const syntaxStyle = SyntaxStyle.fromStyles({
+  default: { fg: RGBA.fromHex("#E6EDF3") },
+})
 
 const md = new MarkdownRenderable(renderer, {
   content: "",

@@ -19,6 +19,7 @@ import {
 import { createDefaultOpenTuiKeymap, createOpenTuiKeymap } from "../opentui.js"
 import { createDiagnosticHarness } from "./diagnostic-harness.js"
 import { createKeymapTestHelpers, type OpenTuiKeymap } from "./keymap.test-support.js"
+import { MAX_STATE_CHANGE_FLUSH_ITERATIONS } from "../services/notify.js"
 
 let renderer: TestRenderer
 let mockInput: MockInput
@@ -418,6 +419,48 @@ describe("keymap: sequences and state", () => {
     expect(calls).toEqual(["first:x", "second:x", "first:<none>"])
   })
 
+  test("state listeners can queue a bounded number of follow-up state changes", () => {
+    const keymap = getKeymap(renderer)
+    const { takeErrors } = captureDiagnostics(keymap)
+    const calls: string[] = []
+    let count = 0
+
+    keymap.on("state", () => {
+      count += 1
+      calls.push(`state:${count}`)
+
+      if (count < 4) {
+        keymap.setData(`bounded-${count}`, count)
+      }
+    })
+
+    keymap.setData("bounded-start", 0)
+
+    expect(calls).toEqual(["state:1", "state:2", "state:3", "state:4"])
+    expect(takeErrors().errors).toEqual([])
+  })
+
+  test("state listener feedback loops are cut off and reported", () => {
+    const keymap = getKeymap(renderer)
+    const { takeErrors } = captureDiagnostics(keymap)
+    let calls = 0
+    let nextValue = 0
+
+    const off = keymap.on("state", () => {
+      calls += 1
+      nextValue += 1
+      keymap.setData("loop", nextValue)
+    })
+
+    keymap.setData("loop", 0)
+    off()
+
+    expect(calls).toBe(MAX_STATE_CHANGE_FLUSH_ITERATIONS)
+    expect(takeErrors().errors).toEqual([
+      `[Keymap] Possible infinite state listener feedback loop detected after ${MAX_STATE_CHANGE_FLUSH_ITERATIONS} iterations; pending state notifications were dropped`,
+    ])
+  })
+
   test("supports token aliases inside longer sequences", () => {
     const keymap = getKeymap(renderer)
     const calls: string[] = []
@@ -772,5 +815,4 @@ describe("keymap: sequences and state", () => {
     keymap.setData("vim.mode", "visual")
     expect(getActiveKeyNames(keymap)).toEqual(["v"])
   })
-
 })

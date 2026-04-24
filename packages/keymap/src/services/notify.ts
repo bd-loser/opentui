@@ -7,6 +7,8 @@ type DiagnosticEvents<TTarget extends object, TEvent extends KeymapEvent> = Pick
   "warning" | "error"
 >
 
+export const MAX_STATE_CHANGE_FLUSH_ITERATIONS = 1000
+
 export class NotificationService<TTarget extends object, TEvent extends KeymapEvent> {
   constructor(
     private readonly state: State<TTarget, TEvent>,
@@ -103,7 +105,20 @@ export class NotificationService<TTarget extends object, TEvent extends KeymapEv
     this.state.notify.flushingStateChange = true
 
     try {
+      let iterations = 0
+
       while (this.state.notify.stateChangePending && this.state.notify.stateChangeDepth === 0) {
+        if (iterations >= MAX_STATE_CHANGE_FLUSH_ITERATIONS) {
+          this.state.notify.stateChangePending = false
+          this.emitError(
+            "state-change-feedback-loop",
+            { iterations: MAX_STATE_CHANGE_FLUSH_ITERATIONS },
+            `[Keymap] Possible infinite state listener feedback loop detected after ${MAX_STATE_CHANGE_FLUSH_ITERATIONS} iterations; pending state notifications were dropped`,
+          )
+          break
+        }
+
+        iterations += 1
         this.state.notify.stateChangePending = false
         this.hooks.emit("state")
       }

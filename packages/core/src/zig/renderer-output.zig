@@ -121,12 +121,16 @@ pub const OutputBackend = union(enum) {
 /// file-scope static buffers: multiple concurrent renderers would clobber each
 /// other's output. This makes per-process multi-renderer scenarios safe.
 pub const StdoutBackend = struct {
+    const BufferId = enum { A, B };
+
     // Per-instance (was file-scope pre-refactor).
     instanceOutputA: []u8,
     instanceOutputB: []u8,
     instanceOutputLenA: usize = 0,
     instanceOutputLenB: usize = 0,
-    instanceActiveBuffer: enum { A, B } = .A,
+    instanceActiveBuffer: BufferId = .A,
+    lastCommittedBuffer: BufferId = .A,
+    hasCommittedFrame: bool = false,
 
     stdoutBuffer: [4096]u8 = undefined,
 
@@ -275,6 +279,7 @@ pub const StdoutBackend = struct {
 
     pub fn endFrame(self: *StdoutBackend) void {
         const writeStart = std.time.microTimestamp();
+        const committed_buffer = self.instanceActiveBuffer;
 
         if (self.useThread) {
             self.renderMutex.lock();
@@ -311,6 +316,9 @@ pub const StdoutBackend = struct {
             }
             self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
         }
+
+        self.lastCommittedBuffer = committed_buffer;
+        self.hasCommittedFrame = true;
     }
 
     fn renderThreadFn(self: *StdoutBackend) void {
@@ -410,19 +418,25 @@ pub const StdoutBackend = struct {
         std.Thread.sleep(10 * std.time.ns_per_ms);
     }
 
-    /// Return the currently active instance buffer's rendered output.
+    /// Return the most recently committed instance buffer's rendered output.
     pub fn getLastOutputForTest(self: *StdoutBackend) []const u8 {
-        const buffer = if (self.instanceActiveBuffer == .A) self.instanceOutputA else self.instanceOutputB;
-        const len = if (self.instanceActiveBuffer == .A) self.instanceOutputLenA else self.instanceOutputLenB;
+        if (!self.hasCommittedFrame) return &.{};
+
+        const buffer = if (self.lastCommittedBuffer == .A) self.instanceOutputA else self.instanceOutputB;
+        const len = if (self.lastCommittedBuffer == .A) self.instanceOutputLenA else self.instanceOutputLenB;
         return buffer[0..len];
     }
 
     /// Write a debug dump of the last rendered output into `out`. The
-    /// previous (non-active) buffer holds the most recently committed frame.
+    /// committed-buffer marker is explicit because non-threaded rendering does
+    /// not flip the active buffer after each frame.
     pub fn dumpTo(self: *StdoutBackend, out: anytype) void {
-        const prev_buf = if (self.instanceActiveBuffer == .A) self.instanceOutputB else self.instanceOutputA;
-        const prev_len = if (self.instanceActiveBuffer == .A) self.instanceOutputLenB else self.instanceOutputLenA;
-        const last = prev_buf[0..prev_len];
+        const last = if (self.hasCommittedFrame) blk: {
+            const buf = if (self.lastCommittedBuffer == .A) self.instanceOutputA else self.instanceOutputB;
+            const len = if (self.lastCommittedBuffer == .A) self.instanceOutputLenA else self.instanceOutputLenB;
+            break :blk buf[0..len];
+        } else &.{};
+
         if (last.len > 0) {
             out.writeAll(last) catch return;
         } else {
@@ -430,8 +444,10 @@ pub const StdoutBackend = struct {
         }
         out.writeAll("\n================\n") catch return;
         out.print("Buffer size: {d} bytes\n", .{last.len}) catch return;
-        const label: []const u8 = if (self.instanceActiveBuffer == .A) "A" else "B";
-        out.print("Active buffer: {s}\n", .{label}) catch return;
+        const active_label: []const u8 = if (self.instanceActiveBuffer == .A) "A" else "B";
+        const committed_label: []const u8 = if (self.lastCommittedBuffer == .A) "A" else "B";
+        out.print("Active buffer: {s}\n", .{active_label}) catch return;
+        out.print("Last committed buffer: {s}\n", .{committed_label}) catch return;
     }
 };
 

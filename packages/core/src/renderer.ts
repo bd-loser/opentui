@@ -987,8 +987,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const { screenMode, footerHeight, externalOutputMode } = resolveModes(config)
     const initialGeometry = calculateRenderGeometry(
       screenMode,
-      stdout.columns ?? width,
-      stdout.rows ?? height,
+      width,
+      height,
       footerHeight,
     )
 
@@ -1055,8 +1055,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     rendererTracker.addRenderer(this)
 
     this.lib = lib
-    this._terminalWidth = stdout.columns ?? width
-    this._terminalHeight = stdout.rows ?? height
+    this._terminalWidth = width
+    this._terminalHeight = height
     this._useThread = config.useThread
     this._externalOutputMode = externalOutputMode
 
@@ -1210,7 +1210,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
     }
 
-    this.setupInput()
+    try {
+      this.setupInput()
+    } catch (error) {
+      try {
+        this.destroy()
+      } catch (destroyError) {
+        console.error("Error destroying renderer after input setup failure:", destroyError)
+      }
+      throw error
+    }
   }
 
   private addExitListeners(): void {
@@ -2710,6 +2719,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.queryPixelResolution()
     this.ensureNativePaletteState()
+
+    // Feed-backed startup writes are async relative to the JS Writable. Wait
+    // until they drain so callers can safely destroy immediately after
+    // createCliRenderer() resolves.
+    await this._feed?.idle()
   }
 
   private stdinListener: (chunk: Buffer | string) => void = ((chunk: Buffer | string) => {
@@ -3705,7 +3719,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this.stdin.removeListener("data", this.stdinListener)
     if (this.stdin.setRawMode) {
-      this.stdin.setRawMode(false)
+      try {
+        this.stdin.setRawMode(false)
+      } catch (e) {
+        console.error("Error disabling raw mode during destroy:", e)
+      }
     }
 
     this.externalOutputMode = "passthrough"

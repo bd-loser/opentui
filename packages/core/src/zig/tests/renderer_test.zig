@@ -1966,6 +1966,39 @@ test "renderer - unchanged frame with unchanged cursor emits no output" {
     // produce visible shimmer in terminals that animate cursor or repaint eagerly.
     try std.testing.expectEqual(@as(usize, 0), output.len);
 }
+
+test "renderer - stdout debug dump includes non-threaded last render" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        12,
+        4,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+    try std.testing.expect(!cli_renderer.backend.isUseThread());
+
+    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawText("DUMP", 0, 0, fg, bg, 0);
+
+    cli_renderer.render(false);
+
+    var dump_buf: [4096]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&dump_buf);
+    cli_renderer.backend.dumpTo(stream.writer());
+    const dump = stream.getWritten();
+
+    try std.testing.expect(std.mem.indexOf(u8, dump, "DUMP") != null);
+    try std.testing.expect(std.mem.indexOf(u8, dump, "(no output rendered yet)") == null);
+}
+
 // ---- FeedBackend tests (Phase 2) ----
 
 const native_span_feed = @import("../native-span-feed.zig");

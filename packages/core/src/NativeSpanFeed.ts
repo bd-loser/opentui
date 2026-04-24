@@ -86,6 +86,7 @@ export class NativeSpanFeed {
   private pendingAsyncHandlers = 0
   private inCallback = false
   private closeQueued = false
+  private idleResolvers: Array<() => void> = []
 
   private constructor(streamPtr: Pointer) {
     this.streamPtr = streamPtr
@@ -136,6 +137,7 @@ export class NativeSpanFeed {
     if (this.inCallback || this.draining || this.pendingAsyncHandlers > 0) return
     this.pendingClose = false
     this.performClose()
+    this.resolveIdleIfNeeded()
   }
 
   private performClose(): void {
@@ -164,6 +166,26 @@ export class NativeSpanFeed {
     this.dataHandlers.clear()
     this.errorHandlers.clear()
     this.pendingDataAvailable = false
+    this.resolveIdleIfNeeded()
+  }
+
+  private isIdle(): boolean {
+    return !this.inCallback && !this.draining && this.pendingAsyncHandlers === 0 && !this.pendingDataAvailable
+  }
+
+  private resolveIdleIfNeeded(): void {
+    if (!this.isIdle()) return
+    const resolvers = this.idleResolvers.splice(0)
+    for (const resolve of resolvers) {
+      resolve()
+    }
+  }
+
+  idle(): Promise<void> {
+    if (this.isIdle()) return Promise.resolve()
+    return new Promise<void>((resolve) => {
+      this.idleResolvers.push(resolve)
+    })
   }
 
   private handleEvent(eventId: number, arg0: Pointer, arg1: number | bigint): void {
@@ -213,6 +235,7 @@ export class NativeSpanFeed {
       }
     } finally {
       this.inCallback = false
+      this.resolveIdleIfNeeded()
     }
   }
 
@@ -275,6 +298,7 @@ export class NativeSpanFeed {
             this.decrementRefcount(chunkIndex)
             this.pendingAsyncHandlers -= 1
             this.processPendingClose()
+            this.resolveIdleIfNeeded()
           })
         } else {
           this.decrementRefcount(span.chunkIndex)
@@ -284,6 +308,7 @@ export class NativeSpanFeed {
       }
     } finally {
       this.draining = false
+      this.resolveIdleIfNeeded()
     }
 
     if (firstError) throw firstError

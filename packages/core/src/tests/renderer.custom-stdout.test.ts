@@ -186,14 +186,14 @@ test("slow Writable keeps feed chunks pinned while writes are in-flight", async 
   const feed = (renderer as any)._feed
   expect(feed).not.toBeNull()
 
-  // Fire several renders without waiting for the 40 ms writes to drain.
-  // The TS-side `pendingAsyncHandlers` counter tracks chunks still pinned by
-  // unresolved onData Promises — this is the concrete backpressure signal
-  // the renderer relies on, not the Zig-side span queue (which drains
+  // Emit several native writes without waiting for the 40 ms Writable callbacks
+  // to drain. The TS-side `pendingAsyncHandlers` counter tracks chunks still
+  // pinned by unresolved onData Promises — this is the concrete backpressure
+  // signal the renderer relies on, not the Zig-side span queue (which drains
   // synchronously on DataAvailable).
   let maxPinned = 0
   for (let i = 0; i < 8; i++) {
-    ;(renderer as any).requestRender()
+    renderer.setTerminalTitle(`backpressure-${i}`)
     await new Promise<void>((resolve) => setImmediate(resolve))
     const pinned = (feed as any).pendingAsyncHandlers as number
     if (pinned > maxPinned) maxPinned = pinned
@@ -244,6 +244,23 @@ test("dimensions: config.width used when stdout lacks columns", async () => {
   expect(renderer.height).toBe(50)
 })
 
+test("dimensions: config.width used when stdout reports zero columns", async () => {
+  const stdin = createNullReadable()
+  const stdout = new CollectingWriteStream(0, 0) as unknown as NodeJS.WriteStream
+
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    width: 100,
+    height: 50,
+    testing: true,
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  expect(renderer.width).toBe(100)
+  expect(renderer.height).toBe(50)
+})
+
 test("dimensions: defaults 80x24 when no stdout columns and no config", async () => {
   const stdin = createNullReadable()
   const stdout = new Writable({
@@ -251,6 +268,21 @@ test("dimensions: defaults 80x24 when no stdout columns and no config", async ()
       cb()
     },
   }) as unknown as NodeJS.WriteStream
+
+  const renderer = await createCliRenderer({
+    stdin,
+    stdout,
+    testing: true,
+  })
+  destroyFns.push(() => renderer.destroy())
+
+  expect(renderer.width).toBe(80)
+  expect(renderer.height).toBe(24)
+})
+
+test("dimensions: defaults 80x24 when stdout reports zero columns and no config", async () => {
+  const stdin = createNullReadable()
+  const stdout = new CollectingWriteStream(0, 0) as unknown as NodeJS.WriteStream
 
   const renderer = await createCliRenderer({
     stdin,
@@ -341,6 +373,37 @@ test("full feed teardown after successful setup does not throw", async () => {
 })
 
 // ---- Destroy resilience ----
+
+test("constructor cleans up listeners when input setup fails", async () => {
+  const stdin = createNullReadable()
+  const stdout = new CollectingWriteStream(80, 24) as unknown as NodeJS.WriteStream
+  const calls: boolean[] = []
+  const processEvents = ["warning", "uncaughtException", "unhandledRejection", "beforeExit"] as const
+  const listenerCounts = new Map(processEvents.map((event) => [event, process.listenerCount(event)]))
+
+  stdin.setRawMode = (enabled) => {
+    calls.push(enabled)
+    if (enabled) {
+      throw new Error("raw mode setup failed")
+    }
+    return stdin
+  }
+
+  await expect(
+    createCliRenderer({
+      stdin,
+      stdout,
+      testing: false,
+      exitSignals: [],
+    }),
+  ).rejects.toThrow("raw mode setup failed")
+
+  expect(calls).toEqual([true, false])
+  expect(stdin.listenerCount("data")).toBe(0)
+  for (const event of processEvents) {
+    expect(process.listenerCount(event)).toBe(listenerCounts.get(event))
+  }
+})
 
 test("destroy tolerates drainAll throwing", async () => {
   const stdin = createNullReadable()

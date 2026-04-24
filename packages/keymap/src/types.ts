@@ -163,11 +163,6 @@ export interface RunCommandOptions<TTarget extends object = object, TEvent exten
   includeCommand?: boolean
 }
 
-export interface DispatchCommandOptions<
-  TTarget extends object = object,
-  TEvent extends KeymapEvent = KeymapEvent,
-> extends RunCommandOptions<TTarget, TEvent> {}
-
 export type RunCommandResult =
   | { ok: true; command?: CommandRecord }
   | { ok: false; reason: "not-found" }

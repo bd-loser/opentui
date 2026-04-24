@@ -4,7 +4,6 @@ import type {
   CommandContext,
   CommandResult,
   CompiledBinding,
-  DispatchCommandOptions,
   KeymapEvent,
   RegisteredLayer,
   ResolvedBindingCommand,
@@ -118,7 +117,7 @@ export class CommandExecutorService<TTarget extends object, TEvent extends Keyma
     return rejectedResult ?? { ok: false, reason: "not-found" }
   }
 
-  public dispatchCommand(cmd: string, options?: DispatchCommandOptions<TTarget, TEvent>): RunCommandResult {
+  public dispatchCommand(cmd: string, options?: RunCommandOptions<TTarget, TEvent>): RunCommandResult {
     let normalized: BindingCommand<TTarget, TEvent> | undefined
 
     try {

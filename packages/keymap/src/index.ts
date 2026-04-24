@@ -32,7 +32,6 @@ export type {
   CommandQuery,
   CommandQueryValue,
   CommandRecord,
-  DispatchCommandOptions,
   RunCommandOptions,
   RunCommandResult,
   CommandHandler,

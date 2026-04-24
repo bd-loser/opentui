@@ -1,23 +1,34 @@
 #!/usr/bin/env bun
 //
-// opentui × xterm.js — minimal counter demo.
+// opentui x xterm.js -- shared Pong in the browser.
 //
 // Launches a Bun HTTP + WebSocket server. Each browser tab gets its own
 // CliRenderer wired to a duplex stream pair: rendered ANSI flows through the
-// NativeSpanFeed → WebSocket → xterm.js, and keystrokes flow back
-// xterm.js → WebSocket → CliRenderer.stdin.
+// NativeSpanFeed -> WebSocket -> xterm.js, and keystrokes flow back
+// xterm.js -> WebSocket -> CliRenderer.stdin.
 //
 // Run:
 //   bun run packages/core/src/examples/xterm-web-demo/server.ts
 // Then open http://localhost:3000/.
 
 import { readFileSync } from "node:fs"
-import { join, dirname } from "node:path"
-import { fileURLToPath } from "node:url"
+import { dirname, join } from "node:path"
 import { Readable, Writable } from "node:stream"
+import { fileURLToPath } from "node:url"
 import type { ServerWebSocket } from "bun"
 
-import { BoxRenderable, CliRenderEvents, CliRenderer, TextRenderable, createCliRenderer, type KeyEvent } from "../../index.js"
+import {
+  BoxRenderable,
+  CliRenderEvents,
+  CliRenderer,
+  StyledText,
+  TextRenderable,
+  createCliRenderer,
+  dim,
+  fg,
+  type KeyEvent,
+  type TextChunk,
+} from "../../index.js"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const INDEX_HTML = readFileSync(join(__dirname, "index.html"), "utf8")
@@ -25,10 +36,10 @@ const INDEX_HTML = readFileSync(join(__dirname, "index.html"), "utf8")
 interface Session {
   renderer: CliRenderer | null
   stdin: Readable | null
-  card: BoxRenderable | null
-  counterText: TextRenderable | null
-  sessionInfoText: TextRenderable | null
-  liveStatusText: TextRenderable | null
+  scoreText: TextRenderable | null
+  metaText: TextRenderable | null
+  boardText: TextRenderable | null
+  hintText: TextRenderable | null
   cols: number
   rows: number
   sessionId: string
@@ -40,52 +51,86 @@ interface Session {
 interface SessionTheme {
   borderColor: string
   cardColor: string
-  counterColor: string
+  scoreColor: string
   accentColor: string
-  noteColor: string
 }
+
+type RoundState = "serve" | "live" | "paused"
 
 const SESSION_THEMES: SessionTheme[] = [
   {
     borderColor: "#38bdf8",
-    cardColor: "#1e293b",
-    counterColor: "#fde68a",
+    cardColor: "#162235",
+    scoreColor: "#fde68a",
     accentColor: "#67e8f9",
-    noteColor: "#86efac",
   },
   {
     borderColor: "#f472b6",
-    cardColor: "#3b1e31",
-    counterColor: "#f9a8d4",
+    cardColor: "#30182a",
+    scoreColor: "#f9a8d4",
     accentColor: "#f5d0fe",
-    noteColor: "#fdba74",
   },
   {
     borderColor: "#a78bfa",
-    cardColor: "#2e2061",
-    counterColor: "#ddd6fe",
+    cardColor: "#261f4d",
+    scoreColor: "#ddd6fe",
     accentColor: "#c4b5fd",
-    noteColor: "#93c5fd",
   },
 ]
 
 const ACTIVE_SESSIONS = new Set<ServerWebSocket<Session>>()
-const LIVE_FRAMES = ["[=     ]", "[==    ]", "[===   ]", "[ ===  ]", "[  === ]", "[   == ]", "[    = ]"]
-const CARD_WIDTH = 46
-const CARD_HEIGHT = 12
 
-let liveFrameIndex = 0
-let sharedCounter = 0
-let sharedOffsetX = 0
-let sharedOffsetY = 0
+const BOARD_WIDTH = 40
+const BOARD_HEIGHT = 12
+const BOARD_PIXEL_WIDTH = BOARD_WIDTH * 2
+const BOARD_PIXEL_HEIGHT = BOARD_HEIGHT * 4
+const CARD_WIDTH = 52
+const CARD_HEIGHT = 23
+const PADDLE_HEIGHT = 3
+const PADDLE_HALF_HEIGHT = (PADDLE_HEIGHT - 1) / 2
+const PADDLE_PIXEL_WIDTH = 2
+const PADDLE_PIXEL_HEIGHT = PADDLE_HEIGHT * 4
+const PLAYER_PADDLE_X = 1
+const CPU_PADDLE_X = BOARD_WIDTH - 2
+const SERVE_DELAY_TICKS = 18
+const GAME_TICK_MS = 33
+const BALL_SPEED_X = 0.42
+const BALL_VERTICAL_SPEEDS = [-0.18, -0.12, 0.12, 0.18] as const
+const PLAYER_PADDLE_STEP = 0.75
+const CPU_PADDLE_SPEED = 0.14
+const CPU_CENTER_SPEED = 0.06
+const CPU_REACTION_X = BOARD_WIDTH * 0.58
+const CPU_AIM_OFFSET_RANGE = 1.75
+const TRAIL_LENGTH = 6
+const BRAILLE_DOT_MASKS = [
+  [0x01, 0x08],
+  [0x02, 0x10],
+  [0x04, 0x20],
+  [0x40, 0x80],
+] as const
+const BOARD_STYLE_EMPTY = 0
+const BOARD_STYLE_CENTER = 1
+const BOARD_STYLE_TRAIL_3 = 2
+const BOARD_STYLE_TRAIL_2 = 3
+const BOARD_STYLE_TRAIL_1 = 4
+const BOARD_STYLE_CPU_PADDLE = 5
+const BOARD_STYLE_PLAYER_PADDLE = 6
+const BOARD_STYLE_BALL = 7
 
-function formatSigned(value: number) {
-  return `${value >= 0 ? "+" : "-"}${Math.abs(value)}`
-}
-
-function formatScore(value: number) {
-  return `${value >= 0 ? "+" : "-"}${Math.abs(value).toString().padStart(3, "0")}`
-}
+let playerScore = 0
+let cpuScore = 0
+let rallyCount = 0
+let playerPaddleY = (BOARD_HEIGHT - 1) / 2
+let cpuPaddleY = (BOARD_HEIGHT - 1) / 2
+let ballX = (BOARD_WIDTH - 1) / 2
+let ballY = (BOARD_HEIGHT - 1) / 2
+let ballVX = 0
+let ballVY = 0
+let serveDirection: -1 | 1 = -1
+let serveTicksRemaining = SERVE_DELAY_TICKS
+let roundState: RoundState = "serve"
+let ballTrail: Array<{ x: number; y: number }> = []
+let cpuAimOffset = 0
 
 function createSessionId() {
   return crypto.randomUUID().slice(0, 4).toUpperCase()
@@ -102,7 +147,7 @@ function finishPendingWrite(session: Session) {
   pendingWrite()
 }
 
-function setTextContent(renderable: TextRenderable | null, content: string) {
+function setTextContent(renderable: TextRenderable | null, content: StyledText | string) {
   if (!renderable) return
   try {
     renderable.content = content
@@ -112,80 +157,389 @@ function setTextContent(renderable: TextRenderable | null, content: string) {
   }
 }
 
-function cleanupSession(ws: ServerWebSocket<Session>) {
-  ACTIVE_SESSIONS.delete(ws)
-  ws.data.card = null
-  ws.data.counterText = null
-  ws.data.sessionInfoText = null
-  ws.data.liveStatusText = null
-  if (ACTIVE_SESSIONS.size === 0) {
-    sharedCounter = 0
-    sharedOffsetX = 0
-    sharedOffsetY = 0
-    return
-  }
-
-  clampSharedOffsets()
-}
-
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max))
 }
 
-function clampSharedOffsets() {
-  if (ACTIVE_SESSIONS.size === 0) {
-    sharedOffsetX = 0
-    sharedOffsetY = 0
+function clampPaddle(value: number) {
+  return clamp(value, PADDLE_HALF_HEIGHT, BOARD_HEIGHT - 1 - PADDLE_HALF_HEIGHT)
+}
+
+function formatScore(value: number) {
+  return value.toString().padStart(2, "0")
+}
+
+function pickServeDirection(): -1 | 1 {
+  return Math.random() > 0.5 ? 1 : -1
+}
+
+function pickServeLift() {
+  return BALL_VERTICAL_SPEEDS[Math.floor(Math.random() * BALL_VERTICAL_SPEEDS.length)]
+}
+
+function rollCpuAimOffset() {
+  cpuAimOffset = (Math.random() * 2 - 1) * CPU_AIM_OFFSET_RANGE
+}
+
+function resetBall(direction: -1 | 1) {
+  serveDirection = direction
+  serveTicksRemaining = SERVE_DELAY_TICKS
+  roundState = "serve"
+  rallyCount = 0
+  ballTrail = []
+  rollCpuAimOffset()
+  ballX = (BOARD_WIDTH - 1) / 2
+  ballY = (BOARD_HEIGHT - 1) / 2
+  ballVX = 0
+  ballVY = 0
+}
+
+function resetSharedGame() {
+  playerScore = 0
+  cpuScore = 0
+  playerPaddleY = (BOARD_HEIGHT - 1) / 2
+  cpuPaddleY = (BOARD_HEIGHT - 1) / 2
+  resetBall(pickServeDirection())
+}
+
+function launchBall() {
+  roundState = "live"
+  ballVX = BALL_SPEED_X * serveDirection
+  ballVY = pickServeLift()
+
+  if (serveDirection === 1) {
+    rollCpuAimOffset()
+  }
+}
+
+function togglePause() {
+  if (roundState === "serve") {
+    launchBall()
     return
   }
 
-  let minOffsetX = Number.NEGATIVE_INFINITY
-  let maxOffsetX = Number.POSITIVE_INFINITY
-  let minOffsetY = Number.NEGATIVE_INFINITY
-  let maxOffsetY = Number.POSITIVE_INFINITY
-
-  for (const ws of ACTIVE_SESSIONS) {
-    const centerX = Math.floor((ws.data.cols - CARD_WIDTH) / 2)
-    const centerY = Math.floor((ws.data.rows - CARD_HEIGHT) / 2)
-    const sessionMaxX = Math.max(0, ws.data.cols - CARD_WIDTH)
-    const sessionMaxY = Math.max(0, ws.data.rows - CARD_HEIGHT)
-
-    minOffsetX = Math.max(minOffsetX, -centerX)
-    maxOffsetX = Math.min(maxOffsetX, sessionMaxX - centerX)
-    minOffsetY = Math.max(minOffsetY, -centerY)
-    maxOffsetY = Math.min(maxOffsetY, sessionMaxY - centerY)
+  if (roundState === "paused") {
+    roundState = "live"
+    return
   }
 
-  sharedOffsetX = clamp(sharedOffsetX, minOffsetX, maxOffsetX)
-  sharedOffsetY = clamp(sharedOffsetY, minOffsetY, maxOffsetY)
+  roundState = "paused"
 }
 
-function renderCardPosition(session: Session) {
-  if (!session.card) return
-
-  const centerX = Math.floor((session.cols - CARD_WIDTH) / 2)
-  const centerY = Math.floor((session.rows - CARD_HEIGHT) / 2)
-  const maxX = Math.max(0, session.cols - CARD_WIDTH)
-  const maxY = Math.max(0, session.rows - CARD_HEIGHT)
-
-  session.card.x = clamp(centerX + sharedOffsetX, 0, maxX)
-  session.card.y = clamp(centerY + sharedOffsetY, 0, maxY)
+function movePlayerPaddle(delta: number) {
+  playerPaddleY = clampPaddle(playerPaddleY + delta)
 }
 
-function renderAllCardPositions() {
-  for (const ws of ACTIVE_SESSIONS) {
-    renderCardPosition(ws.data)
+function moveCpuPaddle() {
+  const centerY = (BOARD_HEIGHT - 1) / 2
+  const trackingBall = roundState === "live" && ballVX > 0 && ballX >= CPU_REACTION_X
+  const targetY = trackingBall ? clampPaddle(ballY + cpuAimOffset) : centerY
+  const speed = trackingBall ? CPU_PADDLE_SPEED : CPU_CENTER_SPEED
+  const delta = targetY - cpuPaddleY
+  if (Math.abs(delta) < speed) {
+    cpuPaddleY = targetY
+    return
+  }
+
+  cpuPaddleY = clampPaddle(cpuPaddleY + Math.sign(delta) * speed)
+}
+
+function isPaddleHit(centerY: number, targetY: number) {
+  return Math.abs(targetY - centerY) <= PADDLE_HALF_HEIGHT + 0.15
+}
+
+function bounceOffPaddle(centerY: number, direction: -1 | 1, targetY: number) {
+  const offset = clamp(targetY - centerY, -PADDLE_HALF_HEIGHT, PADDLE_HALF_HEIGHT)
+  const horizontalSpeed = BALL_SPEED_X + Math.min(rallyCount, 8) * 0.03
+  ballVX = horizontalSpeed * direction
+  ballVY = clamp(offset * 0.12 + ballVY * 0.45, -0.42, 0.42)
+
+  if (direction === 1) {
+    rollCpuAimOffset()
+  }
+
+  if (Math.abs(ballVY) < 0.08) {
+    const sign = offset === 0 ? (Math.random() > 0.5 ? 1 : -1) : Math.sign(offset)
+    ballVY = 0.08 * sign
+  }
+
+  rallyCount += 1
+}
+
+function scorePoint(winner: "player" | "cpu") {
+  if (winner === "player") {
+    playerScore += 1
+    resetBall(1)
+    return
+  }
+
+  cpuScore += 1
+  resetBall(-1)
+}
+
+function recordBallTrail() {
+  ballTrail.unshift({ x: ballX, y: ballY })
+  if (ballTrail.length > TRAIL_LENGTH) {
+    ballTrail.length = TRAIL_LENGTH
   }
 }
 
-function nudgeSharedCard(dx: number, dy: number) {
-  sharedOffsetX += dx
-  sharedOffsetY += dy
-  clampSharedOffsets()
-  sharedCounter += 1
-  renderAllCardPositions()
-  renderAllCounters()
+function plainChunk(text: string): TextChunk {
+  return {
+    __isChunk: true,
+    text,
+    attributes: 0,
+  }
 }
+
+function styleBoardRun(style: number, text: string): TextChunk {
+  if (style === BOARD_STYLE_EMPTY) {
+    return plainChunk(text)
+  }
+
+  if (style === BOARD_STYLE_CENTER) {
+    return dim(fg("#475569")(text))
+  }
+
+  if (style === BOARD_STYLE_TRAIL_3) {
+    return dim(fg("#1d4ed8")(text))
+  }
+
+  if (style === BOARD_STYLE_TRAIL_2) {
+    return dim(fg("#38bdf8")(text))
+  }
+
+  if (style === BOARD_STYLE_TRAIL_1) {
+    return fg("#93c5fd")(text)
+  }
+
+  if (style === BOARD_STYLE_CPU_PADDLE) {
+    return fg("#c084fc")(text)
+  }
+
+  if (style === BOARD_STYLE_PLAYER_PADDLE) {
+    return fg("#67e8f9")(text)
+  }
+
+  return fg("#fde68a")(text)
+}
+
+function setBraillePixel(maskBuffer: Uint8Array, styleBuffer: Uint8Array, x: number, y: number, style: number) {
+  if (x < 0 || y < 0 || x >= BOARD_PIXEL_WIDTH || y >= BOARD_PIXEL_HEIGHT) return
+
+  const cellX = Math.floor(x / 2)
+  const cellY = Math.floor(y / 4)
+  const cellIndex = cellY * BOARD_WIDTH + cellX
+  maskBuffer[cellIndex] |= BRAILLE_DOT_MASKS[y % 4][x % 2]
+  styleBuffer[cellIndex] = Math.max(styleBuffer[cellIndex] ?? BOARD_STYLE_EMPTY, style)
+}
+
+function drawBrailleRect(
+  maskBuffer: Uint8Array,
+  styleBuffer: Uint8Array,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  style: number,
+) {
+  for (let row = y; row < y + height; row += 1) {
+    for (let col = x; col < x + width; col += 1) {
+      setBraillePixel(maskBuffer, styleBuffer, col, row, style)
+    }
+  }
+}
+
+function drawPaddle(maskBuffer: Uint8Array, styleBuffer: Uint8Array, centerY: number, x: number, style: number) {
+  const top = clamp(Math.round((centerY - PADDLE_HALF_HEIGHT) * 4), 0, BOARD_PIXEL_HEIGHT - PADDLE_PIXEL_HEIGHT)
+  drawBrailleRect(maskBuffer, styleBuffer, x, top, PADDLE_PIXEL_WIDTH, PADDLE_PIXEL_HEIGHT, style)
+}
+
+function drawBall(maskBuffer: Uint8Array, styleBuffer: Uint8Array) {
+  const ballPixelX = clamp(Math.round(ballX * 2), 0, BOARD_PIXEL_WIDTH - 2)
+  const ballPixelY = clamp(Math.round(ballY * 4), 0, BOARD_PIXEL_HEIGHT - 2)
+
+  drawBrailleRect(maskBuffer, styleBuffer, ballPixelX, ballPixelY, 2, 2, BOARD_STYLE_BALL)
+
+  if (roundState === "serve") {
+    setBraillePixel(
+      maskBuffer,
+      styleBuffer,
+      clamp(ballPixelX + serveDirection, 0, BOARD_PIXEL_WIDTH - 1),
+      ballPixelY + 1,
+      BOARD_STYLE_BALL,
+    )
+  }
+
+  if (roundState === "paused") {
+    setBraillePixel(
+      maskBuffer,
+      styleBuffer,
+      ballPixelX + 1,
+      clamp(ballPixelY + 2, 0, BOARD_PIXEL_HEIGHT - 1),
+      BOARD_STYLE_BALL,
+    )
+  }
+}
+
+function drawBallTrail(maskBuffer: Uint8Array, styleBuffer: Uint8Array) {
+  for (let age = ballTrail.length - 1; age >= 0; age -= 1) {
+    const point = ballTrail[age]
+    if (!point) continue
+
+    const style = age <= 1 ? BOARD_STYLE_TRAIL_1 : age <= 3 ? BOARD_STYLE_TRAIL_2 : BOARD_STYLE_TRAIL_3
+    const trailX = clamp(Math.round(point.x * 2), 0, BOARD_PIXEL_WIDTH - 1)
+    const trailY = clamp(Math.round(point.y * 4), 0, BOARD_PIXEL_HEIGHT - 2)
+
+    setBraillePixel(maskBuffer, styleBuffer, trailX, trailY, style)
+    setBraillePixel(maskBuffer, styleBuffer, trailX, trailY + 1, style)
+  }
+}
+
+function buildBoardFrame() {
+  const maskBuffer = new Uint8Array(BOARD_WIDTH * BOARD_HEIGHT)
+  const styleBuffer = new Uint8Array(BOARD_WIDTH * BOARD_HEIGHT)
+  const centerLineX = Math.floor(BOARD_PIXEL_WIDTH / 2)
+
+  // Braille gives us a 2x4 sub-cell grid per terminal character so the ball
+  // can move between columns instead of snapping on every frame.
+  for (let y = 2; y < BOARD_PIXEL_HEIGHT - 2; y += 6) {
+    drawBrailleRect(maskBuffer, styleBuffer, centerLineX, y, 1, 3, BOARD_STYLE_CENTER)
+  }
+
+  drawPaddle(maskBuffer, styleBuffer, playerPaddleY, PLAYER_PADDLE_X * 2, BOARD_STYLE_PLAYER_PADDLE)
+  drawPaddle(maskBuffer, styleBuffer, cpuPaddleY, CPU_PADDLE_X * 2, BOARD_STYLE_CPU_PADDLE)
+  drawBallTrail(maskBuffer, styleBuffer)
+  drawBall(maskBuffer, styleBuffer)
+
+  const chunks: TextChunk[] = []
+
+  for (let row = 0; row < BOARD_HEIGHT; row += 1) {
+    let runText = ""
+    let runStyle = styleBuffer[row * BOARD_WIDTH] ?? BOARD_STYLE_EMPTY
+
+    for (let col = 0; col < BOARD_WIDTH; col += 1) {
+      const cellIndex = row * BOARD_WIDTH + col
+      const mask = maskBuffer[cellIndex]
+      const style = styleBuffer[cellIndex] ?? BOARD_STYLE_EMPTY
+      const char = mask === 0 ? " " : String.fromCodePoint(0x2800 + mask)
+
+      if (col === 0) {
+        runStyle = style
+        runText = char
+        continue
+      }
+
+      if (style === runStyle) {
+        runText += char
+        continue
+      }
+
+      chunks.push(styleBoardRun(runStyle, runText))
+      runStyle = style
+      runText = char
+    }
+
+    chunks.push(styleBoardRun(runStyle, runText))
+
+    if (row < BOARD_HEIGHT - 1) {
+      chunks.push(plainChunk("\n"))
+    }
+  }
+
+  return new StyledText(chunks)
+}
+
+function buildScoreLine() {
+  return `PLAYER ${formatScore(playerScore)}   CPU ${formatScore(cpuScore)}   RALLY ${formatScore(rallyCount)}`
+}
+
+function buildMetaLine(session: Session) {
+  return `Tabs ${ACTIVE_SESSIONS.size}   Session ${session.sessionId}   ${session.cols}x${session.rows}`
+}
+
+function renderAllUi() {
+  const boardFrame = buildBoardFrame()
+  const scoreLine = buildScoreLine()
+
+  for (const ws of ACTIVE_SESSIONS) {
+    setTextContent(ws.data.scoreText, scoreLine)
+    setTextContent(ws.data.metaText, buildMetaLine(ws.data))
+    setTextContent(ws.data.boardText, boardFrame)
+  }
+}
+
+function cleanupSession(ws: ServerWebSocket<Session>) {
+  ACTIVE_SESSIONS.delete(ws)
+  ws.data.scoreText = null
+  ws.data.metaText = null
+  ws.data.boardText = null
+  ws.data.hintText = null
+
+  if (ACTIVE_SESSIONS.size === 0) {
+    resetSharedGame()
+  }
+}
+
+function stepGame() {
+  if (ACTIVE_SESSIONS.size === 0 || roundState === "paused") return
+
+  moveCpuPaddle()
+
+  if (roundState === "serve") {
+    serveTicksRemaining -= 1
+    if (serveTicksRemaining <= 0) {
+      launchBall()
+    }
+    renderAllUi()
+    return
+  }
+
+  recordBallTrail()
+
+  let nextX = ballX + ballVX
+  let nextY = ballY + ballVY
+
+  if (nextY <= 0 || nextY >= BOARD_HEIGHT - 1) {
+    ballVY *= -1
+    nextY = clamp(nextY, 0, BOARD_HEIGHT - 1)
+  }
+
+  if (ballVX < 0 && nextX <= PLAYER_PADDLE_X + 1) {
+    if (isPaddleHit(playerPaddleY, nextY)) {
+      ballX = PLAYER_PADDLE_X + 1
+      ballY = nextY
+      bounceOffPaddle(playerPaddleY, 1, nextY)
+      nextX = ballX + ballVX
+      nextY = ballY + ballVY
+    } else if (nextX < 0) {
+      scorePoint("cpu")
+      renderAllUi()
+      return
+    }
+  }
+
+  if (ballVX > 0 && nextX >= CPU_PADDLE_X - 1) {
+    if (isPaddleHit(cpuPaddleY, nextY)) {
+      ballX = CPU_PADDLE_X - 1
+      ballY = nextY
+      bounceOffPaddle(cpuPaddleY, -1, nextY)
+      nextX = ballX + ballVX
+      nextY = ballY + ballVY
+    } else if (nextX > BOARD_WIDTH - 1) {
+      scorePoint("player")
+      renderAllUi()
+      return
+    }
+  }
+
+  ballX = clamp(nextX, 0, BOARD_WIDTH - 1)
+  ballY = clamp(nextY, 0, BOARD_HEIGHT - 1)
+  renderAllUi()
+}
+
+resetSharedGame()
+setInterval(stepGame, GAME_TICK_MS)
 
 function closeSession(ws: ServerWebSocket<Session>, code = 1000, reason = "quit") {
   if (ws.data.closed) return
@@ -238,38 +592,8 @@ function createSessionStreams(ws: ServerWebSocket<Session>, initialCols: number,
   }
 }
 
-function renderCounter(session: Session) {
-  setTextContent(session.counterText, `Score ${formatScore(sharedCounter)}`)
-}
-
-function renderAllCounters() {
-  for (const ws of ACTIVE_SESSIONS) {
-    renderCounter(ws.data)
-  }
-}
-
-function renderSessionInfo(session: Session) {
-  setTextContent(session.sessionInfoText, `Tabs ${ACTIVE_SESSIONS.size}  Session ${session.sessionId}  ${session.cols}x${session.rows}`)
-}
-
-function renderLiveStatus(session: Session) {
-  setTextContent(session.liveStatusText, `Offset ${formatSigned(sharedOffsetX)},${formatSigned(sharedOffsetY)}  ${LIVE_FRAMES[liveFrameIndex]}`)
-}
-
-function renderSharedStatus() {
-  for (const ws of ACTIVE_SESSIONS) {
-    renderLiveStatus(ws.data)
-  }
-}
-
-setInterval(() => {
-  if (ACTIVE_SESSIONS.size === 0) return
-  liveFrameIndex = (liveFrameIndex + 1) % LIVE_FRAMES.length
-  renderSharedStatus()
-}, 140)
-
-function setupCounterUI(ws: ServerWebSocket<Session>, renderer: CliRenderer, session: Session) {
-  renderer.setBackgroundColor("#0f172a")
+function setupPongUI(ws: ServerWebSocket<Session>, renderer: CliRenderer, session: Session) {
+  renderer.setBackgroundColor("#08111f")
 
   const container = new BoxRenderable(renderer, {
     id: "xterm-demo-root",
@@ -286,75 +610,75 @@ function setupCounterUI(ws: ServerWebSocket<Session>, renderer: CliRenderer, ses
 
   const card = new BoxRenderable(renderer, {
     id: "xterm-demo-card",
-    position: "absolute",
-    left: 0,
-    top: 0,
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
     backgroundColor: session.theme.cardColor,
     borderStyle: "double",
     borderColor: session.theme.borderColor,
-    title: " opentui × xterm.js ",
+    title: " opentui web pong ",
     titleAlignment: "center",
     border: true,
     flexDirection: "column",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     padding: 1,
   })
 
-  const counterText = new TextRenderable(renderer, {
-    id: "xterm-demo-counter",
-    content: `Shared counter: ${sharedCounter}`,
-    fg: session.theme.counterColor,
-  })
-  card.add(counterText)
-
-  const transportText = new TextRenderable(renderer, {
-    id: "xterm-demo-transport",
-    content: "shared server state in xterm",
+  const subtitleText = new TextRenderable(renderer, {
+    id: "xterm-demo-subtitle",
+    content: "server-rendered pong mirrored into every tab",
     fg: "#e2e8f0",
   })
-  card.add(transportText)
+  card.add(subtitleText)
 
-  const multiTabText = new TextRenderable(renderer, {
-    id: "xterm-demo-multi-tab",
-    content: "move here, mirror everywhere",
-    fg: "#cbd5e1",
+  const scoreText = new TextRenderable(renderer, {
+    id: "xterm-demo-score",
+    content: "",
+    fg: session.theme.scoreColor,
   })
-  card.add(multiTabText)
+  card.add(scoreText)
 
-  const sessionInfoText = new TextRenderable(renderer, {
-    id: "xterm-demo-session-info",
+  const metaText = new TextRenderable(renderer, {
+    id: "xterm-demo-meta",
     content: "",
     fg: session.theme.accentColor,
   })
-  card.add(sessionInfoText)
+  card.add(metaText)
 
-  const liveStatusText = new TextRenderable(renderer, {
-    id: "xterm-demo-live-status",
+  const boardBox = new BoxRenderable(renderer, {
+    id: "xterm-demo-board-box",
+    width: BOARD_WIDTH + 2,
+    height: BOARD_HEIGHT + 2,
+    backgroundColor: "#020617",
+    borderStyle: "single",
+    borderColor: session.theme.borderColor,
+    border: true,
+  })
+
+  const boardText = new TextRenderable(renderer, {
+    id: "xterm-demo-board",
     content: "",
-    fg: session.theme.noteColor,
+    fg: "#cbd5e1",
   })
-  card.add(liveStatusText)
+  boardBox.add(boardText)
+  card.add(boardBox)
 
-  const hint = new TextRenderable(renderer, {
+  const hintText = new TextRenderable(renderer, {
     id: "xterm-demo-hint",
-    content: "hjkl move   +/- score   r reset",
-    fg: session.theme.noteColor,
+    content: "arrows or j/k   space play   r reset   q quit",
+    fg: "#94a3b8",
   })
-  card.add(hint)
+  card.add(hintText)
 
   container.add(card)
   renderer.root.add(container)
 
-  session.card = card
-  session.counterText = counterText
-  session.sessionInfoText = sessionInfoText
-  session.liveStatusText = liveStatusText
-  renderCardPosition(session)
-  renderSessionInfo(session)
-  renderLiveStatus(session)
+  session.scoreText = scoreText
+  session.metaText = metaText
+  session.boardText = boardText
+  session.hintText = hintText
+
+  renderAllUi()
 
   renderer.keyInput.on("keypress", (key: KeyEvent) => {
     if (!session.renderer) return
@@ -365,42 +689,27 @@ function setupCounterUI(ws: ServerWebSocket<Session>, renderer: CliRenderer, ses
       return
     }
 
-    if (key.name === "h") {
-      nudgeSharedCard(-2, 0)
+    if (key.name === "up" || key.name === "k" || key.name === "w") {
+      movePlayerPaddle(-PLAYER_PADDLE_STEP)
+      renderAllUi()
       return
     }
 
-    if (key.name === "l") {
-      nudgeSharedCard(2, 0)
+    if (key.name === "down" || key.name === "j" || key.name === "s") {
+      movePlayerPaddle(PLAYER_PADDLE_STEP)
+      renderAllUi()
       return
     }
 
-    if (key.name === "k") {
-      nudgeSharedCard(0, -1)
-      return
-    }
-
-    if (key.name === "j") {
-      nudgeSharedCard(0, 1)
-      return
-    }
-
-    if (key.name === "up" || sequence === "+" || sequence === "=") {
-      sharedCounter += 1
-      renderAllCounters()
-      return
-    }
-
-    if (key.name === "down" || sequence === "-" || sequence === "_") {
-      sharedCounter -= 1
-      renderAllCounters()
+    if (key.name === "space" || sequence === " ") {
+      togglePause()
+      renderAllUi()
       return
     }
 
     if (key.name === "r") {
-      sharedCounter = 0
-      renderAllCounters()
-      return
+      resetSharedGame()
+      renderAllUi()
     }
   })
 }
@@ -424,19 +733,17 @@ async function startSession(ws: ServerWebSocket<Session>) {
   })
 
   ws.data.renderer = renderer
-  setupCounterUI(ws, renderer, ws.data)
+  setupPongUI(ws, renderer, ws.data)
 }
 
 function handleResize(ws: ServerWebSocket<Session>, cols: number, rows: number) {
   if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols <= 0 || rows <= 0) return
   ws.data.cols = cols
   ws.data.rows = rows
-  clampSharedOffsets()
-  renderAllCardPositions()
-  renderSessionInfo(ws.data)
   if (ws.data.renderer) {
     ws.data.renderer.resize(cols, rows)
   }
+  renderAllUi()
 }
 
 const server = Bun.serve<Session>({
@@ -450,10 +757,10 @@ const server = Bun.serve<Session>({
         data: {
           renderer: null,
           stdin: null,
-          card: null,
-          counterText: null,
-          sessionInfoText: null,
-          liveStatusText: null,
+          scoreText: null,
+          metaText: null,
+          boardText: null,
+          hintText: null,
           cols: 80,
           rows: 24,
           sessionId,
@@ -474,10 +781,7 @@ const server = Bun.serve<Session>({
       try {
         await startSession(ws)
         ACTIVE_SESSIONS.add(ws)
-        clampSharedOffsets()
-        renderAllCardPositions()
-        renderAllCounters()
-        renderSharedStatus()
+        renderAllUi()
       } catch (err) {
         console.error("failed to start session", err)
         ws.close(1011, "session-start-failed")
@@ -516,9 +820,7 @@ const server = Bun.serve<Session>({
       ws.data.closed = true
       finishPendingWrite(ws.data)
       cleanupSession(ws)
-      renderAllCardPositions()
-      renderAllCounters()
-      renderSharedStatus()
+      renderAllUi()
       if (ws.data.renderer) {
         try {
           ws.data.renderer.destroy()
@@ -537,4 +839,4 @@ const server = Bun.serve<Session>({
   },
 })
 
-console.log(`opentui × xterm demo ready on http://localhost:${server.port}/`)
+console.log(`opentui web pong ready on http://localhost:${server.port}/`)

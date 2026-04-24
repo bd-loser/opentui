@@ -1,7 +1,9 @@
-# opentui x xterm.js demo
+# opentui x xterm.js web pong
 
-Renders an opentui app in the browser via xterm.js over WebSockets. Each browser tab gets its own `CliRenderer` backed
-by a `NativeSpanFeed` — rendered ANSI flows through the feed to xterm.js, and keystrokes flow back.
+Renders a shared Pong match in the browser via xterm.js over WebSockets. Each
+browser tab gets its own `CliRenderer` backed by a `NativeSpanFeed` - rendered
+ANSI flows through the feed to xterm.js, keystrokes flow back, and every tab
+watches the same server-side game state.
 
 ## Run
 
@@ -25,19 +27,24 @@ Browser                          Server (Bun)
 ```
 
 1. **server.ts** starts a Bun HTTP + WebSocket server
-2. On WebSocket connect, it creates a `CliRenderer` with a custom `stdin` (Readable) and `stdout` (Writable that sends binary frames over WS)
-3. Since `stdout !== process.stdout`, the renderer auto-allocates a `NativeSpanFeed` and pipes rendered bytes through it
-4. **index.html** loads xterm.js with the fit addon — the terminal auto-sizes to the browser window
-5. Browser resize events propagate: `fitAddon.fit()` → `term.onResize` → WS `resize` message → `renderer.resize(cols, rows)`
+2. On WebSocket connect, it creates a `CliRenderer` with a custom `stdin`
+   (Readable) and `stdout` (Writable that sends binary frames over WS)
+3. Since `stdout !== process.stdout`, the renderer auto-allocates a
+   `NativeSpanFeed` and pipes rendered bytes through it
+4. The Pong match itself lives on the server, so every connected tab mirrors the
+   same ball, paddles, and score
+5. Browser resize events propagate: `fitAddon.fit()` → `term.onResize` → WS
+   `resize` message → `renderer.resize(cols, rows)`
 
 ## Controls
 
-| Key            | Action            |
-| -------------- | ----------------- |
-| `Up` / `k`     | Increment counter |
-| `Down` / `j`   | Decrement counter |
-| `r`            | Reset counter     |
-| `q` / `Ctrl+C` | Quit session      |
+| Key            | Action                 |
+| -------------- | ---------------------- |
+| `Up` / `k`     | Move paddle up         |
+| `Down` / `j`   | Move paddle down       |
+| `Space`        | Serve / pause / resume |
+| `r`            | Reset match            |
+| `q` / `Ctrl+C` | Quit session           |
 
 ## Configuration
 

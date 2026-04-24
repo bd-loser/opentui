@@ -655,34 +655,56 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
     continuationCaptures: readonly PendingSequenceCapture<TTarget, TEvent>[]
     activeView: ReturnType<CommandCatalogService<TTarget, TEvent>["getActiveCommandView"]>
   }): InternalDisambiguationDecision | undefined {
-    const exact = this.activation.collectActiveBindings(options.exactBindings, options.focused, options.activeView)
-    const continuations = this.activation.getActiveKeysForCaptures(options.continuationCaptures, {
-      includeBindings: true,
-      includeMetadata: true,
-    })
     const stroke = options.sequence.at(-1)
     if (!stroke) {
       return undefined
     }
 
+    const activation = this.activation
+    const runtime = this.runtime
+    let sequence: ReturnType<ActivationService<TTarget, TEvent>["collectSequencePartsFromPending"]> | undefined
+    let exact: readonly ActiveBinding<TTarget, TEvent>[] | undefined
+    let continuations: readonly ActiveKey<TTarget, TEvent>[] | undefined
+    let strokePart: KeyDisambiguationContext<TTarget, TEvent>["stroke"] | undefined
+
     const ctx: KeyDisambiguationContext<TTarget, TEvent> = {
       event: options.event as Readonly<Omit<TEvent, "preventDefault" | "stopPropagation">>,
       focused: options.focused,
-      sequence: cloneKeySequence(options.sequence),
-      stroke: {
-        ...stroke,
-        stroke: cloneKeyStroke(stroke.stroke),
+      get sequence() {
+        sequence ??= cloneKeySequence(options.sequence)
+        return sequence
       },
-      exact: exact.map((binding) => ({
-        ...binding,
-        sequence: cloneKeySequence(binding.sequence),
-      })) as readonly ActiveBinding<TTarget, TEvent>[],
-      continuations: continuations as readonly ActiveKey<TTarget, TEvent>[],
+      get stroke() {
+        strokePart ??= {
+          ...stroke,
+          stroke: cloneKeyStroke(stroke.stroke),
+        }
+
+        return strokePart
+      },
+      get exact() {
+        exact ??= activation
+          .collectActiveBindings(options.exactBindings, options.focused, options.activeView)
+          .map((binding) => ({
+            ...binding,
+            sequence: cloneKeySequence(binding.sequence),
+          }))
+
+        return exact
+      },
+      get continuations() {
+        continuations ??= activation.getActiveKeysForCaptures(options.continuationCaptures, {
+          includeBindings: true,
+          includeMetadata: true,
+        })
+
+        return continuations
+      },
       getData: (name) => {
-        return this.runtime.getData(name)
+        return runtime.getData(name)
       },
       setData: (name, value) => {
-        this.runtime.setData(name, value)
+        runtime.setData(name, value)
       },
       runExact: () => createSyncDecision("run-exact"),
       continueSequence: () => createSyncDecision("continue-sequence"),
@@ -694,7 +716,7 @@ export class DispatchService<TTarget extends object, TEvent extends KeymapEvent>
       let result: KeyDisambiguationDecision | undefined
 
       try {
-        result = (resolver as KeyDisambiguationResolver<TTarget, TEvent>)(ctx)
+        result = resolver(ctx)
       } catch (error) {
         this.notify.emitError("disambiguation-resolver-error", error, "[Keymap] Error in disambiguation resolver:")
         continue

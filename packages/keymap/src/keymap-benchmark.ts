@@ -1684,12 +1684,12 @@ const scenarios: BenchmarkScenario[] = [
   },
   {
     name: "get_commands_enabled_command_callback_heavy",
-    description: "Repeated getCommands with many callback-enabled commands via the enabled command-field addon",
+    description: "Repeated getCommands with many callback-enabled commands via the enabled fields addon",
     async setup() {
       const resources = await createScenarioResources()
       const enabledStates: boolean[] = []
 
-      addons.registerEnabledCommandField(resources.keymap)
+      addons.registerEnabledFields(resources.keymap)
 
       resources.keymap.registerLayer({
         commands: Array.from({ length: 512 }, (_, index) => {

@@ -32,10 +32,10 @@ function normalizeEnabledValue(fieldName: string, value: unknown): Enabled {
 }
 
 /**
- * Adds an `enabled` layer field for boolean, callback, or reactive matcher
- * gating.
+ * Adds `enabled` layer and command fields for boolean, callback, or reactive
+ * matcher gating.
  */
-export function registerEnabledField<TTarget extends object, TEvent extends KeymapEvent>(
+export function registerEnabledFields<TTarget extends object, TEvent extends KeymapEvent>(
   keymap: Keymap<TTarget, TEvent>,
 ): () => void {
   const offLayerFields = keymap.registerLayerFields({
@@ -74,28 +74,4 @@ export function registerEnabledField<TTarget extends object, TEvent extends Keym
     offCommandFields()
     offLayerFields()
   }
-}
-
-/**
- * Adds an `enabled` command field for boolean, callback, or reactive matcher
- * gating.
- */
-export function registerEnabledCommandField<TTarget extends object, TEvent extends KeymapEvent>(
-  keymap: Keymap<TTarget, TEvent>,
-): () => void {
-  return keymap.registerCommandFields({
-    enabled(value, ctx) {
-      const normalized = normalizeEnabledValue("enabled", value)
-      if (normalized === true) {
-        return
-      }
-
-      if (normalized === false) {
-        ctx.activeWhen(() => false)
-        return
-      }
-
-      ctx.activeWhen(normalized)
-    },
-  })
 }

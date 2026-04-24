@@ -8,7 +8,7 @@ import {
   registerDeadBindingWarnings,
   registerDefaultKeys,
   registerEmacsBindings,
-  registerEnabledField,
+  registerEnabledFields,
   registerExCommands,
   registerEscapeClearsPendingSequence,
   registerMetadataFields,
@@ -178,7 +178,7 @@ async function createInfrastructureScenario() {
   const capture = diagnostics.captureDiagnostics(keymap)
 
   const offDefaultKeys = registerDefaultKeys(keymap)
-  const offEnabled = registerEnabledField(keymap)
+  const offEnabled = registerEnabledFields(keymap)
   const offMetadata = registerMetadataFields(keymap)
   const offAliases = registerAliasesField(keymap)
   const offComma = registerCommaBindings(keymap)

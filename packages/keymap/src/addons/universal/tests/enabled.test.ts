@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { createTestRenderer, type MockInput, type TestRenderer } from "@opentui/core/testing"
 import { stringifyKeySequence } from "@opentui/keymap"
-import { registerDefaultKeys, registerEnabledCommandField, registerEnabledField } from "@opentui/keymap/addons"
+import { registerDefaultKeys, registerEnabledFields } from "@opentui/keymap/addons"
 import { createOpenTuiKeymap } from "@opentui/keymap/opentui"
 import { createDiagnosticHarness } from "../../../tests/diagnostic-harness.js"
 
@@ -14,6 +14,13 @@ function getActiveKeyNames(): string[] {
   return keymap
     .getActiveKeys()
     .map((candidate) => candidate.stroke.name)
+    .sort()
+}
+
+function getCommandNames(): string[] {
+  return keymap
+    .getCommands()
+    .map((command) => command.name)
     .sort()
 }
 
@@ -61,23 +68,56 @@ describe("enabled addon", () => {
     expect(calls).toEqual(["noop"])
   })
 
-  test("registers boolean and predicate enabled values", () => {
+  test("ignores enabled command fields until the addon is registered", () => {
     const calls: string[] = []
-    let enabled = false
 
-    registerEnabledField(keymap)
     keymap.registerLayer({
       commands: [
         {
-          name: "always-off",
+          name: "noop",
+          enabled: false,
           run() {
-            calls.push("always-off")
+            calls.push("noop")
+          },
+        },
+      ],
+      bindings: [{ key: "x", cmd: "noop" }],
+    })
+
+    expect(getActiveKeyNames()).toEqual(["x"])
+    expect(getCommandNames()).toEqual(["noop"])
+
+    mockInput.pressKey("x")
+
+    expect(calls).toEqual(["noop"])
+  })
+
+  test("registers layer and command enabled values from one addon registration", () => {
+    const calls: string[] = []
+    let layerEnabled = false
+    let commandEnabled = false
+
+    registerEnabledFields(keymap)
+    keymap.registerLayer({
+      commands: [
+        {
+          name: "layer-action",
+          run() {
+            calls.push("layer")
           },
         },
         {
-          name: "dynamic",
+          name: "always-off-command",
+          enabled: false,
           run() {
-            calls.push("dynamic")
+            calls.push("always-off-command")
+          },
+        },
+        {
+          name: "dynamic-command",
+          enabled: () => commandEnabled,
+          run() {
+            calls.push("dynamic-command")
           },
         },
       ],
@@ -85,27 +125,39 @@ describe("enabled addon", () => {
 
     keymap.registerLayer({
       enabled: false,
-      bindings: [{ key: "x", cmd: "always-off" }],
+      bindings: [{ key: "x", cmd: "layer-action" }],
     })
     keymap.registerLayer({
-      enabled: () => enabled,
-      bindings: [{ key: "y", cmd: "dynamic" }],
+      enabled: () => layerEnabled,
+      bindings: [{ key: "y", cmd: "layer-action" }],
+    })
+    keymap.registerLayer({
+      bindings: [
+        { key: "z", cmd: "always-off-command" },
+        { key: "u", cmd: "dynamic-command" },
+      ],
     })
 
     expect(getActiveKeyNames()).toEqual([])
+    expect(getCommandNames()).toEqual(["layer-action"])
 
     mockInput.pressKey("x")
     mockInput.pressKey("y")
+    mockInput.pressKey("z")
+    mockInput.pressKey("u")
 
     expect(calls).toEqual([])
 
-    enabled = true
+    layerEnabled = true
+    commandEnabled = true
 
-    expect(getActiveKeyNames()).toEqual(["y"])
+    expect(getActiveKeyNames()).toEqual(["u", "y"])
+    expect(getCommandNames()).toEqual(["dynamic-command", "layer-action"])
 
     mockInput.pressKey("y")
+    mockInput.pressKey("u")
 
-    expect(calls).toEqual(["dynamic"])
+    expect(calls).toEqual(["layer", "dynamic-command"])
   })
 
   test("supports reactive enabled matchers and unsubscribes on layer unregister", () => {
@@ -140,7 +192,7 @@ describe("enabled addon", () => {
       }
     }
 
-    registerEnabledField(keymap)
+    registerEnabledFields(keymap)
     keymap.registerLayer({ commands: [{ name: "dynamic", run() {} }] })
     const off = keymap.registerLayer({
       enabled: enabledMatcher,
@@ -169,214 +221,6 @@ describe("enabled addon", () => {
     off()
     expect(disposeCalls).toBe(1)
     expect(listeners.size).toBe(0)
-  })
-
-  test("clears pending sequences when enabled stops matching", () => {
-    let enabled = true
-
-    registerEnabledField(keymap)
-    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
-    keymap.registerLayer({
-      enabled: () => enabled,
-      bindings: [{ key: "dd", cmd: "delete-line" }],
-    })
-
-    mockInput.pressKey("d")
-
-    expect(keymap.getPendingSequence()).toHaveLength(1)
-
-    enabled = false
-
-    expect(keymap.getPendingSequence()).toEqual([])
-    expect(getActiveKeyNames()).toEqual([])
-  })
-
-  test("reactive enabled matchers synchronously emit pending sequence clears", () => {
-    let enabled = true
-    const listeners = new Set<() => void>()
-    const changes: string[] = []
-
-    registerEnabledField(keymap)
-    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
-    keymap.registerLayer({
-      enabled: {
-        get() {
-          return enabled
-        },
-        subscribe(onChange) {
-          listeners.add(onChange)
-          return () => {
-            listeners.delete(onChange)
-          }
-        },
-      },
-      bindings: [{ key: "dd", cmd: "delete-line" }],
-    })
-
-    keymap.on("pendingSequence", (sequence) => {
-      changes.push(stringifyKeySequence(sequence, { preferDisplay: true }))
-    })
-
-    mockInput.pressKey("d")
-
-    expect(changes).toEqual(["d"])
-
-    enabled = false
-    for (const listener of listeners) {
-      listener()
-    }
-
-    expect(changes).toEqual(["d", ""])
-  })
-
-  test("rejects invalid enabled values and can be disposed", () => {
-    const offEnabled = registerEnabledField(keymap)
-    const calls: string[] = []
-    const { takeErrors, takeWarnings } = diagnostics.captureDiagnostics(keymap)
-
-    keymap.registerLayer({
-      commands: [
-        {
-          name: "noop",
-          run() {
-            calls.push("noop")
-          },
-        },
-      ],
-    })
-
-    expect(() => {
-      keymap.registerLayer({
-        enabled: "yes",
-        bindings: [{ key: "x", cmd: "noop" }],
-      })
-    }).not.toThrow()
-
-    expect(takeErrors().errors).toEqual([
-      'Keymap enabled field "enabled" must be a boolean, a function, or a reactive matcher',
-    ])
-    expect(getActiveKeyNames()).toEqual([])
-
-    offEnabled()
-
-    expect(() => {
-      keymap.registerLayer({
-        enabled: true,
-        bindings: [{ key: "x", cmd: "noop" }],
-      })
-    }).not.toThrow()
-
-    expect(getActiveKeyNames()).toContain("x")
-
-    mockInput.pressKey("x")
-
-    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown layer field "enabled" was ignored'])
-    expect(calls).toEqual(["noop"])
-  })
-
-  test("treats thrown enabled predicates as disabled", () => {
-    const { takeErrors } = diagnostics.captureDiagnostics(keymap)
-    const calls: string[] = []
-
-    registerEnabledField(keymap)
-    keymap.registerLayer({
-      commands: [
-        {
-          name: "noop",
-          run() {
-            calls.push("noop")
-          },
-        },
-      ],
-    })
-    keymap.registerLayer({
-      enabled: () => {
-        throw new Error("boom")
-      },
-      bindings: [{ key: "x", cmd: "noop" }],
-    })
-
-    expect(() => keymap.getActiveKeys()).not.toThrow()
-    expect(getActiveKeyNames()).toEqual([])
-
-    mockInput.pressKey("x")
-
-    const { errors } = takeErrors()
-    expect(errors.length).toBeGreaterThan(0)
-    expect(errors.every((message) => message === "[Keymap] Error evaluating runtime matcher from field enabled:")).toBe(
-      true,
-    )
-    expect(calls).toEqual([])
-  })
-
-  test("ignores enabled command fields until the command addon is registered", () => {
-    const calls: string[] = []
-
-    keymap.registerLayer({
-      commands: [
-        {
-          name: "noop",
-          enabled: false,
-          run() {
-            calls.push("noop")
-          },
-        },
-      ],
-      bindings: [{ key: "x", cmd: "noop" }],
-    })
-
-    expect(getActiveKeyNames()).toEqual(["x"])
-    expect(keymap.getCommands().map((command) => command.name)).toEqual(["noop"])
-
-    mockInput.pressKey("x")
-
-    expect(calls).toEqual(["noop"])
-  })
-
-  test("registers boolean and predicate enabled command values", () => {
-    const calls: string[] = []
-    let enabled = false
-
-    registerEnabledCommandField(keymap)
-    keymap.registerLayer({
-      commands: [
-        {
-          name: "always-off",
-          enabled: false,
-          run() {
-            calls.push("always-off")
-          },
-        },
-        {
-          name: "dynamic",
-          enabled: () => enabled,
-          run() {
-            calls.push("dynamic")
-          },
-        },
-      ],
-      bindings: [
-        { key: "x", cmd: "always-off" },
-        { key: "y", cmd: "dynamic" },
-      ],
-    })
-
-    expect(getActiveKeyNames()).toEqual([])
-    expect(keymap.getCommands().map((command) => command.name)).toEqual([])
-
-    mockInput.pressKey("x")
-    mockInput.pressKey("y")
-
-    expect(calls).toEqual([])
-
-    enabled = true
-
-    expect(getActiveKeyNames()).toEqual(["y"])
-    expect(keymap.getCommands().map((command) => command.name)).toEqual(["dynamic"])
-
-    mockInput.pressKey("y")
-
-    expect(calls).toEqual(["dynamic"])
   })
 
   test("supports reactive enabled command matchers and unsubscribes on layer unregister", () => {
@@ -411,7 +255,7 @@ describe("enabled addon", () => {
       }
     }
 
-    registerEnabledCommandField(keymap)
+    registerEnabledFields(keymap)
     const off = keymap.registerLayer({
       commands: [{ name: "dynamic", enabled: enabledMatcher, run() {} }],
       bindings: [{ key: "y", cmd: "dynamic" }],
@@ -421,25 +265,25 @@ describe("enabled addon", () => {
     expect(listeners.size).toBe(1)
 
     expect(getActiveKeyNames()).toEqual([])
-    expect(keymap.getCommands().map((command) => command.name)).toEqual([])
+    expect(getCommandNames()).toEqual([])
     expect(evaluations).toBeGreaterThan(0)
 
     const stableEvaluations = evaluations
     current = true
     expect(getActiveKeyNames()).toEqual([])
-    expect(keymap.getCommands().map((command) => command.name)).toEqual([])
+    expect(getCommandNames()).toEqual([])
     expect(evaluations).toBe(stableEvaluations)
     current = false
 
     setEnabled(true)
     expect(getActiveKeyNames()).toEqual(["y"])
-    expect(keymap.getCommands().map((command) => command.name)).toEqual(["dynamic"])
+    expect(getCommandNames()).toEqual(["dynamic"])
     expect(evaluations).toBeGreaterThan(stableEvaluations)
 
     const enabledEvaluations = evaluations
     setEnabled(false)
     expect(getActiveKeyNames()).toEqual([])
-    expect(keymap.getCommands().map((command) => command.name)).toEqual([])
+    expect(getCommandNames()).toEqual([])
     expect(evaluations).toBeGreaterThan(enabledEvaluations)
 
     off()
@@ -447,48 +291,186 @@ describe("enabled addon", () => {
     expect(listeners.size).toBe(0)
   })
 
-  test("rejects invalid enabled command values and can be disposed", () => {
-    const offEnabled = registerEnabledCommandField(keymap)
+  test("clears pending sequences when enabled stops matching", () => {
+    let enabled = true
+
+    registerEnabledFields(keymap)
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({
+      enabled: () => enabled,
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
+
+    mockInput.pressKey("d")
+
+    expect(keymap.getPendingSequence()).toHaveLength(1)
+
+    enabled = false
+
+    expect(keymap.getPendingSequence()).toEqual([])
+    expect(getActiveKeyNames()).toEqual([])
+  })
+
+  test("reactive enabled matchers synchronously emit pending sequence clears", () => {
+    let enabled = true
+    const listeners = new Set<() => void>()
+    const changes: string[] = []
+
+    registerEnabledFields(keymap)
+    keymap.registerLayer({ commands: [{ name: "delete-line", run() {} }] })
+    keymap.registerLayer({
+      enabled: {
+        get() {
+          return enabled
+        },
+        subscribe(onChange) {
+          listeners.add(onChange)
+          return () => {
+            listeners.delete(onChange)
+          }
+        },
+      },
+      bindings: [{ key: "dd", cmd: "delete-line" }],
+    })
+
+    keymap.on("pendingSequence", (sequence) => {
+      changes.push(stringifyKeySequence(sequence, { preferDisplay: true }))
+    })
+
+    mockInput.pressKey("d")
+
+    expect(changes).toEqual(["d"])
+
+    enabled = false
+    for (const listener of listeners) {
+      listener()
+    }
+
+    expect(changes).toEqual(["d", ""])
+  })
+
+  test("rejects invalid enabled values on layer and command fields and can be disposed", () => {
+    const offEnabled = registerEnabledFields(keymap)
     const calls: string[] = []
-    const { takeErrors } = diagnostics.captureDiagnostics(keymap)
+    const { takeErrors, takeWarnings } = diagnostics.captureDiagnostics(keymap)
 
     keymap.registerLayer({
       commands: [
         {
-          name: "bad-command",
-          enabled: "yes",
+          name: "noop",
           run() {
-            calls.push("bad")
+            calls.push("noop")
           },
         },
       ],
     })
+
+    expect(() => {
+      keymap.registerLayer({
+        enabled: "yes",
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+    }).not.toThrow()
+
+    expect(() => {
+      keymap.registerLayer({
+        commands: [
+          {
+            name: "bad-command",
+            enabled: "yes",
+            run() {
+              calls.push("bad")
+            },
+          },
+        ],
+      })
+    }).not.toThrow()
 
     expect(takeErrors().errors).toEqual([
       'Keymap enabled field "enabled" must be a boolean, a function, or a reactive matcher',
+      'Keymap enabled field "enabled" must be a boolean, a function, or a reactive matcher',
     ])
-    expect(keymap.getCommands()).toEqual([])
+    expect(getActiveKeyNames()).toEqual([])
+    expect(getCommandNames()).toEqual(["noop"])
 
     offEnabled()
 
+    expect(() => {
+      keymap.registerLayer({
+        enabled: true,
+        bindings: [{ key: "x", cmd: "noop" }],
+      })
+    }).not.toThrow()
+    expect(() => {
+      keymap.registerLayer({
+        commands: [
+          {
+            name: "active-command",
+            enabled: false,
+            run() {
+              calls.push("active")
+            },
+          },
+        ],
+        bindings: [{ key: "y", cmd: "active-command" }],
+      })
+    }).not.toThrow()
+
+    expect(getActiveKeyNames()).toEqual(["x", "y"])
+    expect(getCommandNames()).toEqual(["active-command", "noop"])
+
+    mockInput.pressKey("x")
+    mockInput.pressKey("y")
+
+    expect(takeWarnings().warnings).toEqual(['[Keymap] Unknown layer field "enabled" was ignored'])
+    expect(calls).toEqual(["noop", "active"])
+  })
+
+  test("treats thrown enabled predicates as disabled for layer and command fields", () => {
+    const { takeErrors } = diagnostics.captureDiagnostics(keymap)
+    const calls: string[] = []
+
+    registerEnabledFields(keymap)
     keymap.registerLayer({
       commands: [
         {
-          name: "active-command",
-          enabled: false,
+          name: "layer-noop",
           run() {
-            calls.push("active")
+            calls.push("layer")
+          },
+        },
+        {
+          name: "command-noop",
+          enabled: () => {
+            throw new Error("command boom")
+          },
+          run() {
+            calls.push("command")
           },
         },
       ],
-      bindings: [{ key: "x", cmd: "active-command" }],
+    })
+    keymap.registerLayer({
+      enabled: () => {
+        throw new Error("layer boom")
+      },
+      bindings: [{ key: "x", cmd: "layer-noop" }],
+    })
+    keymap.registerLayer({
+      bindings: [{ key: "y", cmd: "command-noop" }],
     })
 
-    expect(keymap.getCommands().map((command) => command.name)).toEqual(["active-command"])
-    expect(getActiveKeyNames()).toEqual(["x"])
+    expect(() => keymap.getActiveKeys()).not.toThrow()
+    expect(getActiveKeyNames()).toEqual([])
 
     mockInput.pressKey("x")
+    mockInput.pressKey("y")
 
-    expect(calls).toEqual(["active"])
+    const { errors } = takeErrors()
+    expect(errors.length).toBeGreaterThan(0)
+    expect(errors.every((message) => message === "[Keymap] Error evaluating runtime matcher from field enabled:")).toBe(
+      true,
+    )
+    expect(calls).toEqual([])
   })
 })

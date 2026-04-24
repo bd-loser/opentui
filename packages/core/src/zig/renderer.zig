@@ -566,7 +566,6 @@ pub const CliRenderer = struct {
         self.backgroundColor = rgba;
         self.nextRenderBuffer.setBlendBackdropColor(.{ rgba[0], rgba[1], rgba[2], 1.0 });
 
-<<<<<<< HEAD
         // Do not mirror renderer background to terminal default background via
         // OSC 11 for now. In Ghostty, once OSC 11 has been used, later system
         // light/dark theme changes can leave OSC 11 queries stuck on stale bg

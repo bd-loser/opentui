@@ -16,6 +16,7 @@ export { registerEmacsBindings } from "./emacs-bindings.js"
 export { registerExCommands } from "./ex-commands.js"
 export { registerLeader } from "./leader.js"
 export { registerMetadataFields } from "./metadata.js"
+export { registerNeovimDisambiguation } from "./neovim-disambiguation.js"
 export { registerTimedLeader } from "./timed-leader.js"
 export { registerUnresolvedCommandWarnings } from "./unresolved-commands.js"
 
@@ -25,4 +26,5 @@ export type { EscapeClearsPendingSequenceOptions } from "./escape-clears-pending
 export type { Enabled } from "./enabled.js"
 export type { ExCommand } from "./ex-commands.js"
 export type { LeaderOptions } from "./leader.js"
+export type { NeovimDisambiguationOptions } from "./neovim-disambiguation.js"
 export type { TimedLeaderOptions } from "./timed-leader.js"

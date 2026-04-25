@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 //
-// opentui x xterm.js -- shared Pong in the browser.
+// OpenTUI x xterm.js -- shared Pong in the browser.
 //
 // Starts a Bun HTTP + WebSocket server that serves xterm.js and mirrors one
 // server-side Pong match across every connected browser tab. Each tab gets its
@@ -566,7 +566,7 @@ function closeSession(ws: ServerWebSocket<Session>, code = 1000, reason = "quit"
 function createSessionStreams(ws: ServerWebSocket<Session>, initialCols: number, initialRows: number) {
   // Renderer attaches a `data` listener to stdin and expects bytes.
   // A no-op `read()` keeps the stream in flowing mode without auto-end.
-  const stdin = new Readable({ read() {} })
+  const stdin = new Readable({ read() { } })
 
   const stdout = new Writable({
     write(chunk: Buffer | string, _encoding, callback) {
@@ -588,8 +588,8 @@ function createSessionStreams(ws: ServerWebSocket<Session>, initialCols: number,
       callback()
     },
   })
-  ;(stdout as unknown as { columns: number }).columns = initialCols
-  ;(stdout as unknown as { rows: number }).rows = initialRows
+    ; (stdout as unknown as { columns: number }).columns = initialCols
+    ; (stdout as unknown as { rows: number }).rows = initialRows
 
   return {
     stdin: stdin as unknown as NodeJS.ReadStream,
@@ -621,7 +621,7 @@ function setupPongUI(ws: ServerWebSocket<Session>, renderer: CliRenderer, sessio
     backgroundColor: session.theme.cardColor,
     borderStyle: "double",
     borderColor: session.theme.borderColor,
-    title: " opentui web pong ",
+    title: " OpenTUI web pong ",
     titleAlignment: "center",
     border: true,
     flexDirection: "column",
@@ -838,4 +838,4 @@ const server = Bun.serve<Session>({
   },
 })
 
-console.log(`opentui web pong ready on http://localhost:${server.port}/`)
+console.log(`OpenTUI web pong ready on http://localhost:${server.port}/`)

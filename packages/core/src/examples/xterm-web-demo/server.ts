@@ -2,14 +2,20 @@
 //
 // opentui x xterm.js -- shared Pong in the browser.
 //
-// Launches a Bun HTTP + WebSocket server. Each browser tab gets its own
-// CliRenderer wired to a duplex stream pair: rendered ANSI flows through the
-// NativeSpanFeed -> WebSocket -> xterm.js, and keystrokes flow back
-// xterm.js -> WebSocket -> CliRenderer.stdin.
+// Starts a Bun HTTP + WebSocket server that serves xterm.js and mirrors one
+// server-side Pong match across every connected browser tab. Each tab gets its
+// own CliRenderer wired to WebSocket-backed stdin/stdout streams: renderer
+// output is allocated a NativeSpanFeed and sent as ANSI bytes to xterm.js, while
+// keyboard bytes and resize events flow back to CliRenderer.stdin and
+// renderer.resize().
 //
 // Run:
 //   bun run packages/core/src/examples/xterm-web-demo/server.ts
-// Then open http://localhost:3000/.
+//   PORT=8080 bun run packages/core/src/examples/xterm-web-demo/server.ts
+// Then open http://localhost:3000/ or the configured PORT.
+//
+// Controls: Up/k or Down/j move, Space serves/pauses/resumes, r resets, q or
+// Ctrl+C quits the tab session.
 
 import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
@@ -623,13 +629,6 @@ function setupPongUI(ws: ServerWebSocket<Session>, renderer: CliRenderer, sessio
     justifyContent: "flex-start",
     padding: 1,
   })
-
-  const subtitleText = new TextRenderable(renderer, {
-    id: "xterm-demo-subtitle",
-    content: "server-rendered pong mirrored into every tab",
-    fg: "#e2e8f0",
-  })
-  card.add(subtitleText)
 
   const scoreText = new TextRenderable(renderer, {
     id: "xterm-demo-score",

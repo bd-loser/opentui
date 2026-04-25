@@ -255,7 +255,7 @@ export fn createRenderer(
 
     const pool = gp.initGlobalPool(globalArena);
     _ = link.initGlobalLinkPool(globalArena);
-    return renderer.CliRenderer.createWithFullOptions(globalAllocator, width, height, pool, .{
+    return renderer.CliRenderer.createWithOptions(globalAllocator, width, height, pool, .{
         .testing = testing,
         .remote = remote,
         .feed_ptr = feedPtr,

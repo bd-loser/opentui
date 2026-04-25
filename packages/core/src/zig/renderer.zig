@@ -190,7 +190,7 @@ pub const CliRenderer = struct {
     force_full_repaint: bool = false,
     palette_index_cache: std.AutoHashMapUnmanaged(u64, u8) = .{},
 
-    /// Full set of options for `createWithFullOptions`. Presence of `feed_ptr`
+    /// Full set of options for `createWithOptions`. Presence of `feed_ptr`
     /// determines the backend variant: non-null selects FeedBackend, null
     /// selects StdoutBackend.
     pub const CreateOptions = struct {
@@ -201,10 +201,10 @@ pub const CliRenderer = struct {
     };
 
     pub fn create(allocator: Allocator, width: u32, height: u32, pool: *gp.GraphemePool, testing: bool) !*CliRenderer {
-        return createWithFullOptions(allocator, width, height, pool, .{ .testing = testing });
+        return createWithOptions(allocator, width, height, pool, .{ .testing = testing });
     }
 
-    pub fn createWithFullOptions(
+    pub fn createWithOptions(
         allocator: Allocator,
         width: u32,
         height: u32,
@@ -855,9 +855,9 @@ pub const CliRenderer = struct {
                     if (finalize_frame) {
                         self.prepareRenderFrameWithWriter(&w, redraw_footer, true);
                         b.endFrame();
-                         self.collectFrameStats(deltaTime);
+                        self.collectFrameStats(deltaTime);
 
-                         self.splitBatchActive = false;
+                        self.splitBatchActive = false;
                         self.splitBatchRedrawFooter = false;
                         self.splitBatchDeltaTime = 0;
                     } else {

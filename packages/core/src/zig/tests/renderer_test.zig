@@ -14,22 +14,22 @@ const TextBufferView = text_buffer_view.TextBufferView;
 const OptimizedBuffer = buffer.OptimizedBuffer;
 const RGBA = text_buffer.RGBA;
 
-fn createWithFullOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) !void {
+fn createWithOptionsOnce(allocator: std.mem.Allocator, width: u32, height: u32) !void {
     const pool = gp.initGlobalPool(allocator);
     defer gp.deinitGlobalPool();
     defer link.deinitGlobalLinkPool();
 
-    var cli_renderer = try CliRenderer.createWithFullOptions(allocator, width, height, pool, .{
+    var cli_renderer = try CliRenderer.createWithOptions(allocator, width, height, pool, .{
         .testing = true,
         .remote = false,
     });
     cli_renderer.destroy();
 }
 
-test "renderer - createWithFullOptions late allocation failure cleans up" {
+test "renderer - createWithOptions late allocation failure cleans up" {
     const allocation_count = blk: {
         var counting_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
-        try createWithFullOptionsOnce(counting_allocator.allocator(), 80, 24);
+        try createWithOptionsOnce(counting_allocator.allocator(), 80, 24);
         break :blk counting_allocator.alloc_index;
     };
 
@@ -39,7 +39,7 @@ test "renderer - createWithFullOptions late allocation failure cleans up" {
         .fail_index = allocation_count - 1,
     });
 
-    try std.testing.expectError(error.OutOfMemory, createWithFullOptionsOnce(failing_allocator.allocator(), 80, 24));
+    try std.testing.expectError(error.OutOfMemory, createWithOptionsOnce(failing_allocator.allocator(), 80, 24));
     try std.testing.expect(failing_allocator.has_induced_failure);
     try std.testing.expectEqual(failing_allocator.allocated_bytes, failing_allocator.freed_bytes);
 }
@@ -2010,7 +2010,7 @@ test "FeedBackend - renderer writes through feed" {
     defer link.deinitGlobalLinkPool();
 
     const feed = try native_span_feed.Stream.create(std.testing.allocator, null);
-    var cli_renderer = try CliRenderer.createWithFullOptions(std.testing.allocator, 80, 24, pool, .{
+    var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 80, 24, pool, .{
         .testing = false,
         .remote = true,
         .feed_ptr = feed,
@@ -2053,7 +2053,7 @@ test "FeedBackend - shouldSkipFrame when span queue saturated" {
     var opts = native_span_feed.defaultOptions();
     opts.span_queue_capacity = 2;
     const feed = try native_span_feed.Stream.create(std.testing.allocator, opts);
-    var cli_renderer = try CliRenderer.createWithFullOptions(std.testing.allocator, 80, 24, pool, .{
+    var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 80, 24, pool, .{
         .testing = false,
         .remote = true,
         .feed_ptr = feed,
@@ -2089,7 +2089,7 @@ test "FeedBackend - supportsThreading is false" {
     defer link.deinitGlobalLinkPool();
 
     const feed = try native_span_feed.Stream.create(std.testing.allocator, null);
-    var cli_renderer = try CliRenderer.createWithFullOptions(std.testing.allocator, 80, 24, pool, .{
+    var cli_renderer = try CliRenderer.createWithOptions(std.testing.allocator, 80, 24, pool, .{
         .testing = false,
         .remote = true,
         .feed_ptr = feed,

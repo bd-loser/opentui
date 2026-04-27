@@ -1,4 +1,5 @@
 const std = @import("std");
+const ansi = @import("../ansi.zig");
 const bench_utils = @import("../bench-utils.zig");
 const text_buffer_mod = @import("../text-buffer.zig");
 const syntax_style_mod = @import("../syntax-style.zig");
@@ -9,14 +10,19 @@ const BenchResult = bench_utils.BenchResult;
 const BenchStats = bench_utils.BenchStats;
 const MemStats = bench_utils.MemStats;
 const TextBuffer = text_buffer_mod.UnifiedTextBuffer;
+const RGBA = text_buffer_mod.RGBA;
 const StyledChunk = text_buffer_mod.StyledChunk; // Use the unified type from text-buffer
 const SyntaxStyle = syntax_style_mod.SyntaxStyle;
 
 pub const benchName = "Styled Text Operations";
 
 // Helper to convert RGBA to pointer for benchmark
-fn rgbaToPtr(rgba: *const [4]f32) [*]const f32 {
-    return @ptrCast(rgba);
+fn rgbaToPtr(color: *const RGBA) [*]const u16 {
+    return @as([*]const u16, @ptrCast(color));
+}
+
+fn rgba(r: f32, g: f32, b: f32, a: f32) RGBA {
+    return ansi.rgbaFromFloats(r, g, b, a);
 }
 
 fn benchSetStyledTextOperations(
@@ -42,7 +48,7 @@ fn benchSetStyledTextOperations(
             var stats = BenchStats{};
 
             const text = "Hello, World! This is a test of styled text rendering.";
-            const fg_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
+            const fg_color = rgba(1.0, 1.0, 1.0, 1.0);
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -83,12 +89,12 @@ fn benchSetStyledTextOperations(
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
             var stats = BenchStats{};
 
-            const red = [4]f32{ 1.0, 0.0, 0.0, 1.0 };
-            const green = [4]f32{ 0.0, 1.0, 0.0, 1.0 };
-            const blue = [4]f32{ 0.0, 0.0, 1.0, 1.0 };
-            const yellow = [4]f32{ 1.0, 1.0, 0.0, 1.0 };
-            const cyan = [4]f32{ 0.0, 1.0, 1.0, 1.0 };
-            const magenta = [4]f32{ 1.0, 0.0, 1.0, 1.0 };
+            const red = rgba(1.0, 0.0, 0.0, 1.0);
+            const green = rgba(0.0, 1.0, 0.0, 1.0);
+            const blue = rgba(0.0, 0.0, 1.0, 1.0);
+            const yellow = rgba(1.0, 1.0, 0.0, 1.0);
+            const cyan = rgba(0.0, 1.0, 1.0, 1.0);
+            const magenta = rgba(1.0, 0.0, 1.0, 1.0);
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -137,10 +143,10 @@ fn benchSetStyledTextOperations(
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
             var stats = BenchStats{};
 
-            const keyword_color = [4]f32{ 0.8, 0.4, 1.0, 1.0 };
-            const identifier_color = [4]f32{ 0.7, 0.9, 1.0, 1.0 };
-            const operator_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
-            const number_color = [4]f32{ 0.7, 1.0, 0.7, 1.0 };
+            const keyword_color = rgba(0.8, 0.4, 1.0, 1.0);
+            const identifier_color = rgba(0.7, 0.9, 1.0, 1.0);
+            const operator_color = rgba(1.0, 1.0, 1.0, 1.0);
+            const number_color = rgba(0.7, 1.0, 0.7, 1.0);
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -205,7 +211,7 @@ fn benchSetStyledTextOperations(
                 tb.setSyntaxStyle(style);
 
                 // Just repeat the same chunk 10 times
-                const color = [4]f32{ 1.0, 0.5, 0.5, 1.0 };
+                const color = rgba(1.0, 0.5, 0.5, 1.0);
                 const chunks = [_]StyledChunk{
                     .{ .text_ptr = text.ptr, .text_len = text.len, .fg_ptr = rgbaToPtr(&color), .bg_ptr = null, .attributes = 0 },
                     .{ .text_ptr = text.ptr, .text_len = text.len, .fg_ptr = rgbaToPtr(&color), .bg_ptr = null, .attributes = 0 },
@@ -400,11 +406,11 @@ fn benchHighlightOperations(
             var chunk_list: std.ArrayListUnmanaged(StyledChunk) = .{};
             defer chunk_list.deinit(allocator);
 
-            const keyword_color = [4]f32{ 0.8, 0.4, 1.0, 1.0 };
-            const identifier_color = [4]f32{ 0.7, 0.9, 1.0, 1.0 };
-            const operator_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
-            const number_color = [4]f32{ 0.7, 1.0, 0.7, 1.0 };
-            const string_color = [4]f32{ 0.9, 0.8, 0.5, 1.0 };
+            const keyword_color = rgba(0.8, 0.4, 1.0, 1.0);
+            const identifier_color = rgba(0.7, 0.9, 1.0, 1.0);
+            const operator_color = rgba(1.0, 1.0, 1.0, 1.0);
+            const number_color = rgba(0.7, 1.0, 0.7, 1.0);
+            const string_color = rgba(0.9, 0.8, 0.5, 1.0);
 
             // Repeat a pattern to create 100 chunks
             for (0..10) |_| {

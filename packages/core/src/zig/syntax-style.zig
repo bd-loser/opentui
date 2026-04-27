@@ -1,17 +1,15 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const ansi = @import("ansi.zig");
 const buffer = @import("buffer.zig");
 const events = @import("event-emitter.zig");
 
 pub const RGBA = buffer.RGBA;
-pub const ColorTag = buffer.ColorTag;
 
+/// Foreground, background, and text attributes for a syntax highlight style.
+/// Color intent (rgb, indexed, default) is embedded in the RGBA values.
 pub const StyleDefinition = struct {
     fg: ?RGBA,
     bg: ?RGBA,
-    fg_tag: ColorTag = ansi.COLOR_TAG_RGB,
-    bg_tag: ColorTag = ansi.COLOR_TAG_RGB,
     attributes: u32,
 };
 
@@ -136,11 +134,9 @@ pub const SyntaxStyle = struct {
             if (self.resolveById(id)) |style| {
                 if (style.fg) |fg| {
                     merged.fg = fg;
-                    merged.fg_tag = style.fg_tag;
                 }
                 if (style.bg) |bg| {
                     merged.bg = bg;
-                    merged.bg_tag = style.bg_tag;
                 }
                 // Attributes are OR'd together
                 merged.attributes |= style.attributes;

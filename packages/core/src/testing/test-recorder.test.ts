@@ -292,7 +292,7 @@ describe("TestRecorder", () => {
     const frames = recorderWithFg.recordedFrames
     expect(frames.length).toBe(1)
     expect(frames[0].buffers).toBeDefined()
-    expect(frames[0].buffers?.fg).toBeInstanceOf(Float32Array)
+    expect(frames[0].buffers?.fg).toBeInstanceOf(Uint16Array)
     expect(frames[0].buffers?.bg).toBeUndefined()
     expect(frames[0].buffers?.attributes).toBeUndefined()
 
@@ -310,7 +310,7 @@ describe("TestRecorder", () => {
     const frames = recorderWithBg.recordedFrames
     expect(frames.length).toBe(1)
     expect(frames[0].buffers).toBeDefined()
-    expect(frames[0].buffers?.bg).toBeInstanceOf(Float32Array)
+    expect(frames[0].buffers?.bg).toBeInstanceOf(Uint16Array)
     expect(frames[0].buffers?.fg).toBeUndefined()
     expect(frames[0].buffers?.attributes).toBeUndefined()
 
@@ -348,8 +348,8 @@ describe("TestRecorder", () => {
     const frames = recorderWithAll.recordedFrames
     expect(frames.length).toBe(1)
     expect(frames[0].buffers).toBeDefined()
-    expect(frames[0].buffers?.fg).toBeInstanceOf(Float32Array)
-    expect(frames[0].buffers?.bg).toBeInstanceOf(Float32Array)
+    expect(frames[0].buffers?.fg).toBeInstanceOf(Uint16Array)
+    expect(frames[0].buffers?.bg).toBeInstanceOf(Uint16Array)
     expect(frames[0].buffers?.attributes).toBeInstanceOf(Uint8Array)
 
     recorderWithAll.stop()

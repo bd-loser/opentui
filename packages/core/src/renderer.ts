@@ -4045,7 +4045,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private syncNativePaletteState(colors: TerminalColors | null): void {
     const signature = buildTerminalPaletteSignature(colors)
-    if (this._publishedPaletteSignature !== null && this._publishedPaletteSignature !== signature) {
+    if (this._publishedPaletteSignature !== signature) {
       this._paletteEpoch = (this._paletteEpoch + 1) >>> 0
     }
 

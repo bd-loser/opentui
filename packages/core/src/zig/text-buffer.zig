@@ -21,9 +21,6 @@ const LineInfo = iter_mod.LineInfo;
 pub const TextChunk = seg_mod.TextChunk;
 pub const MemRegistry = mem_registry_mod.MemRegistry;
 pub const RGBA = seg_mod.RGBA;
-pub const ColorTag = ansi.ColorTag;
-pub const COLOR_TAG_RGB = ansi.COLOR_TAG_RGB;
-pub const COLOR_TAG_DEFAULT = ansi.COLOR_TAG_DEFAULT;
 pub const TextSelection = seg_mod.TextSelection;
 pub const TextBufferError = seg_mod.TextBufferError;
 pub const Highlight = seg_mod.Highlight;
@@ -36,13 +33,19 @@ pub const SyntaxStyle = ss.SyntaxStyle;
 
 pub const TextBuffer = UnifiedTextBuffer;
 
+/// A styled text chunk passed from TypeScript across the FFI boundary.
+/// Each chunk carries raw text bytes, optional packed RGBA colors, text
+/// attributes, and an optional hyperlink URL.
+///
+/// The color pointers point to 4 consecutive u16 values in the packed RGBA
+/// format defined by ansi.zig. Use utils.ptrToRGBA to read them.
 pub const StyledChunk = extern struct {
     text_ptr: [*]const u8,
     text_len: usize,
-    fg_ptr: ?[*]const f32,
-    bg_ptr: ?[*]const f32,
-    fg_tag: ansi.ColorTag = ansi.COLOR_TAG_RGB,
-    bg_tag: ansi.ColorTag = ansi.COLOR_TAG_RGB,
+    /// Optional foreground color as 4 packed u16 values (see ansi.RGBA).
+    fg_ptr: ?[*]const u16,
+    /// Optional background color as 4 packed u16 values (see ansi.RGBA).
+    bg_ptr: ?[*]const u16,
     attributes: u32,
     link_ptr: ?[*]const u8 = null,
     link_len: usize = 0,
@@ -54,8 +57,6 @@ pub const UnifiedTextBuffer = struct {
     mem_registry: MemRegistry,
     default_fg: ?RGBA,
     default_bg: ?RGBA,
-    default_fg_tag: ansi.ColorTag,
-    default_bg_tag: ansi.ColorTag,
     default_attributes: ?u32,
 
     allocator: Allocator,
@@ -95,8 +96,6 @@ pub const UnifiedTextBuffer = struct {
     pub const Defaults = struct {
         fg: ?RGBA,
         bg: ?RGBA,
-        fg_tag: ansi.ColorTag,
-        bg_tag: ansi.ColorTag,
         attributes: ?u32,
     };
 
@@ -105,8 +104,6 @@ pub const UnifiedTextBuffer = struct {
         return .{
             .fg = self.default_fg,
             .bg = self.default_bg,
-            .fg_tag = self.default_fg_tag,
-            .bg_tag = self.default_bg_tag,
             .attributes = self.default_attributes,
         };
     }
@@ -205,8 +202,6 @@ pub const UnifiedTextBuffer = struct {
             .mem_registry = mem_registry,
             .default_fg = null,
             .default_bg = null,
-            .default_fg_tag = ansi.COLOR_TAG_RGB,
-            .default_bg_tag = ansi.COLOR_TAG_RGB,
             .default_attributes = null,
             .allocator = internal_allocator,
             .global_allocator = global_allocator,
@@ -392,21 +387,11 @@ pub const UnifiedTextBuffer = struct {
 
     // Default colors/attributes
     pub fn setDefaultFg(self: *Self, fg: ?RGBA) void {
-        self.setDefaultFgWithTag(fg, ansi.COLOR_TAG_RGB);
-    }
-
-    pub fn setDefaultFgWithTag(self: *Self, fg: ?RGBA, fg_tag: ansi.ColorTag) void {
         self.default_fg = fg;
-        self.default_fg_tag = fg_tag;
     }
 
     pub fn setDefaultBg(self: *Self, bg: ?RGBA) void {
-        self.setDefaultBgWithTag(bg, ansi.COLOR_TAG_RGB);
-    }
-
-    pub fn setDefaultBgWithTag(self: *Self, bg: ?RGBA, bg_tag: ansi.ColorTag) void {
         self.default_bg = bg;
-        self.default_bg_tag = bg_tag;
     }
 
     pub fn setDefaultAttributes(self: *Self, attributes: ?u32) void {
@@ -416,8 +401,6 @@ pub const UnifiedTextBuffer = struct {
     pub fn resetDefaults(self: *Self) void {
         self.default_fg = null;
         self.default_bg = null;
-        self.default_fg_tag = ansi.COLOR_TAG_RGB;
-        self.default_bg_tag = ansi.COLOR_TAG_RGB;
         self.default_attributes = null;
     }
 
@@ -1085,8 +1068,8 @@ pub const UnifiedTextBuffer = struct {
                 const chunk_len = self.measureText(chunk_text);
 
                 if (chunk_len > 0) {
-                    const fg = if (chunk.fg_ptr) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
-                    const bg = if (chunk.bg_ptr) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+                    const fg = if (chunk.fg_ptr) |fgPtr| utils.ptrToRGBA(fgPtr) else null;
+                    const bg = if (chunk.bg_ptr) |bgPtr| utils.ptrToRGBA(bgPtr) else null;
 
                     var attributes = chunk.attributes;
                     if (chunk.link_ptr) |link_ptr| {
@@ -1110,8 +1093,6 @@ pub const UnifiedTextBuffer = struct {
                     const style_id = (@constCast(style)).registerStyleDefinition(style_name, .{
                         .fg = fg,
                         .bg = bg,
-                        .fg_tag = chunk.fg_tag,
-                        .bg_tag = chunk.bg_tag,
                         .attributes = attributes,
                     }) catch continue;
 

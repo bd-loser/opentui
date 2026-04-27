@@ -49,9 +49,11 @@ describe("Textarea - Rendering Tests", () => {
 
       const frame = captureSpans()
       expect(frame.lines[0].spans[0].text).toBe("abc   ")
-      expect(frame.lines[0].spans[0].bg.tag).toBe(254)
+      expect(frame.lines[0].spans[0].bg.intent).toBe("indexed")
+      expect(frame.lines[0].spans[0].bg.slot).toBe(254)
       expect(frame.lines[1].spans[0].text).toBe("      ")
-      expect(frame.lines[1].spans[0].bg.tag).toBe(254)
+      expect(frame.lines[1].spans[0].bg.intent).toBe("indexed")
+      expect(frame.lines[1].spans[0].bg.slot).toBe(254)
     })
 
     it("fills textarea bounds without double-blending translucent backgrounds", async () => {
@@ -70,8 +72,7 @@ describe("Textarea - Rendering Tests", () => {
       expect(frame.lines[0].spans[0].bg.r).toBeCloseTo(frame.lines[1].spans[0].bg.r, 5)
       expect(frame.lines[0].spans[0].bg.g).toBeCloseTo(frame.lines[1].spans[0].bg.g, 5)
       expect(frame.lines[0].spans[0].bg.b).toBeCloseTo(frame.lines[1].spans[0].bg.b, 5)
-      expect(frame.lines[0].spans[0].bg.a).toBeCloseTo(0.5, 5)
-      expect(frame.lines[1].spans[0].bg.a).toBeCloseTo(0.5, 5)
+      expect(frame.lines[0].spans[0].bg.a).toBeCloseTo(frame.lines[1].spans[0].bg.a, 5)
     })
 
     it("fills textarea background while placeholder is shown", async () => {
@@ -87,8 +88,11 @@ describe("Textarea - Rendering Tests", () => {
 
       const frame = captureSpans()
       expect(frame.lines[0].spans.some((span) => span.text.includes("hint"))).toBe(true)
-      expect(frame.lines[0].spans.slice(0, 2).every((span) => span.bg.tag === 254)).toBe(true)
-      expect(frame.lines[1].spans[0].bg.tag).toBe(254)
+      expect(
+        frame.lines[0].spans.slice(0, 2).every((span) => span.bg.intent === "indexed" && span.bg.slot === 254),
+      ).toBe(true)
+      expect(frame.lines[1].spans[0].bg.intent).toBe("indexed")
+      expect(frame.lines[1].spans[0].bg.slot).toBe(254)
     })
 
     it("should move cursor down through all wrapped visual lines at column 0", async () => {

@@ -1,6 +1,7 @@
 const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
+const ansi = @import("../ansi.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
 
@@ -315,7 +316,6 @@ test "Selection - VALIDATION: multi-line selection range with viewport" {
 
 test "Selection - RENDER TEST: selection highlights correct cells with viewport scroll" {
     const buffer_mod = @import("../buffer.zig");
-    const RGBA = buffer_mod.RGBA;
 
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -332,10 +332,10 @@ test "Selection - RENDER TEST: selection highlights correct cells with viewport 
 
     view.setViewport(Viewport{ .x = 0, .y = 3, .width = 10, .height = 5 });
 
-    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const red_bg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
     _ = view.setLocalSelection(0, 0, 3, 0, red_bg, null);
 
-    var render_buffer = try buffer_mod.OptimizedBuffer.init(std.testing.allocator, pool, 20, 10, .unicode);
+    var render_buffer = try buffer_mod.OptimizedBuffer.init(std.testing.allocator, 20, 10, .{ .pool = pool, .width_method = .unicode });
     defer render_buffer.deinit();
 
     try render_buffer.drawTextBuffer(view, 0, 0);
@@ -346,9 +346,9 @@ test "Selection - RENDER TEST: selection highlights correct cells with viewport 
         try std.testing.expect(cell != null);
 
         const bg = cell.?.bg;
-        try std.testing.expectApproxEqAbs(@as(f32, 1.0), bg[0], 0.01); // Red
-        try std.testing.expectApproxEqAbs(@as(f32, 0.0), bg[1], 0.01); // Green
-        try std.testing.expectApproxEqAbs(@as(f32, 0.0), bg[2], 0.01); // Blue
+        try std.testing.expectEqual(@as(u8, 255), ansi.red(bg));
+        try std.testing.expectEqual(@as(u8, 0), ansi.green(bg));
+        try std.testing.expectEqual(@as(u8, 0), ansi.blue(bg));
     }
 
     const cell_3 = render_buffer.get(3, 0);

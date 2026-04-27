@@ -1,6 +1,5 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const ansi = @import("ansi.zig");
 const tb = @import("text-buffer.zig");
 const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
@@ -21,11 +20,12 @@ pub const TextBufferViewError = error{
     OutOfMemory,
 };
 
+/// Colors for a text selection. Color intent (rgb, indexed, default) is
+/// carried inside the RGBA values themselves, so no separate tag fields
+/// are needed.
 pub const SelectionStyle = struct {
     bgColor: ?RGBA = null,
     fgColor: ?RGBA = null,
-    bgTag: ansi.ColorTag = ansi.COLOR_TAG_RGB,
-    fgTag: ansi.ColorTag = ansi.COLOR_TAG_RGB,
 
     pub fn rgb(bgColor: ?RGBA, fgColor: ?RGBA) SelectionStyle {
         return .{
@@ -524,8 +524,6 @@ pub const UnifiedTextBufferView = struct {
             .end = end,
             .bgColor = style.bgColor,
             .fgColor = style.fgColor,
-            .bgTag = style.bgTag,
-            .fgTag = style.fgTag,
         };
     }
 

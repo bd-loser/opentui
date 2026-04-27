@@ -355,17 +355,17 @@ test "renderer - background color setting" {
     );
     defer cli_renderer.destroy();
 
-    const bg_color = RGBA{ 0.1, 0.2, 0.3, 1.0 };
+    const bg_color = ansi.rgbaFromFloats(0.1, 0.2, 0.3, 1.0);
     cli_renderer.setBackgroundColor(bg_color);
 
     try std.testing.expectEqual(bg_color, cli_renderer.backgroundColor);
     try std.testing.expectEqual(bg_color, cli_renderer.getNextBuffer().getBlendBackdropColor().?);
 
-    const transparent_bg = RGBA{ 0.25, 0.5, 0.75, 0.0 };
+    const transparent_bg = ansi.rgbaFromFloats(0.25, 0.5, 0.75, 0.0);
     cli_renderer.setBackgroundColor(transparent_bg);
 
     try std.testing.expectEqual(transparent_bg, cli_renderer.backgroundColor);
-    try std.testing.expectEqual(RGBA{ 0.25, 0.5, 0.75, 1.0 }, cli_renderer.getNextBuffer().getBlendBackdropColor().?);
+    try std.testing.expectEqual(ansi.rgbaFromFloats(0.25, 0.5, 0.75, 1.0), cli_renderer.getNextBuffer().getBlendBackdropColor().?);
 }
 
 test "renderer - theme color query tracks pending background restore" {
@@ -383,9 +383,9 @@ test "renderer - theme color query tracks pending background restore" {
     );
     defer cli_renderer.destroy();
 
-    cli_renderer.setBackgroundColor(RGBA{ 0.1, 0.2, 0.3, 1.0 });
+    cli_renderer.setBackgroundColor(ansi.rgbaFromFloats(0.1, 0.2, 0.3, 1.0));
     cli_renderer.queryThemeColors();
-    try std.testing.expectEqual(RGBA{ 0.1, 0.2, 0.3, 1.0 }, cli_renderer.backgroundColor);
+    try std.testing.expectEqual(ansi.rgbaFromFloats(0.1, 0.2, 0.3, 1.0), cli_renderer.backgroundColor);
 }
 
 test "renderer - empty text buffer renders correctly" {
@@ -498,8 +498,8 @@ test "renderer - 1000 frame render loop with setStyledText" {
         "Mixed 😀 世",
     };
 
-    const fg_color = [4]f32{ 1.0, 0.8, 0.6, 1.0 };
-    const bg_color = [4]f32{ 0.1, 0.1, 0.2, 1.0 };
+    const fg_color = ansi.rgbaFromFloats(1.0, 0.8, 0.6, 1.0);
+    const bg_color = ansi.rgbaFromFloats(0.1, 0.1, 0.2, 1.0);
 
     var frame: u32 = 0;
     while (frame < 1000) : (frame += 1) {
@@ -515,11 +515,11 @@ test "renderer - 1000 frame render loop with setStyledText" {
         }};
 
         try tb.setStyledText(&chunks);
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         const next_buffer = cli_renderer.getNextBuffer();
-        try next_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try next_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
         next_buffer.drawFrameBuffer(0, 0, opt_buffer, null, null, null, null);
 
         cli_renderer.render(false);
@@ -575,8 +575,8 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
     );
     defer frame_buffer.deinit();
 
-    const fg_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
-    const bg_color = [4]f32{ 0.0, 0.0, 0.0, 0.0 };
+    const fg_color = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg_color = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0);
 
     const text_with_emoji = "👋";
     const chunks = [_]text_buffer.StyledChunk{.{
@@ -587,16 +587,16 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
         .attributes = 0,
     }};
     try tb.setStyledText(&chunks);
-    try frame_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try frame_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try frame_buffer.drawTextBuffer(view, 0, 0);
 
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.setRespectAlpha(false);
-    try next_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try next_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
 
     next_buffer.drawFrameBuffer(0, 0, frame_buffer, null, null, null, null);
 
-    try frame_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try frame_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
 
     var i: usize = 0;
     while (i < 10) : (i += 1) {
@@ -610,7 +610,7 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
         }};
         try tb.setStyledText(&new_chunks);
         try frame_buffer.drawTextBuffer(view, 0, 0);
-        try frame_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try frame_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     }
 
     cli_renderer.render(false);
@@ -635,8 +635,8 @@ test "renderer - unchanged grapheme should not churn IDs across frames" {
     );
     defer cli_renderer.destroy();
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
 
     const first_next_buffer = cli_renderer.getNextBuffer();
     try first_next_buffer.drawText("👋", 0, 0, fg, bg, 0);
@@ -693,8 +693,8 @@ test "renderer - hyperlinks enabled with OSC 8 output" {
 
     const next_buffer = cli_renderer.getNextBuffer();
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("Click here", 0, 0, fg, bg, attributes);
 
     cli_renderer.render(false);
@@ -741,8 +741,8 @@ test "renderer - hyperlinks disabled no OSC 8 output" {
 
     const next_buffer = cli_renderer.getNextBuffer();
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("Click here", 0, 0, fg, bg, attributes);
 
     cli_renderer.render(false);
@@ -781,8 +781,8 @@ test "renderer - link transition mid-line" {
     const attr1 = ansi.TextAttributes.setLinkId(0, link_id1);
     const attr2 = ansi.TextAttributes.setLinkId(0, link_id2);
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
 
     // Draw first link
     try next_buffer.drawText("First", 0, 0, fg, bg, attr1);
@@ -835,8 +835,8 @@ test "renderer - hyperlink spanning multiple rows uses same id" {
     const link_id = try link_pool.alloc("https://example.com/long-url");
     const attributes = ansi.TextAttributes.setLinkId(0, link_id);
 
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
 
     // Fill entire row 0 with linked text so link is never interrupted by empty cells
     try next_buffer.drawText("01234567890123456789012345678901234567890123456789012345678901234567890123456789", 0, 0, fg, bg, attributes);
@@ -882,18 +882,14 @@ test "renderer - explicit default and indexed tags use ANSI default/indexed outp
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.set(0, 0, buffer.Cell{
         .char = 'A',
-        .fg = RGBA{ 1.0, 1.0, 1.0, 1.0 },
-        .bg = RGBA{ 0.0, 0.0, 0.0, 1.0 },
-        .fg_tag = ansi.COLOR_TAG_DEFAULT,
-        .bg_tag = ansi.COLOR_TAG_RGB,
+        .fg = ansi.defaultColor(255, 255, 255, 255),
+        .bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0),
         .attributes = 0,
     });
     next_buffer.set(1, 0, buffer.Cell{
         .char = 'B',
-        .fg = RGBA{ 0.2, 0.7, 0.9, 1.0 },
-        .bg = RGBA{ 0.0, 0.0, 0.0, 1.0 },
-        .fg_tag = ansi.indexedColorTag(6),
-        .bg_tag = ansi.COLOR_TAG_RGB,
+        .fg = ansi.indexedColor(6, 51, 179, 230),
+        .bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0),
         .attributes = 0,
     });
 
@@ -925,10 +921,8 @@ test "renderer - indexed snapshots fall back to rgb and explicit bg default rese
     const next_buffer = cli_renderer.getNextBuffer();
     next_buffer.set(0, 0, buffer.Cell{
         .char = 'A',
-        .fg = RGBA{ 0.2, 0.4, 0.6, 1.0 },
-        .bg = RGBA{ 0.0, 0.0, 0.0, 1.0 },
-        .fg_tag = ansi.indexedColorTag(6),
-        .bg_tag = ansi.COLOR_TAG_DEFAULT,
+        .fg = ansi.indexedColor(6, 51, 102, 153),
+        .bg = ansi.defaultColor(0, 0, 0, 255),
         .attributes = 0,
     });
 
@@ -959,7 +953,7 @@ test "renderer - rgb colors fall back to ANSI256 mapping when rgb is unavailable
     cli_renderer.terminal.caps.ansi256 = true;
 
     const next_buffer = cli_renderer.getNextBuffer();
-    try next_buffer.drawText("A", 0, 0, RGBA{ 0.95, 0.1, 0.1, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 }, 0);
+    try next_buffer.drawText("A", 0, 0, ansi.rgbaFromFloats(0.95, 0.1, 0.1, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 0);
 
     cli_renderer.render(false);
 
@@ -986,13 +980,13 @@ test "renderer - rgb fallback uses published palette state" {
     cli_renderer.terminal.caps.rgb = false;
     cli_renderer.terminal.caps.ansi256 = true;
 
-    const target = RGBA{ 0.3, 0.6, 0.9, 1.0 };
-    var palette = [_]RGBA{RGBA{ 0.0, 0.0, 0.0, 1.0 }} ** 256;
+    const target = ansi.rgbaFromFloats(0.3, 0.6, 0.9, 1.0);
+    var palette = [_]RGBA{ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0)} ** 256;
     palette[42] = target;
-    cli_renderer.setPaletteState(palette[0..], RGBA{ 1.0, 1.0, 1.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 }, 1);
+    cli_renderer.setPaletteState(palette[0..], ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 1);
 
     const next_buffer = cli_renderer.getNextBuffer();
-    try next_buffer.drawText("A", 0, 0, target, RGBA{ 0.0, 0.0, 0.0, 1.0 }, 0);
+    try next_buffer.drawText("A", 0, 0, target, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 0);
 
     cli_renderer.render(false);
 
@@ -1018,12 +1012,12 @@ test "renderer - palette epoch changes force repaint and use new palette mapping
     cli_renderer.terminal.caps.rgb = false;
     cli_renderer.terminal.caps.ansi256 = true;
 
-    const target = RGBA{ 0.3, 0.6, 0.9, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const target = ansi.rgbaFromFloats(0.3, 0.6, 0.9, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
 
-    var palette_a = [_]RGBA{RGBA{ 0.0, 0.0, 0.0, 1.0 }} ** 256;
+    var palette_a = [_]RGBA{ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0)} ** 256;
     palette_a[42] = target;
-    cli_renderer.setPaletteState(palette_a[0..], RGBA{ 1.0, 1.0, 1.0, 1.0 }, bg, 1);
+    cli_renderer.setPaletteState(palette_a[0..], ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0), bg, 1);
 
     const next_buffer = cli_renderer.getNextBuffer();
     try next_buffer.drawText("A", 0, 0, target, bg, 0);
@@ -1038,9 +1032,9 @@ test "renderer - palette epoch changes force repaint and use new palette mapping
     const second_output = cli_renderer.getLastOutputForTest();
     try std.testing.expect(std.mem.indexOf(u8, second_output, "A") == null);
 
-    var palette_b = [_]RGBA{RGBA{ 0.0, 0.0, 0.0, 1.0 }} ** 256;
+    var palette_b = [_]RGBA{ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0)} ** 256;
     palette_b[77] = target;
-    cli_renderer.setPaletteState(palette_b[0..], RGBA{ 1.0, 1.0, 1.0, 1.0 }, bg, 2);
+    cli_renderer.setPaletteState(palette_b[0..], ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0), bg, 2);
 
     try next_buffer.drawText("A", 0, 0, target, bg, 0);
     cli_renderer.render(false);
@@ -1068,7 +1062,7 @@ test "renderer - transparent rgb backgrounds still emit 49 reset" {
     cli_renderer.terminal.caps.rgb = true;
 
     const next_buffer = cli_renderer.getNextBuffer();
-    try next_buffer.drawText("A", 0, 0, RGBA{ 1.0, 1.0, 1.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    try next_buffer.drawText("A", 0, 0, ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
 
     cli_renderer.render(false);
 
@@ -1269,8 +1263,8 @@ test "renderer - commitSplitFooterSnapshot writes append before footer repaint i
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
     const next_buffer = cli_renderer.getNextBuffer();
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
 
     var snapshot = try OptimizedBuffer.init(
@@ -1281,8 +1275,8 @@ test "renderer - commitSplitFooterSnapshot writes append before footer repaint i
     );
     defer snapshot.deinit();
 
-    try snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 32);
-    try snapshot.drawText("append-line", 0, 0, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    try snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
+    try snapshot.drawText("append-line", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
 
     const appended = "append-line";
     // This test documents the critical ordering contract:
@@ -1338,8 +1332,8 @@ test "renderer - commitSplitFooterSnapshot settling phase moves footer downward"
     _ = cli_renderer.resetSplitScrollback(0, 3);
 
     const next_buffer = cli_renderer.getNextBuffer();
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
 
     var snapshot = try OptimizedBuffer.init(
@@ -1350,8 +1344,8 @@ test "renderer - commitSplitFooterSnapshot settling phase moves footer downward"
     );
     defer snapshot.deinit();
 
-    try snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 32);
-    try snapshot.drawText("settle", 0, 0, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    try snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
+    try snapshot.drawText("settle", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
 
     const appended = "settle";
     // During settling we intentionally avoid bounded DECSTBM and instead clear rows
@@ -1399,8 +1393,8 @@ test "renderer - commitSplitFooterSnapshot multiline settling enables bounded sc
     _ = cli_renderer.resetSplitScrollback(1, 3);
 
     const next_buffer = cli_renderer.getNextBuffer();
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
 
     var snapshot = try OptimizedBuffer.init(
@@ -1411,9 +1405,9 @@ test "renderer - commitSplitFooterSnapshot multiline settling enables bounded sc
     );
     defer snapshot.deinit();
 
-    try snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 32);
-    try snapshot.drawText("line-a", 0, 0, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
-    try snapshot.drawText("line-b", 0, 1, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    try snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
+    try snapshot.drawText("line-a", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try snapshot.drawText("line-b", 0, 1, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 6, false, true, 3, false, true, true);
 
@@ -1445,8 +1439,8 @@ test "renderer - commitSplitFooterSnapshot multiline short final row keeps conti
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
     const next_buffer = cli_renderer.getNextBuffer();
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
 
     var first_snapshot = try OptimizedBuffer.init(
@@ -1457,9 +1451,9 @@ test "renderer - commitSplitFooterSnapshot multiline short final row keeps conti
     );
     defer first_snapshot.deinit();
 
-    try first_snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 0);
-    try first_snapshot.drawText("1234567890123456", 0, 0, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
-    try first_snapshot.drawText("short", 0, 2, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    try first_snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try first_snapshot.drawText("1234567890123456", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try first_snapshot.drawText("short", 0, 2, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(first_snapshot, 16, false, false, 2, false, true, true);
 
@@ -1473,8 +1467,8 @@ test "renderer - commitSplitFooterSnapshot multiline short final row keeps conti
     );
     defer second_snapshot.deinit();
 
-    try second_snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 0);
-    try second_snapshot.drawText(",", 0, 0, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    try second_snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try second_snapshot.drawText(",", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(second_snapshot, 1, false, false, 2, false, true, true);
 
@@ -1506,8 +1500,8 @@ test "renderer - commitSplitFooterSnapshot exact-width continuation preserves au
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
     const next_buffer = cli_renderer.getNextBuffer();
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
 
     var first_snapshot = try OptimizedBuffer.init(
@@ -1518,8 +1512,8 @@ test "renderer - commitSplitFooterSnapshot exact-width continuation preserves au
     );
     defer first_snapshot.deinit();
 
-    try first_snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 0);
-    try first_snapshot.drawText("12345678901234567890", 0, 0, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    try first_snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try first_snapshot.drawText("12345678901234567890", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(first_snapshot, 20, false, false, 2, false, true, true);
 
@@ -1531,8 +1525,8 @@ test "renderer - commitSplitFooterSnapshot exact-width continuation preserves au
     );
     defer second_snapshot.deinit();
 
-    try second_snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 0);
-    try second_snapshot.drawText(" letters", 0, 0, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    try second_snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try second_snapshot.drawText(" letters", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(second_snapshot, 8, false, false, 2, false, true, true);
 
@@ -1564,8 +1558,8 @@ test "renderer - commitSplitFooterSnapshot does not emit continuation spaces for
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
     const next_buffer = cli_renderer.getNextBuffer();
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
 
     var snapshot = try OptimizedBuffer.init(
@@ -1576,9 +1570,9 @@ test "renderer - commitSplitFooterSnapshot does not emit continuation spaces for
     );
     defer snapshot.deinit();
 
-    try snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 0);
-    try snapshot.drawText("│甲│乙│丙│", 0, 0, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
-    try snapshot.drawText("│😀│🚀│🧪│", 0, 1, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    try snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try snapshot.drawText("│甲│乙│丙│", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try snapshot.drawText("│😀│🚀│🧪│", 0, 1, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 10, false, false, 2, false, true, true);
 
@@ -1612,8 +1606,8 @@ test "renderer - repaintSplitFooter repaints footer without append payload" {
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
     const next_buffer = cli_renderer.getNextBuffer();
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
 
     _ = cli_renderer.repaintSplitFooter(2, true);
@@ -1651,8 +1645,8 @@ test "renderer - repaintSplitFooter applies pending viewport scroll transition i
     cli_renderer.setPendingSplitFooterTransition(.viewport_scroll, 4, 2, 5, 1);
 
     const next_buffer = cli_renderer.getNextBuffer();
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
 
     _ = cli_renderer.repaintSplitFooter(4, true);
@@ -1693,8 +1687,8 @@ test "renderer - repaintSplitFooter applies pending stale row clear transition i
     cli_renderer.setPendingSplitFooterTransition(.clear_stale_rows, 2, 4, 2, 3);
 
     const next_buffer = cli_renderer.getNextBuffer();
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
 
     _ = cli_renderer.repaintSplitFooter(7, true);
@@ -1734,8 +1728,8 @@ test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
     const next_buffer = cli_renderer.getNextBuffer();
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
 
     var snapshot = try OptimizedBuffer.init(
@@ -1746,9 +1740,9 @@ test "renderer - commitSplitFooterSnapshot appends styled snapshot before footer
     );
     defer snapshot.deinit();
 
-    try snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 32);
-    try snapshot.drawText("SNAP", 0, 0, .{ 1.0, 0.5, 0.0, 1.0 }, .{ 0.0, 0.0, 0.0, 0.0 }, ansi.TextAttributes.BOLD);
-    try snapshot.drawText("SHOT", 0, 1, .{ 0.2, 0.8, 0.9, 1.0 }, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    try snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
+    try snapshot.drawText("SNAP", 0, 0, ansi.rgbaFromFloats(1.0, 0.5, 0.0, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), ansi.TextAttributes.BOLD);
+    try snapshot.drawText("SHOT", 0, 1, ansi.rgbaFromFloats(0.2, 0.8, 0.9, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 8, true, true, 2, false, true, true);
 
@@ -1795,21 +1789,17 @@ test "renderer - commitSplitFooterSnapshot preserves indexed and default color t
     );
     defer snapshot.deinit();
 
-    try snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    try snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
     snapshot.set(0, 0, buffer.Cell{
         .char = 'A',
-        .fg = RGBA{ 1.0, 1.0, 1.0, 1.0 },
-        .bg = RGBA{ 0.0, 0.0, 0.0, 1.0 },
-        .fg_tag = ansi.COLOR_TAG_DEFAULT,
-        .bg_tag = ansi.COLOR_TAG_RGB,
+        .fg = ansi.defaultColor(255, 255, 255, 255),
+        .bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0),
         .attributes = 0,
     });
     snapshot.set(1, 0, buffer.Cell{
         .char = 'B',
-        .fg = RGBA{ 0.2, 0.4, 0.6, 1.0 },
-        .bg = RGBA{ 0.0, 0.0, 0.0, 1.0 },
-        .fg_tag = ansi.indexedColorTag(6),
-        .bg_tag = ansi.COLOR_TAG_DEFAULT,
+        .fg = ansi.indexedColor(6, 51, 102, 153),
+        .bg = ansi.defaultColor(0, 0, 0, 255),
         .attributes = 0,
     });
 
@@ -1842,8 +1832,8 @@ test "renderer - commitSplitFooterSnapshot does not emit NUL padding for short r
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
     const next_buffer = cli_renderer.getNextBuffer();
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
 
     var snapshot = try OptimizedBuffer.init(
@@ -1854,9 +1844,9 @@ test "renderer - commitSplitFooterSnapshot does not emit NUL padding for short r
     );
     defer snapshot.deinit();
 
-    try snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 32);
-    try snapshot.drawText("[tool:bash] Shell", 0, 0, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
-    try snapshot.drawText("$ pwd", 0, 1, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    try snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
+    try snapshot.drawText("[tool:bash] Shell", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
+    try snapshot.drawText("$ pwd", 0, 1, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(snapshot, 16, true, true, 2, false, true, true);
 
@@ -1884,8 +1874,8 @@ test "renderer - batched split commits share single sync frame" {
     _ = cli_renderer.resetSplitScrollback(2, 2);
 
     const next_buffer = cli_renderer.getNextBuffer();
-    const fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
-    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    const fg = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0);
     try next_buffer.drawText("FOOT", 0, 0, fg, bg, 0);
 
     var first_snapshot = try OptimizedBuffer.init(
@@ -1895,8 +1885,8 @@ test "renderer - batched split commits share single sync frame" {
         .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
     );
     defer first_snapshot.deinit();
-    try first_snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 32);
-    try first_snapshot.drawText("FIRST", 0, 0, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    try first_snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
+    try first_snapshot.drawText("FIRST", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
 
     var second_snapshot = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1905,8 +1895,8 @@ test "renderer - batched split commits share single sync frame" {
         .{ .pool = pool, .width_method = .unicode, .respectAlpha = false },
     );
     defer second_snapshot.deinit();
-    try second_snapshot.clear(.{ 0.0, 0.0, 0.0, 0.0 }, 32);
-    try second_snapshot.drawText("SECOND", 0, 0, fg, .{ 0.0, 0.0, 0.0, 0.0 }, 0);
+    try second_snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 32);
+    try second_snapshot.drawText("SECOND", 0, 0, fg, ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
 
     _ = cli_renderer.commitSplitFooterSnapshotBatched(
         first_snapshot,

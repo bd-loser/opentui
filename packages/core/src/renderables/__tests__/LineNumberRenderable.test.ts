@@ -172,10 +172,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: bgBuffer[offset],
-        g: bgBuffer[offset + 1],
-        b: bgBuffer[offset + 2],
-        a: bgBuffer[offset + 3],
+        r: (bgBuffer[offset] & 0xff) / 255,
+        g: (bgBuffer[offset + 1] & 0xff) / 255,
+        b: (bgBuffer[offset + 2] & 0xff) / 255,
+        a: (bgBuffer[offset + 3] & 0xff) / 255,
       }
     }
 
@@ -245,10 +245,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: bgBuffer[offset],
-        g: bgBuffer[offset + 1],
-        b: bgBuffer[offset + 2],
-        a: bgBuffer[offset + 3],
+        r: (bgBuffer[offset] & 0xff) / 255,
+        g: (bgBuffer[offset + 1] & 0xff) / 255,
+        b: (bgBuffer[offset + 2] & 0xff) / 255,
+        a: (bgBuffer[offset + 3] & 0xff) / 255,
       }
     }
 
@@ -361,10 +361,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: bgBuffer[offset],
-        g: bgBuffer[offset + 1],
-        b: bgBuffer[offset + 2],
-        a: bgBuffer[offset + 3],
+        r: (bgBuffer[offset] & 0xff) / 255,
+        g: (bgBuffer[offset + 1] & 0xff) / 255,
+        b: (bgBuffer[offset + 2] & 0xff) / 255,
+        a: (bgBuffer[offset + 3] & 0xff) / 255,
       }
     }
 
@@ -444,10 +444,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: bgBuffer[offset],
-        g: bgBuffer[offset + 1],
-        b: bgBuffer[offset + 2],
-        a: bgBuffer[offset + 3],
+        r: (bgBuffer[offset] & 0xff) / 255,
+        g: (bgBuffer[offset + 1] & 0xff) / 255,
+        b: (bgBuffer[offset + 2] & 0xff) / 255,
+        a: (bgBuffer[offset + 3] & 0xff) / 255,
       }
     }
 
@@ -543,10 +543,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: bgBuffer[offset],
-        g: bgBuffer[offset + 1],
-        b: bgBuffer[offset + 2],
-        a: bgBuffer[offset + 3],
+        r: (bgBuffer[offset] & 0xff) / 255,
+        g: (bgBuffer[offset + 1] & 0xff) / 255,
+        b: (bgBuffer[offset + 2] & 0xff) / 255,
+        a: (bgBuffer[offset + 3] & 0xff) / 255,
       }
     }
 
@@ -659,10 +659,10 @@ describe("LineNumberRenderable", () => {
     const getFgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: fgBuffer[offset],
-        g: fgBuffer[offset + 1],
-        b: fgBuffer[offset + 2],
-        a: fgBuffer[offset + 3],
+        r: (fgBuffer[offset] & 0xff) / 255,
+        g: (fgBuffer[offset + 1] & 0xff) / 255,
+        b: (fgBuffer[offset + 2] & 0xff) / 255,
+        a: (fgBuffer[offset + 3] & 0xff) / 255,
       }
     }
 
@@ -855,10 +855,10 @@ describe("LineNumberRenderable", () => {
       const colorBuffer = channel === "fg" ? buffer.buffers.fg : buffer.buffers.bg
       const offset = (y * buffer.width + x) * 4
       return {
-        r: colorBuffer[offset],
-        g: colorBuffer[offset + 1],
-        b: colorBuffer[offset + 2],
-        a: colorBuffer[offset + 3],
+        r: (colorBuffer[offset] & 0xff) / 255,
+        g: (colorBuffer[offset + 1] & 0xff) / 255,
+        b: (colorBuffer[offset + 2] & 0xff) / 255,
+        a: (colorBuffer[offset + 3] & 0xff) / 255,
       }
     }
 
@@ -1432,10 +1432,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: bgBuffer[offset],
-        g: bgBuffer[offset + 1],
-        b: bgBuffer[offset + 2],
-        a: bgBuffer[offset + 3],
+        r: (bgBuffer[offset] & 0xff) / 255,
+        g: (bgBuffer[offset + 1] & 0xff) / 255,
+        b: (bgBuffer[offset + 2] & 0xff) / 255,
+        a: (bgBuffer[offset + 3] & 0xff) / 255,
       }
     }
 
@@ -1489,10 +1489,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: bgBuffer[offset],
-        g: bgBuffer[offset + 1],
-        b: bgBuffer[offset + 2],
-        a: bgBuffer[offset + 3],
+        r: (bgBuffer[offset] & 0xff) / 255,
+        g: (bgBuffer[offset + 1] & 0xff) / 255,
+        b: (bgBuffer[offset + 2] & 0xff) / 255,
+        a: (bgBuffer[offset + 3] & 0xff) / 255,
       }
     }
 
@@ -1549,10 +1549,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: bgBuffer[offset],
-        g: bgBuffer[offset + 1],
-        b: bgBuffer[offset + 2],
-        a: bgBuffer[offset + 3],
+        r: (bgBuffer[offset] & 0xff) / 255,
+        g: (bgBuffer[offset + 1] & 0xff) / 255,
+        b: (bgBuffer[offset + 2] & 0xff) / 255,
+        a: (bgBuffer[offset + 3] & 0xff) / 255,
       }
     }
 
@@ -1605,10 +1605,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: bgBuffer[offset],
-        g: bgBuffer[offset + 1],
-        b: bgBuffer[offset + 2],
-        a: bgBuffer[offset + 3],
+        r: (bgBuffer[offset] & 0xff) / 255,
+        g: (bgBuffer[offset + 1] & 0xff) / 255,
+        b: (bgBuffer[offset + 2] & 0xff) / 255,
+        a: (bgBuffer[offset + 3] & 0xff) / 255,
       }
     }
 

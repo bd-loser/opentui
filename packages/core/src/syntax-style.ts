@@ -12,6 +12,15 @@ export interface StyleDefinition {
   dim?: boolean
 }
 
+export interface StyleDefinitionInput {
+  fg?: ColorInput
+  bg?: ColorInput
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  dim?: boolean
+}
+
 export interface MergedStyle {
   fg?: RGBA
   bg?: RGBA
@@ -95,7 +104,7 @@ export class SyntaxStyle {
     return style
   }
 
-  static fromStyles(styles: Record<string, StyleDefinition>): SyntaxStyle {
+  static fromStyles(styles: Record<string, StyleDefinitionInput>): SyntaxStyle {
     const style = SyntaxStyle.create()
 
     for (const [name, styleDef] of Object.entries(styles)) {
@@ -109,7 +118,7 @@ export class SyntaxStyle {
     if (this._destroyed) throw new Error("NativeSyntaxStyle is destroyed")
   }
 
-  public registerStyle(name: string, style: StyleDefinition): number {
+  public registerStyle(name: string, style: StyleDefinitionInput): number {
     this.guard()
 
     const attributes = createTextAttributes({
@@ -119,10 +128,12 @@ export class SyntaxStyle {
       dim: style.dim,
     })
 
-    const id = this.lib.syntaxStyleRegister(this.stylePtr, name, style.fg || null, style.bg || null, attributes)
+    const fg = style.fg ? parseColor(style.fg) : null
+    const bg = style.bg ? parseColor(style.bg) : null
+    const id = this.lib.syntaxStyleRegister(this.stylePtr, name, fg, bg, attributes)
 
     this.nameCache.set(name, id)
-    this.styleDefs.set(name, style)
+    this.styleDefs.set(name, { ...style, fg: fg ?? undefined, bg: bg ?? undefined })
 
     return id
   }

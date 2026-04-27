@@ -36,7 +36,7 @@ test "drawTextBuffer - simple single line text" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
@@ -68,7 +68,7 @@ test "drawTextBuffer - empty text buffer" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 }
 
@@ -94,7 +94,7 @@ test "drawTextBuffer - multiple lines without wrapping" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -126,7 +126,7 @@ test "drawTextBuffer - text wrapping at word boundaries" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -155,35 +155,35 @@ test "drawTextBuffer - transparent background preserves underlying non-space und
     );
     defer opt_buffer.deinit();
 
-    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
-    const green_fg = RGBA{ 0.0, 1.0, 0.0, 1.0 };
+    const red_bg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
+    const blue_bg = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 1.0);
+    const green_fg = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
     try opt_buffer.clear(red_bg, 32);
-    try opt_buffer.drawChar('X', 1, 0, green_fg, blue_bg, ansi.TextAttributes.BOLD, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
+    try opt_buffer.drawChar('X', 1, 0, green_fg, blue_bg, ansi.TextAttributes.BOLD);
 
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const left = opt_buffer.get(0, 0).?;
     try std.testing.expectEqual(@as(u32, 'A'), left.char);
-    try std.testing.expectEqual(red_bg[0], left.bg[0]);
-    try std.testing.expectEqual(red_bg[1], left.bg[1]);
-    try std.testing.expectEqual(red_bg[2], left.bg[2]);
+    try std.testing.expectEqual(ansi.redF(red_bg), ansi.redF(left.bg));
+    try std.testing.expectEqual(ansi.greenF(red_bg), ansi.greenF(left.bg));
+    try std.testing.expectEqual(ansi.blueF(red_bg), ansi.blueF(left.bg));
 
     const middle = opt_buffer.get(1, 0).?;
     try std.testing.expectEqual(@as(u32, 'X'), middle.char);
-    try std.testing.expectEqual(green_fg[0], middle.fg[0]);
-    try std.testing.expectEqual(green_fg[1], middle.fg[1]);
-    try std.testing.expectEqual(green_fg[2], middle.fg[2]);
-    try std.testing.expectEqual(blue_bg[0], middle.bg[0]);
-    try std.testing.expectEqual(blue_bg[1], middle.bg[1]);
-    try std.testing.expectEqual(blue_bg[2], middle.bg[2]);
+    try std.testing.expectEqual(ansi.redF(green_fg), ansi.redF(middle.fg));
+    try std.testing.expectEqual(ansi.greenF(green_fg), ansi.greenF(middle.fg));
+    try std.testing.expectEqual(ansi.blueF(green_fg), ansi.blueF(middle.fg));
+    try std.testing.expectEqual(ansi.redF(blue_bg), ansi.redF(middle.bg));
+    try std.testing.expectEqual(ansi.greenF(blue_bg), ansi.greenF(middle.bg));
+    try std.testing.expectEqual(ansi.blueF(blue_bg), ansi.blueF(middle.bg));
     try std.testing.expectEqual(ansi.TextAttributes.BOLD, middle.attributes);
 
     const right = opt_buffer.get(2, 0).?;
     try std.testing.expectEqual(@as(u32, 'A'), right.char);
-    try std.testing.expectEqual(red_bg[0], right.bg[0]);
-    try std.testing.expectEqual(red_bg[1], right.bg[1]);
-    try std.testing.expectEqual(red_bg[2], right.bg[2]);
+    try std.testing.expectEqual(ansi.redF(red_bg), ansi.redF(right.bg));
+    try std.testing.expectEqual(ansi.greenF(red_bg), ansi.greenF(right.bg));
+    try std.testing.expectEqual(ansi.blueF(red_bg), ansi.blueF(right.bg));
 }
 
 test "drawTextBuffer - text wrapping at character boundaries" {
@@ -211,7 +211,7 @@ test "drawTextBuffer - text wrapping at character boundaries" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -243,7 +243,7 @@ test "drawTextBuffer - no wrapping with none mode" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -275,7 +275,7 @@ test "drawTextBuffer - wrapped text with multiple lines" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -307,7 +307,7 @@ test "drawTextBuffer - unicode characters with wrapping" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -339,7 +339,7 @@ test "drawTextBuffer - wrapping preserves wide characters" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -415,7 +415,7 @@ test "drawTextBuffer - wrapped text with offset position" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 5, 5);
 
     const cell = opt_buffer.get(5, 5);
@@ -445,7 +445,7 @@ test "drawTextBuffer - clipping with scrolled view" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -477,7 +477,7 @@ test "drawTextBuffer - wrapping with very narrow width" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -509,7 +509,7 @@ test "drawTextBuffer - word wrap doesn't break mid-word" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -538,7 +538,7 @@ test "drawTextBuffer - empty lines render correctly" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -570,7 +570,7 @@ test "drawTextBuffer - wrapping with tabs" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 }
 
@@ -602,7 +602,7 @@ test "drawTextBuffer - very long unwrapped line clipping" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -699,7 +699,7 @@ test "drawTextBuffer - wrapping with mixed ASCII and Unicode" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const virtual_lines = view.getVirtualLines();
@@ -720,7 +720,7 @@ test "setStyledText - basic rendering with single chunk" {
     tb.setSyntaxStyle(style);
 
     const text = "Hello World";
-    const fg_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
+    const fg_color = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
 
     const chunks = [_]StyledChunk{.{
         .text_ptr = text.ptr,
@@ -754,7 +754,7 @@ test "setStyledText - multiple chunks render correctly" {
 
     const text0 = "Hello ";
     const text1 = "World";
-    const fg_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
+    const fg_color = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
 
     const chunks = [_]StyledChunk{
         .{ .text_ptr = text0.ptr, .text_len = text0.len, .fg_ptr = @ptrCast(&fg_color), .bg_ptr = null, .attributes = 0 },
@@ -1330,7 +1330,7 @@ test "loadFile - loads and renders file correctly" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var render_buffer: [200]u8 = undefined;
@@ -1366,7 +1366,7 @@ test "drawTextBuffer - horizontal viewport offset renders correctly without wrap
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
@@ -1402,7 +1402,7 @@ test "drawTextBuffer - horizontal viewport offset with multiple lines" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
@@ -1440,7 +1440,7 @@ test "drawTextBuffer - combined horizontal and vertical viewport offsets" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
@@ -1477,7 +1477,7 @@ test "drawTextBuffer - horizontal viewport stops rendering at viewport width" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
@@ -1517,7 +1517,7 @@ test "drawTextBuffer - horizontal viewport with small buffer renders only viewpo
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0);
@@ -1567,7 +1567,7 @@ test "drawTextBuffer - horizontal viewport width limits rendering (efficiency te
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var non_space_count: u32 = 0;
@@ -1604,7 +1604,7 @@ test "drawTextBuffer - overwriting wide grapheme with ASCII leaves no ghost char
     defer opt_buffer.deinit();
 
     try tb.setText("世界");
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const first_cell = opt_buffer.get(0, 0) orelse unreachable;
@@ -1615,7 +1615,7 @@ test "drawTextBuffer - overwriting wide grapheme with ASCII leaves no ghost char
     try std.testing.expect(gp.isContinuationChar(second_cell.char));
 
     try tb.setText("ABC");
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_a = opt_buffer.get(0, 0) orelse unreachable;
@@ -1654,7 +1654,7 @@ test "drawTextBuffer - syntax style destroy does not crash" {
     var style = try ss.SyntaxStyle.init(std.testing.allocator);
     tb.setSyntaxStyle(style);
 
-    const style_id = try style.registerStyle("test", .{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
+    const style_id = try style.registerStyle("test", ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0), null, 0);
     try tb.setText("Hello World");
     try tb.addHighlightByCharRange(0, 5, style_id, 1, 0);
 
@@ -1666,7 +1666,7 @@ test "drawTextBuffer - syntax style destroy does not crash" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [100]u8 = undefined;
@@ -1678,7 +1678,7 @@ test "drawTextBuffer - syntax style destroy does not crash" {
 
     try std.testing.expect(tb.getSyntaxStyle() == null);
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const written2 = try opt_buffer.writeResolvedChars(&out_buffer, false);
@@ -1710,7 +1710,7 @@ test "drawTextBuffer - tabs are rendered as spaces (empty cells)" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
@@ -1749,7 +1749,7 @@ test "drawTextBuffer - tab indicator renders with correct color" {
     try tb.setText("A\tB");
 
     view.setTabIndicator(@as(u32, '→'));
-    view.setTabIndicatorColor(RGBA{ 0.25, 0.25, 0.25, 1.0 });
+    view.setTabIndicatorColor(ansi.rgbaFromFloats(0.25, 0.25, 0.25, 1.0));
 
     var opt_buffer = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -1759,7 +1759,7 @@ test "drawTextBuffer - tab indicator renders with correct color" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
@@ -1767,9 +1767,9 @@ test "drawTextBuffer - tab indicator renders with correct color" {
 
     const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, '→'), cell_1.char);
-    try std.testing.expectEqual(@as(f32, 0.25), cell_1.fg[0]);
-    try std.testing.expectEqual(@as(f32, 0.25), cell_1.fg[1]);
-    try std.testing.expectEqual(@as(f32, 0.25), cell_1.fg[2]);
+    try std.testing.expectEqual(@as(u8, 64), ansi.red(cell_1.fg));
+    try std.testing.expectEqual(@as(u8, 64), ansi.green(cell_1.fg));
+    try std.testing.expectEqual(@as(u8, 64), ansi.blue(cell_1.fg));
 
     const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 32), cell_2.char);
@@ -1808,7 +1808,7 @@ test "drawTextBuffer - tab without indicator renders as spaces" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
@@ -1853,7 +1853,7 @@ test "drawTextBuffer - mixed ASCII and Unicode with emoji renders completely" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
@@ -1987,7 +1987,7 @@ test "viewport width = 31 exactly - last character rendering" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // BUG CHECK: The last 's' at cell 30 should be present
@@ -2049,7 +2049,7 @@ test "drawTextBuffer - complex multilingual text with diverse scripts and emojis
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Verify the text buffer can handle complex multilingual content
@@ -2101,7 +2101,7 @@ test "drawTextBuffer - complex multilingual text with diverse scripts and emojis
     try std.testing.expect(viewport_lines.len <= 20);
 
     // Verify rendering doesn't crash with complex emoji sequences
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Test that line count is reasonable
@@ -2134,8 +2134,8 @@ test "setStyledText - highlight positioning with Unicode text" {
     const text_part4 = "please";
     const text_part5 = ".";
 
-    const fg_normal = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
-    const bg_highlight = [4]f32{ 0.0, 1.0, 0.0, 1.0 }; // Green background
+    const fg_normal = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const bg_highlight = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0); // Green background
 
     const chunks = [_]StyledChunk{
         .{ .text_ptr = text_part1.ptr, .text_len = text_part1.len, .fg_ptr = @ptrCast(&fg_normal), .bg_ptr = null, .attributes = 0 },
@@ -2168,7 +2168,7 @@ test "setStyledText - highlight positioning with Unicode text" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Check that "please" (6 characters) all have the green background
@@ -2179,23 +2179,23 @@ test "setStyledText - highlight positioning with Unicode text" {
         const cell = opt_buffer.get(cell_col, 0) orelse return error.TestFailed;
 
         // Verify green background (R=0, G=1, B=0)
-        try std.testing.expect(@abs(cell.bg[0] - 0.0) < epsilon);
-        try std.testing.expect(@abs(cell.bg[1] - 1.0) < epsilon);
-        try std.testing.expect(@abs(cell.bg[2] - 0.0) < epsilon);
+        try std.testing.expect(@abs(ansi.redF(cell.bg) - 0.0) < epsilon);
+        try std.testing.expect(@abs(ansi.greenF(cell.bg) - 1.0) < epsilon);
+        try std.testing.expect(@abs(ansi.blueF(cell.bg) - 0.0) < epsilon);
     }
 
     // Check that text before "please" does NOT have green background
     i = 0;
     while (i < please_start_col) : (i += 1) {
         const cell = opt_buffer.get(i, 0) orelse unreachable;
-        const has_green_bg = @abs(cell.bg[1] - 1.0) < epsilon and @abs(cell.bg[0] - 0.0) < epsilon;
+        const has_green_bg = @abs(ansi.greenF(cell.bg) - 1.0) < epsilon and @abs(ansi.redF(cell.bg) - 0.0) < epsilon;
         try std.testing.expect(!has_green_bg);
     }
 
     // Check that "." after "please" does NOT have green background
     const period_col = please_start_col + 6;
     const period_cell = opt_buffer.get(period_col, 0) orelse unreachable;
-    const has_green_bg = @abs(period_cell.bg[1] - 1.0) < epsilon and @abs(period_cell.bg[0] - 0.0) < epsilon;
+    const has_green_bg = @abs(ansi.greenF(period_cell.bg) - 1.0) < epsilon and @abs(ansi.redF(period_cell.bg) - 0.0) < epsilon;
     try std.testing.expect(!has_green_bg);
 }
 
@@ -2216,10 +2216,10 @@ test "drawTextBuffer - multiple syntax highlights with various horizontal viewpo
     tb.setSyntaxStyle(style);
 
     // Register different color styles
-    const red_style = try style.registerStyle("red", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
-    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
-    const blue_style = try style.registerStyle("blue", RGBA{ 0.0, 0.0, 1.0, 1.0 }, null, 0);
-    const yellow_style = try style.registerStyle("yellow", RGBA{ 1.0, 1.0, 0.0, 1.0 }, null, 0);
+    const red_style = try style.registerStyle("red", ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0), null, 0);
+    const green_style = try style.registerStyle("green", ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0), null, 0);
+    const blue_style = try style.registerStyle("blue", ansi.rgbaFromFloats(0.0, 0.0, 1.0, 1.0), null, 0);
+    const yellow_style = try style.registerStyle("yellow", ansi.rgbaFromFloats(1.0, 1.0, 0.0, 1.0), null, 0);
 
     // Text: "const x = function(y) { return y * 2; }"
     const test_text = "const x = function(y) { return y * 2; }";
@@ -2247,26 +2247,26 @@ test "drawTextBuffer - multiple syntax highlights with various horizontal viewpo
         var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 40, 1, .{ .pool = pool, .width_method = .unicode });
         defer opt_buffer.deinit();
 
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         // Check "const" is red
         const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
         try std.testing.expectEqual(@as(u32, 'c'), cell_0.char);
-        try std.testing.expect(@abs(cell_0.fg[0] - 1.0) < epsilon); // Red
+        try std.testing.expect(@abs(ansi.redF(cell_0.fg) - 1.0) < epsilon); // Red
 
         const cell_4 = opt_buffer.get(4, 0) orelse unreachable;
         try std.testing.expectEqual(@as(u32, 't'), cell_4.char);
-        try std.testing.expect(@abs(cell_4.fg[0] - 1.0) < epsilon); // Red
+        try std.testing.expect(@abs(ansi.redF(cell_4.fg) - 1.0) < epsilon); // Red
 
         // Check "function" is green
         const cell_10 = opt_buffer.get(10, 0) orelse unreachable;
         try std.testing.expectEqual(@as(u32, 'f'), cell_10.char);
-        try std.testing.expect(@abs(cell_10.fg[1] - 1.0) < epsilon); // Green
+        try std.testing.expect(@abs(ansi.greenF(cell_10.fg) - 1.0) < epsilon); // Green
 
         const cell_17 = opt_buffer.get(17, 0) orelse unreachable;
         try std.testing.expectEqual(@as(u32, 'n'), cell_17.char);
-        try std.testing.expect(@abs(cell_17.fg[1] - 1.0) < epsilon); // Green
+        try std.testing.expect(@abs(ansi.greenF(cell_17.fg) - 1.0) < epsilon); // Green
     }
 
     // Test 2: Viewport scrolled to x=3 (showing "st x = fun...")
@@ -2275,7 +2275,7 @@ test "drawTextBuffer - multiple syntax highlights with various horizontal viewpo
         var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
         defer opt_buffer.deinit();
 
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         // Buffer shows characters 3-22 from source: "st x = function(y) {"
@@ -2287,33 +2287,33 @@ test "drawTextBuffer - multiple syntax highlights with various horizontal viewpo
 
         const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
         try std.testing.expectEqual(@as(u32, 's'), cell_0.char);
-        try std.testing.expect(@abs(cell_0.fg[0] - 1.0) < epsilon); // Red
-        try std.testing.expect(@abs(cell_0.fg[1] - 0.0) < epsilon);
-        try std.testing.expect(@abs(cell_0.fg[2] - 0.0) < epsilon);
+        try std.testing.expect(@abs(ansi.redF(cell_0.fg) - 1.0) < epsilon); // Red
+        try std.testing.expect(@abs(ansi.greenF(cell_0.fg) - 0.0) < epsilon);
+        try std.testing.expect(@abs(ansi.blueF(cell_0.fg) - 0.0) < epsilon);
 
         const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
         try std.testing.expectEqual(@as(u32, 't'), cell_1.char);
-        try std.testing.expect(@abs(cell_1.fg[0] - 1.0) < epsilon); // Red
-        try std.testing.expect(@abs(cell_1.fg[1] - 0.0) < epsilon);
-        try std.testing.expect(@abs(cell_1.fg[2] - 0.0) < epsilon);
+        try std.testing.expect(@abs(ansi.redF(cell_1.fg) - 1.0) < epsilon); // Red
+        try std.testing.expect(@abs(ansi.greenF(cell_1.fg) - 0.0) < epsilon);
+        try std.testing.expect(@abs(ansi.blueF(cell_1.fg) - 0.0) < epsilon);
 
         const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
         try std.testing.expectEqual(@as(u32, ' '), cell_2.char);
-        try std.testing.expect(@abs(cell_2.fg[0] - 1.0) < epsilon); // White (default)
-        try std.testing.expect(@abs(cell_2.fg[1] - 1.0) < epsilon);
-        try std.testing.expect(@abs(cell_2.fg[2] - 1.0) < epsilon);
+        try std.testing.expect(@abs(ansi.redF(cell_2.fg) - 1.0) < epsilon); // White (default)
+        try std.testing.expect(@abs(ansi.greenF(cell_2.fg) - 1.0) < epsilon);
+        try std.testing.expect(@abs(ansi.blueF(cell_2.fg) - 1.0) < epsilon);
 
         const cell_7 = opt_buffer.get(7, 0) orelse unreachable;
         try std.testing.expectEqual(@as(u32, 'f'), cell_7.char);
-        try std.testing.expect(@abs(cell_7.fg[0] - 0.0) < epsilon); // Green
-        try std.testing.expect(@abs(cell_7.fg[1] - 1.0) < epsilon);
-        try std.testing.expect(@abs(cell_7.fg[2] - 0.0) < epsilon);
+        try std.testing.expect(@abs(ansi.redF(cell_7.fg) - 0.0) < epsilon); // Green
+        try std.testing.expect(@abs(ansi.greenF(cell_7.fg) - 1.0) < epsilon);
+        try std.testing.expect(@abs(ansi.blueF(cell_7.fg) - 0.0) < epsilon);
 
         const cell_14 = opt_buffer.get(14, 0) orelse unreachable;
         try std.testing.expectEqual(@as(u32, 'n'), cell_14.char);
-        try std.testing.expect(@abs(cell_14.fg[0] - 0.0) < epsilon); // Green
-        try std.testing.expect(@abs(cell_14.fg[1] - 1.0) < epsilon);
-        try std.testing.expect(@abs(cell_14.fg[2] - 0.0) < epsilon);
+        try std.testing.expect(@abs(ansi.redF(cell_14.fg) - 0.0) < epsilon); // Green
+        try std.testing.expect(@abs(ansi.greenF(cell_14.fg) - 1.0) < epsilon);
+        try std.testing.expect(@abs(ansi.blueF(cell_14.fg) - 0.0) < epsilon);
     }
 
     // Test 4: Viewport scrolled to x=30 (showing "y * 2; }" based on 40 char text)
@@ -2322,7 +2322,7 @@ test "drawTextBuffer - multiple syntax highlights with various horizontal viewpo
         var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
         defer opt_buffer.deinit();
 
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         // Actual rendering shows: " y * 2; }"
@@ -2332,9 +2332,9 @@ test "drawTextBuffer - multiple syntax highlights with various horizontal viewpo
 
         const cell_5 = opt_buffer.get(5, 0) orelse unreachable;
         try std.testing.expectEqual(@as(u32, '2'), cell_5.char);
-        try std.testing.expect(@abs(cell_5.fg[0] - 1.0) < epsilon); // Yellow
-        try std.testing.expect(@abs(cell_5.fg[1] - 1.0) < epsilon);
-        try std.testing.expect(@abs(cell_5.fg[2] - 0.0) < epsilon);
+        try std.testing.expect(@abs(ansi.redF(cell_5.fg) - 1.0) < epsilon); // Yellow
+        try std.testing.expect(@abs(ansi.greenF(cell_5.fg) - 1.0) < epsilon);
+        try std.testing.expect(@abs(ansi.blueF(cell_5.fg) - 0.0) < epsilon);
     }
 }
 
@@ -2355,7 +2355,7 @@ test "drawTextBuffer - syntax highlighting with horizontal viewport offset" {
     tb.setSyntaxStyle(style);
 
     // Register a red style
-    const red_style_id = try style.registerStyle("keyword", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
+    const red_style_id = try style.registerStyle("keyword", ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0), null, 0);
 
     // Text: "const x = 1"
     // Highlight "const" (characters 0-5) in red
@@ -2375,42 +2375,42 @@ test "drawTextBuffer - syntax highlighting with horizontal viewport offset" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const epsilon: f32 = 0.01;
-    const red_fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
+    const red_fg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
 
     // Check that 's' at buffer position 0 is RED
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 's'), cell_0.char);
-    const is_red_0 = @abs(cell_0.fg[0] - red_fg[0]) < epsilon and
-        @abs(cell_0.fg[1] - red_fg[1]) < epsilon and
-        @abs(cell_0.fg[2] - red_fg[2]) < epsilon;
+    const is_red_0 = @abs(ansi.redF(cell_0.fg) - ansi.redF(red_fg)) < epsilon and
+        @abs(ansi.greenF(cell_0.fg) - ansi.greenF(red_fg)) < epsilon and
+        @abs(ansi.blueF(cell_0.fg) - ansi.blueF(red_fg)) < epsilon;
     try std.testing.expect(is_red_0);
 
     // Check that 't' at buffer position 1 is RED
     const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 't'), cell_1.char);
-    const is_red_1 = @abs(cell_1.fg[0] - red_fg[0]) < epsilon and
-        @abs(cell_1.fg[1] - red_fg[1]) < epsilon and
-        @abs(cell_1.fg[2] - red_fg[2]) < epsilon;
+    const is_red_1 = @abs(ansi.redF(cell_1.fg) - ansi.redF(red_fg)) < epsilon and
+        @abs(ansi.greenF(cell_1.fg) - ansi.greenF(red_fg)) < epsilon and
+        @abs(ansi.blueF(cell_1.fg) - ansi.blueF(red_fg)) < epsilon;
     try std.testing.expect(is_red_1);
 
     // Check that ' ' at buffer position 2 is NOT RED
     const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, ' '), cell_2.char);
-    const is_red_2 = @abs(cell_2.fg[0] - red_fg[0]) < epsilon and
-        @abs(cell_2.fg[1] - red_fg[1]) < epsilon and
-        @abs(cell_2.fg[2] - red_fg[2]) < epsilon;
+    const is_red_2 = @abs(ansi.redF(cell_2.fg) - ansi.redF(red_fg)) < epsilon and
+        @abs(ansi.greenF(cell_2.fg) - ansi.greenF(red_fg)) < epsilon and
+        @abs(ansi.blueF(cell_2.fg) - ansi.blueF(red_fg)) < epsilon;
     try std.testing.expect(!is_red_2);
 
     // Check that 'x' at buffer position 3 is NOT RED
     const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'x'), cell_3.char);
-    const is_red_3 = @abs(cell_3.fg[0] - red_fg[0]) < epsilon and
-        @abs(cell_3.fg[1] - red_fg[1]) < epsilon and
-        @abs(cell_3.fg[2] - red_fg[2]) < epsilon;
+    const is_red_3 = @abs(ansi.redF(cell_3.fg) - ansi.redF(red_fg)) < epsilon and
+        @abs(ansi.greenF(cell_3.fg) - ansi.greenF(red_fg)) < epsilon and
+        @abs(ansi.blueF(cell_3.fg) - ansi.blueF(red_fg)) < epsilon;
     try std.testing.expect(!is_red_3);
 }
 
@@ -2443,11 +2443,11 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
     const chunk7_text = "2";
     const chunk8_text = "; }";
 
-    const red_color = [4]f32{ 1.0, 0.0, 0.0, 1.0 };
-    const white_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
-    const green_color = [4]f32{ 0.0, 1.0, 0.0, 1.0 };
-    const blue_color = [4]f32{ 0.0, 0.0, 1.0, 1.0 };
-    const yellow_color = [4]f32{ 1.0, 1.0, 0.0, 1.0 };
+    const red_color = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
+    const white_color = ansi.rgbaFromFloats(1.0, 1.0, 1.0, 1.0);
+    const green_color = ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0);
+    const blue_color = ansi.rgbaFromFloats(0.0, 0.0, 1.0, 1.0);
+    const yellow_color = ansi.rgbaFromFloats(1.0, 1.0, 0.0, 1.0);
 
     const chunks = [_]StyledChunk{
         .{ .text_ptr = chunk1_text.ptr, .text_len = chunk1_text.len, .fg_ptr = @ptrCast(&red_color), .bg_ptr = null, .attributes = 0 },
@@ -2470,31 +2470,31 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
     // Helper to check if color matches
     const isRed = struct {
         fn check(fg: RGBA, eps: f32) bool {
-            return @abs(fg[0] - 1.0) < eps and @abs(fg[1] - 0.0) < eps and @abs(fg[2] - 0.0) < eps;
+            return @abs(ansi.redF(fg) - 1.0) < eps and @abs(ansi.greenF(fg) - 0.0) < eps and @abs(ansi.blueF(fg) - 0.0) < eps;
         }
     }.check;
 
     const isGreen = struct {
         fn check(fg: RGBA, eps: f32) bool {
-            return @abs(fg[0] - 0.0) < eps and @abs(fg[1] - 1.0) < eps and @abs(fg[2] - 0.0) < eps;
+            return @abs(ansi.redF(fg) - 0.0) < eps and @abs(ansi.greenF(fg) - 1.0) < eps and @abs(ansi.blueF(fg) - 0.0) < eps;
         }
     }.check;
 
     const isBlue = struct {
         fn check(fg: RGBA, eps: f32) bool {
-            return @abs(fg[0] - 0.0) < eps and @abs(fg[1] - 0.0) < eps and @abs(fg[2] - 1.0) < eps;
+            return @abs(ansi.redF(fg) - 0.0) < eps and @abs(ansi.greenF(fg) - 0.0) < eps and @abs(ansi.blueF(fg) - 1.0) < eps;
         }
     }.check;
 
     const isYellow = struct {
         fn check(fg: RGBA, eps: f32) bool {
-            return @abs(fg[0] - 1.0) < eps and @abs(fg[1] - 1.0) < eps and @abs(fg[2] - 0.0) < eps;
+            return @abs(ansi.redF(fg) - 1.0) < eps and @abs(ansi.greenF(fg) - 1.0) < eps and @abs(ansi.blueF(fg) - 0.0) < eps;
         }
     }.check;
 
     const isWhite = struct {
         fn check(fg: RGBA, eps: f32) bool {
-            return @abs(fg[0] - 1.0) < eps and @abs(fg[1] - 1.0) < eps and @abs(fg[2] - 1.0) < eps;
+            return @abs(ansi.redF(fg) - 1.0) < eps and @abs(ansi.greenF(fg) - 1.0) < eps and @abs(ansi.blueF(fg) - 1.0) < eps;
         }
     }.check;
 
@@ -2504,7 +2504,7 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
         var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 40, 1, .{ .pool = pool, .width_method = .unicode });
         defer opt_buffer.deinit();
 
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         const cell_0 = opt_buffer.get(0, 0) orelse unreachable; // 'c' from "const"
@@ -2522,7 +2522,7 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
         var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
         defer opt_buffer.deinit();
 
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         // At x=5, showing chars 5-24: " x = function(y) { "
@@ -2543,7 +2543,7 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
         var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
         defer opt_buffer.deinit();
 
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         // At x=15, showing chars 15-34: "ion(y) { return y * "
@@ -2581,7 +2581,7 @@ test "drawTextBuffer - setStyledText with multiple colors and horizontal scrolli
         var opt_buffer = try OptimizedBuffer.init(std.testing.allocator, 20, 1, .{ .pool = pool, .width_method = .unicode });
         defer opt_buffer.deinit();
 
-        try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+        try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
         try opt_buffer.drawTextBuffer(view, 0, 0);
 
         // At x=25, showing chars 25-44: "eturn y * 2; }"
@@ -2630,7 +2630,7 @@ test "drawTextBuffer - selection with horizontal viewport offset" {
     view.setViewport(.{ .x = 5, .y = 0, .width = 10, .height = 1 });
 
     // Select characters at positions 7-12 in the original text ("789AB")
-    view.setSelection(7, 12, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
+    view.setSelection(7, 12, ansi.rgbaFromFloats(1.0, 1.0, 0.0, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0));
 
     var opt_buffer = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -2640,7 +2640,7 @@ test "drawTextBuffer - selection with horizontal viewport offset" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // The viewport shows positions 5-14 of the text
@@ -2658,51 +2658,51 @@ test "drawTextBuffer - selection with horizontal viewport offset" {
     // Position 9: 'E' - not highlighted
 
     const epsilon: f32 = 0.01;
-    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+    const yellow_bg = ansi.rgbaFromFloats(1.0, 1.0, 0.0, 1.0);
 
     // Check non-highlighted cells
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, '5'), cell_0.char);
-    const has_yellow_0 = @abs(cell_0.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(cell_0.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(cell_0.bg[2] - yellow_bg[2]) < epsilon;
+    const has_yellow_0 = @abs(ansi.redF(cell_0.bg) - ansi.redF(yellow_bg)) < epsilon and
+        @abs(ansi.greenF(cell_0.bg) - ansi.greenF(yellow_bg)) < epsilon and
+        @abs(ansi.blueF(cell_0.bg) - ansi.blueF(yellow_bg)) < epsilon;
     try std.testing.expect(!has_yellow_0);
 
     const cell_1 = opt_buffer.get(1, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, '6'), cell_1.char);
-    const has_yellow_1 = @abs(cell_1.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(cell_1.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(cell_1.bg[2] - yellow_bg[2]) < epsilon;
+    const has_yellow_1 = @abs(ansi.redF(cell_1.bg) - ansi.redF(yellow_bg)) < epsilon and
+        @abs(ansi.greenF(cell_1.bg) - ansi.greenF(yellow_bg)) < epsilon and
+        @abs(ansi.blueF(cell_1.bg) - ansi.blueF(yellow_bg)) < epsilon;
     try std.testing.expect(!has_yellow_1);
 
     // Check highlighted cells
     const cell_2 = opt_buffer.get(2, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, '7'), cell_2.char);
-    const has_yellow_2 = @abs(cell_2.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(cell_2.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(cell_2.bg[2] - yellow_bg[2]) < epsilon;
+    const has_yellow_2 = @abs(ansi.redF(cell_2.bg) - ansi.redF(yellow_bg)) < epsilon and
+        @abs(ansi.greenF(cell_2.bg) - ansi.greenF(yellow_bg)) < epsilon and
+        @abs(ansi.blueF(cell_2.bg) - ansi.blueF(yellow_bg)) < epsilon;
     try std.testing.expect(has_yellow_2);
 
     const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, '8'), cell_3.char);
-    const has_yellow_3 = @abs(cell_3.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(cell_3.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(cell_3.bg[2] - yellow_bg[2]) < epsilon;
+    const has_yellow_3 = @abs(ansi.redF(cell_3.bg) - ansi.redF(yellow_bg)) < epsilon and
+        @abs(ansi.greenF(cell_3.bg) - ansi.greenF(yellow_bg)) < epsilon and
+        @abs(ansi.blueF(cell_3.bg) - ansi.blueF(yellow_bg)) < epsilon;
     try std.testing.expect(has_yellow_3);
 
     const cell_6 = opt_buffer.get(6, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'B'), cell_6.char);
-    const has_yellow_6 = @abs(cell_6.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(cell_6.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(cell_6.bg[2] - yellow_bg[2]) < epsilon;
+    const has_yellow_6 = @abs(ansi.redF(cell_6.bg) - ansi.redF(yellow_bg)) < epsilon and
+        @abs(ansi.greenF(cell_6.bg) - ansi.greenF(yellow_bg)) < epsilon and
+        @abs(ansi.blueF(cell_6.bg) - ansi.blueF(yellow_bg)) < epsilon;
     try std.testing.expect(has_yellow_6);
 
     // Check cells after selection
     const cell_7 = opt_buffer.get(7, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'C'), cell_7.char);
-    const has_yellow_7 = @abs(cell_7.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(cell_7.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(cell_7.bg[2] - yellow_bg[2]) < epsilon;
+    const has_yellow_7 = @abs(ansi.redF(cell_7.bg) - ansi.redF(yellow_bg)) < epsilon and
+        @abs(ansi.greenF(cell_7.bg) - ansi.greenF(yellow_bg)) < epsilon and
+        @abs(ansi.blueF(cell_7.bg) - ansi.blueF(yellow_bg)) < epsilon;
     try std.testing.expect(!has_yellow_7);
 }
 
@@ -2722,8 +2722,8 @@ test "drawTextBuffer - syntax highlight respects truncation" {
     defer style.deinit();
     tb.setSyntaxStyle(style);
 
-    const red_style = try style.registerStyle("red", RGBA{ 1.0, 0.0, 0.0, 1.0 }, null, 0);
-    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
+    const red_style = try style.registerStyle("red", ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0), null, 0);
+    const green_style = try style.registerStyle("green", ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0), null, 0);
 
     try tb.setText("0123456789ABCDEFGHIJ");
     try tb.addHighlightByCharRange(4, 7, red_style, 1, 0); // highlight "456"
@@ -2742,28 +2742,28 @@ test "drawTextBuffer - syntax highlight respects truncation" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const epsilon: f32 = 0.01;
 
     const prefix_cell = opt_buffer.get(1, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, '1'), prefix_cell.char);
-    try std.testing.expect(@abs(prefix_cell.fg[0] - 1.0) < epsilon);
-    try std.testing.expect(@abs(prefix_cell.fg[1] - 1.0) < epsilon);
-    try std.testing.expect(@abs(prefix_cell.fg[2] - 1.0) < epsilon);
+    try std.testing.expect(@abs(ansi.redF(prefix_cell.fg) - 1.0) < epsilon);
+    try std.testing.expect(@abs(ansi.greenF(prefix_cell.fg) - 1.0) < epsilon);
+    try std.testing.expect(@abs(ansi.blueF(prefix_cell.fg) - 1.0) < epsilon);
 
     const ellipsis_cell = opt_buffer.get(3, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, '.'), ellipsis_cell.char);
-    try std.testing.expect(@abs(ellipsis_cell.fg[0] - 1.0) < epsilon);
-    try std.testing.expect(@abs(ellipsis_cell.fg[1] - 1.0) < epsilon);
-    try std.testing.expect(@abs(ellipsis_cell.fg[2] - 1.0) < epsilon);
+    try std.testing.expect(@abs(ansi.redF(ellipsis_cell.fg) - 1.0) < epsilon);
+    try std.testing.expect(@abs(ansi.greenF(ellipsis_cell.fg) - 1.0) < epsilon);
+    try std.testing.expect(@abs(ansi.blueF(ellipsis_cell.fg) - 1.0) < epsilon);
 
     const suffix_cell = opt_buffer.get(6, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'G'), suffix_cell.char);
-    try std.testing.expect(@abs(suffix_cell.fg[0] - 0.0) < epsilon);
-    try std.testing.expect(@abs(suffix_cell.fg[1] - 1.0) < epsilon);
-    try std.testing.expect(@abs(suffix_cell.fg[2] - 0.0) < epsilon);
+    try std.testing.expect(@abs(ansi.redF(suffix_cell.fg) - 0.0) < epsilon);
+    try std.testing.expect(@abs(ansi.greenF(suffix_cell.fg) - 1.0) < epsilon);
+    try std.testing.expect(@abs(ansi.blueF(suffix_cell.fg) - 0.0) < epsilon);
 }
 
 test "drawTextBuffer - highlight spanning ellipsis continues on suffix" {
@@ -2782,8 +2782,8 @@ test "drawTextBuffer - highlight spanning ellipsis continues on suffix" {
     defer style.deinit();
     tb.setSyntaxStyle(style);
 
-    const magenta_style = try style.registerStyle("magenta", RGBA{ 1.0, 0.0, 1.0, 1.0 }, null, 0);
-    const green_style = try style.registerStyle("green", RGBA{ 0.0, 1.0, 0.0, 1.0 }, null, 0);
+    const magenta_style = try style.registerStyle("magenta", ansi.rgbaFromFloats(1.0, 0.0, 1.0, 1.0), null, 0);
+    const green_style = try style.registerStyle("green", ansi.rgbaFromFloats(0.0, 1.0, 0.0, 1.0), null, 0);
 
     try tb.setText("0123456789ABCDEFGHIJ");
     try tb.addHighlightByCharRange(2, 18, magenta_style, 1, 0); // spans through ellipsis
@@ -2802,28 +2802,28 @@ test "drawTextBuffer - highlight spanning ellipsis continues on suffix" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const epsilon: f32 = 0.01;
 
     const ellipsis_cell = opt_buffer.get(3, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, '.'), ellipsis_cell.char);
-    try std.testing.expect(@abs(ellipsis_cell.fg[0] - 1.0) < epsilon);
-    try std.testing.expect(@abs(ellipsis_cell.fg[1] - 1.0) < epsilon);
-    try std.testing.expect(@abs(ellipsis_cell.fg[2] - 1.0) < epsilon);
+    try std.testing.expect(@abs(ansi.redF(ellipsis_cell.fg) - 1.0) < epsilon);
+    try std.testing.expect(@abs(ansi.greenF(ellipsis_cell.fg) - 1.0) < epsilon);
+    try std.testing.expect(@abs(ansi.blueF(ellipsis_cell.fg) - 1.0) < epsilon);
 
     const suffix_magenta = opt_buffer.get(6, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'G'), suffix_magenta.char);
-    try std.testing.expect(@abs(suffix_magenta.fg[0] - 1.0) < epsilon);
-    try std.testing.expect(@abs(suffix_magenta.fg[1] - 0.0) < epsilon);
-    try std.testing.expect(@abs(suffix_magenta.fg[2] - 1.0) < epsilon);
+    try std.testing.expect(@abs(ansi.redF(suffix_magenta.fg) - 1.0) < epsilon);
+    try std.testing.expect(@abs(ansi.greenF(suffix_magenta.fg) - 0.0) < epsilon);
+    try std.testing.expect(@abs(ansi.blueF(suffix_magenta.fg) - 1.0) < epsilon);
 
     const suffix_green = opt_buffer.get(8, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'I'), suffix_green.char);
-    try std.testing.expect(@abs(suffix_green.fg[0] - 0.0) < epsilon);
-    try std.testing.expect(@abs(suffix_green.fg[1] - 1.0) < epsilon);
-    try std.testing.expect(@abs(suffix_green.fg[2] - 0.0) < epsilon);
+    try std.testing.expect(@abs(ansi.redF(suffix_green.fg) - 0.0) < epsilon);
+    try std.testing.expect(@abs(ansi.greenF(suffix_green.fg) - 1.0) < epsilon);
+    try std.testing.expect(@abs(ansi.blueF(suffix_green.fg) - 0.0) < epsilon);
 }
 
 test "drawTextBuffer - selection respects truncation" {
@@ -2848,7 +2848,7 @@ test "drawTextBuffer - selection respects truncation" {
     view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
 
     // Select across the ellipsis and suffix
-    view.setSelection(2, 19, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
+    view.setSelection(2, 19, ansi.rgbaFromFloats(1.0, 1.0, 0.0, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0));
 
     var opt_buffer = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -2858,45 +2858,45 @@ test "drawTextBuffer - selection respects truncation" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const epsilon: f32 = 0.01;
-    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+    const yellow_bg = ansi.rgbaFromFloats(1.0, 1.0, 0.0, 1.0);
 
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, '0'), cell_0.char);
-    const has_yellow_0 = @abs(cell_0.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(cell_0.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(cell_0.bg[2] - yellow_bg[2]) < epsilon;
+    const has_yellow_0 = @abs(ansi.redF(cell_0.bg) - ansi.redF(yellow_bg)) < epsilon and
+        @abs(ansi.greenF(cell_0.bg) - ansi.greenF(yellow_bg)) < epsilon and
+        @abs(ansi.blueF(cell_0.bg) - ansi.blueF(yellow_bg)) < epsilon;
     try std.testing.expect(!has_yellow_0);
 
     const cell_3 = opt_buffer.get(3, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, '.'), cell_3.char);
-    const has_yellow_3 = @abs(cell_3.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(cell_3.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(cell_3.bg[2] - yellow_bg[2]) < epsilon;
+    const has_yellow_3 = @abs(ansi.redF(cell_3.bg) - ansi.redF(yellow_bg)) < epsilon and
+        @abs(ansi.greenF(cell_3.bg) - ansi.greenF(yellow_bg)) < epsilon and
+        @abs(ansi.blueF(cell_3.bg) - ansi.blueF(yellow_bg)) < epsilon;
     try std.testing.expect(has_yellow_3);
 
     const cell_6 = opt_buffer.get(6, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'G'), cell_6.char);
-    const has_yellow_6 = @abs(cell_6.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(cell_6.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(cell_6.bg[2] - yellow_bg[2]) < epsilon;
+    const has_yellow_6 = @abs(ansi.redF(cell_6.bg) - ansi.redF(yellow_bg)) < epsilon and
+        @abs(ansi.greenF(cell_6.bg) - ansi.greenF(yellow_bg)) < epsilon and
+        @abs(ansi.blueF(cell_6.bg) - ansi.blueF(yellow_bg)) < epsilon;
     try std.testing.expect(has_yellow_6);
 
     const cell_8 = opt_buffer.get(8, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'I'), cell_8.char);
-    const has_yellow_8 = @abs(cell_8.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(cell_8.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(cell_8.bg[2] - yellow_bg[2]) < epsilon;
+    const has_yellow_8 = @abs(ansi.redF(cell_8.bg) - ansi.redF(yellow_bg)) < epsilon and
+        @abs(ansi.greenF(cell_8.bg) - ansi.greenF(yellow_bg)) < epsilon and
+        @abs(ansi.blueF(cell_8.bg) - ansi.blueF(yellow_bg)) < epsilon;
     try std.testing.expect(has_yellow_8);
 
     const cell_9 = opt_buffer.get(9, 0) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'J'), cell_9.char);
-    const has_yellow_9 = @abs(cell_9.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(cell_9.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(cell_9.bg[2] - yellow_bg[2]) < epsilon;
+    const has_yellow_9 = @abs(ansi.redF(cell_9.bg) - ansi.redF(yellow_bg)) < epsilon and
+        @abs(ansi.greenF(cell_9.bg) - ansi.greenF(yellow_bg)) < epsilon and
+        @abs(ansi.blueF(cell_9.bg) - ansi.blueF(yellow_bg)) < epsilon;
     try std.testing.expect(!has_yellow_9);
 }
 
@@ -2923,7 +2923,7 @@ test "drawTextBuffer - truncation selection does not overshoot multiline" {
     view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 2 });
 
     // Select from line 1 col 2 through line 2 col 5 (exclusive)
-    view.setSelection(2, 26, RGBA{ 1.0, 1.0, 0.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 });
+    view.setSelection(2, 26, ansi.rgbaFromFloats(1.0, 1.0, 0.0, 1.0), ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0));
 
     var opt_buffer = try OptimizedBuffer.init(
         std.testing.allocator,
@@ -2933,31 +2933,31 @@ test "drawTextBuffer - truncation selection does not overshoot multiline" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const epsilon: f32 = 0.01;
-    const yellow_bg = RGBA{ 1.0, 1.0, 0.0, 1.0 };
+    const yellow_bg = ansi.rgbaFromFloats(1.0, 1.0, 0.0, 1.0);
 
     const line2_cell_0 = opt_buffer.get(0, 1) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'k'), line2_cell_0.char);
-    const has_yellow_line2_0 = @abs(line2_cell_0.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(line2_cell_0.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(line2_cell_0.bg[2] - yellow_bg[2]) < epsilon;
+    const has_yellow_line2_0 = @abs(ansi.redF(line2_cell_0.bg) - ansi.redF(yellow_bg)) < epsilon and
+        @abs(ansi.greenF(line2_cell_0.bg) - ansi.greenF(yellow_bg)) < epsilon and
+        @abs(ansi.blueF(line2_cell_0.bg) - ansi.blueF(yellow_bg)) < epsilon;
     try std.testing.expect(has_yellow_line2_0);
 
     const line2_cell_2 = opt_buffer.get(2, 1) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'm'), line2_cell_2.char);
-    const has_yellow_line2_2 = @abs(line2_cell_2.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(line2_cell_2.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(line2_cell_2.bg[2] - yellow_bg[2]) < epsilon;
+    const has_yellow_line2_2 = @abs(ansi.redF(line2_cell_2.bg) - ansi.redF(yellow_bg)) < epsilon and
+        @abs(ansi.greenF(line2_cell_2.bg) - ansi.greenF(yellow_bg)) < epsilon and
+        @abs(ansi.blueF(line2_cell_2.bg) - ansi.blueF(yellow_bg)) < epsilon;
     try std.testing.expect(has_yellow_line2_2);
 
     const line2_cell_6 = opt_buffer.get(6, 1) orelse unreachable;
     try std.testing.expectEqual(@as(u32, 'Q'), line2_cell_6.char);
-    const has_yellow_line2_6 = @abs(line2_cell_6.bg[0] - yellow_bg[0]) < epsilon and
-        @abs(line2_cell_6.bg[1] - yellow_bg[1]) < epsilon and
-        @abs(line2_cell_6.bg[2] - yellow_bg[2]) < epsilon;
+    const has_yellow_line2_6 = @abs(ansi.redF(line2_cell_6.bg) - ansi.redF(yellow_bg)) < epsilon and
+        @abs(ansi.greenF(line2_cell_6.bg) - ansi.greenF(yellow_bg)) < epsilon and
+        @abs(ansi.blueF(line2_cell_6.bg) - ansi.blueF(yellow_bg)) < epsilon;
     try std.testing.expect(!has_yellow_line2_6);
 }
 
@@ -2997,7 +2997,7 @@ test "drawTextBuffer - Chinese text with wrapping no stray bytes" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Write the rendered buffer to check for stray bytes
@@ -3066,7 +3066,7 @@ test "drawTextBuffer - Chinese text WITHOUT wrapping no duplicate chunks" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Write the rendered buffer
@@ -3120,7 +3120,7 @@ test "drawTextBuffer - Chinese text with CHAR wrapping no stray bytes" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     // Write the rendered buffer to check for stray bytes
@@ -3165,7 +3165,7 @@ test "drawTextBuffer - word wrap CJK mixed text without break points" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [1000]u8 = undefined;
@@ -3212,7 +3212,7 @@ test "drawTextBuffer - word wrap CJK text preserves UTF-8 boundaries" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     var out_buffer: [1000]u8 = undefined;
@@ -3267,7 +3267,7 @@ test "drawTextBuffer - Thai ว่ grapheme in quotes occupies one cell" {
     );
     defer opt_buffer.deinit();
 
-    try opt_buffer.clear(.{ 0.0, 0.0, 0.0, 1.0 }, 32);
+    try opt_buffer.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0), 32);
     try opt_buffer.drawTextBuffer(view, 0, 0);
 
     const cell_0 = opt_buffer.get(0, 0) orelse unreachable;

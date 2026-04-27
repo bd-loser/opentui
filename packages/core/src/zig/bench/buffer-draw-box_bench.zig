@@ -1,4 +1,5 @@
 const std = @import("std");
+const ansi = @import("../ansi.zig");
 const bench_utils = @import("../bench-utils.zig");
 const buffer = @import("../buffer.zig");
 const gp = @import("../grapheme.zig");
@@ -10,6 +11,8 @@ const BenchStats = bench_utils.BenchStats;
 const MemStat = bench_utils.MemStat;
 
 pub const benchName = "Buffer drawBox";
+
+const CLEAR_BG = ansi.rgbColor(0, 0, 0, 255);
 
 const BUFFER_WIDTH: u32 = 1200;
 const BUFFER_HEIGHT: u32 = 600;
@@ -33,6 +36,10 @@ const BORDER_NONE: BorderSides = .{
 };
 
 const TITLE: []const u8 = "test title";
+
+fn rgba(r: f32, g: f32, b: f32, a: f32) buffer.RGBA {
+    return ansi.rgbaFromFloats(r, g, b, a);
+}
 
 fn runTransparentBoxes(
     allocator: std.mem.Allocator,
@@ -59,12 +66,12 @@ fn runTransparentBoxes(
     var final_mem: usize = 0;
 
     if (run_opacity) {
-        const border_color: buffer.RGBA = .{ 0.5, 0.5, 0.5, 1.0 };
-        const bg_color: buffer.RGBA = .{ 0.0, 0.0, 0.0, 1.0 };
+        const border_color = rgba(0.5, 0.5, 0.5, 1.0);
+        const bg_color = rgba(0.0, 0.0, 0.0, 1.0);
 
         var stats = BenchStats{};
         for (0..iterations) |i| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            try buf.clear(CLEAR_BG, null);
 
             try buf.pushOpacity(0.0);
             errdefer buf.popOpacity();
@@ -84,6 +91,8 @@ fn runTransparentBoxes(
                     border_color,
                     bg_color,
                     true,
+                    null,
+                    0,
                     null,
                     0,
                 );
@@ -114,12 +123,12 @@ fn runTransparentBoxes(
     }
 
     if (run_bg_alpha) {
-        const border_color: buffer.RGBA = .{ 0.5, 0.5, 0.5, 1.0 };
-        const bg_color: buffer.RGBA = .{ 0.0, 0.0, 0.0, 0.0 };
+        const border_color = rgba(0.5, 0.5, 0.5, 1.0);
+        const bg_color = rgba(0.0, 0.0, 0.0, 0.0);
 
         var stats = BenchStats{};
         for (0..iterations) |i| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            try buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;
@@ -136,6 +145,8 @@ fn runTransparentBoxes(
                     border_color,
                     bg_color,
                     true,
+                    null,
+                    0,
                     null,
                     0,
                 );
@@ -165,12 +176,12 @@ fn runTransparentBoxes(
     }
 
     if (run_both_alpha) {
-        const bg_color: buffer.RGBA = .{ 0.0, 0.0, 0.0, 0.0 };
-        const border_color_alpha: buffer.RGBA = .{ 0.0, 0.0, 0.0, 0.0 };
+        const bg_color = rgba(0.0, 0.0, 0.0, 0.0);
+        const border_color_alpha = rgba(0.0, 0.0, 0.0, 0.0);
 
         var stats = BenchStats{};
         for (0..iterations) |i| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            try buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;
@@ -187,6 +198,8 @@ fn runTransparentBoxes(
                     border_color_alpha,
                     bg_color,
                     true,
+                    null,
+                    0,
                     null,
                     0,
                 );
@@ -243,12 +256,12 @@ fn runFilledBoxes(
     var final_mem: usize = 0;
 
     if (run_opaque) {
-        const border_color: buffer.RGBA = .{ 0.5, 0.5, 0.5, 1.0 };
-        const bg_color: buffer.RGBA = .{ 0.2, 0.2, 0.2, 1.0 };
+        const border_color = rgba(0.5, 0.5, 0.5, 1.0);
+        const bg_color = rgba(0.2, 0.2, 0.2, 1.0);
 
         var stats = BenchStats{};
         for (0..iterations) |i| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            try buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;
@@ -265,6 +278,8 @@ fn runFilledBoxes(
                     border_color,
                     bg_color,
                     true,
+                    null,
+                    0,
                     null,
                     0,
                 );
@@ -294,12 +309,12 @@ fn runFilledBoxes(
     }
 
     if (run_translucent_bg) {
-        const border_color: buffer.RGBA = .{ 0.5, 0.5, 0.5, 1.0 };
-        const bg_color: buffer.RGBA = .{ 0.2, 0.2, 0.2, 0.5 };
+        const border_color = rgba(0.5, 0.5, 0.5, 1.0);
+        const bg_color = rgba(0.2, 0.2, 0.2, 0.5);
 
         var stats = BenchStats{};
         for (0..iterations) |i| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            try buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;
@@ -316,6 +331,8 @@ fn runFilledBoxes(
                     border_color,
                     bg_color,
                     true,
+                    null,
+                    0,
                     null,
                     0,
                 );
@@ -345,12 +362,12 @@ fn runFilledBoxes(
     }
 
     if (run_translucent_opacity) {
-        const border_color: buffer.RGBA = .{ 0.5, 0.5, 0.5, 1.0 };
-        const bg_color: buffer.RGBA = .{ 0.2, 0.2, 0.2, 1.0 };
+        const border_color = rgba(0.5, 0.5, 0.5, 1.0);
+        const bg_color = rgba(0.2, 0.2, 0.2, 1.0);
 
         var stats = BenchStats{};
         for (0..iterations) |i| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            try buf.clear(CLEAR_BG, null);
 
             try buf.pushOpacity(0.5);
             errdefer buf.popOpacity();
@@ -370,6 +387,8 @@ fn runFilledBoxes(
                     border_color,
                     bg_color,
                     true,
+                    null,
+                    0,
                     null,
                     0,
                 );
@@ -419,14 +438,14 @@ fn runFilledBoxesTitle(
     const buf = try OptimizedBuffer.init(allocator, BUFFER_WIDTH, BUFFER_HEIGHT, .{ .pool = pool });
     defer buf.deinit();
 
-    const border_color: buffer.RGBA = .{ 0.5, 0.5, 0.5, 1.0 };
-    const bg_color: buffer.RGBA = .{ 0.3, 0.3, 0.3, 1.0 };
+    const border_color = rgba(0.5, 0.5, 0.5, 1.0);
+    const bg_color = rgba(0.3, 0.3, 0.3, 1.0);
 
     var final_mem: usize = 0;
 
     var stats = BenchStats{};
     for (0..iterations) |i| {
-        try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+        try buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
         var box_i: usize = 0;
@@ -445,6 +464,8 @@ fn runFilledBoxesTitle(
                 true,
                 TITLE,
                 1,
+                null,
+                0,
             );
         }
         stats.record(timer.read());
@@ -491,14 +512,14 @@ fn runFilledBoxesBorders(
     const buf = try OptimizedBuffer.init(allocator, BUFFER_WIDTH, BUFFER_HEIGHT, .{ .pool = pool });
     defer buf.deinit();
 
-    const border_color: buffer.RGBA = .{ 0.5, 0.5, 0.5, 1.0 };
-    const bg_color: buffer.RGBA = .{ 0.0, 0.0, 0.0, 1.0 };
+    const border_color = rgba(0.5, 0.5, 0.5, 1.0);
+    const bg_color = rgba(0.0, 0.0, 0.0, 1.0);
 
     var final_mem: usize = 0;
 
     var stats = BenchStats{};
     for (0..iterations) |i| {
-        try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+        try buf.clear(CLEAR_BG, null);
 
         var timer = try std.time.Timer.start();
         var box_i: usize = 0;
@@ -515,6 +536,8 @@ fn runFilledBoxesBorders(
                 border_color,
                 bg_color,
                 true,
+                null,
+                0,
                 null,
                 0,
             );
@@ -567,15 +590,15 @@ fn runFilledBoxesClipped(
     const buf = try OptimizedBuffer.init(allocator, BUFFER_WIDTH, BUFFER_HEIGHT, .{ .pool = pool });
     defer buf.deinit();
 
-    const border_color: buffer.RGBA = .{ 0.5, 0.5, 0.5, 1.0 };
-    const bg_color: buffer.RGBA = .{ 0.2, 0.2, 0.2, 1.0 };
+    const border_color = rgba(0.5, 0.5, 0.5, 1.0);
+    const bg_color = rgba(0.2, 0.2, 0.2, 1.0);
 
     var final_mem: usize = 0;
 
     if (run_fully) {
         var stats = BenchStats{};
         for (0..iterations) |i| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            try buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;
@@ -590,6 +613,8 @@ fn runFilledBoxesClipped(
                     border_color,
                     bg_color,
                     true,
+                    null,
+                    0,
                     null,
                     0,
                 );
@@ -621,7 +646,7 @@ fn runFilledBoxesClipped(
     if (run_half) {
         var stats = BenchStats{};
         for (0..iterations) |i| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            try buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;
@@ -638,6 +663,8 @@ fn runFilledBoxesClipped(
                     border_color,
                     bg_color,
                     true,
+                    null,
+                    0,
                     null,
                     0,
                 );
@@ -669,7 +696,7 @@ fn runFilledBoxesClipped(
     if (run_negative) {
         var stats = BenchStats{};
         for (0..iterations) |i| {
-            try buf.clear(.{ 0.0, 0.0, 0.0, 1.0 }, null);
+            try buf.clear(CLEAR_BG, null);
 
             var timer = try std.time.Timer.start();
             var box_i: usize = 0;
@@ -684,6 +711,8 @@ fn runFilledBoxesClipped(
                     border_color,
                     bg_color,
                     true,
+                    null,
+                    0,
                     null,
                     0,
                 );

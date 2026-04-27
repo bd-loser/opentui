@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import { TextNodeRenderable, isTextNodeRenderable } from "./TextNode.js"
-import { COLOR_TAG_DEFAULT, RGBA } from "../lib/RGBA.js"
+import { RGBA } from "../lib/RGBA.js"
 import { StyledText, red, bold, t } from "../lib/styled-text.js"
 
 describe("TextNodeRenderable", () => {
@@ -56,16 +56,18 @@ describe("TextNodeRenderable", () => {
       expect(node.bg).toBeDefined()
       expect(node.fg).toBeInstanceOf(RGBA)
       expect(node.bg).toBeInstanceOf(RGBA)
-      expect(RGBA.getIntentTag(node.fg!)).toBe(6)
-      expect(RGBA.getIntentTag(node.bg!)).toBe(COLOR_TAG_DEFAULT)
+      expect(node.fg!.intent).toBe("indexed")
+      expect(node.fg!.slot).toBe(6)
+      expect(node.bg!.intent).toBe("default")
 
       node.fg = RGBA.defaultForeground()
       node.bg = RGBA.fromIndex(4)
 
       expect(node.fg).toBeInstanceOf(RGBA)
       expect(node.bg).toBeInstanceOf(RGBA)
-      expect(RGBA.getIntentTag(node.fg!)).toBe(COLOR_TAG_DEFAULT)
-      expect(RGBA.getIntentTag(node.bg!)).toBe(4)
+      expect(node.fg!.intent).toBe("default")
+      expect(node.bg!.intent).toBe("indexed")
+      expect(node.bg!.slot).toBe(4)
     })
 
     it("should handle undefined colors", () => {

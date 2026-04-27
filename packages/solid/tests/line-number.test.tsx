@@ -193,10 +193,10 @@ console.log(test())`
       const colorBuffer = channel === "fg" ? buffer.buffers.fg : buffer.buffers.bg
       const offset = (y * buffer.width + x) * 4
       return {
-        r: colorBuffer[offset],
-        g: colorBuffer[offset + 1],
-        b: colorBuffer[offset + 2],
-        a: colorBuffer[offset + 3],
+        r: (colorBuffer[offset] & 0xff) / 255,
+        g: (colorBuffer[offset + 1] & 0xff) / 255,
+        b: (colorBuffer[offset + 2] & 0xff) / 255,
+        a: (colorBuffer[offset + 3] & 0xff) / 255,
       }
     }
 

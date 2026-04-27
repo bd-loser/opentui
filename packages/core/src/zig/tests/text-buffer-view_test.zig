@@ -2,6 +2,7 @@ const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
 const iter_mod = @import("../text-buffer-iterators.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
+const ansi = @import("../ansi.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
 
@@ -3523,10 +3524,10 @@ test "TextBufferView - tab indicator set and get" {
     try std.testing.expect(view.getTabIndicatorColor() == null);
 
     view.setTabIndicator(@as(u32, '·'));
-    view.setTabIndicatorColor(RGBA{ 0.4, 0.4, 0.4, 1.0 });
+    view.setTabIndicatorColor(ansi.rgbaFromFloats(0.4, 0.4, 0.4, 1.0));
 
     try std.testing.expectEqual(@as(u32, '·'), view.getTabIndicator().?);
-    try std.testing.expectEqual(@as(f32, 0.4), view.getTabIndicatorColor().?[0]);
+    try std.testing.expectEqual(@as(u8, 102), ansi.red(view.getTabIndicatorColor().?));
 }
 
 test "TextBufferView findVisualLineIndex - finds correct line for wrapped text" {

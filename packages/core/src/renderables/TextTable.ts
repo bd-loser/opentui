@@ -1074,7 +1074,15 @@ export class TextTableRenderable extends Renderable {
       for (let colIdx = 0; colIdx < this._columnCount; colIdx++) {
         const cellX = (colOffsets[colIdx] ?? 0) + 1
         const colWidth = colWidths[colIdx] ?? 1
-        buffer.fillRect(cellX, cellY, colWidth, rowHeight, this._backgroundColor)
+        if (this._backgroundColor.a < 1) {
+          for (let y = cellY; y < cellY + rowHeight; y++) {
+            for (let x = cellX; x < cellX + colWidth; x++) {
+              buffer.setCell(x, y, " ", this._defaultFg, this._backgroundColor, this._defaultAttributes)
+            }
+          }
+        } else {
+          buffer.fillRect(cellX, cellY, colWidth, rowHeight, this._backgroundColor)
+        }
       }
     }
   }
@@ -1118,6 +1126,12 @@ export class TextTableRenderable extends Renderable {
   }
 
   private applySelectionToCells(localSelection: LocalSelectionBounds, isStart: boolean): void {
+    if (localSelection.anchorX === localSelection.focusX && localSelection.anchorY === localSelection.focusY) {
+      this.resetCellSelections()
+      this._lastSelectionMode = null
+      return
+    }
+
     const minSelY = Math.min(localSelection.anchorY, localSelection.focusY)
     const maxSelY = Math.max(localSelection.anchorY, localSelection.focusY)
 
@@ -1157,6 +1171,12 @@ export class TextTableRenderable extends Renderable {
           selection.anchorCell !== null &&
           selection.anchorCell.rowIdx === rowIdx &&
           selection.anchorCell.colIdx === colIdx
+
+        if (selection.mode === "single-cell" && !isAnchorCell) {
+          cell.textBufferView.resetLocalSelection()
+          continue
+        }
+
         const forceSet = isAnchorCell && selection.mode !== "single-cell"
 
         if (forceSet) {

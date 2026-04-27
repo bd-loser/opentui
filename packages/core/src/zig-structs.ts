@@ -1,16 +1,15 @@
 import { defineStruct, defineEnum } from "bun-ffi-structs"
 import { ptr, toArrayBuffer, type Pointer } from "bun:ffi"
-import { RGBA, COLOR_TAG_RGB, normalizeColorValue } from "./lib/RGBA.js"
+import { RGBA, normalizeColorValue } from "./lib/RGBA.js"
 
 const rgbaPackTransform = (rgba?: RGBA) => (rgba ? ptr(rgba.buffer) : null)
-const rgbaUnpackTransform = (ptr?: Pointer) => (ptr ? RGBA.fromArray(new Float32Array(toArrayBuffer(ptr))) : undefined)
+const rgbaUnpackTransform = (ptr?: Pointer) =>
+  ptr ? RGBA.fromArray(new Uint16Array(toArrayBuffer(ptr, 0, 8))) : undefined
 
 type StyledChunkInput = {
   text: string
   fg?: RGBA | null
   bg?: RGBA | null
-  fg_tag?: number
-  bg_tag?: number
   attributes?: number | null
   link?: { url: string } | string | null
 }
@@ -37,8 +36,6 @@ export const StyledChunkStruct = defineStruct(
         unpackTransform: rgbaUnpackTransform,
       },
     ],
-    ["fg_tag", "u16", { default: COLOR_TAG_RGB }],
-    ["bg_tag", "u16", { default: COLOR_TAG_RGB }],
     ["attributes", "u32", { default: 0 }],
     ["link", "char*", { default: "" }],
     ["link_len", "u64", { lengthOf: "link" }],
@@ -53,8 +50,6 @@ export const StyledChunkStruct = defineStruct(
           ...chunk,
           fg: normalizedFg?.rgba ?? null,
           bg: normalizedBg?.rgba ?? null,
-          fg_tag: normalizedFg?.tag ?? COLOR_TAG_RGB,
-          bg_tag: normalizedBg?.tag ?? COLOR_TAG_RGB,
         }
       }
 
@@ -62,8 +57,6 @@ export const StyledChunkStruct = defineStruct(
         ...chunk,
         fg: normalizedFg?.rgba ?? null,
         bg: normalizedBg?.rgba ?? null,
-        fg_tag: normalizedFg?.tag ?? COLOR_TAG_RGB,
-        bg_tag: normalizedBg?.tag ?? COLOR_TAG_RGB,
         link: chunk.link.url,
       }
     },

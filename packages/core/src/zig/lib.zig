@@ -16,7 +16,6 @@ const terminal = @import("terminal.zig");
 const utf8 = @import("utf8.zig");
 const logger = @import("logger.zig");
 const event_bus = @import("event-bus.zig");
-const utils = @import("utils.zig");
 const native_span_feed = @import("native-span-feed.zig");
 const buffer_effects = @import("buffer-methods.zig");
 
@@ -25,49 +24,22 @@ pub const CliRenderer = renderer.CliRenderer;
 pub const Terminal = terminal.Terminal;
 pub const RGBA = buffer.RGBA;
 
-const DecodedColor = struct {
-    rgba: RGBA,
-    tag: buffer.ColorTag,
-};
-
-const OptionalDecodedColor = struct {
-    rgba: ?RGBA = null,
-    tag: buffer.ColorTag = ansi.COLOR_TAG_RGB,
-};
-
-inline fn decodePackedColorTag(raw_tag: f32) buffer.ColorTag {
-    const rounded_tag: i32 = @intFromFloat(@round(raw_tag));
-
-    return switch (rounded_tag) {
-        0...255 => @intCast(rounded_tag),
-        ansi.COLOR_TAG_RGB => ansi.COLOR_TAG_RGB,
-        ansi.COLOR_TAG_DEFAULT => ansi.COLOR_TAG_DEFAULT,
-        else => ansi.COLOR_TAG_RGB,
-    };
+fn ptrToRGBA(color: [*]const u16) RGBA {
+    return .{ color[0], color[1], color[2], color[3] };
 }
 
-fn decodePackedColor(color: [*]const f32) DecodedColor {
-    return .{
-        .rgba = .{ color[0], color[1], color[2], color[3] },
-        .tag = decodePackedColorTag(color[4]),
-    };
-}
-
-fn decodeOptionalPackedColor(color: ?[*]const f32) OptionalDecodedColor {
+fn optionalPtrToRGBA(color: ?[*]const u16) ?RGBA {
     if (color) |packed_color| {
-        const decoded = decodePackedColor(packed_color);
-        return .{ .rgba = decoded.rgba, .tag = decoded.tag };
+        return ptrToRGBA(packed_color);
     }
 
-    return .{};
+    return null;
 }
 
-inline fn selectionStyle(bg: OptionalDecodedColor, fg: OptionalDecodedColor) text_buffer_view.SelectionStyle {
+inline fn selectionStyle(bg: ?RGBA, fg: ?RGBA) text_buffer_view.SelectionStyle {
     return .{
-        .bgColor = bg.rgba,
-        .fgColor = fg.rgba,
-        .bgTag = bg.tag,
-        .fgTag = fg.tag,
+        .bgColor = bg,
+        .fgColor = fg,
     };
 }
 
@@ -263,8 +235,8 @@ export fn destroyRenderer(rendererPtr: *renderer.CliRenderer) void {
     rendererPtr.destroy();
 }
 
-export fn setBackgroundColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32) void {
-    rendererPtr.setBackgroundColor(utils.f32PtrToRGBA(color));
+export fn setBackgroundColor(rendererPtr: *renderer.CliRenderer, color: [*]const u16) void {
+    rendererPtr.setBackgroundColor(ptrToRGBA(color));
 }
 
 export fn setRenderOffset(rendererPtr: *renderer.CliRenderer, offset: u32) void {
@@ -498,16 +470,16 @@ export fn processCapabilityResponse(rendererPtr: *renderer.CliRenderer, response
     rendererPtr.processCapabilityResponse(response);
 }
 
-export fn setCursorColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32) void {
-    rendererPtr.terminal.setCursorColor(utils.f32PtrToRGBA(color));
+export fn setCursorColor(rendererPtr: *renderer.CliRenderer, color: [*]const u16) void {
+    rendererPtr.terminal.setCursorColor(ptrToRGBA(color));
 }
 
 export fn rendererSetPaletteState(
     rendererPtr: *renderer.CliRenderer,
-    palettePtr: [*]const f32,
+    palettePtr: [*]const u16,
     paletteLen: usize,
-    defaultFgPtr: [*]const f32,
-    defaultBgPtr: [*]const f32,
+    defaultFgPtr: [*]const u16,
+    defaultBgPtr: [*]const u16,
     paletteEpoch: u32,
 ) void {
     if (paletteLen < 256) return;
@@ -519,13 +491,13 @@ export fn rendererSetPaletteState(
         palette[index] = .{ palettePtr[base], palettePtr[base + 1], palettePtr[base + 2], palettePtr[base + 3] };
     }
 
-    rendererPtr.setPaletteState(palette[0..], utils.f32PtrToRGBA(defaultFgPtr), utils.f32PtrToRGBA(defaultBgPtr), paletteEpoch);
+    rendererPtr.setPaletteState(palette[0..], ptrToRGBA(defaultFgPtr), ptrToRGBA(defaultBgPtr), paletteEpoch);
 }
 
 pub const CursorStyleOptions = extern struct {
     style: u8,
     blinking: u8,
-    color: ?[*]const f32,
+    color: ?[*]const u16,
     cursor: u8,
 };
 
@@ -539,7 +511,7 @@ export fn setCursorStyleOptions(rendererPtr: *renderer.CliRenderer, options: *co
         rendererPtr.terminal.setCursorStyle(style, blinking);
     }
     if (options.color) |rgba| {
-        rendererPtr.terminal.setCursorColor(utils.f32PtrToRGBA(rgba));
+        rendererPtr.terminal.setCursorColor(ptrToRGBA(rgba));
     }
     if (options.cursor <= 5) {
         rendererPtr.terminal.setMousePointerStyle(@enumFromInt(options.cursor));
@@ -576,10 +548,10 @@ export fn getCursorState(rendererPtr: *renderer.CliRenderer, outPtr: *ExternalCu
         .visible = pos.visible,
         .style = styleTag,
         .blinking = style.blinking,
-        .r = color[0],
-        .g = color[1],
-        .b = color[2],
-        .a = color[3],
+        .r = ansi.redF(color),
+        .g = ansi.greenF(color),
+        .b = ansi.blueF(color),
+        .a = ansi.alphaF(color),
     };
 }
 
@@ -615,9 +587,8 @@ export fn clearClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8) bo
 }
 
 // Buffer functions
-export fn bufferClear(bufferPtr: *buffer.OptimizedBuffer, bg: [*]const f32) void {
-    const bg_color = decodePackedColor(bg);
-    bufferPtr.clearWithTags(bg_color.rgba, null, bg_color.tag) catch {};
+export fn bufferClear(bufferPtr: *buffer.OptimizedBuffer, bg: [*]const u16) void {
+    bufferPtr.clear(ptrToRGBA(bg), null) catch {};
 }
 
 export fn bufferGetCharPtr(bufferPtr: *buffer.OptimizedBuffer) [*]u32 {
@@ -630,14 +601,6 @@ export fn bufferGetFgPtr(bufferPtr: *buffer.OptimizedBuffer) [*]RGBA {
 
 export fn bufferGetBgPtr(bufferPtr: *buffer.OptimizedBuffer) [*]RGBA {
     return bufferPtr.getBgPtr();
-}
-
-export fn bufferGetFgTagPtr(bufferPtr: *buffer.OptimizedBuffer) [*]buffer.ColorTag {
-    return bufferPtr.getFgTagPtr();
-}
-
-export fn bufferGetBgTagPtr(bufferPtr: *buffer.OptimizedBuffer) [*]buffer.ColorTag {
-    return bufferPtr.getBgTagPtr();
 }
 
 export fn bufferGetAttributesPtr(bufferPtr: *buffer.OptimizedBuffer) [*]u32 {
@@ -668,43 +631,32 @@ export fn bufferWriteResolvedChars(bufferPtr: *buffer.OptimizedBuffer, outputPtr
     return bufferPtr.writeResolvedChars(output_slice, addLineBreaks) catch 0;
 }
 
-export fn bufferDrawText(bufferPtr: *buffer.OptimizedBuffer, text: [*]const u8, textLen: usize, x: u32, y: u32, fg: [*]const f32, bg: ?[*]const f32, attributes: u32) void {
-    const fg_color = decodePackedColor(fg);
-    const bg_color = decodeOptionalPackedColor(bg);
-    bufferPtr.drawTextWithTags(
+export fn bufferDrawText(bufferPtr: *buffer.OptimizedBuffer, text: [*]const u8, textLen: usize, x: u32, y: u32, fg: [*]const u16, bg: ?[*]const u16, attributes: u32) void {
+    bufferPtr.drawText(
         text[0..textLen],
         x,
         y,
-        fg_color.rgba,
-        bg_color.rgba,
+        ptrToRGBA(fg),
+        optionalPtrToRGBA(bg),
         attributes,
-        fg_color.tag,
-        bg_color.tag,
     ) catch {};
 }
 
-export fn bufferSetCellWithAlphaBlending(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u32) void {
-    const fg_color = decodePackedColor(fg);
-    const bg_color = decodePackedColor(bg);
-    bufferPtr.setCellWithAlphaBlending(x, y, char, fg_color.rgba, bg_color.rgba, attributes, fg_color.tag, bg_color.tag) catch {};
+export fn bufferSetCellWithAlphaBlending(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const u16, bg: [*]const u16, attributes: u32) void {
+    bufferPtr.setCellWithAlphaBlending(x, y, char, ptrToRGBA(fg), ptrToRGBA(bg), attributes) catch {};
 }
 
-export fn bufferSetCell(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const f32, bg: [*]const f32, attributes: u32) void {
-    const fg_color = decodePackedColor(fg);
-    const bg_color = decodePackedColor(bg);
+export fn bufferSetCell(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, char: u32, fg: [*]const u16, bg: [*]const u16, attributes: u32) void {
     bufferPtr.set(x, y, .{
         .char = char,
-        .fg = fg_color.rgba,
-        .bg = bg_color.rgba,
-        .fg_tag = fg_color.tag,
-        .bg_tag = bg_color.tag,
+        .fg = ptrToRGBA(fg),
+        .bg = ptrToRGBA(bg),
         .attributes = attributes,
     });
 }
 
-export fn bufferFillRect(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, width: u32, height: u32, bg: [*]const f32) void {
-    const bg_color = decodePackedColor(bg);
-    bufferPtr.fillRect(x, y, width, height, bg_color.rgba, bg_color.tag) catch {};
+export fn bufferFillRect(bufferPtr: *buffer.OptimizedBuffer, x: u32, y: u32, width: u32, height: u32, bg: [*]const u16) void {
+    bufferPtr.fillRect(x, y, width, height, ptrToRGBA(bg)) catch {};
 }
 
 export fn bufferColorMatrix(bufferPtr: *buffer.OptimizedBuffer, matrixPtr: [*]const f32, cellMaskPtr: [*]const f32, cellMaskCount: usize, strength: f32, target: u8) void {
@@ -726,35 +678,27 @@ export fn bufferDrawPackedBuffer(bufferPtr: *buffer.OptimizedBuffer, data: [*]co
     bufferPtr.drawPackedBuffer(data, dataLen, posX, posY, terminalWidthCells, terminalHeightCells);
 }
 
-export fn bufferDrawGrayscaleBuffer(bufferPtr: *buffer.OptimizedBuffer, posX: i32, posY: i32, intensities: [*]const f32, srcWidth: u32, srcHeight: u32, fg: ?[*]const f32, bg: ?[*]const f32) void {
-    const fg_color = decodeOptionalPackedColor(fg);
-    const bg_color = decodeOptionalPackedColor(bg);
+export fn bufferDrawGrayscaleBuffer(bufferPtr: *buffer.OptimizedBuffer, posX: i32, posY: i32, intensities: [*]const f32, srcWidth: u32, srcHeight: u32, fg: ?[*]const u16, bg: ?[*]const u16) void {
     bufferPtr.drawGrayscaleBuffer(
         posX,
         posY,
         intensities,
         srcWidth,
         srcHeight,
-        fg_color.rgba,
-        bg_color.rgba,
-        fg_color.tag,
-        bg_color.tag,
+        optionalPtrToRGBA(fg),
+        optionalPtrToRGBA(bg),
     );
 }
 
-export fn bufferDrawGrayscaleBufferSupersampled(bufferPtr: *buffer.OptimizedBuffer, posX: i32, posY: i32, intensities: [*]const f32, srcWidth: u32, srcHeight: u32, fg: ?[*]const f32, bg: ?[*]const f32) void {
-    const fg_color = decodeOptionalPackedColor(fg);
-    const bg_color = decodeOptionalPackedColor(bg);
+export fn bufferDrawGrayscaleBufferSupersampled(bufferPtr: *buffer.OptimizedBuffer, posX: i32, posY: i32, intensities: [*]const f32, srcWidth: u32, srcHeight: u32, fg: ?[*]const u16, bg: ?[*]const u16) void {
     bufferPtr.drawGrayscaleBufferSupersampled(
         posX,
         posY,
         intensities,
         srcWidth,
         srcHeight,
-        fg_color.rgba,
-        bg_color.rgba,
-        fg_color.tag,
-        bg_color.tag,
+        optionalPtrToRGBA(fg),
+        optionalPtrToRGBA(bg),
     );
 }
 
@@ -821,28 +765,24 @@ pub const ExternalGridDrawOptions = extern struct {
 export fn bufferDrawGrid(
     bufferPtr: *buffer.OptimizedBuffer,
     borderChars: [*]const u32,
-    borderFg: [*]const f32,
-    borderBg: [*]const f32,
+    borderFg: [*]const u16,
+    borderBg: [*]const u16,
     columnOffsets: [*]const i32,
     columnCount: u32,
     rowOffsets: [*]const i32,
     rowCount: u32,
     options: *const ExternalGridDrawOptions,
 ) void {
-    const border_fg = decodePackedColor(borderFg);
-    const border_bg = decodePackedColor(borderBg);
     bufferPtr.drawGrid(
         borderChars,
-        border_fg.rgba,
-        border_bg.rgba,
+        ptrToRGBA(borderFg),
+        ptrToRGBA(borderBg),
         columnOffsets,
         columnCount,
         rowOffsets,
         rowCount,
         options.draw_inner,
         options.draw_outer,
-        border_fg.tag,
-        border_bg.tag,
     );
 }
 
@@ -854,15 +794,13 @@ export fn bufferDrawBox(
     height: u32,
     borderChars: [*]const u32,
     packedOptions: u32,
-    borderColor: [*]const f32,
-    backgroundColor: [*]const f32,
+    borderColor: [*]const u16,
+    backgroundColor: [*]const u16,
     title: ?[*]const u8,
     titleLen: u32,
     bottomTitle: ?[*]const u8,
     bottomTitleLen: u32,
 ) void {
-    const border_color = decodePackedColor(borderColor);
-    const background_color = decodePackedColor(backgroundColor);
     const borderSides = buffer.BorderSides{
         .top = (packedOptions & 0b1000) != 0,
         .right = (packedOptions & 0b0100) != 0,
@@ -884,15 +822,13 @@ export fn bufferDrawBox(
         height,
         borderChars,
         borderSides,
-        border_color.rgba,
-        background_color.rgba,
+        ptrToRGBA(borderColor),
+        ptrToRGBA(backgroundColor),
         shouldFill,
         titleSlice,
         titleAlignment,
         bottomTitleSlice,
         bottomTitleAlignment,
-        border_color.tag,
-        background_color.tag,
     ) catch {};
 }
 
@@ -1032,14 +968,12 @@ export fn textBufferClear(tb: *text_buffer.UnifiedTextBuffer) void {
     tb.clear();
 }
 
-export fn textBufferSetDefaultFg(tb: *text_buffer.UnifiedTextBuffer, fg: ?[*]const f32) void {
-    const fg_color = decodeOptionalPackedColor(fg);
-    tb.setDefaultFgWithTag(fg_color.rgba, fg_color.tag);
+export fn textBufferSetDefaultFg(tb: *text_buffer.UnifiedTextBuffer, fg: ?[*]const u16) void {
+    tb.setDefaultFg(optionalPtrToRGBA(fg));
 }
 
-export fn textBufferSetDefaultBg(tb: *text_buffer.UnifiedTextBuffer, bg: ?[*]const f32) void {
-    const bg_color = decodeOptionalPackedColor(bg);
-    tb.setDefaultBgWithTag(bg_color.rgba, bg_color.tag);
+export fn textBufferSetDefaultBg(tb: *text_buffer.UnifiedTextBuffer, bg: ?[*]const u16) void {
+    tb.setDefaultBg(optionalPtrToRGBA(bg));
 }
 
 export fn textBufferSetDefaultAttributes(tb: *text_buffer.UnifiedTextBuffer, attr: ?[*]const u32) void {
@@ -1124,10 +1058,8 @@ export fn destroyTextBufferView(view: *text_buffer_view.UnifiedTextBufferView) v
     view.deinit();
 }
 
-export fn textBufferViewSetSelection(view: *text_buffer_view.UnifiedTextBufferView, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
-    const bg = decodeOptionalPackedColor(bgColor);
-    const fg = decodeOptionalPackedColor(fgColor);
-    view.setSelectionStyle(start, end, selectionStyle(bg, fg));
+export fn textBufferViewSetSelection(view: *text_buffer_view.UnifiedTextBufferView, start: u32, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
+    view.setSelectionStyle(start, end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
 }
 
 export fn textBufferViewResetSelection(view: *text_buffer_view.UnifiedTextBufferView) void {
@@ -1138,22 +1070,16 @@ export fn textBufferViewGetSelectionInfo(view: *text_buffer_view.UnifiedTextBuff
     return view.packSelectionInfo();
 }
 
-export fn textBufferViewSetLocalSelection(view: *text_buffer_view.UnifiedTextBufferView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
-    const bg = decodeOptionalPackedColor(bgColor);
-    const fg = decodeOptionalPackedColor(fgColor);
-    return view.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(bg, fg));
+export fn textBufferViewSetLocalSelection(view: *text_buffer_view.UnifiedTextBufferView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) bool {
+    return view.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
 }
 
-export fn textBufferViewUpdateSelection(view: *text_buffer_view.UnifiedTextBufferView, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
-    const bg = decodeOptionalPackedColor(bgColor);
-    const fg = decodeOptionalPackedColor(fgColor);
-    view.updateSelectionStyle(end, selectionStyle(bg, fg));
+export fn textBufferViewUpdateSelection(view: *text_buffer_view.UnifiedTextBufferView, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
+    view.updateSelectionStyle(end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
 }
 
-export fn textBufferViewUpdateLocalSelection(view: *text_buffer_view.UnifiedTextBufferView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
-    const bg = decodeOptionalPackedColor(bgColor);
-    const fg = decodeOptionalPackedColor(fgColor);
-    return view.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(bg, fg));
+export fn textBufferViewUpdateLocalSelection(view: *text_buffer_view.UnifiedTextBufferView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) bool {
+    return view.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
 }
 
 export fn textBufferViewResetLocalSelection(view: *text_buffer_view.UnifiedTextBufferView) void {
@@ -1241,8 +1167,8 @@ export fn textBufferViewSetTabIndicator(view: *text_buffer_view.UnifiedTextBuffe
     view.setTabIndicator(indicator);
 }
 
-export fn textBufferViewSetTabIndicatorColor(view: *text_buffer_view.UnifiedTextBufferView, color: [*]const f32) void {
-    view.setTabIndicatorColor(utils.f32PtrToRGBA(color));
+export fn textBufferViewSetTabIndicatorColor(view: *text_buffer_view.UnifiedTextBufferView, color: [*]const u16) void {
+    view.setTabIndicatorColor(ptrToRGBA(color));
 }
 
 export fn textBufferViewSetTruncate(view: *text_buffer_view.UnifiedTextBufferView, truncate: bool) void {
@@ -1575,10 +1501,8 @@ export fn editorViewSetWrapMode(view: *editor_view.EditorView, mode: u8) void {
 }
 
 // EditorView selection methods - delegate to TextBufferView
-export fn editorViewSetSelection(view: *editor_view.EditorView, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
-    const bg = decodeOptionalPackedColor(bgColor);
-    const fg = decodeOptionalPackedColor(fgColor);
-    view.text_buffer_view.setSelectionStyle(start, end, selectionStyle(bg, fg));
+export fn editorViewSetSelection(view: *editor_view.EditorView, start: u32, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
+    view.text_buffer_view.setSelectionStyle(start, end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
 }
 
 export fn editorViewResetSelection(view: *editor_view.EditorView) void {
@@ -1589,28 +1513,22 @@ export fn editorViewGetSelection(view: *editor_view.EditorView) u64 {
     return view.text_buffer_view.packSelectionInfo();
 }
 
-export fn editorViewSetLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32, updateCursor: bool, followCursor: bool) bool {
-    const bg = decodeOptionalPackedColor(bgColor);
-    const fg = decodeOptionalPackedColor(fgColor);
+export fn editorViewSetLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, updateCursor: bool, followCursor: bool) bool {
     view.setSelectionFollowCursor(followCursor);
-    const changed = view.text_buffer_view.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(bg, fg));
+    const changed = view.text_buffer_view.setLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
     if (changed and updateCursor) {
         view.syncCursorToSelectionFocus();
     }
     return changed;
 }
 
-export fn editorViewUpdateSelection(view: *editor_view.EditorView, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
-    const bg = decodeOptionalPackedColor(bgColor);
-    const fg = decodeOptionalPackedColor(fgColor);
-    view.text_buffer_view.updateSelectionStyle(end, selectionStyle(bg, fg));
+export fn editorViewUpdateSelection(view: *editor_view.EditorView, end: u32, bgColor: ?[*]const u16, fgColor: ?[*]const u16) void {
+    view.text_buffer_view.updateSelectionStyle(end, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
 }
 
-export fn editorViewUpdateLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32, updateCursor: bool, followCursor: bool) bool {
-    const bg = decodeOptionalPackedColor(bgColor);
-    const fg = decodeOptionalPackedColor(fgColor);
+export fn editorViewUpdateLocalSelection(view: *editor_view.EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const u16, fgColor: ?[*]const u16, updateCursor: bool, followCursor: bool) bool {
     view.setSelectionFollowCursor(followCursor);
-    const changed = view.text_buffer_view.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(bg, fg));
+    const changed = view.text_buffer_view.updateLocalSelectionStyle(anchorX, anchorY, focusX, focusY, selectionStyle(optionalPtrToRGBA(bgColor), optionalPtrToRGBA(fgColor)));
     if (changed and updateCursor) {
         view.syncCursorToSelectionFocus();
     }
@@ -1740,8 +1658,8 @@ export fn editorViewSetTabIndicator(view: *editor_view.EditorView, indicator: u3
     view.setTabIndicator(indicator);
 }
 
-export fn editorViewSetTabIndicatorColor(view: *editor_view.EditorView, color: [*]const f32) void {
-    view.setTabIndicatorColor(utils.f32PtrToRGBA(color));
+export fn editorViewSetTabIndicatorColor(view: *editor_view.EditorView, color: [*]const u16) void {
+    view.setTabIndicatorColor(ptrToRGBA(color));
 }
 
 export fn bufferDrawEditorView(
@@ -1889,15 +1807,11 @@ export fn destroySyntaxStyle(style: *syntax_style.SyntaxStyle) void {
     style.deinit();
 }
 
-export fn syntaxStyleRegister(style: *syntax_style.SyntaxStyle, namePtr: [*]const u8, nameLen: usize, fg: ?[*]const f32, bg: ?[*]const f32, attributes: u32) u32 {
+export fn syntaxStyleRegister(style: *syntax_style.SyntaxStyle, namePtr: [*]const u8, nameLen: usize, fg: ?[*]const u16, bg: ?[*]const u16, attributes: u32) u32 {
     const name = namePtr[0..nameLen];
-    const fg_color = decodeOptionalPackedColor(fg);
-    const bg_color = decodeOptionalPackedColor(bg);
     return style.registerStyleDefinition(name, .{
-        .fg = fg_color.rgba,
-        .bg = bg_color.rgba,
-        .fg_tag = fg_color.tag,
-        .bg_tag = bg_color.tag,
+        .fg = optionalPtrToRGBA(fg),
+        .bg = optionalPtrToRGBA(bg),
         .attributes = attributes,
     }) catch 0;
 }
@@ -2063,11 +1977,9 @@ export fn bufferDrawChar(
     char: u32,
     x: u32,
     y: u32,
-    fg: [*]const f32,
-    bg: [*]const f32,
+    fg: [*]const u16,
+    bg: [*]const u16,
     attributes: u32,
 ) void {
-    const fg_color = decodePackedColor(fg);
-    const bg_color = decodePackedColor(bg);
-    bufferPtr.drawChar(char, x, y, fg_color.rgba, bg_color.rgba, attributes, fg_color.tag, bg_color.tag) catch {};
+    bufferPtr.drawChar(char, x, y, ptrToRGBA(fg), ptrToRGBA(bg), attributes) catch {};
 }

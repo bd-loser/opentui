@@ -660,10 +660,10 @@ test("DiffRenderable - line number fg/bg colors update after construction", asyn
     const offset = (y * buffer.width + x) * 4
 
     return {
-      r: colorBuffer[offset],
-      g: colorBuffer[offset + 1],
-      b: colorBuffer[offset + 2],
-      a: colorBuffer[offset + 3],
+      r: (colorBuffer[offset] & 0xff) / 255,
+      g: (colorBuffer[offset + 1] & 0xff) / 255,
+      b: (colorBuffer[offset + 2] & 0xff) / 255,
+      a: (colorBuffer[offset + 3] & 0xff) / 255,
     }
   }
 

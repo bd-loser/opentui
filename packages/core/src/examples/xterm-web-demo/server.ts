@@ -566,7 +566,7 @@ function closeSession(ws: ServerWebSocket<Session>, code = 1000, reason = "quit"
 function createSessionStreams(ws: ServerWebSocket<Session>, initialCols: number, initialRows: number) {
   // Renderer attaches a `data` listener to stdin and expects bytes.
   // A no-op `read()` keeps the stream in flowing mode without auto-end.
-  const stdin = new Readable({ read() { } })
+  const stdin = new Readable({ read() {} })
 
   const stdout = new Writable({
     write(chunk: Buffer | string, _encoding, callback) {
@@ -588,8 +588,8 @@ function createSessionStreams(ws: ServerWebSocket<Session>, initialCols: number,
       callback()
     },
   })
-    ; (stdout as unknown as { columns: number }).columns = initialCols
-    ; (stdout as unknown as { rows: number }).rows = initialRows
+  ;(stdout as unknown as { columns: number }).columns = initialCols
+  ;(stdout as unknown as { rows: number }).rows = initialRows
 
   return {
     stdin: stdin as unknown as NodeJS.ReadStream,

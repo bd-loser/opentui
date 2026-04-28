@@ -48,9 +48,7 @@ async function writeFilePortable(
   }
 
   const bytes =
-    typeof data === "string"
-      ? TEXT_ENCODER.encode(data)
-      : new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+    typeof data === "string" ? TEXT_ENCODER.encode(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
 
   await writeFileNode(destinationPath, bytes, { mode: options?.mode })
 

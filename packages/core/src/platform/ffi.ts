@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url"
+
 declare const pointerBrand: unique symbol
 
 // This module owns OpenTUI's native FFI surface. Portable code imports this
@@ -8,12 +10,14 @@ declare const pointerBrand: unique symbol
 // it.
 export type Pointer = (number | bigint) & { readonly [pointerBrand]: "Pointer" }
 
+type PointerSource = ArrayBuffer | (ArrayBufferView & { buffer: ArrayBuffer })
+
 // Bun accepts numeric pointers only. Keep this type private so Bun's pointer
 // model does not leak into the exported surface.
 type BunPointer = number
 
-// These names match the FFI type strings used today. Backends map them at
-// library load time instead of wrapping every native call.
+// These names match the Bun FFI type strings OpenTUI uses today. Other
+// backends map them at library load time instead of wrapping every native call.
 export const FFIType = {
   char: "char",
   int8_t: "int8_t",
@@ -51,6 +55,7 @@ export const FFIType = {
 } as const
 
 export type FFIType = (typeof FFIType)[keyof typeof FFIType]
+// Kept as a source-shape compatibility alias for Bun-style call sites.
 export type FFITypeOrString = FFIType
 
 // A function definition describes one native symbol. `ptr` overrides the symbol
@@ -88,7 +93,7 @@ export interface Library<Fns extends Record<string, FFIFunction>> {
 // here unless a backend must adapt them.
 interface FfiBackend {
   dlopen<Fns extends Record<string, FFIFunction>>(path: string | URL, symbols: Fns): Library<Fns>
-  ptr(value: ArrayBufferLike | ArrayBufferView): Pointer
+  ptr(value: PointerSource): Pointer
   suffix: string
   toArrayBuffer(pointer: Pointer, offset: number | undefined, length: number): ArrayBuffer
 }
@@ -108,32 +113,66 @@ interface BunFfiLibrary<Fns extends Record<string, BunFFIFunction>> {
 interface BunFfiBackend {
   JSCallback: new (callback: (...args: any[]) => any, definition: BunFFIFunction) => FFICallbackInstance
   dlopen<Fns extends Record<string, BunFFIFunction>>(path: string | URL, symbols: Fns): BunFfiLibrary<Fns>
-  ptr(value: ArrayBufferLike | ArrayBufferView): Pointer
+  ptr(value: PointerSource): Pointer
   suffix: string
   toArrayBuffer(pointer: BunPointer, offset: number | undefined, length: number): ArrayBuffer
 }
 
-const FFI_UNAVAILABLE = "OpenTUI native FFI is not available for this runtime yet."
-const LIBRARY_CLOSED = "Cannot create FFI callback after library.close() has been called."
-const POINTER_NEGATIVE = "Pointer must be non-negative"
-const POINTER_UNSAFE = "Pointer exceeds safe integer range"
+interface NodeFFIFunction {
+  readonly parameters: readonly string[]
+  readonly result: string
+}
 
-function unavailable(): never {
-  throw new Error(FFI_UNAVAILABLE)
+interface NodeDynamicLibrary {
+  close(): void
+  registerCallback(signature: NodeFFIFunction, callback: (...args: any[]) => any): bigint
+  unregisterCallback(pointer: bigint): void
+}
+
+interface NodeFfiLibrary {
+  readonly lib: NodeDynamicLibrary
+  readonly functions: Record<string, (...args: any[]) => any>
+}
+
+interface NodeFfiBackend {
+  dlopen(path: string | null, symbols: Record<string, NodeFFIFunction>): NodeFfiLibrary
+  getRawPointer(source: ArrayBuffer): bigint
+  suffix: string
+  toArrayBuffer(pointer: bigint, length: number, copy?: boolean): ArrayBuffer
+}
+
+export const FFI_UNAVAILABLE = "OpenTUI native FFI is not available for this runtime yet"
+export const BUN_DLOPEN_NULL = "Bun FFI backend does not support dlopen(null)"
+export const LIBRARY_CLOSED = "Cannot create FFI callback after library.close() has been called"
+export const NODE_CALLBACK_THREADSAFE =
+  "Node FFI callbacks are same-thread only and do not support threadsafe callbacks"
+export const NODE_NAPI_UNSUPPORTED = "Node FFI backend does not support Bun N-API FFI types"
+export const NODE_POINTER_OVERRIDE = "Node FFI backend does not support FFIFunction.ptr overrides"
+export const NODE_PTR_VALUE =
+  "node:ffi ptr() only supports ArrayBuffer and ArrayBufferView values backed by ArrayBuffer"
+export const NODE_STRING_RETURN = "Node FFI backend does not normalize string return values (yet)"
+export const NODE_USIZE_UNSUPPORTED = "Node FFI backend does not support usize until (yet)"
+export const POINTER_NEGATIVE = "Pointer must be non-negative"
+export const POINTER_UNSAFE = "Pointer exceeds safe integer range"
+
+function unavailable(cause?: unknown): never {
+  throw new Error(FFI_UNAVAILABLE, { cause })
 }
 
 // The placeholder backend lets non-Bun runtimes load without errors.
-const unsupportedBackend: FfiBackend = {
-  dlopen() {
-    return unavailable()
-  },
-  ptr() {
-    return unavailable()
-  },
-  suffix: "",
-  toArrayBuffer() {
-    return unavailable()
-  },
+function createUnsupportedBackend(cause?: unknown): FfiBackend {
+  return {
+    dlopen() {
+      return unavailable(cause)
+    },
+    ptr() {
+      return unavailable(cause)
+    },
+    suffix: "",
+    toArrayBuffer() {
+      return unavailable(cause)
+    },
+  }
 }
 
 const isBun =
@@ -142,12 +181,25 @@ const isBun =
   process.versions !== null &&
   typeof process.versions.bun === "string"
 
-// Keep the Bun module import behind the runtime check so Node does not resolve
-// bun:ffi during import.
-const backend = isBun ? createBunBackend(await importModule<BunFfiBackend>("bun:ffi")) : unsupportedBackend
+const backend = await loadBackend()
 
 function importModule<T>(specifier: string): Promise<T> {
   return import(specifier) as Promise<T>
+}
+
+async function loadBackend(): Promise<FfiBackend> {
+  // Keep the Bun module import behind the runtime check so Node does not
+  // resolve bun:ffi during import.
+  if (isBun) {
+    return createBunBackend(await importModule<BunFfiBackend>("bun:ffi"))
+  }
+
+  try {
+    const nodeFfi = await importModule<NodeFfiBackend & { default?: NodeFfiBackend }>("node:ffi")
+    return createNodeBackend(nodeFfi.default ?? nodeFfi)
+  } catch (error) {
+    return createUnsupportedBackend(error)
+  }
 }
 
 // Convert pointer values for current Bun-backed call sites that still store
@@ -242,6 +294,10 @@ function toBunPointer(pointer: Pointer): BunPointer {
 export function createBunBackend(bun: BunFfiBackend): FfiBackend {
   return {
     dlopen(path, symbols) {
+      if (path === null) {
+        throw new Error(BUN_DLOPEN_NULL)
+      }
+
       const library = bun.dlopen(path, normalizeBunDefinitions(symbols))
       const callbacks = new Set<FFICallbackInstance>()
       let closed = false
@@ -291,6 +347,190 @@ export function createBunBackend(bun: BunFfiBackend): FfiBackend {
       return bun.toArrayBuffer(toBunPointer(pointer), offset, length)
     },
   }
+}
+
+// Create a Node backend from node:ffi.
+export function createNodeBackend(nodeFfi: NodeFfiBackend): FfiBackend {
+  return {
+    dlopen(path, symbols) {
+      const { lib, functions } = nodeFfi.dlopen(toNodeLibraryPath(path), normalizeNodeDefinitions(symbols))
+      const callbacks = new Set<FFICallbackInstance>()
+      let closed = false
+      let libraryClosed = false
+
+      return {
+        symbols: functions as { [K in keyof typeof symbols]: (...args: any[]) => any },
+        createCallback(callback, definition) {
+          if (closed) {
+            throw new Error(LIBRARY_CLOSED)
+          }
+
+          if (definition.threadsafe) {
+            throw new Error(NODE_CALLBACK_THREADSAFE)
+          }
+
+          const callbackPointer = lib.registerCallback(normalizeNodeDefinition(definition), callback)
+          const raw: FFICallbackInstance = {
+            ptr: callbackPointer as Pointer,
+            threadsafe: false,
+            close() {
+              if (!libraryClosed) {
+                lib.unregisterCallback(callbackPointer)
+              }
+            },
+          }
+
+          return createManagedCallback(raw, callbacks)
+        },
+        close() {
+          if (closed) {
+            return
+          }
+
+          closed = true
+
+          try {
+            libraryClosed = true
+            lib.close()
+          } finally {
+            for (const callback of [...callbacks]) {
+              callback.close()
+            }
+          }
+        },
+      }
+    },
+    ptr(value) {
+      if (ArrayBuffer.isView(value)) {
+        if (!(value.buffer instanceof ArrayBuffer)) {
+          throw new TypeError(NODE_PTR_VALUE)
+        }
+
+        return (nodeFfi.getRawPointer(value.buffer) + BigInt(value.byteOffset)) as Pointer
+      }
+
+      if (value instanceof ArrayBuffer) {
+        return nodeFfi.getRawPointer(value) as Pointer
+      }
+
+      throw new TypeError(NODE_PTR_VALUE)
+    },
+    suffix: nodeFfi.suffix,
+    toArrayBuffer(pointer, offset, length) {
+      return nodeFfi.toArrayBuffer(toBigIntPointer(pointer) + BigInt(offset ?? 0), length, false)
+    },
+  }
+}
+
+function toNodeLibraryPath(path: string | URL | null): string | null {
+  return path instanceof URL ? fileURLToPath(path) : path
+}
+
+function normalizeNodeDefinitions<Fns extends Record<string, FFIFunction>>(
+  definitions: Fns,
+): Record<string, NodeFFIFunction> {
+  return Object.fromEntries(
+    Object.entries(definitions).map(([name, definition]) => [name, normalizeNodeDefinition(definition)]),
+  )
+}
+
+function normalizeNodeDefinition(definition: FFIFunction): NodeFFIFunction {
+  if (definition.ptr != null) {
+    throw new Error(NODE_POINTER_OVERRIDE)
+  }
+
+  return {
+    parameters: (definition.args ?? []).map((type) => toNodeFFIType(type, "parameter")),
+    result: toNodeFFIType(definition.returns ?? FFIType.void, "result"),
+  }
+}
+
+function toNodeFFIType(type: FFITypeOrString, position: "parameter" | "result"): string {
+  switch (type) {
+    case FFIType.char:
+      return "char"
+    case FFIType.int8_t:
+    case FFIType.i8:
+      return "i8"
+    case FFIType.uint8_t:
+    case FFIType.u8:
+      return "u8"
+    case FFIType.int16_t:
+    case FFIType.i16:
+      return "i16"
+    case FFIType.uint16_t:
+    case FFIType.u16:
+      return "u16"
+    case FFIType.int32_t:
+    case FFIType.int:
+    case FFIType.i32:
+      return "i32"
+    case FFIType.uint32_t:
+    case FFIType.u32:
+      return "u32"
+    case FFIType.int64_t:
+    case FFIType.i64:
+      return "i64"
+    case FFIType.uint64_t:
+    case FFIType.u64:
+      return "u64"
+    case FFIType.double:
+    case FFIType.f64:
+      return "f64"
+    case FFIType.float:
+    case FFIType.f32:
+      return "f32"
+    case FFIType.bool:
+      return "bool"
+    case FFIType.ptr:
+    case FFIType.pointer:
+      return "pointer"
+    case FFIType.void:
+      return "void"
+    case FFIType.cstring:
+      // TODO(audit): cstring vs string semantics differ between backends.
+      //
+      // The type-name mapping here is intentional, but the runtime marshalling
+      // is not equivalent:
+      //   - Bun's `cstring` parameter rejects raw JavaScript strings; callers
+      //     must pass a TypedArray, a Pointer, or a CString.
+      //   - Node's `string` parameter copies a JavaScript string to a
+      //     temporary NUL-terminated UTF-8 buffer for the duration of the
+      //     call.
+      //
+      // Callsites should encode strings into byte buffers and pass pointers
+      // instead of relying on either backend's string handling.
+      if (position === "result") {
+        throw new Error(NODE_STRING_RETURN)
+      }
+
+      return "string"
+    case FFIType.function:
+    case FFIType.callback:
+      // Pointer-like types (pointer, string, buffer, arraybuffer, and function)
+      // are all passed as pointers in node:ffi.
+      return "pointer"
+    case FFIType.usize:
+      // `usize` needs an ABI audit before Node support; use u64 would require
+      // BigInt call sites and u32 can truncate pointers.
+      throw new Error(NODE_USIZE_UNSUPPORTED)
+    case FFIType.napi_env:
+    case FFIType.napi_value:
+      // Bun's N-API bridge types are not equivalent to raw Node FFI pointers.
+      throw new Error(NODE_NAPI_UNSUPPORTED)
+    case FFIType.buffer:
+      return "buffer"
+    default:
+      return unsupportedNodeFFIType(type)
+  }
+}
+
+function unsupportedNodeFFIType(type: never): never {
+  throw new Error(`Unsupported FFIType for node:ffi: ${String(type)}`)
+}
+
+function toBigIntPointer(pointer: Pointer): bigint {
+  return typeof pointer === "bigint" ? pointer : BigInt(pointer)
 }
 
 export const dlopen = backend.dlopen

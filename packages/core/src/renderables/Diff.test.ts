@@ -1873,7 +1873,7 @@ test("DiffRenderable - invalid diff format shows error with raw diff", async () 
   expect(frame).toMatchSnapshot("invalid diff format with error")
 
   // Should contain error message (the error from parsePatch)
-  expect(frame).toContain("Unknown line")
+  expect(frame).toContain("Error parsing diff")
 
   // Should show the raw diff content
   expect(frame).toContain("@@ -a,b +c,d @@")

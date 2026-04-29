@@ -43,6 +43,7 @@ import type {
   AllocatorStats,
 } from "./zig-structs.js"
 import { isBunfsPath } from "./lib/bunfs.js"
+import { toPointer as toPlatformPointer } from "./platform/ffi.js"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
@@ -104,16 +105,8 @@ const MOUSE_STYLE_TO_ID = { default: 0, pointer: 1, text: 2, crosshair: 3, move:
 let globalTraceSymbols: Record<string, number[]> | null = null
 let globalFFILogPath: string | null = null
 let exitHandlerRegistered = false
-
-function toPointer(value: number | bigint): Pointer {
-  if (typeof value === "bigint") {
-    if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
-      throw new Error("Pointer exceeds safe integer range")
-    }
-    return Number(value) as Pointer
-  }
-  return value as Pointer
-}
+// TODO: Remove this temporary shim once current Bun FFI call sites use the platform backend.
+const toPointer = toPlatformPointer as unknown as (value: number | bigint) => Pointer
 
 function toNumber(value: number | bigint): number {
   return typeof value === "bigint" ? Number(value) : value

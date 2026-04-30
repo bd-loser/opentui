@@ -40,6 +40,26 @@
         "web-tree-sitter": "0.25.10",
       },
     },
+    "packages/examples": {
+      "name": "@opentui/examples",
+      "version": "0.2.0",
+      "dependencies": {
+        "@dimforge/rapier2d-simd-compat": "^0.17.3",
+        "@opentui/core": "workspace:*",
+        "@opentui/keymap": "workspace:*",
+        "@opentui/three": "workspace:*",
+        "bun-webgpu": "0.1.7",
+        "planck": "^1.4.2",
+        "three": "0.177.0",
+        "web-tree-sitter": "0.25.10",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@types/node": "^24.0.0",
+        "@types/three": "0.177.0",
+        "typescript": "^5",
+      },
+    },
     "packages/keymap": {
       "name": "@opentui/keymap",
       "version": "0.2.0",
@@ -429,6 +449,8 @@
     "@opentui/core-win32-arm64": ["@opentui/core-win32-arm64@0.2.0", "", { "os": "win32", "cpu": "arm64" }, "sha512-ImMjFPOWE8wcZQ2lUz1D418xonS/5EwnItUF1g5dbp1q9+A0vv2P3bxTenLwMqcYvG4wjO6gKT3n2QLnRd6qKg=="],
 
     "@opentui/core-win32-x64": ["@opentui/core-win32-x64@0.2.0", "", { "os": "win32", "cpu": "x64" }, "sha512-6yfYHTtJ4yzbl8kXCW3Pc4eWbZDYVw21GumwdNgkjJJ2JqQAQ861em0riEoucYAa5qPYYTiMUEw7X4Fv8lGwuQ=="],
+
+    "@opentui/examples": ["@opentui/examples@workspace:packages/examples"],
 
     "@opentui/keymap": ["@opentui/keymap@workspace:packages/keymap"],
 

@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "build": "cd packages/core && bun run build && cd ../three && bun run build && cd ../solid && bun run build && cd ../react && bun run build && cd ../keymap && bun run build",
+    "build:examples": "cd packages/examples && bun run build",
     "fmt": "oxfmt --write .",
     "fmt:check": "oxfmt --check .",
     "lint": "oxlint .",

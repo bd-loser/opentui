@@ -2875,10 +2875,10 @@ test("DiffRenderable - split view with word wrapping: changing diff content shou
  }`
 
   // contentExamples[1] - Real Session: Text Demo
-  const textDemoDiff = `Index: packages/core/src/examples/index.ts
+  const textDemoDiff = `Index: packages/examples/src/index.ts
 ===================================================================
---- packages/core/src/examples/index.ts	before
-+++ packages/core/src/examples/index.ts	after
+--- packages/examples/src/index.ts	before
++++ packages/examples/src/index.ts	after
 @@ -56,6 +56,7 @@
  import * as terminalDemo from "./terminal"
  import * as diffDemo from "./diff-demo"

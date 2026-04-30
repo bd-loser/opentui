@@ -59,7 +59,7 @@ if (!/^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$/.test(version)) {
   process.exit(1)
 }
 
-console.log(`\nPreparing release ${version} for core, three, react, solid, and keymap packages...\n`)
+console.log(`\nPreparing release ${version} for core, three, examples, react, solid, and keymap packages...\n`)
 
 const corePackageJsonPath = join(rootDir, "packages", "core", "package.json")
 console.log("Updating @opentui/core...")
@@ -87,6 +87,7 @@ try {
 
 const reactPackageJsonPath = join(rootDir, "packages", "react", "package.json")
 const threePackageJsonPath = join(rootDir, "packages", "three", "package.json")
+const examplesPackageJsonPath = join(rootDir, "packages", "examples", "package.json")
 
 console.log("\nUpdating @opentui/three...")
 
@@ -100,6 +101,20 @@ try {
   console.log(`  Note: @opentui/core dependency will be set to ${version} during build`)
 } catch (error) {
   console.error(`  Failed to update @opentui/three: ${error}`)
+  process.exit(1)
+}
+
+console.log("\nUpdating @opentui/examples...")
+
+try {
+  const examplesPackageJson: PackageJson = JSON.parse(readFileSync(examplesPackageJsonPath, "utf8"))
+
+  examplesPackageJson.version = version
+
+  writeFileSync(examplesPackageJsonPath, JSON.stringify(examplesPackageJson, null, 2) + "\n")
+  console.log(`  @opentui/examples updated to version ${version}`)
+} catch (error) {
+  console.error(`  Failed to update @opentui/examples: ${error}`)
   process.exit(1)
 }
 
@@ -159,7 +174,7 @@ try {
 }
 
 console.log(`
-Successfully prepared release ${version} for core, three, react, solid, and keymap packages!
+Successfully prepared release ${version} for core, three, examples, react, solid, and keymap packages!
 
 Next steps:
 1. Review the changes: git diff

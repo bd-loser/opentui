@@ -560,6 +560,9 @@ describe("Palette detector cleanup", () => {
 
     expect(sync).not.toHaveBeenCalled()
     expect(requestRender).not.toHaveBeenCalled()
+
+    sync.mockRestore()
+    requestRender.mockRestore()
   })
 
   test("destroy during render ignores pending palette detection publish", async () => {
@@ -577,6 +580,8 @@ describe("Palette detector cleanup", () => {
 
     expect(sync).not.toHaveBeenCalled()
 
+    sync.mockRestore()
+
     // @ts-expect-error - finish deferred destroy cleanup for the test renderer
     renderer.rendering = false
     // @ts-expect-error - finish deferred destroy cleanup for the test renderer
@@ -584,7 +589,7 @@ describe("Palette detector cleanup", () => {
   })
 
   test("destroy stops pending palette detector writes", async () => {
-    const { renderer, clock } = await createPaletteRenderer()
+    const { renderer, clock } = await createPaletteRenderer({ useThread: false })
 
     // @ts-expect-error - spying on private method for testing
     const writeOut = spyOn(renderer, "writeOut")
@@ -594,9 +599,12 @@ describe("Palette detector cleanup", () => {
     clock.advance(0)
     renderer.destroy()
     await flushAsync()
-    void palettePromise.catch(() => {})
+    clock.advance(300)
+    await palettePromise
 
     expect(writeOut).toHaveBeenCalledTimes(1)
+
+    writeOut.mockRestore()
   })
 
   test("multiple destroy calls don't cause errors", async () => {

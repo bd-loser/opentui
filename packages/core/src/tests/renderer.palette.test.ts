@@ -542,6 +542,47 @@ describe("Palette detector cleanup", () => {
     expect(renderer._cachedPalette).toBeNull()
   })
 
+  test("destroy ignores pending native palette publish", async () => {
+    const { renderer, clock } = await createPaletteRenderer()
+
+    await detectPaletteAndAdvanceClock(renderer, clock, { size: 256, timeout: 300 })
+
+    // @ts-expect-error - accessing private property for testing
+    renderer._terminalIsSetup = true
+    // @ts-expect-error - spying on private method for testing
+    const sync = spyOn(renderer, "syncNativePaletteState")
+    const requestRender = spyOn(renderer, "requestRender")
+
+    // @ts-expect-error - accessing private method for testing
+    renderer.ensureNativePaletteState()
+    renderer.destroy()
+    await flushAsync()
+
+    expect(sync).not.toHaveBeenCalled()
+    expect(requestRender).not.toHaveBeenCalled()
+  })
+
+  test("destroy during render ignores pending palette detection publish", async () => {
+    const { renderer, clock } = await createPaletteRenderer()
+
+    // @ts-expect-error - spying on private method for testing
+    const sync = spyOn(renderer, "syncNativePaletteState")
+    const palettePromise = renderer.getPalette({ size: 256, timeout: 300 })
+
+    // @ts-expect-error - simulating destroy while a frame is unwinding
+    renderer.rendering = true
+    renderer.destroy()
+    await advancePaletteClock(clock, 300)
+    await palettePromise
+
+    expect(sync).not.toHaveBeenCalled()
+
+    // @ts-expect-error - finish deferred destroy cleanup for the test renderer
+    renderer.rendering = false
+    // @ts-expect-error - finish deferred destroy cleanup for the test renderer
+    renderer.finalizeDestroy()
+  })
+
   test("multiple destroy calls don't cause errors", async () => {
     const { renderer, clock, mockStdin, mockStdout } = await createPaletteRenderer()
 

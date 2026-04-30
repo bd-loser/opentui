@@ -3489,6 +3489,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._isDestroyed) return
     this._isDestroyed = true
     this._destroyPending = true
+    this._palettePublishGeneration++
 
     if (this.rendering) {
       // Restore terminal/input state immediately, but defer full native teardown until the frame unwinds.
@@ -3587,7 +3588,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._cachedPalette = null
     this._publishedPaletteSignature = null
     this._paletteEpoch = 0
-    this._palettePublishGeneration = 0
 
     this.themeModeState.dispose()
 
@@ -4067,9 +4067,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     void this.getPalette({ size: NATIVE_PALETTE_QUERY_SIZE })
       .then((colors) => {
+        if (this._isDestroyed) return
         if (this._palettePublishGeneration === publishGeneration) {
           this.syncNativePaletteState(colors)
         }
+        if (this._isDestroyed) return
         this.requestRender()
       })
       .catch(() => {})
@@ -4139,7 +4141,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this._paletteDetectionPromise = null
         this._paletteDetectionSize = 0
 
-        if (this._palettePublishGeneration === publishGeneration) {
+        if (!this._isDestroyed && this._palettePublishGeneration === publishGeneration) {
           if (result.palette.length >= NATIVE_PALETTE_QUERY_SIZE) {
             this.syncNativePaletteState(result)
           } else if (this._terminalIsSetup && !this._paletteCache.has(NATIVE_PALETTE_QUERY_SIZE)) {

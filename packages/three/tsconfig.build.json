@@ -18,12 +18,5 @@
     }
   },
   "include": ["src/**/*"],
-  "exclude": [
-    "**/*.test.ts",
-    "**/*.spec.ts",
-    "src/examples/**/*",
-    "src/benchmark/**/*",
-    "node_modules/**/*",
-    "../core/**/*"
-  ]
+  "exclude": ["**/*.test.ts", "**/*.spec.ts", "src/benchmark/**/*", "node_modules/**/*", "../core/**/*"]
 }

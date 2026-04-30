@@ -24,8 +24,8 @@ bun run build
 ## Running Examples
 
 ```bash
-cd packages/core
-bun run src/examples/index.ts
+cd packages/examples
+bun run dev
 ```
 
 ## Testing

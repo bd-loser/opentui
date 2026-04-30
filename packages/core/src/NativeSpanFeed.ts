@@ -1,5 +1,4 @@
-import { toArrayBuffer, type Pointer } from "bun:ffi"
-import { toPointer as toPlatformPointer } from "./platform/ffi.js"
+import { toArrayBuffer, type Pointer } from "./platform/ffi.js"
 import { resolveRenderLib } from "./zig.js"
 import { SpanInfoStruct } from "./zig-structs.js"
 import type { GrowthPolicy, NativeSpanFeedOptions, NativeSpanFeedStats } from "./zig-structs.js"
@@ -13,9 +12,6 @@ const enum EventId {
   DataAvailable = 7,
   StateBuffer = 8,
 }
-
-// TODO: Remove this temporary shim once current Bun FFI call sites use the platform backend.
-const toPointer = toPlatformPointer as unknown as (value: number | bigint) => Pointer
 
 function toNumber(value: number | bigint): number {
   return typeof value === "bigint" ? Number(value) : value
@@ -46,16 +42,15 @@ export class NativeSpanFeed {
     return stream
   }
 
-  static attach(streamPtr: bigint | number, _options?: NativeSpanFeedOptions): NativeSpanFeed {
+  static attach(streamPtr: Pointer, _options?: NativeSpanFeedOptions): NativeSpanFeed {
     const lib = resolveRenderLib()
-    const ptr = toPointer(streamPtr)
-    const stream = new NativeSpanFeed(ptr)
+    const stream = new NativeSpanFeed(streamPtr)
 
-    lib.registerNativeSpanFeedStream(ptr, stream.eventHandler)
+    lib.registerNativeSpanFeedStream(streamPtr, stream.eventHandler)
 
-    const status = lib.attachNativeSpanFeed(ptr)
+    const status = lib.attachNativeSpanFeed(streamPtr)
     if (status !== 0) {
-      lib.unregisterNativeSpanFeedStream(ptr)
+      lib.unregisterNativeSpanFeedStream(streamPtr)
       throw new Error(`Failed to attach stream: ${status}`)
     }
 
@@ -194,7 +189,7 @@ export class NativeSpanFeed {
           break
         }
         case EventId.Error: {
-          const code = arg0
+          const code = toNumber(arg0)
           for (const handler of this.errorHandlers) handler(code)
           break
         }

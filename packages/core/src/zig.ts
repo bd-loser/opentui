@@ -1,4 +1,4 @@
-import { dlopen, toArrayBuffer, JSCallback, ptr, type Pointer } from "bun:ffi"
+import { dlopen, ffiBool, toArrayBuffer, ptr, type FFICallbackInstance, type Pointer } from "./platform/ffi.js"
 import { existsSync, writeFileSync } from "fs"
 import { EventEmitter } from "events"
 import {
@@ -43,7 +43,6 @@ import type {
   AllocatorStats,
 } from "./zig-structs.js"
 import { isBunfsPath } from "./lib/bunfs.js"
-import { toPointer as toPlatformPointer } from "./platform/ffi.js"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
@@ -105,8 +104,6 @@ const MOUSE_STYLE_TO_ID = { default: 0, pointer: 1, text: 2, crosshair: 3, move:
 let globalTraceSymbols: Record<string, number[]> | null = null
 let globalFFILogPath: string | null = null
 let exitHandlerRegistered = false
-// TODO: Remove this temporary shim once current Bun FFI call sites use the platform backend.
-const toPointer = toPlatformPointer as unknown as (value: number | bigint) => Pointer
 
 function toNumber(value: number | bigint): number {
   return typeof value === "bigint" ? Number(value) : value
@@ -1182,6 +1179,7 @@ function getOpenTUILib(libPath?: string) {
 
   if (env.OTUI_DEBUG_FFI || env.OTUI_TRACE_FFI) {
     return {
+      ...rawSymbols,
       symbols: convertToDebugSymbols(rawSymbols.symbols),
     }
   }
@@ -1926,11 +1924,11 @@ class FFIRenderLib implements RenderLib {
   private opentui: ReturnType<typeof getOpenTUILib>
   public readonly encoder: TextEncoder = new TextEncoder()
   public readonly decoder: TextDecoder = new TextDecoder()
-  private logCallbackWrapper: any // Store the FFI callback wrapper
-  private eventCallbackWrapper: any // Store the FFI event callback wrapper
+  private logCallbackWrapper: FFICallbackInstance | null = null
+  private eventCallbackWrapper: FFICallbackInstance | null = null
   private _nativeEvents: EventEmitter = new EventEmitter()
   private _anyEventHandlers: Array<(name: string, data: ArrayBuffer) => void> = []
-  private nativeSpanFeedCallbackWrapper: JSCallback | null = null
+  private nativeSpanFeedCallbackWrapper: FFICallbackInstance | null = null
   private nativeSpanFeedHandlers = new Map<Pointer, NativeSpanFeedEventHandler>()
 
   constructor(libPath?: string) {
@@ -1944,7 +1942,7 @@ class FFIRenderLib implements RenderLib {
       return
     }
 
-    const logCallback = new JSCallback(
+    const logCallback = this.opentui.createCallback(
       (level: number, msgPtr: Pointer, msgLenBigInt: bigint | number) => {
         try {
           const msgLen = typeof msgLenBigInt === "bigint" ? Number(msgLenBigInt) : msgLenBigInt
@@ -2001,7 +1999,7 @@ class FFIRenderLib implements RenderLib {
       return
     }
 
-    const eventCallback = new JSCallback(
+    const eventCallback = this.opentui.createCallback(
       (namePtr: Pointer, nameLenBigInt: bigint | number, dataPtr: Pointer, dataLenBigInt: bigint | number) => {
         try {
           const nameLen = typeof nameLenBigInt === "bigint" ? Number(nameLenBigInt) : nameLenBigInt
@@ -2048,14 +2046,14 @@ class FFIRenderLib implements RenderLib {
     this.setEventCallback(eventCallback.ptr)
   }
 
-  private ensureNativeSpanFeedCallback(): JSCallback {
+  private ensureNativeSpanFeedCallback(): FFICallbackInstance {
     if (this.nativeSpanFeedCallbackWrapper) {
       return this.nativeSpanFeedCallbackWrapper
     }
 
-    const callback = new JSCallback(
+    const callback = this.opentui.createCallback(
       (streamPtr: Pointer, eventId: number, arg0: Pointer, arg1: number | bigint) => {
-        const handler = this.nativeSpanFeedHandlers.get(toPointer(streamPtr))
+        const handler = this.nativeSpanFeedHandlers.get(streamPtr)
         if (handler) {
           handler(eventId, arg0, arg1)
         }
@@ -2082,7 +2080,7 @@ class FFIRenderLib implements RenderLib {
   public createRenderer(width: number, height: number, options: { testing?: boolean; remote?: boolean } = {}) {
     const testing = options.testing ?? false
     const remote = options.remote ?? false
-    return this.opentui.symbols.createRenderer(width, height, testing, remote)
+    return this.opentui.symbols.createRenderer(width, height, ffiBool(testing), ffiBool(remote))
   }
 
   public setTerminalEnvVar(renderer: Pointer, key: string, value: string): boolean {
@@ -2096,11 +2094,11 @@ class FFIRenderLib implements RenderLib {
   }
 
   public setUseThread(renderer: Pointer, useThread: boolean) {
-    this.opentui.symbols.setUseThread(renderer, useThread)
+    this.opentui.symbols.setUseThread(renderer, ffiBool(useThread))
   }
 
   public setClearOnShutdown(renderer: Pointer, clear: boolean) {
-    this.opentui.symbols.setClearOnShutdown(renderer, clear)
+    this.opentui.symbols.setClearOnShutdown(renderer, ffiBool(clear))
   }
 
   public setBackgroundColor(renderer: Pointer, color: RGBA) {
@@ -2233,7 +2231,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public bufferSetRespectAlpha(buffer: Pointer, respectAlpha: boolean): void {
-    this.opentui.symbols.bufferSetRespectAlpha(buffer, respectAlpha)
+    this.opentui.symbols.bufferSetRespectAlpha(buffer, ffiBool(respectAlpha))
   }
 
   public bufferGetId(buffer: Pointer): string {
@@ -2253,7 +2251,7 @@ class FFIRenderLib implements RenderLib {
       buffer,
       outputBuffer,
       outputBuffer.length,
-      addLineBreaks,
+      ffiBool(addLineBreaks),
     )
     return typeof bytesWritten === "bigint" ? Number(bytesWritten) : bytesWritten
   }
@@ -2520,7 +2518,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public setCursorPosition(renderer: Pointer, x: number, y: number, visible: boolean) {
-    this.opentui.symbols.setCursorPosition(renderer, x, y, visible)
+    this.opentui.symbols.setCursorPosition(renderer, x, y, ffiBool(visible))
   }
 
   public setCursorColor(renderer: Pointer, color: RGBA) {
@@ -2552,11 +2550,11 @@ class FFIRenderLib implements RenderLib {
   }
 
   public render(renderer: Pointer, force: boolean) {
-    this.opentui.symbols.render(renderer, force)
+    this.opentui.symbols.render(renderer, ffiBool(force))
   }
 
   public repaintSplitFooter(renderer: Pointer, pinnedRenderOffset: number, force: boolean): number {
-    return this.opentui.symbols.repaintSplitFooter(renderer, pinnedRenderOffset, force)
+    return this.opentui.symbols.repaintSplitFooter(renderer, pinnedRenderOffset, ffiBool(force))
   }
 
   public commitSplitFooterSnapshot(
@@ -2574,12 +2572,12 @@ class FFIRenderLib implements RenderLib {
       renderer,
       snapshot.ptr,
       rowColumns,
-      startOnNewLine,
-      trailingNewline,
+      ffiBool(startOnNewLine),
+      ffiBool(trailingNewline),
       pinnedRenderOffset,
-      force,
-      beginFrame,
-      finalizeFrame,
+      ffiBool(force),
+      ffiBool(beginFrame),
+      ffiBool(finalizeFrame),
     )
   }
 
@@ -2600,7 +2598,7 @@ class FFIRenderLib implements RenderLib {
     const bufferPtr = this.opentui.symbols.createOptimizedBuffer(
       width,
       height,
-      respectAlpha,
+      ffiBool(respectAlpha),
       widthMethodCode,
       idBytes,
       idBytes.length,
@@ -2634,7 +2632,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public setDebugOverlay(renderer: Pointer, enabled: boolean, corner: DebugOverlayCorner) {
-    this.opentui.symbols.setDebugOverlay(renderer, enabled, corner)
+    this.opentui.symbols.setDebugOverlay(renderer, ffiBool(enabled), corner)
   }
 
   public clearTerminal(renderer: Pointer) {
@@ -2712,7 +2710,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public enableMouse(renderer: Pointer, enableMovement: boolean): void {
-    this.opentui.symbols.enableMouse(renderer, enableMovement)
+    this.opentui.symbols.enableMouse(renderer, ffiBool(enableMovement))
   }
 
   public disableMouse(renderer: Pointer): void {
@@ -2736,7 +2734,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public setupTerminal(renderer: Pointer, useAlternateScreen: boolean): void {
-    this.opentui.symbols.setupTerminal(renderer, useAlternateScreen)
+    this.opentui.symbols.setupTerminal(renderer, ffiBool(useAlternateScreen))
   }
 
   public suspendRenderer(renderer: Pointer): void {
@@ -2825,7 +2823,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferRegisterMemBuffer(buffer: Pointer, bytes: Uint8Array, owned: boolean = false): number {
-    const result = this.opentui.symbols.textBufferRegisterMemBuffer(buffer, bytes, bytes.length, owned)
+    const result = this.opentui.symbols.textBufferRegisterMemBuffer(buffer, bytes, bytes.length, ffiBool(owned))
     if (result === 0xffff) {
       throw new Error("Failed to register memory buffer")
     }
@@ -2838,7 +2836,7 @@ class FFIRenderLib implements RenderLib {
     bytes: Uint8Array,
     owned: boolean = false,
   ): boolean {
-    return this.opentui.symbols.textBufferReplaceMemBuffer(buffer, memId, bytes, bytes.length, owned)
+    return this.opentui.symbols.textBufferReplaceMemBuffer(buffer, memId, bytes, bytes.length, ffiBool(owned))
   }
 
   public textBufferClearMemRegistry(buffer: Pointer): void {
@@ -3147,7 +3145,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferViewSetTruncate(view: Pointer, truncate: boolean): void {
-    this.opentui.symbols.textBufferViewSetTruncate(view, truncate)
+    this.opentui.symbols.textBufferViewSetTruncate(view, ffiBool(truncate))
   }
 
   public textBufferViewMeasureForDimensions(
@@ -3274,7 +3272,7 @@ class FFIRenderLib implements RenderLib {
     height: number,
     moveCursor: boolean,
   ): void {
-    this.opentui.symbols.editorViewSetViewport(view, x, y, width, height, moveCursor)
+    this.opentui.symbols.editorViewSetViewport(view, x, y, width, height, ffiBool(moveCursor))
   }
 
   public editorViewGetViewport(view: Pointer): { offsetY: number; offsetX: number; height: number; width: number } {
@@ -3637,8 +3635,8 @@ class FFIRenderLib implements RenderLib {
       focusY,
       bg,
       fg,
-      updateCursor,
-      followCursor,
+      ffiBool(updateCursor),
+      ffiBool(followCursor),
     )
   }
 
@@ -3669,8 +3667,8 @@ class FFIRenderLib implements RenderLib {
       focusY,
       bg,
       fg,
-      updateCursor,
-      followCursor,
+      ffiBool(updateCursor),
+      ffiBool(followCursor),
     )
   }
 
@@ -3875,13 +3873,13 @@ class FFIRenderLib implements RenderLib {
 
   public registerNativeSpanFeedStream(stream: Pointer, handler: NativeSpanFeedEventHandler): void {
     const callback = this.ensureNativeSpanFeedCallback()
-    this.nativeSpanFeedHandlers.set(toPointer(stream), handler)
+    this.nativeSpanFeedHandlers.set(stream, handler)
     this.opentui.symbols.streamSetCallback(stream, callback.ptr)
   }
 
   public unregisterNativeSpanFeedStream(stream: Pointer): void {
     this.opentui.symbols.streamSetCallback(stream, null)
-    this.nativeSpanFeedHandlers.delete(toPointer(stream))
+    this.nativeSpanFeedHandlers.delete(stream)
   }
 
   public createNativeSpanFeed(options?: NativeSpanFeedOptions | null): Pointer {
@@ -3890,7 +3888,7 @@ class FFIRenderLib implements RenderLib {
     if (!streamPtr) {
       throw new Error("Failed to create stream")
     }
-    return toPointer(streamPtr)
+    return streamPtr as Pointer
   }
 
   public attachNativeSpanFeed(stream: Pointer): number {
@@ -3899,7 +3897,7 @@ class FFIRenderLib implements RenderLib {
 
   public destroyNativeSpanFeed(stream: Pointer): void {
     this.opentui.symbols.destroyNativeSpanFeed(stream)
-    this.nativeSpanFeedHandlers.delete(toPointer(stream))
+    this.nativeSpanFeedHandlers.delete(stream)
   }
 
   public streamWrite(stream: Pointer, data: Uint8Array | string): number {

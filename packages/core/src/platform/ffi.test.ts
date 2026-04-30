@@ -15,6 +15,7 @@ import {
   POINTER_UNSAFE,
   createBunBackend,
   createNodeBackend,
+  ffiBool,
   toPointer,
   type FFICallbackInstance,
   type Pointer,
@@ -150,6 +151,11 @@ function createMockNodeBackend(options: MockNodeBackendOptions = {}) {
 }
 
 describe("platform/ffi", () => {
+  test("converts JavaScript booleans to numeric FFI booleans", () => {
+    expect(ffiBool(false)).toBe(0)
+    expect(ffiBool(true)).toBe(1)
+  })
+
   test("closes the native library before auto-closing managed callbacks", () => {
     const { backend, events, rawCallbacks } = createMockBackend()
     const library = backend.dlopen("mock", {})

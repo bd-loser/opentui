@@ -13,7 +13,7 @@ import {
   type WidthMethod,
 } from "./types.js"
 import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
-import type { Pointer } from "bun:ffi"
+import type { Pointer } from "./platform/ffi.js"
 import { OptimizedBuffer } from "./buffer.js"
 import { resolveRenderLib, type RenderLib } from "./zig.js"
 import { TerminalConsole, type ConsoleOptions, capture } from "./console.js"

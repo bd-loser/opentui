@@ -1,6 +1,6 @@
 import { RGBA } from "./lib/index.js"
 import { resolveRenderLib, type RenderLib } from "./zig.js"
-import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
+import { type Pointer, type PointerInput, toArrayBuffer, toPointer, ptr } from "./platform/ffi.js"
 import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib/index.js"
 import { TargetChannel, type WidthMethod, type CapturedSpan, type CapturedLine } from "./types.js"
 import type { TextBufferView } from "./text-buffer-view.js"
@@ -352,7 +352,7 @@ export class OptimizedBuffer {
   public drawSuperSampleBuffer(
     x: number,
     y: number,
-    pixelDataPtr: Pointer,
+    pixelDataPtr: PointerInput,
     pixelDataLength: number,
     format: "bgra8unorm" | "rgba8unorm",
     alignedBytesPerRow: number,
@@ -362,7 +362,7 @@ export class OptimizedBuffer {
       this.bufferPtr,
       x,
       y,
-      pixelDataPtr,
+      toPointer(pixelDataPtr),
       pixelDataLength,
       format,
       alignedBytesPerRow,
@@ -370,7 +370,7 @@ export class OptimizedBuffer {
   }
 
   public drawPackedBuffer(
-    dataPtr: Pointer,
+    dataPtr: PointerInput,
     dataLen: number,
     posX: number,
     posY: number,
@@ -380,7 +380,7 @@ export class OptimizedBuffer {
     this.guard()
     this.lib.bufferDrawPackedBuffer(
       this.bufferPtr,
-      dataPtr,
+      toPointer(dataPtr),
       dataLen,
       posX,
       posY,

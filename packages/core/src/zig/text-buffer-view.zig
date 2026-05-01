@@ -3,10 +3,7 @@ const Allocator = std.mem.Allocator;
 const tb = @import("text-buffer.zig");
 const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
-const gp = @import("grapheme.zig");
 const utf8 = @import("utf8.zig");
-
-const logger = @import("logger.zig");
 
 const UnifiedTextBuffer = tb.UnifiedTextBuffer;
 const RGBA = tb.RGBA;

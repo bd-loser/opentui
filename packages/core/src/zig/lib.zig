@@ -9,6 +9,7 @@ const gp = @import("grapheme.zig");
 const link = @import("link.zig");
 const text_buffer = @import("text-buffer.zig");
 const text_buffer_view = @import("text-buffer-view.zig");
+const text_buffer_iterators = @import("text-buffer-iterators.zig");
 const edit_buffer_mod = @import("edit-buffer.zig");
 const editor_view = @import("editor-view.zig");
 const syntax_style = @import("syntax-style.zig");
@@ -1293,8 +1294,7 @@ export fn editBufferGetEOL(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: *Ex
 }
 
 export fn editBufferOffsetToPosition(edit_buffer: *edit_buffer_mod.EditBuffer, offset: u32, outPtr: *ExternalLogicalCursor) bool {
-    const iter_mod = @import("text-buffer-iterators.zig");
-    const coords = iter_mod.offsetToCoords(edit_buffer.tb.rope(), offset) orelse return false;
+    const coords = text_buffer_iterators.offsetToCoords(edit_buffer.tb.rope(), offset) orelse return false;
     outPtr.* = .{
         .row = coords.row,
         .col = coords.col,
@@ -1304,13 +1304,11 @@ export fn editBufferOffsetToPosition(edit_buffer: *edit_buffer_mod.EditBuffer, o
 }
 
 export fn editBufferPositionToOffset(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32, col: u32) u32 {
-    const iter_mod = @import("text-buffer-iterators.zig");
-    return iter_mod.coordsToOffset(edit_buffer.tb.rope(), row, col) orelse 0;
+    return text_buffer_iterators.coordsToOffset(edit_buffer.tb.rope(), row, col) orelse 0;
 }
 
 export fn editBufferGetLineStartOffset(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32) u32 {
-    const iter_mod = @import("text-buffer-iterators.zig");
-    return iter_mod.coordsToOffset(edit_buffer.tb.rope(), row, 0) orelse 0;
+    return text_buffer_iterators.coordsToOffset(edit_buffer.tb.rope(), row, 0) orelse 0;
 }
 
 export fn editBufferGetTextRange(edit_buffer: *edit_buffer_mod.EditBuffer, start_offset: u32, end_offset: u32, outPtr: [*]u8, maxLen: usize) usize {

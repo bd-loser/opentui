@@ -3,7 +3,6 @@ const bench_utils = @import("../bench-utils.zig");
 const seg_mod = @import("../text-buffer-segment.zig");
 const mem_registry_mod = @import("../mem-registry.zig");
 const gp = @import("../grapheme.zig");
-const utf8 = @import("../utf8.zig");
 
 const TextChunk = seg_mod.TextChunk;
 const MemRegistry = mem_registry_mod.MemRegistry;

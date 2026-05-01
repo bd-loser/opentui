@@ -4,7 +4,6 @@ const ansi = @import("ansi.zig");
 const tb = @import("text-buffer.zig");
 const tbv = @import("text-buffer-view.zig");
 const edv = @import("editor-view.zig");
-const ss = @import("syntax-style.zig");
 const math = std.math;
 const assert = std.debug.assert;
 
@@ -13,7 +12,6 @@ const link = @import("link.zig");
 
 const logger = @import("logger.zig");
 const utf8 = @import("utf8.zig");
-const uucode = @import("uucode");
 
 pub const RGBA = ansi.RGBA;
 pub const Vec3f = @Vector(3, f32);

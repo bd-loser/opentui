@@ -1,5 +1,3 @@
-const std = @import("std");
-
 // Import all test modules
 const text_buffer_tests = @import("tests/text-buffer_test.zig");
 const text_buffer_highlights_tests = @import("tests/text-buffer-highlights_test.zig");

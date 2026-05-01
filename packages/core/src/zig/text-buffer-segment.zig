@@ -4,8 +4,6 @@ const rope_mod = @import("rope.zig");
 const buffer = @import("buffer.zig");
 const mem_registry_mod = @import("mem-registry.zig");
 
-const gp = @import("grapheme.zig");
-
 const utf8 = @import("utf8.zig");
 
 pub const RGBA = buffer.RGBA;

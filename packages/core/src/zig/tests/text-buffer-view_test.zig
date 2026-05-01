@@ -2,6 +2,7 @@ const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
 const iter_mod = @import("../text-buffer-iterators.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
+const seg_mod = @import("../text-buffer-segment.zig");
 const ansi = @import("../ansi.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
@@ -833,7 +834,6 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     const text = "hello my good friend";
     const mem_id = try tb.registerMemBuffer(text, false);
 
-    const seg_mod = @import("../text-buffer-segment.zig");
     const Segment = seg_mod.Segment;
 
     const chunk1 = tb.createChunk(mem_id, 0, 14); // "hello my good "
@@ -3585,7 +3585,6 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     const text = "hello world ddddddddd";
     const mem_id = try tb.registerMemBuffer(text, false);
 
-    const seg_mod = @import("../text-buffer-segment.zig");
     const Segment = seg_mod.Segment;
 
     var segments: std.ArrayListUnmanaged(Segment) = .{};

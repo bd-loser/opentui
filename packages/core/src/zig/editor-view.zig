@@ -4,10 +4,8 @@ const tb = @import("text-buffer.zig");
 const tbv = @import("text-buffer-view.zig");
 const eb = @import("edit-buffer.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
-const gp = @import("grapheme.zig");
 const ss = @import("syntax-style.zig");
 const event_emitter = @import("event-emitter.zig");
-const logger = @import("logger.zig");
 
 const EditBuffer = eb.EditBuffer;
 

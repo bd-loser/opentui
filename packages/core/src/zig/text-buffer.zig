@@ -230,6 +230,9 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        const global_allocator = self.global_allocator;
+        defer global_allocator.destroy(self);
+
         if (self.syntax_style) |style| {
             (@constCast(style)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
         }
@@ -262,8 +265,8 @@ pub const UnifiedTextBuffer = struct {
 
         self.mem_registry.deinit();
         self.arena.deinit();
-        self.global_allocator.destroy(self.arena);
-        self.global_allocator.destroy(self);
+        global_allocator.destroy(self.arena);
+        self.* = undefined;
     }
 
     // View registration (same as original)

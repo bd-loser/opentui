@@ -154,6 +154,7 @@ pub fn deinit(self: *Terminal) void {
         self.host_env_map = null;
     }
     self.opts.env_map = null;
+    self.* = undefined;
 }
 
 pub fn setHostEnvVar(self: *Terminal, allocator: std.mem.Allocator, key: []const u8, value: []const u8) !void {

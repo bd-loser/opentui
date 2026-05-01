@@ -254,6 +254,7 @@ const TestWriter = struct {
 
     pub fn deinit(self: *TestWriter) void {
         self.buffer.deinit(self.allocator);
+        self.* = undefined;
     }
 
     pub fn writeAll(self: *TestWriter, data: []const u8) !void {

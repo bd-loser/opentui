@@ -108,6 +108,7 @@ pub const VirtualLine = struct {
 
     pub fn deinit(self: *VirtualLine, allocator: Allocator) void {
         self.chunks.deinit(allocator);
+        self.* = undefined;
     }
 };
 
@@ -225,11 +226,14 @@ pub const UnifiedTextBufferView = struct {
     /// Destroying the TextBuffer first will cause use-after-free when calling deinit.
     /// The TypeScript wrappers enforce this order via the destroy() methods.
     pub fn deinit(self: *Self) void {
+        const global_allocator = self.global_allocator;
+        defer global_allocator.destroy(self);
+
         self.original_text_buffer.unregisterView(self.view_id);
         self.virtual_lines_arena.deinit();
-        self.global_allocator.destroy(self.virtual_lines_arena);
+        global_allocator.destroy(self.virtual_lines_arena);
         self.measure_arena.deinit();
-        self.global_allocator.destroy(self);
+        self.* = undefined;
     }
 
     pub fn setViewport(self: *Self, vp: ?Viewport) void {

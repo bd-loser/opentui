@@ -274,6 +274,9 @@ pub const OptimizedBuffer = struct {
     }
 
     pub fn deinit(self: *OptimizedBuffer) void {
+        const allocator = self.allocator;
+        defer allocator.destroy(self);
+
         self.opacity_stack.deinit(self.allocator);
         self.scissor_stack.deinit(self.allocator);
         self.link_tracker.deinit();
@@ -283,7 +286,7 @@ pub const OptimizedBuffer = struct {
         self.allocator.free(self.buffer.bg);
         self.allocator.free(self.buffer.attributes);
         self.allocator.free(self.id);
-        self.allocator.destroy(self);
+        self.* = undefined;
     }
 
     pub fn getCurrentScissorRect(self: *const OptimizedBuffer) ?ClipRect {

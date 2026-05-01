@@ -128,11 +128,14 @@ pub const EditBuffer = struct {
     }
 
     pub fn deinit(self: *EditBuffer) void {
+        const allocator = self.allocator;
+        defer allocator.destroy(self);
+
         // Registry owns all AddBuffer memory, don't free it manually
         self.events.deinit();
         self.tb.deinit();
         self.cursors.deinit(self.allocator);
-        self.allocator.destroy(self);
+        self.* = undefined;
     }
 
     pub fn getId(self: *const EditBuffer) u16 {

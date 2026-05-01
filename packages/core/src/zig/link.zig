@@ -58,6 +58,7 @@ pub const LinkPool = struct {
 
         self.slots.deinit(self.allocator);
         self.free_list.deinit(self.allocator);
+        self.* = undefined;
     }
 
     fn grow(self: *LinkPool) LinkPoolError!void {
@@ -271,6 +272,7 @@ pub const LinkTracker = struct {
     pub fn deinit(self: *LinkTracker) void {
         self.decRefAll();
         self.used_ids.deinit();
+        self.* = undefined;
     }
 
     pub fn clear(self: *LinkTracker) void {

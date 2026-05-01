@@ -35,6 +35,7 @@ pub const MemRegistry = struct {
         }
         self.buffers.deinit(self.allocator);
         self.free_slots.deinit(self.allocator);
+        self.* = undefined;
     }
 
     pub fn register(self: *MemRegistry, data: []const u8, owned: bool) MemRegistryError!u8 {

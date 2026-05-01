@@ -72,6 +72,7 @@ pub const LineBreakResult = struct {
 
     pub fn deinit(self: *LineBreakResult) void {
         self.breaks.deinit(self.allocator);
+        self.* = undefined;
     }
 
     pub fn reset(self: *LineBreakResult) void {
@@ -92,6 +93,7 @@ pub const TabStopResult = struct {
 
     pub fn deinit(self: *TabStopResult) void {
         self.positions.deinit(self.allocator);
+        self.* = undefined;
     }
 
     pub fn reset(self: *TabStopResult) void {
@@ -123,6 +125,7 @@ pub const WrapBreakResult = struct {
 
     pub fn deinit(self: *WrapBreakResult) void {
         self.breaks.deinit(self.allocator);
+        self.* = undefined;
     }
 
     pub fn reset(self: *WrapBreakResult) void {
@@ -1645,6 +1648,7 @@ pub const GraphemeInfoResult = struct {
 
     pub fn deinit(self: *GraphemeInfoResult) void {
         self.graphemes.deinit();
+        self.* = undefined;
     }
 
     pub fn reset(self: *GraphemeInfoResult) void {

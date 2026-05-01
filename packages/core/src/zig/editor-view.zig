@@ -99,6 +99,9 @@ pub const EditorView = struct {
     }
 
     pub fn deinit(self: *EditorView) void {
+        const global_allocator = self.global_allocator;
+        defer global_allocator.destroy(self);
+
         self.edit_buffer.events.off(.cursorChanged, self.cursor_changed_listener);
 
         if (self.placeholder_syntax_style) |style| {
@@ -110,7 +113,7 @@ pub const EditorView = struct {
         }
 
         self.text_buffer_view.deinit();
-        self.global_allocator.destroy(self);
+        self.* = undefined;
     }
 
     /// Set the viewport. If wrapping is enabled and viewport width differs from current wrap width,

@@ -59,11 +59,14 @@ pub const SyntaxStyle = struct {
     }
 
     pub fn deinit(self: *SyntaxStyle) void {
+        const global_allocator = self.global_allocator;
+        defer global_allocator.destroy(self);
+
         self.emitter.emit(.Destroy);
         self.emitter.deinit();
         self.arena.deinit();
-        self.global_allocator.destroy(self.arena);
-        self.global_allocator.destroy(self);
+        global_allocator.destroy(self.arena);
+        self.* = undefined;
     }
 
     fn putStyle(self: *SyntaxStyle, name: []const u8, definition: StyleDefinition) SyntaxStyleError!u32 {

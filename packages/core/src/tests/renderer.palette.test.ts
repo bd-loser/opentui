@@ -6,11 +6,17 @@ import { Readable } from "node:stream"
 import tty from "tty"
 import { ManualClock } from "../testing/manual-clock.js"
 import type { GetPaletteOptions, TerminalColors } from "../lib/terminal-palette.js"
+import { clearEnvCache } from "../lib/env.js"
 
 const OSC_SUPPORT_TIMEOUT_MS = 300
 
 function flushAsync(): Promise<void> {
   return Promise.resolve().then(() => Promise.resolve())
+}
+
+async function flushPaletteDetection(): Promise<void> {
+  await flushAsync()
+  await flushAsync()
 }
 
 function schedule(clock: ManualClock | undefined, fn: () => void): void {
@@ -108,6 +114,43 @@ async function createPaletteRenderer(options: Partial<TestRendererOptions> = {})
   })
 
   return { renderer, mockStdin, mockStdout, writes, clock }
+}
+
+async function createSilentFollowUpPaletteRenderer(clock = new ManualClock()) {
+  const mockStdin = new EventEmitter() as any
+  mockStdin.isTTY = true
+  mockStdin.setRawMode = () => {}
+  mockStdin.resume = () => {}
+  mockStdin.pause = () => {}
+  mockStdin.setEncoding = () => {}
+
+  const writes: string[] = []
+  const mockStdout = {
+    isTTY: true,
+    columns: 80,
+    rows: 24,
+    write: (data: string | Buffer) => {
+      const dataStr = data.toString()
+      writes.push(dataStr)
+
+      if (dataStr === "\x1b]4;0;?\x07") {
+        clock.setTimeout(() => {
+          mockStdin.emit("data", Buffer.from("\x1b]4;0;rgb:0000/0000/0000\x07"))
+        }, 0)
+      }
+
+      return true
+    },
+  } as any
+
+  const { renderer } = await createTestRenderer({
+    stdin: mockStdin,
+    stdout: mockStdout,
+    clock,
+    useThread: false,
+  })
+
+  return { renderer, writes, clock }
 }
 
 describe("Palette caching behavior", () => {
@@ -639,6 +682,76 @@ describe("Palette detector cleanup", () => {
 })
 
 describe("Palette detection error handling", () => {
+  test("getPalette settles after idle window when follow-up palette queries are silent", async () => {
+    const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
+
+    let settled = false
+    let palette: TerminalColors | undefined
+    const palettePromise = renderer.getPalette({ size: 16 }).then((result) => {
+      settled = true
+      palette = result
+    })
+
+    try {
+      await flushAsync()
+      clock.advance(0)
+      await flushAsync()
+
+      expect(writes).toContain("\x1b]4;0;?\x07")
+      expect(writes.some((write) => write.includes("\x1b]4;1;?\x07"))).toBe(true)
+      expect(writes.some((write) => write.includes("\x1b]10;?\x07"))).toBe(true)
+
+      clock.advance(299)
+      await flushAsync()
+      expect(settled).toBe(false)
+
+      clock.advance(1)
+      await flushPaletteDetection()
+
+      expect(settled).toBe(true)
+      await palettePromise
+      expect(palette?.palette.every((color) => color === null)).toBe(true)
+    } finally {
+      renderer.destroy()
+    }
+  })
+
+  test("getPalette silent follow-up idle window is configurable with OTUI_PALETTE_IDLE_TIMEOUT_MS", async () => {
+    const previousIdleTimeout = process.env.OTUI_PALETTE_IDLE_TIMEOUT_MS
+    process.env.OTUI_PALETTE_IDLE_TIMEOUT_MS = "50"
+    clearEnvCache()
+
+    const { renderer, clock } = await createSilentFollowUpPaletteRenderer()
+    let settled = false
+    const palettePromise = renderer.getPalette({ size: 16 }).then(() => {
+      settled = true
+    })
+
+    try {
+      await flushAsync()
+      clock.advance(0)
+      await flushAsync()
+
+      clock.advance(49)
+      await flushAsync()
+      expect(settled).toBe(false)
+
+      clock.advance(1)
+      await flushPaletteDetection()
+
+      expect(settled).toBe(true)
+      await palettePromise
+    } finally {
+      renderer.destroy()
+      if (previousIdleTimeout === undefined) {
+        delete process.env.OTUI_PALETTE_IDLE_TIMEOUT_MS
+      } else {
+        process.env.OTUI_PALETTE_IDLE_TIMEOUT_MS = previousIdleTimeout
+      }
+      clearEnvCache()
+    }
+  })
+
   test("handles timeout gracefully", async () => {
     const clock = new ManualClock()
     const mockStdin = new EventEmitter() as any

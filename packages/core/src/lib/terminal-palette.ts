@@ -1,9 +1,17 @@
 import { RGBA, DEFAULT_BACKGROUND_RGB, DEFAULT_FOREGROUND_RGB, ansi256IndexToRgb } from "./RGBA.js"
 import { SystemClock, type Clock, type TimerHandle } from "./clock.js"
+import { env, registerEnvVar } from "./env.js"
 
 type Hex = string | null
 
 const SYSTEM_CLOCK = new SystemClock()
+
+registerEnvVar({
+  name: "OTUI_PALETTE_IDLE_TIMEOUT_MS",
+  description: "Milliseconds of silence after palette queries before using fallback colors.",
+  type: "number",
+  default: 300,
+})
 
 const OSC4_RESPONSE =
   /\x1b]4;(\d+);(?:(?:rgb:)([0-9a-fA-F]+)\/([0-9a-fA-F]+)\/([0-9a-fA-F]+)|#([0-9a-fA-F]{6}))(?:\x07|\x1b\\)/g
@@ -213,7 +221,11 @@ export class TerminalPalette implements TerminalPaletteDetector {
     })
   }
 
-  private async queryPalette(indices: number[], timeoutMs = 1200): Promise<Map<number, Hex>> {
+  private async queryPalette(
+    indices: number[],
+    timeoutMs = 1200,
+    idleTimeoutMs = env.OTUI_PALETTE_IDLE_TIMEOUT_MS,
+  ): Promise<Map<number, Hex>> {
     const out = this.stdout
     const results = new Map<number, Hex>()
     indices.forEach((i) => results.set(i, null))
@@ -253,16 +265,20 @@ export class TerminalPalette implements TerminalPaletteDetector {
           return
         }
 
-        idleTimer = session.resetTimer(idleTimer, finish, 150)
+        idleTimer = session.resetTimer(idleTimer, finish, idleTimeoutMs)
       }
 
       session.setTimer(finish, timeoutMs)
       session.subscribeInput(onData)
       this.writeOsc(indices.map((i) => `\x1b]4;${i};?\x07`).join(""))
+      idleTimer = session.resetTimer(idleTimer, finish, idleTimeoutMs)
     })
   }
 
-  private async querySpecialColors(timeoutMs = 1200): Promise<Record<number, Hex>> {
+  private async querySpecialColors(
+    timeoutMs = 1200,
+    idleTimeoutMs = env.OTUI_PALETTE_IDLE_TIMEOUT_MS,
+  ): Promise<Record<number, Hex>> {
     const out = this.stdout
     const results: Record<number, Hex> = {
       10: null,
@@ -317,7 +333,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
 
         if (!updated) return
 
-        idleTimer = session.resetTimer(idleTimer, finish, 150)
+        idleTimer = session.resetTimer(idleTimer, finish, idleTimeoutMs)
       }
 
       session.setTimer(finish, timeoutMs)
@@ -335,6 +351,7 @@ export class TerminalPalette implements TerminalPaletteDetector {
           "\x1b]19;?\x07",
         ].join(""),
       )
+      idleTimer = session.resetTimer(idleTimer, finish, idleTimeoutMs)
     })
   }
 
@@ -358,9 +375,10 @@ export class TerminalPalette implements TerminalPaletteDetector {
     }
 
     const indicesToQuery = [...Array(size).keys()]
+    const idleTimeout = env.OTUI_PALETTE_IDLE_TIMEOUT_MS
     const [paletteResults, specialColors] = await Promise.all([
-      this.queryPalette(indicesToQuery, timeout),
-      this.querySpecialColors(timeout),
+      this.queryPalette(indicesToQuery, timeout, idleTimeout),
+      this.querySpecialColors(timeout, idleTimeout),
     ])
 
     return {

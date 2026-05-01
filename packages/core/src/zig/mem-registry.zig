@@ -55,7 +55,7 @@ pub const MemRegistry = struct {
             return MemRegistryError.OutOfMemory;
         }
         const id: u8 = @intCast(self.buffers.items.len);
-        try self.buffers.append(self.allocator, MemBuffer{
+        try self.buffers.append(self.allocator, .{
             .data = data,
             .owned = owned,
             .active = true,

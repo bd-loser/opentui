@@ -1670,7 +1670,7 @@ pub const CliRenderer = struct {
             return null;
         }
 
-        return buf.ClipRect{
+        return .{
             .x = intersect_x,
             .y = intersect_y,
             .width = @intCast(intersect_end_x - intersect_x),
@@ -1683,7 +1683,7 @@ pub const CliRenderer = struct {
     /// The rect is intersected with any existing scissor, so nested overflow:hidden
     /// containers compound correctly. All coordinates are in screen space.
     pub fn hitGridPushScissorRect(self: *CliRenderer, x: i32, y: i32, width: u32, height: u32) void {
-        var rect = buf.ClipRect{
+        var rect: buf.ClipRect = .{
             .x = x,
             .y = y,
             .width = width,

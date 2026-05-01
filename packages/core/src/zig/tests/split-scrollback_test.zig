@@ -2,7 +2,7 @@ const std = @import("std");
 const split_scrollback = @import("../split-scrollback.zig");
 
 test "split scrollback starts empty" {
-    var scrollback = split_scrollback.SplitScrollback{};
+    var scrollback: split_scrollback.SplitScrollback = .{};
 
     try std.testing.expectEqual(@as(u32, 0), scrollback.published_rows);
     try std.testing.expectEqual(@as(u32, 0), scrollback.tail_column);
@@ -10,7 +10,7 @@ test "split scrollback starts empty" {
 }
 
 test "split scrollback reset seeds pinned rows" {
-    var scrollback = split_scrollback.SplitScrollback{};
+    var scrollback: split_scrollback.SplitScrollback = .{};
 
     scrollback.reset(6);
     try std.testing.expectEqual(@as(u32, 6), scrollback.published_rows);
@@ -23,7 +23,7 @@ test "split scrollback reset seeds pinned rows" {
 }
 
 test "split scrollback snapshot rows start at line boundary" {
-    var scrollback = split_scrollback.SplitScrollback{};
+    var scrollback: split_scrollback.SplitScrollback = .{};
 
     scrollback.publishSnapshotRows(1, 4, 20, false);
     try std.testing.expectEqual(@as(u32, 1), scrollback.published_rows);
@@ -37,7 +37,7 @@ test "split scrollback snapshot rows start at line boundary" {
 }
 
 test "split scrollback snapshot rows wrap visible columns against terminal width" {
-    var scrollback = split_scrollback.SplitScrollback{};
+    var scrollback: split_scrollback.SplitScrollback = .{};
 
     scrollback.publishSnapshotRows(1, 6, 4, true);
 
@@ -46,7 +46,7 @@ test "split scrollback snapshot rows wrap visible columns against terminal width
 }
 
 test "split scrollback snapshot rows can omit trailing newline" {
-    var scrollback = split_scrollback.SplitScrollback{};
+    var scrollback: split_scrollback.SplitScrollback = .{};
 
     scrollback.publishSnapshotRows(1, 6, 4, false);
 

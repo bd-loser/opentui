@@ -165,7 +165,7 @@ pub const LinkPool = struct {
         const data_ptr = @as([*]u8, @ptrCast(p)) + @sizeOf(SlotHeader);
         @memcpy(data_ptr[0..url.len], url);
 
-        return try packId(slot_index, new_generation);
+        return packId(slot_index, new_generation);
     }
 
     pub fn incref(self: *LinkPool, id: IdPayload) LinkPoolError!void {

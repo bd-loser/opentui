@@ -331,7 +331,7 @@ pub const OptimizedBuffer = struct {
             return null; // No intersection
         }
 
-        return ClipRect{
+        return .{
             .x = intersect_x,
             .y = intersect_y,
             .width = @intCast(intersect_end_x - intersect_x),
@@ -340,7 +340,7 @@ pub const OptimizedBuffer = struct {
     }
 
     pub fn pushScissorRect(self: *OptimizedBuffer, x: i32, y: i32, width: u32, height: u32) !void {
-        var rect = ClipRect{
+        var rect: ClipRect = .{
             .x = x,
             .y = y,
             .width = width,
@@ -451,14 +451,14 @@ pub const OptimizedBuffer = struct {
     /// destroy continuation cells that were correctly written by an earlier
     /// iteration of the same left-to-right pass (issue #723).
     pub fn syncCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
-        self.setInternal(x, y, cell, false);
+        self.setInternal(false, x, y, cell);
     }
 
     pub fn set(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) void {
-        self.setInternal(x, y, cell, true);
+        self.setInternal(true, x, y, cell);
     }
 
-    fn setInternal(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell, comptime span_cleanup: bool) void {
+    fn setInternal(self: *OptimizedBuffer, comptime span_cleanup: bool, x: u32, y: u32, cell: Cell) void {
         const index = self.validateAndIndex(x, y) orelse return;
         const prev_char = self.buffer.char[index];
         const prev_link_id = ansi.TextAttributes.getLinkId(self.buffer.attributes[index]);
@@ -623,7 +623,7 @@ pub const OptimizedBuffer = struct {
         if (x >= self.width or y >= self.height) return null;
 
         const index = self.coordsToIndex(x, y);
-        return Cell{
+        return .{
             .char = self.buffer.char[index],
             .fg = self.buffer.fg[index],
             .bg = self.buffer.bg[index],
@@ -778,7 +778,7 @@ pub const OptimizedBuffer = struct {
             const overlayLinkId = ansi.TextAttributes.getLinkId(overlayCell.attributes);
             const finalAttributes = ansi.TextAttributes.setLinkId(@as(u32, baseAttrs), overlayLinkId);
 
-            return Cell{
+            return .{
                 .char = finalChar,
                 .fg = finalFg,
                 .bg = blendedBg,
@@ -1041,7 +1041,7 @@ pub const OptimizedBuffer = struct {
         defer grapheme_list.deinit(self.allocator);
 
         const tab_width: u8 = 2;
-        try utf8.findGraphemeInfo(text, tab_width, is_ascii_only, self.width_method, self.allocator, &grapheme_list);
+        try utf8.findGraphemeInfo(self.allocator, text, tab_width, is_ascii_only, self.width_method, &grapheme_list);
         const specials = grapheme_list.items;
 
         var advance_cells: u32 = 0;
@@ -1380,7 +1380,7 @@ pub const OptimizedBuffer = struct {
             for (vline.chunks.items) |vchunk| {
                 const chunk = vchunk.chunk;
                 const chunk_bytes = chunk.getBytes(text_buffer.memRegistry());
-                const specials = chunk.getGraphemes(text_buffer.memRegistry(), text_buffer.getAllocator(), text_buffer.tabWidth(), text_buffer.widthMethod()) catch continue;
+                const specials = chunk.getGraphemes(text_buffer.getAllocator(), text_buffer.memRegistry(), text_buffer.tabWidth(), text_buffer.widthMethod()) catch continue;
                 const line_col_offset = vline.col_offset;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
@@ -1756,7 +1756,7 @@ pub const OptimizedBuffer = struct {
                     const has_right = colBorderIdx < columnCount;
                     const intersection = tableBorderIntersectionByConnections(borderChars, has_up, has_down, has_left, has_right);
 
-                    self.setRaw(@as(u32, @intCast(bx)), @as(u32, @intCast(borderY)), Cell{ .char = intersection, .fg = borderFg, .bg = borderBg, .attributes = 0 });
+                    self.setRaw(@as(u32, @intCast(bx)), @as(u32, @intCast(borderY)), .{ .char = intersection, .fg = borderFg, .bg = borderBg, .attributes = 0 });
                 }
 
                 var colIdx: u32 = 0;
@@ -2200,7 +2200,7 @@ pub const OptimizedBuffer = struct {
         if (intensity < 0.01) return ' ';
         const clamped = @min(@max(intensity, 0.0), 1.0);
         const index: usize = @intFromFloat(clamped * @as(f32, @floatFromInt(GRAYSCALE_CHARS.len - 1)));
-        return @as(u32, GRAYSCALE_CHARS[index]);
+        return GRAYSCALE_CHARS[index];
     }
 
     pub fn drawGrayscaleBuffer(
@@ -2485,19 +2485,19 @@ fn renderQuadrantBlock(pixels: [4]RGBA) QuadrantResult {
 
     // 4. Construct Result
     if (quadrantBits == 0) { // All light
-        return QuadrantResult{
+        return .{
             .char = 32,
             .fg = chosen_dark_color,
             .bg = averageColorRgba(pixels[0..4]),
         };
     } else if (quadrantBits == 15) { // All dark
-        return QuadrantResult{
+        return .{
             .char = quadrantChars[15],
             .fg = averageColorRgba(pixels[0..4]),
             .bg = chosen_light_color,
         };
     } else { // Mixed pattern
-        return QuadrantResult{
+        return .{
             .char = quadrantChars[quadrantBits],
             .fg = chosen_dark_color,
             .bg = chosen_light_color,

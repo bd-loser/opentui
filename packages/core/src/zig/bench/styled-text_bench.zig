@@ -45,7 +45,7 @@ fn benchSetStyledTextOperations(
     {
         const name = "setStyledText - single chunk (55 chars)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             const text = "Hello, World! This is a test of styled text rendering.";
             const fg_color = rgba(1.0, 1.0, 1.0, 1.0);
@@ -71,7 +71,7 @@ fn benchSetStyledTextOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -87,7 +87,7 @@ fn benchSetStyledTextOperations(
     {
         const name = "setStyledText - 6 small chunks (~6 chars each)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             const red = rgba(1.0, 0.0, 0.0, 1.0);
             const green = rgba(0.0, 1.0, 0.0, 1.0);
@@ -125,7 +125,7 @@ fn benchSetStyledTextOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -141,7 +141,7 @@ fn benchSetStyledTextOperations(
     {
         const name = "setStyledText - 8 chunks (syntax highlighting)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             const keyword_color = rgba(0.8, 0.4, 1.0, 1.0);
             const identifier_color = rgba(0.7, 0.9, 1.0, 1.0);
@@ -182,7 +182,7 @@ fn benchSetStyledTextOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -198,7 +198,7 @@ fn benchSetStyledTextOperations(
     {
         const name = "setStyledText - 10 chunks (~120 chars total)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             const text = "Lorem ipsum ";
 
@@ -230,7 +230,7 @@ fn benchSetStyledTextOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -246,7 +246,7 @@ fn benchSetStyledTextOperations(
     {
         const name = "setStyledText - 5 chunks with attributes";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -275,7 +275,7 @@ fn benchSetStyledTextOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -287,7 +287,7 @@ fn benchSetStyledTextOperations(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn benchHighlightOperations(
@@ -310,7 +310,7 @@ fn benchHighlightOperations(
     {
         const name = "addHighlightByCharRange - 1000 calls (unbatched)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -337,7 +337,7 @@ fn benchHighlightOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -353,7 +353,7 @@ fn benchHighlightOperations(
     {
         const name = "addHighlightByCharRange - 1000 calls (batched)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -384,7 +384,7 @@ fn benchHighlightOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -400,7 +400,7 @@ fn benchHighlightOperations(
     {
         const name = "setStyledText - 100 chunks (realistic code)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats = BenchStats{};
+            var stats: BenchStats = .{};
 
             // Build a realistic multi-line code snippet with 100 chunks
             var chunk_list: std.ArrayListUnmanaged(StyledChunk) = .{};
@@ -439,7 +439,7 @@ fn benchHighlightOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, BenchResult{
+            try results.append(allocator, .{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -451,7 +451,7 @@ fn benchHighlightOperations(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 pub fn run(
@@ -472,5 +472,5 @@ pub fn run(
     const highlight_results = try benchHighlightOperations(allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, highlight_results);
 
-    return try all_results.toOwnedSlice(allocator);
+    return all_results.toOwnedSlice(allocator);
 }

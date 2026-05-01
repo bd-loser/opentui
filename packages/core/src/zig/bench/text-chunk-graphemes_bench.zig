@@ -73,7 +73,7 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
         },
     }
 
-    return try buffer.toOwnedSlice(allocator);
+    return buffer.toOwnedSlice(allocator);
 }
 
 fn benchGetGraphemes(
@@ -102,7 +102,7 @@ fn benchGetGraphemes(
     // Create TextChunk
     // Width is approximate - clamped to u16 max
     const approx_width: u16 = @intCast(@min(text.len, std.math.maxInt(u16)));
-    var chunk = TextChunk{
+    var chunk: TextChunk = .{
         .mem_id = mem_id,
         .byte_start = 0,
         .byte_end = @intCast(text.len),
@@ -110,7 +110,7 @@ fn benchGetGraphemes(
         .flags = if (is_ascii) TextChunk.Flags.ASCII_ONLY else 0,
     };
 
-    var stats = BenchStats{};
+    var stats: BenchStats = .{};
     var grapheme_count: usize = 0;
     var final_mem: usize = 0;
 
@@ -125,8 +125,8 @@ fn benchGetGraphemes(
 
         var timer = try std.time.Timer.start();
         const graphemes = try chunk.getGraphemes(
-            &registry,
             arena_alloc,
+            &registry,
             4, // tab width
             .unicode,
         );
@@ -160,7 +160,7 @@ fn benchGetGraphemes(
         break :blk mem_stat_slice;
     } else null;
 
-    return BenchResult{
+    return .{
         .name = name,
         .min_ns = stats.min_ns,
         .avg_ns = stats.avg(),
@@ -187,7 +187,7 @@ fn computeBenchName(allocator: std.mem.Allocator, size: usize, text_type: TextTy
         else => false,
     };
     const approx_width: u16 = @intCast(@min(text.len, std.math.maxInt(u16)));
-    var chunk = TextChunk{
+    var chunk: TextChunk = .{
         .mem_id = mem_id,
         .byte_start = 0,
         .byte_end = @intCast(text.len),
@@ -196,8 +196,8 @@ fn computeBenchName(allocator: std.mem.Allocator, size: usize, text_type: TextTy
     };
 
     const graphemes = try chunk.getGraphemes(
-        &registry,
         temp_alloc,
+        &registry,
         4, // tab width
         .unicode,
     );
@@ -208,7 +208,7 @@ fn computeBenchName(allocator: std.mem.Allocator, size: usize, text_type: TextTy
         .heavy_unicode => "Heavy Unicode",
     };
 
-    return try std.fmt.allocPrint(
+    return std.fmt.allocPrint(
         allocator,
         "getGraphemes {s} ({d} bytes, {d} graphemes)",
         .{ type_str, size, graphemes.len },
@@ -268,5 +268,5 @@ pub fn run(
         }
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }

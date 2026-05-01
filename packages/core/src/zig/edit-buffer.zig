@@ -233,8 +233,8 @@ pub const EditBuffer = struct {
     }
 
     fn splitSegmentCallback(
-        ctx: ?*anyopaque,
         allocator: Allocator,
+        ctx: ?*anyopaque,
         leaf: *const Segment,
         weight_in_leaf: u32,
     ) error{ OutOfBounds, OutOfMemory }!UnifiedRope.Node.LeafSplitResult {
@@ -678,7 +678,7 @@ pub const EditBuffer = struct {
                     const graphemes: []const seg_mod.GraphemeInfo = if (is_ascii_only)
                         &[_]seg_mod.GraphemeInfo{}
                     else
-                        chunk.getGraphemes(self.tb.memRegistry(), self.tb.getAllocator(), self.tb.tabWidth(), self.tb.widthMethod()) catch &[_]seg_mod.GraphemeInfo{};
+                        chunk.getGraphemes(self.tb.getAllocator(), self.tb.memRegistry(), self.tb.tabWidth(), self.tb.widthMethod()) catch &[_]seg_mod.GraphemeInfo{};
                     var grapheme_idx: usize = 0;
                     var col_delta: i64 = 0;
 
@@ -761,7 +761,7 @@ pub const EditBuffer = struct {
                 const graphemes: []const seg_mod.GraphemeInfo = if (is_ascii_only)
                     &[_]seg_mod.GraphemeInfo{}
                 else
-                    chunk.getGraphemes(self.tb.memRegistry(), self.tb.getAllocator(), self.tb.tabWidth(), self.tb.widthMethod()) catch &[_]seg_mod.GraphemeInfo{};
+                    chunk.getGraphemes(self.tb.getAllocator(), self.tb.memRegistry(), self.tb.tabWidth(), self.tb.widthMethod()) catch &[_]seg_mod.GraphemeInfo{};
                 var grapheme_idx: usize = 0;
                 var col_delta: i64 = 0;
 

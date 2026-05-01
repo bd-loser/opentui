@@ -52,7 +52,7 @@ pub const StyledChunk = extern struct {
 };
 
 pub const UnifiedTextBuffer = struct {
-    const Self = @This();
+    const Self = UnifiedTextBuffer;
 
     mem_registry: MemRegistry,
     default_fg: ?RGBA,
@@ -156,7 +156,7 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn getWrapOffsetsFor(self: *const Self, chunk: *const TextChunk) TextBufferError![]const utf8.WrapBreak {
-        return chunk.getWrapOffsets(&self.mem_registry, self.allocator, self.width_method);
+        return chunk.getWrapOffsets(self.allocator, &self.mem_registry, self.width_method);
     }
 
     /// Accessor: walk all lines and segments via callbacks.
@@ -516,7 +516,7 @@ pub const UnifiedTextBuffer = struct {
 
         const chunk_width: u16 = @intCast(@min(65535, utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method)));
 
-        return TextChunk{
+        return .{
             .mem_id = mem_id,
             .byte_start = byte_start,
             .byte_end = byte_end,
@@ -543,7 +543,7 @@ pub const UnifiedTextBuffer = struct {
         errdefer segments.deinit(allocator);
 
         if (prepend_linestart) {
-            try segments.append(allocator, Segment{ .linestart = {} });
+            try segments.append(allocator, .{ .linestart = {} });
         }
 
         var local_start: u32 = 0;
@@ -558,19 +558,19 @@ pub const UnifiedTextBuffer = struct {
 
             if (local_end > local_start) {
                 const chunk = self.createChunk(mem_id, byte_offset + local_start, byte_offset + local_end);
-                try segments.append(allocator, Segment{ .text = chunk });
+                try segments.append(allocator, .{ .text = chunk });
                 total_width += chunk.width;
             }
 
-            try segments.append(allocator, Segment{ .brk = {} });
-            try segments.append(allocator, Segment{ .linestart = {} });
+            try segments.append(allocator, .{ .brk = {} });
+            try segments.append(allocator, .{ .linestart = {} });
 
             local_start = break_pos + 1;
         }
 
         if (local_start < text.len) {
             const chunk = self.createChunk(mem_id, byte_offset + local_start, byte_offset + @as(u32, @intCast(text.len)));
-            try segments.append(allocator, Segment{ .text = chunk });
+            try segments.append(allocator, .{ .text = chunk });
             total_width += chunk.width;
         }
 
@@ -589,7 +589,7 @@ pub const UnifiedTextBuffer = struct {
 
     /// Register a memory buffer
     pub fn registerMemBuffer(self: *Self, data: []const u8, owned: bool) TextBufferError!u8 {
-        return try self.mem_registry.register(data, owned);
+        return self.mem_registry.register(data, owned);
     }
 
     pub fn replaceMemBuffer(self: *Self, mem_id: u8, data: []const u8, owned: bool) TextBufferError!void {
@@ -620,11 +620,11 @@ pub const UnifiedTextBuffer = struct {
         const had_content = self._rope.count() > 1;
 
         if (had_content) {
-            try self._rope.append(Segment{ .brk = {} });
-            try self._rope.append(Segment{ .linestart = {} });
+            try self._rope.append(.{ .brk = {} });
+            try self._rope.append(.{ .linestart = {} });
         }
 
-        try self._rope.append(Segment{ .text = chunk });
+        try self._rope.append(.{ .text = chunk });
 
         self.markAllViewsDirty();
     }
@@ -667,7 +667,7 @@ pub const UnifiedTextBuffer = struct {
             }
         };
 
-        var ctx = Context{
+        var ctx: Context = .{
             .buffer = self,
             .out_buffer = out_buffer,
             .out_index = &out_index,
@@ -730,7 +730,7 @@ pub const UnifiedTextBuffer = struct {
 
         try self.ensureLineHighlightStorage(line_idx);
 
-        const hl = Highlight{
+        const hl: Highlight = .{
             .col_start = col_start,
             .col_end = col_end,
             .style_id = style_id,
@@ -821,7 +821,7 @@ pub const UnifiedTextBuffer = struct {
 
             // Emit span for the segment leading up to this event
             if (event.col > current_col) {
-                try self.line_spans.items[line_idx].append(self.global_allocator, StyleSpan{
+                try self.line_spans.items[line_idx].append(self.global_allocator, .{
                     .col = current_col,
                     .style_id = current_style,
                     .next_col = event.col,
@@ -842,7 +842,7 @@ pub const UnifiedTextBuffer = struct {
         if (events.items.len > 0 and active.count() == 0) {
             const line_width = self.lineWidthAt(@intCast(line_idx));
             if (current_col < line_width) {
-                try self.line_spans.items[line_idx].append(self.global_allocator, StyleSpan{
+                try self.line_spans.items[line_idx].append(self.global_allocator, .{
                     .col = current_col,
                     .style_id = 0, // No style (default)
                     .next_col = line_width,
@@ -923,7 +923,7 @@ pub const UnifiedTextBuffer = struct {
             }
         };
 
-        var ctx = Context{
+        var ctx: Context = .{
             .buffer = self,
             .char_start = char_start,
             .char_end = char_end,

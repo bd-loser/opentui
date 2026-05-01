@@ -880,13 +880,13 @@ test "renderer - explicit default and indexed tags use ANSI default/indexed outp
     cli_renderer.terminal.caps.ansi256 = true;
 
     const next_buffer = cli_renderer.getNextBuffer();
-    next_buffer.set(0, 0, buffer.Cell{
+    next_buffer.set(0, 0, .{
         .char = 'A',
         .fg = ansi.defaultColor(255, 255, 255, 255),
         .bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0),
         .attributes = 0,
     });
-    next_buffer.set(1, 0, buffer.Cell{
+    next_buffer.set(1, 0, .{
         .char = 'B',
         .fg = ansi.indexedColor(6, 51, 179, 230),
         .bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0),
@@ -919,7 +919,7 @@ test "renderer - indexed snapshots fall back to rgb and explicit bg default rese
     cli_renderer.terminal.caps.ansi256 = false;
 
     const next_buffer = cli_renderer.getNextBuffer();
-    next_buffer.set(0, 0, buffer.Cell{
+    next_buffer.set(0, 0, .{
         .char = 'A',
         .fg = ansi.indexedColor(6, 51, 102, 153),
         .bg = ansi.defaultColor(0, 0, 0, 255),
@@ -1790,13 +1790,13 @@ test "renderer - commitSplitFooterSnapshot preserves indexed and default color t
     defer snapshot.deinit();
 
     try snapshot.clear(ansi.rgbaFromFloats(0.0, 0.0, 0.0, 0.0), 0);
-    snapshot.set(0, 0, buffer.Cell{
+    snapshot.set(0, 0, .{
         .char = 'A',
         .fg = ansi.defaultColor(255, 255, 255, 255),
         .bg = ansi.rgbaFromFloats(0.0, 0.0, 0.0, 1.0),
         .attributes = 0,
     });
-    snapshot.set(1, 0, buffer.Cell{
+    snapshot.set(1, 0, .{
         .char = 'B',
         .fg = ansi.indexedColor(6, 51, 102, 153),
         .bg = ansi.defaultColor(0, 0, 0, 255),

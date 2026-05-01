@@ -122,7 +122,7 @@ pub const LocalSelection = struct {
 pub const TextBufferView = UnifiedTextBufferView;
 
 pub const UnifiedTextBufferView = struct {
-    const Self = @This();
+    const Self = UnifiedTextBufferView;
 
     text_buffer: *UnifiedTextBuffer,
     original_text_buffer: *UnifiedTextBuffer,
@@ -254,14 +254,14 @@ pub const UnifiedTextBufferView = struct {
     // This is a convenience method that preserves existing offset
     pub fn setViewportSize(self: *Self, width: u32, height: u32) void {
         if (self.viewport) |vp| {
-            self.setViewport(Viewport{
+            self.setViewport(.{
                 .x = vp.x,
                 .y = vp.y,
                 .width = width,
                 .height = height,
             });
         } else {
-            self.setViewport(Viewport{
+            self.setViewport(.{
                 .x = 0,
                 .y = 0,
                 .width = width,
@@ -353,7 +353,7 @@ pub const UnifiedTextBufferView = struct {
         const virtual_allocator = self.virtual_lines_arena.allocator();
 
         // Create output structure for the generic function
-        const output = VirtualLineOutput{
+        const output: VirtualLineOutput = .{
             .virtual_lines = &self.virtual_lines,
             .cached_line_starts = &self.cached_line_starts,
             .cached_line_widths = &self.cached_line_widths,
@@ -365,11 +365,11 @@ pub const UnifiedTextBufferView = struct {
 
         // Call the generic calculation function
         calculateVirtualLinesGeneric(
+            virtual_allocator,
             self.text_buffer,
             self.wrap_mode,
             self.wrap_width,
             self.first_line_offset,
-            virtual_allocator,
             output,
         );
 
@@ -418,7 +418,7 @@ pub const UnifiedTextBufferView = struct {
                 width_cols_max = @max(width_cols_max, w);
             }
 
-            return LineInfo{
+            return .{
                 .line_start_cols = viewport_line_start_cols,
                 .line_width_cols = viewport_line_width_cols,
                 .line_sources = viewport_line_sources,
@@ -427,7 +427,7 @@ pub const UnifiedTextBufferView = struct {
             };
         }
 
-        return LineInfo{
+        return .{
             .line_start_cols = self.cached_line_starts.items,
             .line_width_cols = self.cached_line_widths.items,
             .line_sources = self.cached_line_sources.items,
@@ -439,7 +439,7 @@ pub const UnifiedTextBufferView = struct {
     pub fn getLogicalLineInfo(self: *Self) LineInfo {
         self.updateVirtualLines();
 
-        return LineInfo{
+        return .{
             .line_start_cols = self.cached_line_starts.items,
             .line_width_cols = self.cached_line_widths.items,
             .line_sources = self.cached_line_sources.items,
@@ -450,7 +450,7 @@ pub const UnifiedTextBufferView = struct {
 
     pub fn getWrapInfo(self: *Self) WrapInfo {
         self.updateVirtualLines();
-        return WrapInfo{
+        return .{
             .line_first_vline = self.cached_line_first_vline.items,
             .line_vline_counts = self.cached_line_vline_counts.items,
         };
@@ -765,13 +765,13 @@ pub const UnifiedTextBufferView = struct {
 
     pub fn getVirtualLineSpans(self: *const Self, vline_idx: usize) VirtualLineSpanInfo {
         if (vline_idx >= self.virtual_lines.items.len) {
-            return VirtualLineSpanInfo{ .spans = &[_]StyleSpan{}, .source_line = 0, .col_offset = 0 };
+            return .{ .spans = &[_]StyleSpan{}, .source_line = 0, .col_offset = 0 };
         }
 
         const vline = &self.virtual_lines.items[vline_idx];
         const spans = self.text_buffer.getLineSpans(vline.source_line);
 
-        return VirtualLineSpanInfo{
+        return .{
             .spans = spans,
             .source_line = vline.source_line,
             .col_offset = vline.source_col_offset,
@@ -867,7 +867,7 @@ pub const UnifiedTextBufferView = struct {
                 }
             }
 
-            new_chunks.append(self.virtual_lines_arena.allocator(), VirtualChunk{
+            new_chunks.append(self.virtual_lines_arena.allocator(), .{
                 .grapheme_start = 0,
                 .width = ellipsis_width,
                 .chunk = &self.ellipsis_chunk,
@@ -934,7 +934,7 @@ pub const UnifiedTextBufferView = struct {
                 width_cols_max = @max(width_cols_max, self.text_buffer.lineWidthAt(row));
             }
 
-            const result = MeasureResult{
+            const result: MeasureResult = .{
                 .line_count = line_count,
                 .width_cols_max = width_cols_max,
             };
@@ -954,15 +954,15 @@ pub const UnifiedTextBufferView = struct {
         const measure_allocator = self.measure_arena.allocator();
 
         // Create temporary output structures
-        var temp_virtual_lines = std.ArrayListUnmanaged(VirtualLine){};
-        var temp_line_starts = std.ArrayListUnmanaged(u32){};
-        var temp_line_widths = std.ArrayListUnmanaged(u32){};
-        var temp_line_sources = std.ArrayListUnmanaged(u32){};
-        var temp_line_wrap_indices = std.ArrayListUnmanaged(u32){};
-        var temp_line_first_vline = std.ArrayListUnmanaged(u32){};
-        var temp_line_vline_counts = std.ArrayListUnmanaged(u32){};
+        var temp_virtual_lines: std.ArrayListUnmanaged(VirtualLine) = .{};
+        var temp_line_starts: std.ArrayListUnmanaged(u32) = .{};
+        var temp_line_widths: std.ArrayListUnmanaged(u32) = .{};
+        var temp_line_sources: std.ArrayListUnmanaged(u32) = .{};
+        var temp_line_wrap_indices: std.ArrayListUnmanaged(u32) = .{};
+        var temp_line_first_vline: std.ArrayListUnmanaged(u32) = .{};
+        var temp_line_vline_counts: std.ArrayListUnmanaged(u32) = .{};
 
-        const output = VirtualLineOutput{
+        const output: VirtualLineOutput = .{
             .virtual_lines = &temp_virtual_lines,
             .cached_line_starts = &temp_line_starts,
             .cached_line_widths = &temp_line_widths,
@@ -977,11 +977,11 @@ pub const UnifiedTextBufferView = struct {
 
         // Call generic calculation with temporary structures
         calculateVirtualLinesGeneric(
+            measure_allocator,
             self.text_buffer,
             self.wrap_mode,
             wrap_width_for_measure,
             self.first_line_offset,
-            measure_allocator,
             output,
         );
 
@@ -991,7 +991,7 @@ pub const UnifiedTextBufferView = struct {
             width_cols_max = @max(width_cols_max, w);
         }
 
-        const result = MeasureResult{
+        const result: MeasureResult = .{
             .line_count = @intCast(temp_virtual_lines.items.len),
             .width_cols_max = width_cols_max,
         };
@@ -1008,11 +1008,11 @@ pub const UnifiedTextBufferView = struct {
 
     /// Generic virtual line calculation that writes to provided output structures
     fn calculateVirtualLinesGeneric(
+        allocator: Allocator,
         text_buffer: *UnifiedTextBuffer,
         wrap_mode: WrapMode,
         wrap_width: ?u32,
         first_line_offset: u32,
-        allocator: Allocator,
         output: VirtualLineOutput,
     ) void {
         if (wrap_mode == .none or wrap_width == null) {
@@ -1028,7 +1028,7 @@ pub const UnifiedTextBufferView = struct {
                     const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
 
                     if (ctx.current_vline) |*vline| {
-                        vline.chunks.append(ctx.allocator, VirtualChunk{
+                        vline.chunks.append(ctx.allocator, .{
                             .grapheme_start = 0,
                             .width = chunk.width,
                             .chunk = chunk,
@@ -1059,7 +1059,7 @@ pub const UnifiedTextBufferView = struct {
                 }
             };
 
-            var ctx = Context{
+            var ctx: Context = .{
                 .text_buffer = text_buffer,
                 .allocator = allocator,
                 .output = output,
@@ -1123,7 +1123,7 @@ pub const UnifiedTextBufferView = struct {
                 }
 
                 fn addVirtualChunk(wctx: *@This(), chunk: *const TextChunk, _: u32, start: u32, width_param: u32) void {
-                    wctx.current_vline.chunks.append(wctx.allocator, VirtualChunk{
+                    wctx.current_vline.chunks.append(wctx.allocator, .{
                         .grapheme_start = start,
                         .width = width_param,
                         .chunk = chunk,
@@ -1143,7 +1143,7 @@ pub const UnifiedTextBufferView = struct {
                         const graphemes: []const GraphemeInfo = if (is_ascii_only)
                             &[_]GraphemeInfo{}
                         else
-                            chunk.getGraphemes(wctx.text_buffer.memRegistry(), wctx.text_buffer.getAllocator(), wctx.text_buffer.tabWidth(), wctx.text_buffer.widthMethod()) catch &[_]GraphemeInfo{};
+                            chunk.getGraphemes(wctx.text_buffer.getAllocator(), wctx.text_buffer.memRegistry(), wctx.text_buffer.tabWidth(), wctx.text_buffer.widthMethod()) catch &[_]GraphemeInfo{};
                         var grapheme_idx: usize = 0;
                         var col_delta: i64 = 0;
 
@@ -1408,7 +1408,7 @@ pub const UnifiedTextBufferView = struct {
                 }
             };
 
-            var wrap_ctx = WrapContext{
+            var wrap_ctx: WrapContext = .{
                 .text_buffer = text_buffer,
                 .allocator = allocator,
                 .output = output,

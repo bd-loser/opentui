@@ -124,7 +124,7 @@ pub const SyntaxStyle = struct {
             return cached;
         }
 
-        var merged = StyleDefinition{
+        var merged: StyleDefinition = .{
             .fg = null,
             .bg = null,
             .attributes = 0,

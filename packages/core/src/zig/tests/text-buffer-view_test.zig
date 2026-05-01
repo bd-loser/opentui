@@ -843,10 +843,10 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     var segments: std.ArrayListUnmanaged(Segment) = .{};
     defer segments.deinit(std.testing.allocator);
 
-    try segments.append(std.testing.allocator, Segment{ .linestart = {} });
-    try segments.append(std.testing.allocator, Segment{ .text = chunk1 });
-    try segments.append(std.testing.allocator, Segment{ .text = chunk2 });
-    try segments.append(std.testing.allocator, Segment{ .text = chunk3 });
+    try segments.append(std.testing.allocator, .{ .linestart = {} });
+    try segments.append(std.testing.allocator, .{ .text = chunk1 });
+    try segments.append(std.testing.allocator, .{ .text = chunk2 });
+    try segments.append(std.testing.allocator, .{ .text = chunk3 });
 
     try tb.rope().setSegments(segments.items);
 
@@ -2403,7 +2403,7 @@ test "TextBufferView truncation - basic truncate single line" {
 
     view.setTruncate(true);
     view.setWrapMode(.none);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 10, .height = 5 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 5 });
 
     const vlines = view.getVirtualLines();
 
@@ -2429,7 +2429,7 @@ test "TextBufferView truncation - multiline with truncate" {
 
     view.setTruncate(true);
     view.setWrapMode(.none);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 12, .height = 5 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 12, .height = 5 });
 
     const vlines = view.getVirtualLines();
 
@@ -2459,7 +2459,7 @@ test "TextBufferView truncation - with wrapping disabled" {
 
     view.setTruncate(true);
     view.setWrapMode(.none);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 15, .height = 1 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 15, .height = 1 });
 
     const vlines = view.getVirtualLines();
 
@@ -2483,7 +2483,7 @@ test "TextBufferView truncation - toggle truncate on and off" {
     try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
 
     view.setWrapMode(.none);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 10, .height = 1 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
 
     // Without truncation
     view.setTruncate(false);
@@ -2515,7 +2515,7 @@ test "TextBufferView truncation - very small viewport" {
 
     view.setTruncate(true);
     view.setWrapMode(.none);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 3, .height = 1 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 3, .height = 1 });
 
     const vlines = view.getVirtualLines();
 
@@ -2539,7 +2539,7 @@ test "TextBufferView truncation - verify ellipsis chunk injection" {
 
     view.setTruncate(true);
     view.setWrapMode(.none);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 10, .height = 1 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
 
     const vlines = view.getVirtualLines();
 
@@ -2575,7 +2575,7 @@ test "TextBufferView truncation - works with wrapping" {
     view.setTruncate(true);
     view.setWrapMode(.char);
     view.setWrapWidth(10);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 15, .height = 5 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 15, .height = 5 });
 
     const vlines = view.getVirtualLines();
 
@@ -2600,7 +2600,7 @@ test "TextBufferView truncation - verify prefix and suffix content" {
 
     view.setTruncate(true);
     view.setWrapMode(.none);
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 10, .height = 1 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 10, .height = 1 });
 
     const vlines = view.getVirtualLines();
     const chunks = vlines[0].chunks.items;
@@ -3590,13 +3590,13 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     var segments: std.ArrayListUnmanaged(Segment) = .{};
     defer segments.deinit(std.testing.allocator);
 
-    try segments.append(std.testing.allocator, Segment{ .linestart = {} });
+    try segments.append(std.testing.allocator, .{ .linestart = {} });
 
     const chunk1 = tb.createChunk(mem_id, 0, 17);
-    try segments.append(std.testing.allocator, Segment{ .text = chunk1 });
+    try segments.append(std.testing.allocator, .{ .text = chunk1 });
 
     const chunk2 = tb.createChunk(mem_id, 17, 21);
-    try segments.append(std.testing.allocator, Segment{ .text = chunk2 });
+    try segments.append(std.testing.allocator, .{ .text = chunk2 });
 
     try tb.rope().setSegments(segments.items);
     view.virtual_lines_dirty = true;

@@ -58,7 +58,7 @@ fn runTransparentBoxes(
     const run_opacity = bench_utils.matchesBenchFilter(name_opacity, bench_filter);
     const run_bg_alpha = bench_utils.matchesBenchFilter(name_bg_alpha, bench_filter);
     const run_both_alpha = bench_utils.matchesBenchFilter(name_both_alpha, bench_filter);
-    if (!run_opacity and !run_bg_alpha and !run_both_alpha) return try results.toOwnedSlice(allocator);
+    if (!run_opacity and !run_bg_alpha and !run_both_alpha) return results.toOwnedSlice(allocator);
 
     const buf = try OptimizedBuffer.init(allocator, BUFFER_WIDTH, BUFFER_HEIGHT, .{ .pool = pool });
     defer buf.deinit();
@@ -69,7 +69,7 @@ fn runTransparentBoxes(
         const border_color = rgba(0.5, 0.5, 0.5, 1.0);
         const bg_color = rgba(0.0, 0.0, 0.0, 1.0);
 
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
         for (0..iterations) |i| {
             try buf.clear(CLEAR_BG, null);
 
@@ -111,7 +111,7 @@ fn runTransparentBoxes(
             break :blk s;
         } else null;
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = name_opacity,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -126,7 +126,7 @@ fn runTransparentBoxes(
         const border_color = rgba(0.5, 0.5, 0.5, 1.0);
         const bg_color = rgba(0.0, 0.0, 0.0, 0.0);
 
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
         for (0..iterations) |i| {
             try buf.clear(CLEAR_BG, null);
 
@@ -164,7 +164,7 @@ fn runTransparentBoxes(
             break :blk s;
         } else null;
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = name_bg_alpha,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -179,7 +179,7 @@ fn runTransparentBoxes(
         const bg_color = rgba(0.0, 0.0, 0.0, 0.0);
         const border_color_alpha = rgba(0.0, 0.0, 0.0, 0.0);
 
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
         for (0..iterations) |i| {
             try buf.clear(CLEAR_BG, null);
 
@@ -217,7 +217,7 @@ fn runTransparentBoxes(
             break :blk s;
         } else null;
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = name_both_alpha,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -228,7 +228,7 @@ fn runTransparentBoxes(
         });
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn runFilledBoxes(
@@ -248,7 +248,7 @@ fn runFilledBoxes(
     const run_opaque = bench_utils.matchesBenchFilter(name_opaque, bench_filter);
     const run_translucent_bg = bench_utils.matchesBenchFilter(name_translucent_bg, bench_filter);
     const run_translucent_opacity = bench_utils.matchesBenchFilter(name_translucent_opacity, bench_filter);
-    if (!run_opaque and !run_translucent_bg and !run_translucent_opacity) return try results.toOwnedSlice(allocator);
+    if (!run_opaque and !run_translucent_bg and !run_translucent_opacity) return results.toOwnedSlice(allocator);
 
     const buf = try OptimizedBuffer.init(allocator, BUFFER_WIDTH, BUFFER_HEIGHT, .{ .pool = pool });
     defer buf.deinit();
@@ -259,7 +259,7 @@ fn runFilledBoxes(
         const border_color = rgba(0.5, 0.5, 0.5, 1.0);
         const bg_color = rgba(0.2, 0.2, 0.2, 1.0);
 
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
         for (0..iterations) |i| {
             try buf.clear(CLEAR_BG, null);
 
@@ -297,7 +297,7 @@ fn runFilledBoxes(
             break :blk s;
         } else null;
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = name_opaque,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -312,7 +312,7 @@ fn runFilledBoxes(
         const border_color = rgba(0.5, 0.5, 0.5, 1.0);
         const bg_color = rgba(0.2, 0.2, 0.2, 0.5);
 
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
         for (0..iterations) |i| {
             try buf.clear(CLEAR_BG, null);
 
@@ -350,7 +350,7 @@ fn runFilledBoxes(
             break :blk s;
         } else null;
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = name_translucent_bg,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -365,7 +365,7 @@ fn runFilledBoxes(
         const border_color = rgba(0.5, 0.5, 0.5, 1.0);
         const bg_color = rgba(0.2, 0.2, 0.2, 1.0);
 
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
         for (0..iterations) |i| {
             try buf.clear(CLEAR_BG, null);
 
@@ -406,7 +406,7 @@ fn runFilledBoxes(
             break :blk s;
         } else null;
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = name_translucent_opacity,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -417,7 +417,7 @@ fn runFilledBoxes(
         });
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn runFilledBoxesTitle(
@@ -433,7 +433,7 @@ fn runFilledBoxesTitle(
     const name_title = "1k filled boxes (with title)";
 
     const run_title = bench_utils.matchesBenchFilter(name_title, bench_filter);
-    if (!run_title) return try results.toOwnedSlice(allocator);
+    if (!run_title) return results.toOwnedSlice(allocator);
 
     const buf = try OptimizedBuffer.init(allocator, BUFFER_WIDTH, BUFFER_HEIGHT, .{ .pool = pool });
     defer buf.deinit();
@@ -443,7 +443,7 @@ fn runFilledBoxesTitle(
 
     var final_mem: usize = 0;
 
-    var stats = BenchStats{};
+    var stats: BenchStats = .{};
     for (0..iterations) |i| {
         try buf.clear(CLEAR_BG, null);
 
@@ -481,7 +481,7 @@ fn runFilledBoxesTitle(
         break :blk s;
     } else null;
 
-    try results.append(allocator, BenchResult{
+    try results.append(allocator, .{
         .name = name_title,
         .min_ns = stats.min_ns,
         .avg_ns = stats.avg(),
@@ -491,7 +491,7 @@ fn runFilledBoxesTitle(
         .mem_stats = mem_stats,
     });
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn runFilledBoxesBorders(
@@ -507,7 +507,7 @@ fn runFilledBoxesBorders(
     const name_noborders = "1k filled boxes (without borders)";
 
     const run_noborders = bench_utils.matchesBenchFilter(name_noborders, bench_filter);
-    if (!run_noborders) return try results.toOwnedSlice(allocator);
+    if (!run_noborders) return results.toOwnedSlice(allocator);
 
     const buf = try OptimizedBuffer.init(allocator, BUFFER_WIDTH, BUFFER_HEIGHT, .{ .pool = pool });
     defer buf.deinit();
@@ -517,7 +517,7 @@ fn runFilledBoxesBorders(
 
     var final_mem: usize = 0;
 
-    var stats = BenchStats{};
+    var stats: BenchStats = .{};
     for (0..iterations) |i| {
         try buf.clear(CLEAR_BG, null);
 
@@ -555,7 +555,7 @@ fn runFilledBoxesBorders(
         break :blk s;
     } else null;
 
-    try results.append(allocator, BenchResult{
+    try results.append(allocator, .{
         .name = name_noborders,
         .min_ns = stats.min_ns,
         .avg_ns = stats.avg(),
@@ -565,7 +565,7 @@ fn runFilledBoxesBorders(
         .mem_stats = mem_stats,
     });
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 fn runFilledBoxesClipped(
@@ -585,7 +585,7 @@ fn runFilledBoxesClipped(
     const run_fully = bench_utils.matchesBenchFilter(name_fully_clipped, bench_filter);
     const run_half = bench_utils.matchesBenchFilter(name_half_clipped, bench_filter);
     const run_negative = bench_utils.matchesBenchFilter(name_negative_coords, bench_filter);
-    if (!run_fully and !run_half and !run_negative) return try results.toOwnedSlice(allocator);
+    if (!run_fully and !run_half and !run_negative) return results.toOwnedSlice(allocator);
 
     const buf = try OptimizedBuffer.init(allocator, BUFFER_WIDTH, BUFFER_HEIGHT, .{ .pool = pool });
     defer buf.deinit();
@@ -596,7 +596,7 @@ fn runFilledBoxesClipped(
     var final_mem: usize = 0;
 
     if (run_fully) {
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
         for (0..iterations) |i| {
             try buf.clear(CLEAR_BG, null);
 
@@ -632,7 +632,7 @@ fn runFilledBoxesClipped(
             break :blk s;
         } else null;
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = name_fully_clipped,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -644,7 +644,7 @@ fn runFilledBoxesClipped(
     }
 
     if (run_half) {
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
         for (0..iterations) |i| {
             try buf.clear(CLEAR_BG, null);
 
@@ -682,7 +682,7 @@ fn runFilledBoxesClipped(
             break :blk s;
         } else null;
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = name_half_clipped,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -694,7 +694,7 @@ fn runFilledBoxesClipped(
     }
 
     if (run_negative) {
-        var stats = BenchStats{};
+        var stats: BenchStats = .{};
         for (0..iterations) |i| {
             try buf.clear(CLEAR_BG, null);
 
@@ -730,7 +730,7 @@ fn runFilledBoxesClipped(
             break :blk s;
         } else null;
 
-        try results.append(allocator, BenchResult{
+        try results.append(allocator, .{
             .name = name_negative_coords,
             .min_ns = stats.min_ns,
             .avg_ns = stats.avg(),
@@ -741,7 +741,7 @@ fn runFilledBoxesClipped(
         });
     }
 
-    return try results.toOwnedSlice(allocator);
+    return results.toOwnedSlice(allocator);
 }
 
 pub fn run(
@@ -771,5 +771,5 @@ pub fn run(
     const clipped_results = try runFilledBoxesClipped(allocator, pool, show_mem, iterations, bench_filter);
     try all_results.appendSlice(allocator, clipped_results);
 
-    return try all_results.toOwnedSlice(allocator);
+    return all_results.toOwnedSlice(allocator);
 }

@@ -398,7 +398,7 @@ test "colorMatrix - empty mask returns early" {
     buf.buffer.fg[0] = red;
 
     // Empty mask - should return early
-    const empty_mask = [0]f32{};
+    const empty_mask: [0]f32 = .{};
     buffer_effects.colorMatrix(buf, &SEPIA_MATRIX, &empty_mask, 1.0, ColorTarget.FG);
 
     // Color should be unchanged
@@ -424,7 +424,7 @@ test "colorMatrix - empty matrix returns early" {
     buf.buffer.fg[0] = red;
 
     // Empty matrix - should return early
-    const empty_matrix = [0]f32{};
+    const empty_matrix: [0]f32 = .{};
     const cell_mask = [_]f32{ 0.0, 0.0, 1.0 };
     buffer_effects.colorMatrix(buf, &empty_matrix, &cell_mask, 1.0, ColorTarget.FG);
 
@@ -940,7 +940,7 @@ test "colorMatrixUniform - empty matrix returns early" {
     buf.buffer.fg[0] = red;
 
     // Empty matrix - should return early without changes
-    const empty_matrix = [0]f32{};
+    const empty_matrix: [0]f32 = .{};
     buffer_effects.colorMatrixUniform(buf, &empty_matrix, 1.0, ColorTarget.FG);
 
     // Color should be unchanged

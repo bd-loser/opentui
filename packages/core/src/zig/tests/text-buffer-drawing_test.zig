@@ -1977,7 +1977,7 @@ test "viewport width = 31 exactly - last character rendering" {
     try tb.setText("- ✅ All 881 native tests passs");
 
     // Set viewport width to EXACTLY 31 (the display width needed)
-    view.setViewport(text_buffer_view.Viewport{ .x = 0, .y = 0, .width = 31, .height = 1 });
+    view.setViewport(.{ .x = 0, .y = 0, .width = 31, .height = 1 });
 
     var opt_buffer = try OptimizedBuffer.init(
         std.testing.allocator,

@@ -24,7 +24,7 @@ This spec describes the startup flow for `createCliRenderer()` with `testing !==
 
 9. Pixel resolution is queried.
 
-10. `refreshPalette()` is called. It only starts palette detection when native palette state is useful: terminal setup is active, the renderer is alive, `ansi256` is supported, and truecolor `rgb` is not supported.
+10. Startup calls `refreshPalette()` only when native palette state is useful: terminal setup is active, the renderer is alive, `ansi256` is supported, and truecolor `rgb` is not supported. Truecolor terminals do not run startup palette detection.
 
 11. `getPalette()` waits for `XTVERSION` only when native capabilities already indicate `in_tmux` from environment detection and no `XTVERSION` response has arrived yet. This avoids choosing the wrong OSC 4 strategy for tmux while avoiding a 5000ms wait for remote or non-responding terminals.
 
@@ -34,13 +34,15 @@ This spec describes the startup flow for `createCliRenderer()` with `testing !==
 
 13. Palette detection uses a hard timeout plus an idle timeout. The idle timeout finishes detection after a short period of silence after palette queries, including when follow-up palette queries produce no responses.
 
-14. When a palette result is detected and native palette state is useful, `syncNativePaletteState()` publishes the palette to native. It increments the palette epoch only when the normalized palette signature changes.
+14. When a palette result is detected, `PALETTE` is emitted if listeners exist and the detected palette signature changed since the last palette event.
 
-15. Async terminal responses are routed through the stdin parser. Capability responses call native `processCapabilityResponse()`, refresh TypeScript capabilities, emit `CAPABILITIES`, and release `XTVERSION` waiters when `terminal.from_xtversion` becomes true.
+15. When a palette result is detected and native palette state is useful, `syncNativePaletteState()` publishes the palette to native. It increments the palette epoch only when the normalized palette signature changes.
 
-16. Theme-mode OSC responses update renderer theme mode. When the mode changes, palette cache is cleared and `refreshPalette()` is scheduled so ANSI-256 fallback palette state can track terminal color changes.
+16. Async terminal responses are routed through the stdin parser. Capability responses call native `processCapabilityResponse()`, refresh TypeScript capabilities, emit `CAPABILITIES`, and release `XTVERSION` waiters when `terminal.from_xtversion` becomes true.
 
-17. `setupTerminal()` resolves after the startup writes and synchronous initialization complete. Capability and palette detection may continue asynchronously.
+17. Theme-mode OSC responses update renderer theme mode. When the mode changes, palette cache is cleared. `refreshPalette()` is scheduled only if native palette state is useful or `PALETTE` listeners exist.
+
+18. `setupTerminal()` resolves after the startup writes and synchronous initialization complete. Capability and palette detection may continue asynchronously.
 
 ## Current Gaps
 

@@ -755,7 +755,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private resizeTimeoutId: TimerHandle | null = null
   private capabilityTimeoutId: TimerHandle | null = null
-  private capabilitySettleResolvers = new Set<() => void>()
+  private xtVersionWaiters = new Set<() => void>()
   private splitStartupSeedTimeoutId: TimerHandle | null = null
   private pendingSplitStartupCursorSeed: boolean = false
   private resizeDebounceDelay: number = 100
@@ -792,7 +792,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _terminalWidth: number = 0
   private _terminalHeight: number = 0
   private _terminalIsSetup: boolean = false
-  private _remote: boolean = false
 
   private externalOutputQueue = new ExternalOutputQueue()
   private realStdoutWrite: (chunk: any, encoding?: any, callback?: any) => boolean
@@ -914,7 +913,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib = lib
     this._terminalWidth = stdout.columns ?? width
     this._terminalHeight = stdout.rows ?? height
-    this._remote = config.remote ?? false
     this._useThread = config.useThread === undefined ? false : config.useThread
     const { screenMode, footerHeight, externalOutputMode } = resolveModes(config)
     this._externalOutputMode = externalOutputMode
@@ -2547,7 +2545,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         },
         true,
       )
-      this.settleCapabilityDetection()
+      this.resolveXtVersionWaiters()
     }, 5000)
 
     if (this._useMouse) {
@@ -2629,7 +2627,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.lib.processCapabilityResponse(this.rendererPtr, sequence)
     this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
     if (this._capabilities?.terminal?.from_xtversion) {
-      this.settleCapabilityDetection()
+      this.resolveXtVersionWaiters()
     }
     if (hasStandardCapabilitySignature) {
       this.forceFullRepaintRequested = true
@@ -3595,7 +3593,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._paletteDetectionSize = 0
     this._publishedPaletteSignature = null
     this._paletteEpoch = 0
-    this.settleCapabilityDetection()
+    this.resolveXtVersionWaiters()
 
     this.themeModeState.dispose()
 
@@ -4069,23 +4067,23 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     )
   }
 
-  private settleCapabilityDetection(): void {
-    if (this.capabilitySettleResolvers.size === 0) return
+  private resolveXtVersionWaiters(): void {
+    if (this.xtVersionWaiters.size === 0) return
 
-    const resolvers = [...this.capabilitySettleResolvers]
-    this.capabilitySettleResolvers.clear()
+    const resolvers = [...this.xtVersionWaiters]
+    this.xtVersionWaiters.clear()
     for (const resolve of resolvers) {
       resolve()
     }
   }
 
-  private waitForCapabilityDetection(): Promise<void> {
+  private waitForXtVersion(): Promise<void> {
     if (this.capabilityTimeoutId === null || this._capabilities?.terminal?.from_xtversion) {
       return Promise.resolve()
     }
 
     return new Promise((resolve) => {
-      this.capabilitySettleResolvers.add(resolve)
+      this.xtVersionWaiters.add(resolve)
     })
   }
 
@@ -4134,8 +4132,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     // Only wait when TMUX env confirmed tmux but XTVERSION has not supplied the version yet.
     // Remote terminals often never answer XTVERSION; do not make them pay the full capability timeout.
     if (this._capabilities?.in_tmux && !this._capabilities?.terminal?.from_xtversion) {
-      await this.waitForCapabilityDetection()
+      await this.waitForXtVersion()
 
+      // Another caller may have populated the cache while this call waited.
       const afterCapabilityWait = this.getCachedPaletteBySize(requestedSize)
       if (afterCapabilityWait) {
         return afterCapabilityWait

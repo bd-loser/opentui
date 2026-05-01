@@ -166,7 +166,7 @@ function startCapabilityDetectionWindow(renderer: any, clock: ManualClock): void
   renderer._terminalIsSetup = true
   renderer.capabilityTimeoutId = clock.setTimeout(() => {
     renderer.capabilityTimeoutId = null
-    renderer.settleCapabilityDetection()
+    renderer.resolveXtVersionWaiters()
   }, 5000)
 }
 

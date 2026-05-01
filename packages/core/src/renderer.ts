@@ -4131,7 +4131,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return cachedPalette
     }
 
-    if (this._capabilities?.in_tmux || this._remote) {
+    // Only wait when TMUX env confirmed tmux but XTVERSION has not supplied the version yet.
+    // Remote terminals often never answer XTVERSION; do not make them pay the full capability timeout.
+    if (this._capabilities?.in_tmux && !this._capabilities?.terminal?.from_xtversion) {
       await this.waitForCapabilityDetection()
 
       const afterCapabilityWait = this.getCachedPaletteBySize(requestedSize)

@@ -871,7 +871,7 @@ describe("Palette detection while capabilities are unsettled", () => {
     }
   })
 
-  test("getPalette defers remote palette detection until capability timeout when XTVERSION is absent", async () => {
+  test("getPalette does not wait for remote XTVERSION when local tmux env is unknown", async () => {
     const previousTmux = process.env.TMUX
     delete process.env.TMUX
 
@@ -888,15 +888,6 @@ describe("Palette detection while capabilities are unsettled", () => {
       await flushAsync()
 
       expect(renderer.capabilities?.in_tmux).toBe(false)
-      expect(writes).toEqual([])
-
-      clock.advance(4999)
-      await flushAsync()
-      expect(writes).toEqual([])
-
-      clock.advance(1)
-      await flushAsync()
-
       expect(writes).toContain("\x1b]4;0;?\x07")
     } finally {
       renderer.destroy()

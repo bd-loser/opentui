@@ -162,6 +162,34 @@ function restoreEnvValue(key: string, value: string | undefined): void {
   process.env[key] = value
 }
 
+function startCapabilityDetectionWindow(renderer: any, clock: ManualClock): void {
+  renderer._terminalIsSetup = true
+  renderer.capabilityTimeoutId = clock.setTimeout(() => {
+    renderer.capabilityTimeoutId = null
+    renderer.settleCapabilityDetection()
+  }, 5000)
+}
+
+function setNativePaletteRequired(renderer: any): void {
+  renderer._terminalIsSetup = true
+  renderer._capabilities = {
+    ...(renderer._capabilities ?? {}),
+    rgb: false,
+    ansi256: true,
+    terminal: renderer._capabilities?.terminal ?? { from_xtversion: false, name: "", version: "" },
+  }
+}
+
+function setNativePaletteUnneeded(renderer: any): void {
+  renderer._terminalIsSetup = true
+  renderer._capabilities = {
+    ...(renderer._capabilities ?? {}),
+    rgb: true,
+    ansi256: true,
+    terminal: renderer._capabilities?.terminal ?? { from_xtversion: false, name: "", version: "" },
+  }
+}
+
 describe("Palette caching behavior", () => {
   test("getPalette returns cached palette on subsequent calls", async () => {
     const { renderer, clock, mockStdin, mockStdout } = await createPaletteRenderer()
@@ -499,6 +527,56 @@ describe("Palette cache invalidation", () => {
     renderer.destroy()
   })
 
+  test("getPalette syncs native palette state again after cache invalidation and refetch", async () => {
+    const { renderer, clock } = await createPaletteRenderer()
+    setNativePaletteRequired(renderer)
+    // @ts-expect-error - spying on private method for native palette publishing behavior
+    const sync = spyOn(renderer, "syncNativePaletteState")
+
+    await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 300 })
+    expect(sync).toHaveBeenCalledTimes(1)
+
+    renderer.clearPaletteCache()
+    await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 300 })
+
+    expect(sync).toHaveBeenCalledTimes(2)
+
+    sync.mockRestore()
+    renderer.destroy()
+  })
+
+  test("theme mode changes clear palette cache and schedule native palette refresh when native palette is needed", async () => {
+    const { renderer } = await createPaletteRenderer()
+    setNativePaletteRequired(renderer)
+    const clear = spyOn(renderer, "clearPaletteCache")
+    // @ts-expect-error - spying on private method for native palette refresh scheduling
+    const refresh = spyOn(renderer, "refreshPalette")
+
+    renderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+    renderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+    await flushAsync()
+
+    expect(renderer.themeMode).toBe("dark")
+    expect(clear).toHaveBeenCalledTimes(1)
+    expect(refresh).toHaveBeenCalledTimes(1)
+
+    clear.mockRestore()
+    refresh.mockRestore()
+    renderer.destroy()
+  })
+
+  test("startup palette refresh is skipped for truecolor terminals", async () => {
+    const { renderer, writes } = await createPaletteRenderer()
+    setNativePaletteUnneeded(renderer)
+
+    // @ts-expect-error - exercising private startup palette path
+    renderer.refreshPalette()
+
+    expect(writes).toEqual([])
+
+    renderer.destroy()
+  })
+
   test("paletteDetectionStatus tracks detection lifecycle", async () => {
     const { renderer, clock, mockStdin, mockStdout } = await createPaletteRenderer()
 
@@ -591,22 +669,20 @@ describe("Palette detector cleanup", () => {
     // @ts-expect-error - accessing private property for testing
     expect(renderer._paletteDetectionPromise).toBeNull()
     // @ts-expect-error - accessing private property for testing
-    expect(renderer._cachedPalette).toBeNull()
+    expect(renderer._paletteCache.size).toBe(0)
   })
 
   test("destroy ignores pending native palette publish", async () => {
     const { renderer, clock } = await createPaletteRenderer()
+    setNativePaletteRequired(renderer)
 
     await detectPaletteAndAdvanceClock(renderer, clock, { size: 256, timeout: 300 })
-
-    // @ts-expect-error - accessing private property for testing
-    renderer._terminalIsSetup = true
     // @ts-expect-error - spying on private method for testing
     const sync = spyOn(renderer, "syncNativePaletteState")
     const requestRender = spyOn(renderer, "requestRender")
 
     // @ts-expect-error - accessing private method for testing
-    renderer.ensureNativePaletteState()
+    renderer.refreshPalette()
     renderer.destroy()
     await flushAsync()
 
@@ -690,115 +766,138 @@ describe("Palette detector cleanup", () => {
   })
 })
 
-describe("Startup palette detection in tmux", () => {
-  test("runs native palette detection immediately outside tmux", async () => {
+describe("Palette detection while capabilities are unsettled", () => {
+  test("getPalette runs immediately outside tmux", async () => {
     const previousTmux = process.env.TMUX
     delete process.env.TMUX
 
-    const { renderer, writes } = await createSilentFollowUpPaletteRenderer()
+    const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
 
     try {
       // @ts-expect-error - accessing private native binding for startup state setup
       renderer._capabilities = renderer.lib.getTerminalCapabilities(renderer.rendererPtr)
-      // @ts-expect-error - simulating setupTerminal after initial capabilities read
-      renderer._terminalIsSetup = true
+      startCapabilityDetectionWindow(renderer, clock)
 
       expect(renderer.capabilities?.in_tmux).toBe(false)
 
-      // @ts-expect-error - exercising private startup palette path
-      renderer.ensureNativePaletteState()
+      void renderer.getPalette({ size: 16 })
+      await flushAsync()
 
       expect(writes).toContain("\x1b]4;0;?\x07")
-      // @ts-expect-error - verifying the deferred startup latch was not set
-      expect(renderer._nativePaletteDeferredForTmuxVersion).toBe(false)
     } finally {
       renderer.destroy()
       restoreEnvValue("TMUX", previousTmux)
     }
   })
 
-  test("defers native palette detection while tmux version is unknown", async () => {
+  test("getPalette defers local tmux palette detection while tmux version is unknown", async () => {
     const previousTmux = process.env.TMUX
     process.env.TMUX = "/tmp/tmux-1000/default,12345,0"
 
-    const { renderer, writes } = await createSilentFollowUpPaletteRenderer()
+    const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
 
     try {
       // @ts-expect-error - accessing private native binding for startup state setup
       renderer._capabilities = renderer.lib.getTerminalCapabilities(renderer.rendererPtr)
-      // @ts-expect-error - simulating setupTerminal after initial capabilities read
-      renderer._terminalIsSetup = true
+      startCapabilityDetectionWindow(renderer, clock)
 
       expect(renderer.capabilities?.in_tmux).toBe(true)
       expect(renderer.capabilities?.terminal?.from_xtversion).toBe(false)
 
-      // @ts-expect-error - exercising private startup palette path
-      renderer.ensureNativePaletteState()
+      void renderer.getPalette({ size: 16 })
+      await flushAsync()
 
       expect(writes).toEqual([])
       expect(renderer.paletteDetectionStatus).toBe("idle")
-      // @ts-expect-error - verifying the deferred startup latch
-      expect(renderer._nativePaletteDeferredForTmuxVersion).toBe(true)
-      // @ts-expect-error - verifying fallback palette state was published immediately
-      expect(renderer._publishedPaletteSignature).not.toBeNull()
     } finally {
       renderer.destroy()
       restoreEnvValue("TMUX", previousTmux)
     }
   })
 
-  test("uses wrapped palette queries after legacy tmux version is detected", async () => {
+  test("getPalette uses wrapped palette queries after legacy tmux version is detected", async () => {
     const previousTmux = process.env.TMUX
     process.env.TMUX = "/tmp/tmux-1000/default,12345,0"
 
-    const { renderer, writes } = await createSilentFollowUpPaletteRenderer()
+    const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
 
     try {
       // @ts-expect-error - accessing private native binding for startup state setup
       renderer._capabilities = renderer.lib.getTerminalCapabilities(renderer.rendererPtr)
-      // @ts-expect-error - simulating setupTerminal after initial capabilities read
-      renderer._terminalIsSetup = true
-      // @ts-expect-error - exercising private startup palette path
-      renderer.ensureNativePaletteState()
+      startCapabilityDetectionWindow(renderer, clock)
+
+      void renderer.getPalette({ size: 16 })
+      await flushAsync()
 
       expect(writes).toEqual([])
 
       // @ts-expect-error - simulating the asynchronous XTVERSION response path
       renderer.processCapabilitySequence("\x1bP>|tmux 3.5a\x1b\\", false)
+      await flushAsync()
 
       expect(writes.some((write) => write.startsWith("\x1bPtmux;"))).toBe(true)
       expect(writes.some((write) => write.includes("\x1b\x1b]4;0;?\x07"))).toBe(true)
-      // @ts-expect-error - verifying the deferred startup latch was consumed
-      expect(renderer._nativePaletteDeferredForTmuxVersion).toBe(false)
     } finally {
       renderer.destroy()
       restoreEnvValue("TMUX", previousTmux)
     }
   })
 
-  test("uses plain palette queries after tmux 3.6 version is detected", async () => {
+  test("getPalette uses plain palette queries after tmux 3.6 version is detected", async () => {
     const previousTmux = process.env.TMUX
     process.env.TMUX = "/tmp/tmux-1000/default,12345,0"
 
-    const { renderer, writes } = await createSilentFollowUpPaletteRenderer()
+    const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
 
     try {
       // @ts-expect-error - accessing private native binding for startup state setup
       renderer._capabilities = renderer.lib.getTerminalCapabilities(renderer.rendererPtr)
-      // @ts-expect-error - simulating setupTerminal after initial capabilities read
-      renderer._terminalIsSetup = true
-      // @ts-expect-error - exercising private startup palette path
-      renderer.ensureNativePaletteState()
+      startCapabilityDetectionWindow(renderer, clock)
+
+      void renderer.getPalette({ size: 16 })
+      await flushAsync()
 
       expect(writes).toEqual([])
 
       // @ts-expect-error - simulating the asynchronous XTVERSION response path
       renderer.processCapabilitySequence("\x1bP>|tmux 3.6a\x1b\\", false)
+      await flushAsync()
 
       expect(writes).toContain("\x1b]4;0;?\x07")
       expect(writes.some((write) => write.startsWith("\x1bPtmux;"))).toBe(false)
-      // @ts-expect-error - verifying the deferred startup latch was consumed
-      expect(renderer._nativePaletteDeferredForTmuxVersion).toBe(false)
+    } finally {
+      renderer.destroy()
+      restoreEnvValue("TMUX", previousTmux)
+    }
+  })
+
+  test("getPalette defers remote palette detection until capability timeout when XTVERSION is absent", async () => {
+    const previousTmux = process.env.TMUX
+    delete process.env.TMUX
+
+    const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
+
+    try {
+      // @ts-expect-error - simulating a remote renderer without forwarded local env vars
+      renderer._remote = true
+      // @ts-expect-error - accessing private native binding for startup state setup
+      renderer._capabilities = renderer.lib.getTerminalCapabilities(renderer.rendererPtr)
+      startCapabilityDetectionWindow(renderer, clock)
+
+      void renderer.getPalette({ size: 16 })
+      await flushAsync()
+
+      expect(renderer.capabilities?.in_tmux).toBe(false)
+      expect(writes).toEqual([])
+
+      clock.advance(4999)
+      await flushAsync()
+      expect(writes).toEqual([])
+
+      clock.advance(1)
+      await flushAsync()
+
+      expect(writes).toContain("\x1b]4;0;?\x07")
     } finally {
       renderer.destroy()
       restoreEnvValue("TMUX", previousTmux)

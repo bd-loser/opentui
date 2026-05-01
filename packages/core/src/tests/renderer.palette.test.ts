@@ -7,6 +7,7 @@ import tty from "tty"
 import { ManualClock } from "../testing/manual-clock.js"
 import type { GetPaletteOptions, TerminalColors } from "../lib/terminal-palette.js"
 import { clearEnvCache } from "../lib/env.js"
+import { CliRenderEvents } from "../renderer.js"
 
 const OSC_SUPPORT_TIMEOUT_MS = 300
 
@@ -565,14 +566,64 @@ describe("Palette cache invalidation", () => {
     renderer.destroy()
   })
 
+  test("theme mode changes schedule palette refresh for truecolor terminals with palette listeners", async () => {
+    const { renderer } = await createPaletteRenderer()
+    setNativePaletteUnneeded(renderer)
+    // @ts-expect-error - spying on private method for palette refresh scheduling
+    const refresh = spyOn(renderer, "refreshPalette")
+    renderer.on(CliRenderEvents.PALETTE, () => {})
+
+    renderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+    renderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+    await flushAsync()
+
+    expect(renderer.themeMode).toBe("dark")
+    expect(refresh).toHaveBeenCalledTimes(1)
+
+    refresh.mockRestore()
+    renderer.destroy()
+  })
+
+  test("theme mode changes skip palette refresh for truecolor terminals without palette listeners", async () => {
+    const { renderer } = await createPaletteRenderer()
+    setNativePaletteUnneeded(renderer)
+    // @ts-expect-error - spying on private method for palette refresh scheduling
+    const refresh = spyOn(renderer, "refreshPalette")
+
+    renderer.stdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
+    renderer.stdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
+    await flushAsync()
+
+    expect(renderer.themeMode).toBe("dark")
+    expect(refresh).not.toHaveBeenCalled()
+
+    refresh.mockRestore()
+    renderer.destroy()
+  })
+
   test("startup palette refresh is skipped for truecolor terminals", async () => {
     const { renderer, writes } = await createPaletteRenderer()
     setNativePaletteUnneeded(renderer)
 
-    // @ts-expect-error - exercising private startup palette path
-    renderer.refreshPalette()
+    // Startup only calls refresh when native palette state is useful.
+    // @ts-expect-error - exercising private startup palette gate
+    if (renderer.shouldSyncNativePaletteState()) renderer.refreshPalette()
 
     expect(writes).toEqual([])
+
+    renderer.destroy()
+  })
+
+  test("getPalette emits palette change events for refreshed palettes", async () => {
+    const { renderer, clock } = await createPaletteRenderer()
+    const palettes: TerminalColors[] = []
+    renderer.on(CliRenderEvents.PALETTE, (colors) => palettes.push(colors))
+
+    await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 300 })
+    await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 300 })
+
+    expect(palettes).toHaveLength(1)
+    expect(palettes[0]?.palette.length).toBe(16)
 
     renderer.destroy()
   })

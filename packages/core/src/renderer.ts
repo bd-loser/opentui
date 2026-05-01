@@ -652,6 +652,7 @@ export enum CliRenderEvents {
   FOCUSED_RENDERABLE = "focused_renderable",
   FOCUSED_EDITOR = "focused_editor",
   THEME_MODE = "theme_mode",
+  PALETTE = "palette",
   CAPABILITIES = "capabilities",
   SELECTION = "selection",
   DEBUG_OVERLAY_TOGGLE = "debugOverlay:toggle",
@@ -820,7 +821,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
   private _paletteDetectionSize = 0
   private _paletteEpoch = 0
-  private _publishedPaletteSignature: string | null = null
+  private _nativePaletteSignature: string | null = null
+  private _emittedPaletteSignature: string | null = null
   private _palettePublishGeneration = 0
   private _onDestroy?: () => void
   private themeModeState: RendererThemeMode
@@ -966,7 +968,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       const result = this.themeModeState.handleSequence(sequence)
       if (result.changedMode) {
         this.clearPaletteCache()
-        this.refreshPalette()
+        if (this.shouldSyncNativePaletteState() || this.listenerCount(CliRenderEvents.PALETTE) > 0) {
+          this.refreshPalette()
+        }
         this.emit(CliRenderEvents.THEME_MODE, result.changedMode)
       }
       return result.handled
@@ -3591,7 +3595,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._paletteCache.clear()
     this._paletteDetectionPromise = null
     this._paletteDetectionSize = 0
-    this._publishedPaletteSignature = null
+    this._nativePaletteSignature = null
+    this._emittedPaletteSignature = null
     this._paletteEpoch = 0
     this.resolveXtVersionWaiters()
 
@@ -4051,11 +4056,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private syncNativePaletteState(colors: TerminalColors | null): void {
     const signature = buildTerminalPaletteSignature(colors)
-    if (this._publishedPaletteSignature !== signature) {
+    if (this._nativePaletteSignature !== signature) {
       this._paletteEpoch = (this._paletteEpoch + 1) >>> 0
     }
 
-    this._publishedPaletteSignature = signature
+    this._nativePaletteSignature = signature
 
     const normalized = normalizeTerminalPalette(colors)
     this.lib.rendererSetPaletteState(
@@ -4065,6 +4070,16 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       normalized.defaultBackground,
       this._paletteEpoch,
     )
+  }
+
+  private emitPaletteChange(colors: TerminalColors): void {
+    if (this.listenerCount(CliRenderEvents.PALETTE) === 0) return
+
+    const signature = buildTerminalPaletteSignature(colors)
+    if (this._emittedPaletteSignature === signature) return
+
+    this._emittedPaletteSignature = signature
+    this.emit(CliRenderEvents.PALETTE, colors)
   }
 
   private resolveXtVersionWaiters(): void {
@@ -4094,7 +4109,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private refreshPalette(): void {
-    if (!this.shouldSyncNativePaletteState()) return
     const publishGeneration = this._palettePublishGeneration
 
     void this.getPalette({ size: NATIVE_PALETTE_QUERY_SIZE })
@@ -4177,6 +4191,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this._paletteDetectionSize = 0
 
         if (!this._isDestroyed && this._palettePublishGeneration === publishGeneration) {
+          this.emitPaletteChange(result)
           if (this.shouldSyncNativePaletteState() && result.palette.length >= NATIVE_PALETTE_QUERY_SIZE) {
             this.syncNativePaletteState(result)
           } else if (this.shouldSyncNativePaletteState() && !this._paletteCache.has(NATIVE_PALETTE_QUERY_SIZE)) {

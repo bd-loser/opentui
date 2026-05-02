@@ -29,7 +29,8 @@ function schedule(clock: ManualClock | undefined, fn: () => void): void {
   process.nextTick(fn)
 }
 
-function createMockStreams(clock?: ManualClock) {
+function createMockStreams(clock?: ManualClock, options: { emitSpecialColors?: boolean } = {}) {
+  const emitSpecialColors = options.emitSpecialColors ?? true
   const mockStdin = new Readable({ read() {} }) as tty.ReadStream
   mockStdin.isTTY = true
   mockStdin.setRawMode = () => mockStdin
@@ -55,7 +56,7 @@ function createMockStreams(clock?: ManualClock) {
             mockStdin.emit("data", Buffer.from(`\x1b]4;${i};rgb:1000/2000/3000\x07`))
           }
         })
-      } else if (dataStr.includes("\x1b]10;?")) {
+      } else if (emitSpecialColors && dataStr.includes("\x1b]10;?")) {
         schedule(clock, () => {
           mockStdin.emit("data", Buffer.from("\x1b]10;#ffffff\x07"))
           mockStdin.emit("data", Buffer.from("\x1b]11;#000000\x07"))
@@ -104,13 +105,14 @@ async function detectPaletteAndAdvanceClock(
   return palettePromise
 }
 
-async function createPaletteRenderer(options: Partial<TestRendererOptions> = {}) {
+async function createPaletteRenderer(options: Partial<TestRendererOptions> & { emitSpecialColors?: boolean } = {}) {
   const clock = options.clock instanceof ManualClock ? options.clock : new ManualClock()
-  const { mockStdin, mockStdout, writes } = createMockStreams(clock)
+  const { mockStdin, mockStdout, writes } = createMockStreams(clock, { emitSpecialColors: options.emitSpecialColors })
+  const { emitSpecialColors, ...rendererOptions } = options
   const { renderer } = await createTestRenderer({
     stdin: mockStdin,
     stdout: mockStdout,
-    ...options,
+    ...rendererOptions,
     clock,
   })
 
@@ -529,7 +531,7 @@ describe("Palette cache invalidation", () => {
   })
 
   test("getPalette syncs native palette state again after cache invalidation and refetch", async () => {
-    const { renderer, clock } = await createPaletteRenderer()
+    const { renderer, clock } = await createPaletteRenderer({ emitSpecialColors: false })
     setNativePaletteRequired(renderer)
     // @ts-expect-error - spying on private method for native palette publishing behavior
     const sync = spyOn(renderer, "syncNativePaletteState")
@@ -669,7 +671,7 @@ describe("Palette cache invalidation", () => {
   })
 
   test("getPalette emits palette change events for refreshed palettes", async () => {
-    const { renderer, clock } = await createPaletteRenderer()
+    const { renderer, clock } = await createPaletteRenderer({ emitSpecialColors: false })
     const palettes: TerminalColors[] = []
     renderer.on(CliRenderEvents.PALETTE, (colors) => palettes.push(colors))
 

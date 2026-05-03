@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
+import { Yoga, type BaseRenderable } from "@opentui/core"
 import { createTestRenderer, type TestRendererOptions } from "@opentui/core/testing"
 import { createContext, createComponent, createSignal, onCleanup, onMount, useContext, type JSX } from "solid-js"
 import { createSlot, createSolidSlotRegistry, Slot, type SolidPlugin } from "../src/plugins/slot.js"
 import { _render as renderInternal } from "../src/reconciler.js"
 import { RendererContext } from "../src/elements/index.js"
+import { SlotRenderable } from "../src/elements/slot.js"
 
 interface AppSlots {
   statusbar: { user: string }
@@ -64,6 +66,35 @@ describe("Solid Slot System", () => {
     if (testSetup) {
       testSetup.renderer.destroy()
     }
+  })
+
+  it("creates layout placeholders with the parent Yoga node factory", () => {
+    let display: number | undefined
+    const layoutNode = {
+      setDisplay(value: number) {
+        display = value
+      },
+    }
+    const parentLayoutNode = {
+      constructor: {
+        create() {
+          return layoutNode
+        },
+      },
+    }
+    const parent = {
+      getLayoutNode() {
+        return parentLayoutNode
+      },
+    } as unknown as BaseRenderable
+
+    const slot = new SlotRenderable("factory-slot")
+    const child = slot.getSlotChild(parent)
+
+    expect(child.getLayoutNode()).toBe(layoutNode)
+    expect(display).toBe(Yoga.Display.None)
+
+    slot.destroy()
   })
 
   it("reuses one registry per renderer and rejects different context", async () => {

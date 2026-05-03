@@ -1,5 +1,16 @@
 import { BaseRenderable, isTextNodeRenderable, TextNodeRenderable, TextRenderable, Yoga } from "@opentui/core"
 
+type LayoutNodeProvider = {
+  getLayoutNode?: () => Yoga.Node
+}
+
+function createLayoutSlotYogaNode(parent?: BaseRenderable): Yoga.Node {
+  const parentLayoutNode = (parent as LayoutNodeProvider | undefined)?.getLayoutNode?.()
+  const parentNodeConstructor = parentLayoutNode?.constructor as { create?: () => Yoga.Node } | undefined
+
+  return parentNodeConstructor?.create?.() ?? Yoga.default.Node.create()
+}
+
 class SlotBaseRenderable extends BaseRenderable {
   constructor(id: string) {
     super({
@@ -62,12 +73,12 @@ export class LayoutSlotRenderable extends SlotBaseRenderable {
   protected slotParent?: SlotRenderable
   protected destroyed: boolean = false
 
-  constructor(id: string, parent?: SlotRenderable) {
+  constructor(id: string, parent?: SlotRenderable, layoutParent?: BaseRenderable) {
     super(id)
 
     this._visible = false
     this.slotParent = parent
-    this.yogaNode = Yoga.default.Node.create()
+    this.yogaNode = createLayoutSlotYogaNode(layoutParent)
     this.yogaNode.setDisplay(Yoga.Display.None)
   }
 
@@ -112,7 +123,7 @@ export class SlotRenderable extends SlotBaseRenderable {
     }
 
     if (!this.layoutNode) {
-      this.layoutNode = new LayoutSlotRenderable(`slot-layout-${this.id}`, this)
+      this.layoutNode = new LayoutSlotRenderable(`slot-layout-${this.id}`, this, parent)
     }
     return this.layoutNode
   }

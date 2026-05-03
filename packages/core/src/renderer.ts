@@ -336,6 +336,10 @@ class ExternalOutputQueue {
     this.commits.push(commit)
   }
 
+  peek(): readonly ExternalOutputCommit[] {
+    return this.commits
+  }
+
   claim(limit: number = Number.POSITIVE_INFINITY): ExternalOutputCommit[] {
     if (this.commits.length === 0) {
       return []
@@ -772,6 +776,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _suspendedMouseEnabled: boolean = false
   private _previousControlState: RendererControlState = RendererControlState.IDLE
   private pendingSuspendedTerminalSetup: boolean = false
+  private suspendedNonAltSurfacePreserved: boolean = false
   private capturedRenderable?: Renderable
   private lastOverRenderableNum: number = 0
   private lastOverRenderable?: Renderable
@@ -797,6 +802,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _terminalIsSetup: boolean = false
 
   private externalOutputQueue = new ExternalOutputQueue()
+  private pendingExternalOutputMode: ExternalOutputMode | null = null
   private realStdoutWrite: (chunk: any, encoding?: any, callback?: any) => boolean
 
   private _useConsole: boolean = true
@@ -1375,6 +1381,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public set screenMode(mode: ScreenMode) {
     if (this.externalOutputMode === "capture-stdout" && mode !== "split-footer") {
+      if (this.pendingExternalOutputMode === "passthrough") {
+        this.flushPendingSplitOutputBeforeLeavingSplitFooter()
+      }
+
+      if (this.externalOutputMode !== "capture-stdout") {
+        this.applyScreenMode(mode)
+        return
+      }
+
       throw new Error('externalOutputMode "capture-stdout" requires screenMode "split-footer"')
     }
 
@@ -1408,23 +1423,39 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const previousMode = this._externalOutputMode
     if (previousMode === mode) {
+      if (this.pendingExternalOutputMode !== null && this.pendingExternalOutputMode !== mode) {
+        this.pendingExternalOutputMode = null
+      }
       return
     }
 
     const canFlushSplitOutputBeforeTransition = this.canFlushSplitOutputBeforeTransition()
-
-    if (
+    const isSplitCaptureToPassthrough =
       previousMode === "capture-stdout" &&
       mode === "passthrough" &&
-      this._splitHeight > 0 &&
-      canFlushSplitOutputBeforeTransition
-    ) {
+      this._screenMode === "split-footer" &&
+      this._splitHeight > 0
+
+    if (isSplitCaptureToPassthrough && this.externalOutputQueue.size > 0 && !canFlushSplitOutputBeforeTransition) {
+      this.pendingExternalOutputMode = "passthrough"
+      return
+    }
+
+    if (isSplitCaptureToPassthrough && canFlushSplitOutputBeforeTransition) {
       this.flushPendingSplitOutputBeforeTransition()
     }
 
+    this.pendingExternalOutputMode = null
+    this.applyExternalOutputMode(mode)
+    this.afterExternalOutputModeChanged(previousMode, mode)
+  }
+
+  private applyExternalOutputMode(mode: ExternalOutputMode): void {
     this._externalOutputMode = mode
     this.stdout.write = mode === "capture-stdout" ? this.interceptStdoutWrite : this.realStdoutWrite
+  }
 
+  private afterExternalOutputModeChanged(previousMode: ExternalOutputMode, mode: ExternalOutputMode): void {
     if (this._screenMode === "split-footer" && this._splitHeight > 0 && mode === "capture-stdout") {
       this.clearPendingSplitFooterTransition()
       this.resetSplitScrollback(this.getSplitCursorSeedRows())
@@ -1442,6 +1473,39 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.syncSplitFooterState()
+  }
+
+  private applyPendingExternalOutputModeIfReady(): void {
+    const pendingMode = this.pendingExternalOutputMode
+    if (pendingMode === null || this.externalOutputQueue.size > 0) {
+      return
+    }
+
+    const previousMode = this._externalOutputMode
+    this.pendingExternalOutputMode = null
+
+    if (previousMode === pendingMode) {
+      return
+    }
+
+    this.applyExternalOutputMode(pendingMode)
+    this.afterExternalOutputModeChanged(previousMode, pendingMode)
+  }
+
+  private flushPendingSplitOutputBeforeLeavingSplitFooter(): void {
+    if (this.pendingExternalOutputMode !== "passthrough") {
+      return
+    }
+
+    if (this.isSplitCursorSeedFrameBlocked() && this._controlState !== RendererControlState.EXPLICIT_SUSPENDED) {
+      this.clearSplitStartupCursorSeed()
+    }
+
+    this.flushPendingSplitOutputBeforeTransition()
+
+    if (this.pendingExternalOutputMode !== null) {
+      throw new Error("Cannot leave split-footer while captured output is pending")
+    }
   }
 
   public get liveRequestCount(): number {
@@ -1491,10 +1555,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const renderer = this
     const surfaceId = scrollbackSurfaceCounter++
     const startOnNewLine = options.startOnNewLine ?? true
-    const firstLineOffset =
-      !startOnNewLine && renderer.splitTailColumn > 0 && renderer.splitTailColumn < renderer.width
-        ? renderer.splitTailColumn
-        : 0
+    const tailColumn = renderer.getPendingSplitTailColumn()
+    const firstLineOffset = !startOnNewLine && tailColumn > 0 && tailColumn < renderer.width ? tailColumn : 0
 
     const snapshotContext = new ScrollbackSnapshotRenderContext(renderer.width, 1, renderer.widthMethod)
     let firstLineOffsetOwner: Renderable | null = null
@@ -1834,7 +1896,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     const snapshot = write({
       width: this.width,
       widthMethod: this.widthMethod,
-      tailColumn: this.splitTailColumn,
+      tailColumn: this.getPendingSplitTailColumn(),
       renderContext: snapshotContext,
     })
 
@@ -1945,13 +2007,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return widths
   }
 
-  private publishSplitTailColumns(columns: number): void {
+  private advanceSplitTailColumn(tailColumn: number, columns: number, width: number): number {
     if (columns <= 0) {
-      return
+      return tailColumn
     }
 
-    const width = Math.max(this.width, 1)
-    let tail = this.splitTailColumn
+    let tail = tailColumn
     let remaining = columns
 
     while (remaining > 0) {
@@ -1968,21 +2029,44 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       }
     }
 
-    this.splitTailColumn = tail
+    return tail
   }
 
-  private recordSplitCommit(commit: ExternalOutputCommit): void {
-    if (commit.startOnNewLine && this.splitTailColumn > 0) {
-      this.splitTailColumn = 0
+  private getSplitTailColumnAfterCommit(
+    commit: ExternalOutputCommit,
+    initialTailColumn: number,
+    width: number,
+  ): number {
+    let tailColumn = initialTailColumn
+
+    if (commit.startOnNewLine && tailColumn > 0) {
+      tailColumn = 0
     }
 
     const rowWidths = this.getSnapshotRowWidths(commit.snapshot, commit.rowColumns)
     for (const [index, rowWidth] of rowWidths.entries()) {
-      this.publishSplitTailColumns(rowWidth)
+      tailColumn = this.advanceSplitTailColumn(tailColumn, rowWidth, width)
       if (index < rowWidths.length - 1 || commit.trailingNewline) {
-        this.splitTailColumn = 0
+        tailColumn = 0
       }
     }
+
+    return tailColumn
+  }
+
+  private recordSplitCommit(commit: ExternalOutputCommit): void {
+    this.splitTailColumn = this.getSplitTailColumnAfterCommit(commit, this.splitTailColumn, Math.max(this.width, 1))
+  }
+
+  private getPendingSplitTailColumn(): number {
+    const width = Math.max(this.width, 1)
+    let tailColumn = this.splitTailColumn
+
+    for (const commit of this.externalOutputQueue.peek()) {
+      tailColumn = this.getSplitTailColumnAfterCommit(commit, tailColumn, width)
+    }
+
+    return tailColumn
   }
 
   private enqueueRenderedScrollbackCommit(options: {
@@ -2011,7 +2095,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   private enqueueSplitCommit(commit: ExternalOutputCommit): void {
-    this.recordSplitCommit(commit)
     this.externalOutputQueue.writeSnapshot(commit)
   }
 
@@ -2153,6 +2236,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           beginFrame,
           finalizeFrame,
         )
+        this.recordSplitCommit(commit)
         hasCommittedOutput = true
       } finally {
         commit.snapshot.destroy()
@@ -2173,6 +2257,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       // Preserve FIFO ordering without doing unbounded work in one tick.
       // This keeps sustained stdout bursts smooth instead of blocking on one frame.
       this.requestRender()
+    } else {
+      this.applyPendingExternalOutputModeIfReady()
     }
   }
 
@@ -2243,7 +2329,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     forceFooterRepaint: boolean = false,
     options: { allowSuspended?: boolean; allowPassthrough?: boolean } = {},
   ): void {
-    const hasDeferredCapturedOutput = this.externalOutputQueue.size > 0
+    const hasDeferredCapturedOutput = this.externalOutputQueue.size > 0 || this.pendingExternalOutputMode !== null
     if (
       this._screenMode !== "split-footer" ||
       this._splitHeight <= 0 ||
@@ -2257,6 +2343,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (this.externalOutputQueue.size === 0 && !forceFooterRepaint) {
+      this.applyPendingExternalOutputModeIfReady()
       return
     }
 
@@ -2701,6 +2788,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.updateStdinParserProtocolContext({ startupCursorCprActive: false })
 
       this.requestRender()
+      if (this.pendingExternalOutputMode === "passthrough") {
+        this.flushPendingSplitOutputBeforeTransition()
+      }
     }
 
     const consumeStartupCursorReport =
@@ -3440,6 +3530,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (this._terminalIsSetup) {
       this.clearSplitStartupCursorSeed()
       this.flushPendingSplitOutputBeforeTransition(true, { allowSuspended: true })
+      this.suspendedNonAltSurfacePreserved = this._screenMode !== "alternate-screen" && this.renderOffset > 0
+    } else {
+      this.suspendedNonAltSurfacePreserved = false
     }
 
     this._suspendedMouseEnabled = this._useMouse
@@ -3481,12 +3574,24 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.stdin.resume()
     this.addExitListeners()
 
+    const resumePreservedNonAltSurface =
+      this.pendingSuspendedTerminalSetup &&
+      this._screenMode !== "alternate-screen" &&
+      this.suspendedNonAltSurfacePreserved &&
+      this.renderOffset > 0
+
     if (this.pendingSuspendedTerminalSetup) {
       this.pendingSuspendedTerminalSetup = false
-      this.lib.setupTerminal(this.rendererPtr, this._screenMode === "alternate-screen")
+      if (resumePreservedNonAltSurface) {
+        this.lib.resumeRenderer(this.rendererPtr)
+      } else {
+        this.lib.setupTerminal(this.rendererPtr, this._screenMode === "alternate-screen")
+      }
     } else {
       this.lib.resumeRenderer(this.rendererPtr)
     }
+
+    this.suspendedNonAltSurfacePreserved = false
 
     this.flushPendingSplitOutputBeforeTransition(false, { allowSuspended: true, allowPassthrough: true })
 
@@ -3681,6 +3786,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this._externalOutputMode = "passthrough"
+    this.pendingExternalOutputMode = null
     this.stdout.write = this.realStdoutWrite
     this.externalOutputQueue.clear()
 
@@ -3838,7 +3944,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       // capture path keeps using diff-based repainting.
       const forceSplitRepaint = this.forceFullRepaintRequested
       this.forceFullRepaintRequested = false
-      this.flushPendingSplitCommits(forceSplitRepaint)
+      this.flushPendingSplitCommits(forceSplitRepaint, this.pendingExternalOutputMode === "passthrough")
       this.pendingSplitFooterTransition = null
     } else {
       const force = this.forceFullRepaintRequested

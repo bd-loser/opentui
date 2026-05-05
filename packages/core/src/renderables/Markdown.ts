@@ -579,11 +579,38 @@ export class MarkdownRenderable extends Renderable {
     return raw.replace(TRAILING_MARKDOWN_BLOCK_NEWLINES_RE, "")
   }
 
-  private buildRenderableTokens(tokens: MarkedToken[]): MarkedToken[] {
-    if (this._renderNode) {
-      return tokens.filter((token) => token.type !== "space")
+  private shouldPreserveCoalescedGapBefore(nextToken: MarkedToken | undefined): boolean {
+    return nextToken?.type === "code"
+  }
+
+  private withPreservedCoalescedGap(token: MarkedToken, gapRaw: string): MarkedToken {
+    if (!token.raw) {
+      return token
     }
 
+    return {
+      ...token,
+      raw: this.normalizeMarkdownBlockRaw(token.raw + gapRaw),
+    } as MarkedToken
+  }
+
+  private getNextNonSpaceToken(tokens: MarkedToken[], startIndex: number): MarkedToken | undefined {
+    for (let i = startIndex; i < tokens.length; i += 1) {
+      const token = tokens[i]
+      if (token.type !== "space") {
+        return token
+      }
+    }
+
+    return undefined
+  }
+
+  private shouldKeepCoalescedGap(nextToken: MarkedToken | undefined): boolean {
+    return !!nextToken && (!this.shouldRenderSeparately(nextToken) || this.shouldPreserveCoalescedGapBefore(nextToken))
+  }
+
+  private buildRenderableTokens(tokens: MarkedToken[]): MarkedToken[] {
+    const hasCustomRenderer = !!this._renderNode
     const renderTokens: MarkedToken[] = []
     let markdownRaw = ""
 
@@ -600,19 +627,28 @@ export class MarkdownRenderable extends Renderable {
       const token = tokens[i]
 
       if (token.type === "space") {
-        if (markdownRaw.length === 0) {
+        const nextToken = this.getNextNonSpaceToken(tokens, i + 1)
+
+        if (hasCustomRenderer) {
+          const previousToken = renderTokens[renderTokens.length - 1]
+          if (
+            previousToken &&
+            !this.shouldRenderSeparately(previousToken) &&
+            this.shouldPreserveCoalescedGapBefore(nextToken)
+          ) {
+            renderTokens[renderTokens.length - 1] = this.withPreservedCoalescedGap(previousToken, token.raw)
+          }
           continue
         }
 
-        let nextIndex = i + 1
-        while (nextIndex < tokens.length && tokens[nextIndex].type === "space") {
-          nextIndex += 1
-        }
-
-        const nextToken = tokens[nextIndex]
-        if (nextToken && !this.shouldRenderSeparately(nextToken)) {
+        if (markdownRaw.length > 0 && this.shouldKeepCoalescedGap(nextToken)) {
           markdownRaw += token.raw
         }
+        continue
+      }
+
+      if (hasCustomRenderer) {
+        renderTokens.push(token)
         continue
       }
 

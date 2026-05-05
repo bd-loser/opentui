@@ -811,6 +811,7 @@ And here is more text after.`
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Here is some code:
+
     function hello() {
       return "world";
     }
@@ -835,9 +836,11 @@ fn main() {}
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     First block:
+
     print("hello")
 
     Second block:
+
     fn main() {}"
   `)
 })
@@ -1265,6 +1268,28 @@ const x = 1;
   `)
 })
 
+test("custom renderNode using defaultRender preserves coalesced spacing before code", async () => {
+  const md = createMarkdownRenderable({
+    id: "custom-default-spacing",
+    content: ["Example", "", "```ts", 'console.log("Hello, world!")', "```"].join("\n"),
+    syntaxStyle,
+    renderNode: (_node, ctx) => ctx.defaultRender(),
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    Example
+
+    console.log(\"Hello, world!\")"
+  `)
+})
+
 test("custom renderNode output survives top-level spacing updates", async () => {
   const md = createMarkdownRenderable({
     id: "custom-spacing-update",
@@ -1341,6 +1366,7 @@ console.log(x);`
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Here is some code:
+
     const x = 1;
     console.log(x);"
   `)
@@ -1485,6 +1511,7 @@ const x = 1;
   expect(await renderMarkdown(markdown)).toMatchInlineSnapshot(`
     "
     Text before
+
     const x = 1;"
   `)
 })

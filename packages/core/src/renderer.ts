@@ -2512,25 +2512,48 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       screenMode === "split-footer" && nextSplitHeight > 0 && this._externalOutputMode === "capture-stdout"
         ? this.getSplitOutputOffset(nextPinnedRenderOffset)
         : nextPinnedRenderOffset
+    const pendingSplitFooterTransition = this.pendingSplitFooterTransition
+    const returningSplitFooterToSource =
+      pendingSplitFooterTransition !== null && nextSplitHeight === splitTransitionSourceHeight
+    const returningSplitFooterToGrownTarget =
+      returningSplitFooterToSource &&
+      pendingSplitFooterTransition.mode === "viewport-scroll" &&
+      pendingSplitFooterTransition.targetTopLine < pendingSplitFooterTransition.sourceTopLine &&
+      (pendingSplitFooterTransition.scrollLines ?? 0) > 0
     const shrinkingSplitFooter = nextSplitHeight > 0 && nextSplitHeight < splitTransitionSourceHeight
     const growingSplitFooter = nextSplitHeight > splitTransitionSourceHeight && splitTransitionSourceHeight > 0
     const nextSplitSurfaceOffset =
       screenMode !== "split-footer" || nextSplitHeight === 0
         ? 0
-        : shrinkingSplitFooter
-          ? Math.max(splitTransitionSourceSurfaceOffset, nextSplitOutputOffset)
+        : returningSplitFooterToGrownTarget
+          ? pendingSplitFooterTransition.targetTopLine - 1
+          : returningSplitFooterToSource
+          ? splitTransitionSourceSurfaceOffset
+          : shrinkingSplitFooter
+          ? splitTransitionSourceSurfaceOffset === 0
+            ? nextSplitOutputOffset
+            : splitTransitionSourceSurfaceOffset
           : growingSplitFooter
             ? Math.max(nextSplitOutputOffset, Math.min(splitTransitionSourceSurfaceOffset, nextPinnedRenderOffset))
             : nextPinnedRenderOffset
     const splitTransitionTargetTopLine = nextSplitSurfaceOffset + 1
-    const splitViewportScrollLines = nextSplitHeight > 0 ? Math.max(splitTransitionSourceOutputOffset - nextSplitOutputOffset, 0) : 0
-    const splitTransitionMode = !shrinkingSplitFooter && splitViewportScrollLines > 0 ? "viewport-scroll" : "clear-stale-rows"
+    const splitViewportScrollLines =
+      returningSplitFooterToGrownTarget
+        ? (pendingSplitFooterTransition.scrollLines ?? 0)
+        : nextSplitHeight > 0 && !returningSplitFooterToSource
+        ? Math.max(splitTransitionSourceOutputOffset - nextSplitOutputOffset, 0)
+        : 0
+    const splitTransitionMode =
+      (!shrinkingSplitFooter || returningSplitFooterToGrownTarget) && splitViewportScrollLines > 0
+        ? "viewport-scroll"
+        : "clear-stale-rows"
     const splitFooterSurfaceMovesDown = nextSplitSurfaceOffset > splitTransitionSourceSurfaceOffset
+    const splitFooterSurfaceLeavesStaleRows = splitFooterSurfaceMovesDown || shrinkingSplitFooter
     const shouldClearSplitSurfaceRowsImmediately =
       terminalWritable &&
       !terminalScreenModeChanged &&
       !shouldDeferSplitFooterResizeTransition &&
-      splitFooterSurfaceMovesDown &&
+      splitFooterSurfaceLeavesStaleRows &&
       nextSplitHeight > 0
 
     if (terminalWritable && leavingSplitFooter) {

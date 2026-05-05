@@ -1453,6 +1453,44 @@ test("CliRenderer split-footer footerHeight changes coalesce while settling befo
   repaintSpy.mockRestore()
 })
 
+test("CliRenderer split-footer grow then shrink back before frame keeps grown top line", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+
+  ;(renderer as any).stdout.write("a\n")
+  await result.renderOnce()
+  ;(renderer as any).stdout.write("b\n")
+  await result.renderOnce()
+
+  expect((renderer as any).renderOffset).toBe(3)
+
+  renderer.footerHeight = 8
+  renderer.footerHeight = 4
+
+  expect((renderer as any).renderOffset).toBe(2)
+  expect((renderer as any).pendingSplitFooterTransition).toEqual({
+    mode: "viewport-scroll",
+    sourceTopLine: 4,
+    sourceHeight: 4,
+    targetTopLine: 3,
+    targetHeight: 4,
+    scrollLines: 1,
+  })
+
+  await result.renderOnce()
+
+  expect((renderer as any).renderOffset).toBe(2)
+})
+
 test("CliRenderer split-footer pinned footerHeight shrink defers clear-stale-row cleanup to the next native frame", async () => {
   const result = await createTestRenderer({
     width: 40,
@@ -1498,6 +1536,58 @@ test("CliRenderer split-footer pinned footerHeight shrink defers clear-stale-row
 
   writeOutSpy.mockRestore()
   repaintSpy.mockRestore()
+})
+
+test("CliRenderer split-footer settling footerHeight shrink keeps footer top line", async () => {
+  const result = await createTestRenderer({
+    width: 40,
+    height: 10,
+    screenMode: "split-footer",
+    footerHeight: 4,
+    externalOutputMode: "capture-stdout",
+    consoleMode: "disabled",
+  })
+
+  renderer = result.renderer
+  ;(renderer as any)._terminalIsSetup = true
+
+  ;(renderer as any).stdout.write("a\n")
+  await result.renderOnce()
+  ;(renderer as any).stdout.write("b\n")
+  await result.renderOnce()
+
+  expect((renderer as any).renderOffset).toBe(3)
+
+  renderer.footerHeight = 8
+  await result.renderOnce()
+
+  expect((renderer as any).renderOffset).toBe(2)
+
+  renderer.footerHeight = 4
+
+  expect((renderer as any).pendingSplitFooterTransition).toEqual({
+    mode: "clear-stale-rows",
+    sourceTopLine: 3,
+    sourceHeight: 8,
+    targetTopLine: 3,
+    targetHeight: 4,
+    scrollLines: 0,
+  })
+
+  await result.renderOnce()
+
+  expect((renderer as any).renderOffset).toBe(2)
+
+  renderer.footerHeight = 6
+
+  expect((renderer as any).pendingSplitFooterTransition).toEqual({
+    mode: "clear-stale-rows",
+    sourceTopLine: 3,
+    sourceHeight: 4,
+    targetTopLine: 3,
+    targetHeight: 6,
+    scrollLines: 0,
+  })
 })
 
 test("CliRenderer split-footer reuses the reserved gap when reopening the footer before new output arrives", async () => {

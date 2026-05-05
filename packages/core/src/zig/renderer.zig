@@ -1014,8 +1014,15 @@ pub const CliRenderer = struct {
         pinned_render_offset: u32,
         force: bool,
     ) void {
+        const transition = self.pendingSplitFooterTransition;
+        const hasPendingViewportTarget = transition.mode == .viewport_scroll and
+            transition.target_top_line > 0 and
+            transition.scroll_lines > 0;
         const previousRenderOffset = self.renderOffset;
-        const next_render_offset = self.clampSplitSurfaceOffset(previousRenderOffset, pinned_render_offset);
+        const next_render_offset = if (hasPendingViewportTarget)
+            transition.target_top_line - 1
+        else
+            self.clampSplitSurfaceOffset(previousRenderOffset, pinned_render_offset);
         const redraw_footer = force or previousRenderOffset != next_render_offset;
 
         self.renderOffset = next_render_offset;

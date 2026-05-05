@@ -1281,16 +1281,23 @@ export class MarkdownRenderable extends Renderable {
       let tableContentCache: TableContentCache | undefined
 
       if (this._renderNode) {
+        let defaultRenderable: Renderable | null = null
         const context: RenderNodeContext = {
           syntaxStyle: this._syntaxStyle,
           conceal: this._conceal,
           concealCode: this._concealCode,
           treeSitterClient: this._treeSitterClient,
-          defaultRender: () => this.createDefaultRenderable(token, blockIndex, hasNextToken),
+          defaultRender: () => {
+            defaultRenderable = this.createDefaultRenderable(token, blockIndex, hasNextToken)
+            return defaultRenderable
+          },
         }
         const custom = this._renderNode(token, context)
         if (custom) {
           renderable = custom
+          if (custom !== defaultRenderable && token.raw.endsWith("\n") && blockTokens[i + 1]?.type === "code") {
+            custom.marginBottom = 1
+          }
         }
       }
 

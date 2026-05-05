@@ -1290,6 +1290,38 @@ test("custom renderNode using defaultRender preserves coalesced spacing before c
   `)
 })
 
+test("custom renderNode override preserves coalesced spacing before default code", async () => {
+  const md = createMarkdownRenderable({
+    id: "custom-overridden-spacing",
+    content: ["Example", "", "```ts", 'console.log("Hello, world!")', "```"].join("\n"),
+    syntaxStyle,
+    renderNode: (node, ctx) => {
+      if (node.type === "paragraph") {
+        return new TextRenderable(renderer, {
+          id: "custom-overridden-spacing-text",
+          content: "CUSTOM",
+          width: "100%",
+        })
+      }
+
+      return ctx.defaultRender()
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    CUSTOM
+
+    console.log(\"Hello, world!\")"
+  `)
+})
+
 test("custom renderNode output survives top-level spacing updates", async () => {
   const md = createMarkdownRenderable({
     id: "custom-spacing-update",

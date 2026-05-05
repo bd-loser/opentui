@@ -152,6 +152,8 @@ export interface BlockState {
   token: MarkedToken
   tokenRaw: string // Cache raw for comparison
   marginTop?: number
+  customRenderNode?: boolean
+  customGapBeforeCode?: boolean
   renderable: Renderable
   tableContentCache?: TableContentCache
 }
@@ -1238,9 +1240,23 @@ export class MarkdownRenderable extends Renderable {
     const blockTokens = this.buildRenderableTokens(tokens)
     const lastBlockIndex = blockTokens.length - 1
 
+    const updateCustomGapBeforeCode = (
+      state: BlockState,
+      token: MarkedToken,
+      nextToken: MarkedToken | undefined,
+    ): void => {
+      if (!state.customRenderNode) return
+      const hasGap = token.raw.endsWith("\n") && nextToken?.type === "code"
+      if (hasGap || state.customGapBeforeCode) {
+        state.renderable.marginBottom = hasGap ? 1 : 0
+      }
+      state.customGapBeforeCode = hasGap
+    }
+
     let blockIndex = 0
     for (let i = 0; i < blockTokens.length; i++) {
       const token = blockTokens[i]
+      const nextToken = blockTokens[i + 1]
       const hasNextToken = i < lastBlockIndex
       const existing = this._blockStates[blockIndex]
 
@@ -1251,6 +1267,7 @@ export class MarkdownRenderable extends Renderable {
           this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
           existing.tokenRaw = token.raw
         }
+        updateCustomGapBeforeCode(existing, token, nextToken)
         blockIndex++
         continue
       }
@@ -1261,6 +1278,7 @@ export class MarkdownRenderable extends Renderable {
           this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
           existing.tokenRaw = token.raw
         }
+        updateCustomGapBeforeCode(existing, token, nextToken)
         blockIndex++
         continue
       }
@@ -1269,6 +1287,8 @@ export class MarkdownRenderable extends Renderable {
         this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
         existing.token = token
         existing.tokenRaw = token.raw
+        existing.customRenderNode = undefined
+        existing.customGapBeforeCode = undefined
         blockIndex++
         continue
       }
@@ -1279,6 +1299,8 @@ export class MarkdownRenderable extends Renderable {
 
       let renderable: Renderable | undefined
       let tableContentCache: TableContentCache | undefined
+      let customRenderNode: boolean | undefined
+      let customGapBeforeCode: boolean | undefined
 
       if (this._renderNode) {
         let defaultRenderable: Renderable | null = null
@@ -1295,7 +1317,9 @@ export class MarkdownRenderable extends Renderable {
         const custom = this._renderNode(token, context)
         if (custom) {
           renderable = custom
-          if (custom !== defaultRenderable && token.raw.endsWith("\n") && blockTokens[i + 1]?.type === "code") {
+          customRenderNode = custom !== defaultRenderable
+          customGapBeforeCode = customRenderNode && token.raw.endsWith("\n") && nextToken?.type === "code"
+          if (customGapBeforeCode) {
             custom.marginBottom = 1
           }
         }
@@ -1326,6 +1350,8 @@ export class MarkdownRenderable extends Renderable {
           token,
           tokenRaw: token.raw,
           renderable,
+          customRenderNode,
+          customGapBeforeCode,
           tableContentCache,
         }
       }

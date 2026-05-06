@@ -16,6 +16,10 @@ const resolvedFromLiteral = resolveBindingSections(
   },
   {
     sections: sectionNames,
+    bindingDefaults({ section, command, binding }) {
+      const value: string = `${section}.${command}.${String(binding.key)}`
+      return { group: value }
+    },
   },
 )
 

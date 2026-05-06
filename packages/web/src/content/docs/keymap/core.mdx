@@ -294,18 +294,31 @@ formatCommandBindings(keymap.getCommandBindings({ visibility: "registered", comm
 ```ts
 import { resolveBindingSections } from "@opentui/keymap/extras"
 
-const resolved = resolveBindingSections({
-  app: {
-    "command.palette.show": "ctrl+p",
-    "app.exit": ["ctrl+c", "<leader>q"],
-    "app.debug": "none",
+const sectionGroups = {
+  app: "Global",
+  prompt_input: "Prompt",
+}
+
+const resolved = resolveBindingSections(
+  {
+    app: {
+      "command.palette.show": "ctrl+p",
+      "app.exit": ["ctrl+c", "<leader>q"],
+      "app.debug": "none",
+    },
+    prompt_input: {
+      "prompt.paste": { key: "ctrl+v", preventDefault: false },
+      "prompt.history.previous": "up",
+      "prompt.history.next": "down",
+    },
   },
-  prompt_input: {
-    "prompt.paste": { key: "ctrl+v", preventDefault: false },
-    "prompt.history.previous": "up",
-    "prompt.history.next": "down",
+  {
+    bindingDefaults({ section, binding }) {
+      if (binding.group !== undefined) return
+      return { group: sectionGroups[section as keyof typeof sectionGroups] }
+    },
   },
-})
+)
 
 keymap.registerLayer({ bindings: resolved.sections.app })
 resolved.get("app", "app.exit")
@@ -322,7 +335,7 @@ The resolved object exposes three views:
 | `pick(section, commands)` | Bindings for the listed commands in caller command order; missing or disabled commands are skipped                |
 | `omit(section, commands)` | All section bindings except matching string-command bindings, preserving section order; missing commands ignored |
 
-`pick()` and `omit()` use exact command names and do not trim. They are meant for hard-coded application command lists. Use them when one semantic config section feeds multiple activation layers.
+Use `bindingDefaults` to add app-level fields to every emitted binding without mutating the original config. Defaults are spread before the resolved binding, so explicit binding fields win. `pick()` and `omit()` use exact command names and do not trim. They are meant for hard-coded application command lists. Use them when one semantic config section feeds multiple activation layers.
 
 Tokens such as `leader` are still registered through the normal keymap token APIs and referenced by parser syntax such as `<leader>`.
 

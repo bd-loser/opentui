@@ -24,6 +24,19 @@ type LiteralStringKeys<T> = string extends Extract<keyof T, string> ? never : Ex
 
 const hasOwn = Object.prototype.hasOwnProperty
 
+export interface BindingDefaultsContext<
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+> {
+  section: string
+  command: string
+  binding: Readonly<Binding<TTarget, TEvent>>
+}
+
+export type BindingDefaults<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> = (
+  ctx: BindingDefaultsContext<TTarget, TEvent>,
+) => Readonly<Record<string, unknown>> | void
+
 export interface ResolvedBindingSections<
   TTarget extends object = object,
   TEvent extends KeymapEvent = KeymapEvent,
@@ -35,8 +48,13 @@ export interface ResolvedBindingSections<
   omit(section: string, commands: readonly string[]): Binding<TTarget, TEvent>[]
 }
 
-export interface ResolveBindingSectionsOptions<TSection extends string = string> {
+export interface ResolveBindingSectionsOptions<
+  TSection extends string = string,
+  TTarget extends object = object,
+  TEvent extends KeymapEvent = KeymapEvent,
+> {
   sections?: readonly TSection[]
+  bindingDefaults?: BindingDefaults<TTarget, TEvent>
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -95,6 +113,7 @@ function resolveBindingValue<TTarget extends object, TEvent extends KeymapEvent>
   section: string,
   command: string,
   value: BindingValue<TTarget, TEvent>,
+  bindingDefaults: BindingDefaults<TTarget, TEvent> | undefined,
 ): Binding<TTarget, TEvent>[] | undefined {
   if (value === false || value === "none") {
     return undefined
@@ -108,13 +127,36 @@ function resolveBindingValue<TTarget extends object, TEvent extends KeymapEvent>
     const items = value as readonly BindingSectionItem<TTarget, TEvent>[]
     const bindings = new Array<Binding<TTarget, TEvent>>(items.length)
     for (let index = 0; index < items.length; index += 1) {
-      bindings[index] = resolveBindingItem(section, command, items[index]!, index)
+      bindings[index] = withBindingDefaults(
+        section,
+        command,
+        resolveBindingItem(section, command, items[index]!, index),
+        bindingDefaults,
+      )
     }
 
     return bindings
   }
 
-  return [resolveBindingItem(section, command, value as BindingSectionItem<TTarget, TEvent>)]
+  return [
+    withBindingDefaults(
+      section,
+      command,
+      resolveBindingItem(section, command, value as BindingSectionItem<TTarget, TEvent>),
+      bindingDefaults,
+    ),
+  ]
+}
+
+function withBindingDefaults<TTarget extends object, TEvent extends KeymapEvent>(
+  section: string,
+  command: string,
+  binding: Binding<TTarget, TEvent>,
+  bindingDefaults: BindingDefaults<TTarget, TEvent> | undefined,
+): Binding<TTarget, TEvent> {
+  const defaults = bindingDefaults?.({ section, command, binding })
+  if (!defaults) return binding
+  return { ...defaults, ...binding }
 }
 
 export function resolveBindingSections<
@@ -124,18 +166,19 @@ export function resolveBindingSections<
   const TSection extends string = string,
 >(
   config: TConfig,
-  options: ResolveBindingSectionsOptions<TSection> & { sections: readonly TSection[] },
+  options: ResolveBindingSectionsOptions<TSection, TTarget, TEvent> & { sections: readonly TSection[] },
 ): ResolvedBindingSections<TTarget, TEvent, TSection | LiteralStringKeys<TConfig>>
 export function resolveBindingSections<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>(
   config: BindingSectionsConfig<TTarget, TEvent>,
-  options?: ResolveBindingSectionsOptions,
+  options?: ResolveBindingSectionsOptions<string, TTarget, TEvent>,
 ): ResolvedBindingSections<TTarget, TEvent>
 export function resolveBindingSections<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent>(
   config: BindingSectionsConfig<TTarget, TEvent>,
-  options?: ResolveBindingSectionsOptions,
+  options?: ResolveBindingSectionsOptions<string, TTarget, TEvent>,
 ): ResolvedBindingSections<TTarget, TEvent> {
   const sections: Record<string, Binding<TTarget, TEvent>[]> = {}
   const lookups = new Map<string, Map<string, Binding<TTarget, TEvent>[]>>()
+  const bindingDefaults = options?.bindingDefaults
 
   for (const section of options?.sections ?? []) {
     sections[section] = []
@@ -161,7 +204,7 @@ export function resolveBindingSections<TTarget extends object = object, TEvent e
       }
 
       const command = rawCommand.trim()
-      const bindings = resolveBindingValue(section, command, sectionConfig[rawCommand]!)
+      const bindings = resolveBindingValue(section, command, sectionConfig[rawCommand]!, bindingDefaults)
 
       if (!bindings) {
         sectionLookup.delete(command)

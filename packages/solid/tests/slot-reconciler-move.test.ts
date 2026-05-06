@@ -87,9 +87,8 @@ async function runMoveScenario(order: MoveOrder) {
 
 describe("slot placeholder moves", () => {
   it("recreates incompatible layout placeholders for remove-then-insert moves", async () => {
-    const { controls, movedChild, originalChild, parentA, parentB, setup, slot } = await runMoveScenario(
-      "remove-then-insert",
-    )
+    const { controls, movedChild, originalChild, parentA, parentB, setup, slot } =
+      await runMoveScenario("remove-then-insert")
 
     try {
       expect(movedChild).not.toBe(originalChild)
@@ -106,9 +105,8 @@ describe("slot placeholder moves", () => {
   })
 
   it("recreates incompatible layout placeholders for insert-then-remove moves", async () => {
-    const { controls, movedChild, originalChild, parentA, parentB, setup, slot } = await runMoveScenario(
-      "insert-then-remove",
-    )
+    const { controls, movedChild, originalChild, parentA, parentB, setup, slot } =
+      await runMoveScenario("insert-then-remove")
 
     try {
       expect(movedChild).not.toBe(originalChild)

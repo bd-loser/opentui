@@ -349,12 +349,20 @@ export class SlotRenderable extends SlotBaseRenderable {
   didRemoveSlotChild(parent: BaseRenderable, child: BaseRenderable): void {
     const hasOtherAttachedSlotChildren = this.hasOtherAttachedSlotChildren(child)
 
-    if (hasOtherAttachedSlotChildren && child instanceof TextSlotRenderable && this.getTextNodeForParent(parent) === child) {
+    if (
+      hasOtherAttachedSlotChildren &&
+      child instanceof TextSlotRenderable &&
+      this.getTextNodeForParent(parent) === child
+    ) {
       this.textNodesByParent.delete(parent)
       child.disposeWithoutSlotCascade()
     }
 
-    if (hasOtherAttachedSlotChildren && child instanceof LayoutSlotRenderable && this.getLayoutNodeForParent(parent) === child) {
+    if (
+      hasOtherAttachedSlotChildren &&
+      child instanceof LayoutSlotRenderable &&
+      this.getLayoutNodeForParent(parent) === child
+    ) {
       this.layoutNodesByParent.delete(parent)
       child.disposeWithoutSlotCascade()
     }

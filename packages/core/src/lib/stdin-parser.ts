@@ -1411,7 +1411,9 @@ export class StdinParser {
               segments: this.state.segments,
               hasDigit: true,
               firstParamValue:
-                this.state.semicolons === 0 ? (this.state.firstParamValue ?? 0) * 10 + (byte - 0x30) : this.state.firstParamValue,
+                this.state.semicolons === 0
+                  ? (this.state.firstParamValue ?? 0) * 10 + (byte - 0x30)
+                  : this.state.firstParamValue,
             }
             continue
           }

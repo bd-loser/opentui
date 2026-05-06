@@ -2533,19 +2533,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         : pendingSplitFooterViewportReturn
           ? pendingSplitFooterTransition.targetTopLine - 1
           : pendingSplitFooterReturn
-          ? splitTransitionSourceSurfaceOffset
-          : shrinkingSplitFooter && splitTransitionSourceSurfaceOffset > 0
-          ? splitTransitionSourceSurfaceOffset
-          : shrinkingSplitFooter
-          ? nextSplitOutputOffset
-          : growingSplitFooter
-            ? Math.max(nextSplitOutputOffset, Math.min(splitTransitionSourceSurfaceOffset, nextPinnedRenderOffset))
-            : nextPinnedRenderOffset
+            ? splitTransitionSourceSurfaceOffset
+            : shrinkingSplitFooter && splitTransitionSourceSurfaceOffset > 0
+              ? splitTransitionSourceSurfaceOffset
+              : shrinkingSplitFooter
+                ? nextSplitOutputOffset
+                : growingSplitFooter
+                  ? Math.max(
+                      nextSplitOutputOffset,
+                      Math.min(splitTransitionSourceSurfaceOffset, nextPinnedRenderOffset),
+                    )
+                  : nextPinnedRenderOffset
     const splitTransitionTargetTopLine = nextSplitSurfaceOffset + 1
-    const splitViewportScrollLines =
-      pendingSplitFooterViewportReturn
-        ? (pendingSplitFooterTransition.scrollLines ?? 0)
-        : nextSplitHeight > 0 && !pendingSplitFooterReturn
+    const splitViewportScrollLines = pendingSplitFooterViewportReturn
+      ? (pendingSplitFooterTransition.scrollLines ?? 0)
+      : nextSplitHeight > 0 && !pendingSplitFooterReturn
         ? Math.max(splitTransitionSourceOutputOffset - nextSplitOutputOffset, 0)
         : 0
     const splitTransitionMode =
@@ -2567,11 +2569,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.lib.setRenderOffset(this.rendererPtr, 0)
     }
 
-    if (
-      terminalWritable &&
-      !terminalScreenModeChanged &&
-      !shouldDeferSplitFooterResizeTransition
-    ) {
+    if (terminalWritable && !terminalScreenModeChanged && !shouldDeferSplitFooterResizeTransition) {
       if (prevSplitHeight === 0 && nextSplitHeight > 0) {
         const freedLines = this._terminalHeight - nextSplitHeight
         const scrollDown = ANSI.scrollDown(freedLines)

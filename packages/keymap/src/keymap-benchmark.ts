@@ -1604,6 +1604,52 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "binding_sections_small_mixed_defaults",
+    description: "Repeated binding-section resolution with binding defaults for a small mixed app config",
+    async setup() {
+      const resources = await createScenarioResources()
+      const sections = ["app", "prompt_input", "dialog_select", "missing"] as const
+      const config: Record<string, Record<string, BindingValue>> = {
+        app: {
+          " command.palette.show ": "ctrl+p",
+          "app.exit": ["ctrl+c", "ctrl+d", "<leader>q"],
+          "file.save": { name: "s", ctrl: true },
+          "file.close": false,
+        },
+        prompt_input: {
+          "prompt.paste": { key: "ctrl+v", preventDefault: false, fallthrough: true },
+          "prompt.history.previous": "up",
+          "prompt.history.next": "down",
+        },
+        dialog_select: {
+          "dialog.confirm": "enter",
+          "dialog.cancel": ["escape", "ctrl+c"],
+          "dialog.ignore": [],
+        },
+      }
+      let sink = 0
+
+      return {
+        resources,
+        runIteration() {
+          const resolved = resolveBindingSections(config, {
+            sections,
+            bindingDefaults({ section, binding }) {
+              if (binding.group !== undefined) return
+              return { group: section }
+            },
+          })
+          sink += resolved.sections.app.length
+          sink += resolved.get("app", " app.exit ")?.length ?? 0
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "binding_sections_pick_small_mixed",
     description: "Repeated binding-section command selection for a small mixed app config",
     async setup() {
@@ -1718,6 +1764,65 @@ const scenarios: BenchmarkScenario[] = [
         resources,
         runIteration() {
           const resolved = resolveBindingSections(config, { sections })
+          sink += resolved.sections["section-0"]?.length ?? 0
+          sink += resolved.get("section-3", "command-4")?.length ?? 0
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "binding_sections_large_mixed_defaults",
+    description: "Repeated binding-section resolution with binding defaults for many sections and mixed binding value shapes",
+    async setup() {
+      const resources = await createScenarioResources()
+      const config: Record<string, Record<string, BindingValue>> = Object.create(null)
+      const sections = Array.from({ length: 40 }, (_, index) => `section-${index}`)
+
+      for (let sectionIndex = 0; sectionIndex < 32; sectionIndex += 1) {
+        const section: Record<string, BindingValue> = Object.create(null)
+        config[`section-${sectionIndex}`] = section
+
+        for (let commandIndex = 0; commandIndex < 64; commandIndex += 1) {
+          const command = `command-${commandIndex}`
+          switch (commandIndex % 6) {
+            case 0:
+              section[command] = false
+              break
+            case 1:
+              section[command] = []
+              break
+            case 2:
+              section[command] = createKey(commandIndex)
+              break
+            case 3:
+              section[command] = [createKey(commandIndex), `ctrl+${createKey(commandIndex + 1)}`, "none"]
+              break
+            case 4:
+              section[command] = { key: { name: createKey(commandIndex), ctrl: true }, preventDefault: false }
+              break
+            default:
+              section[command] = "none"
+              break
+          }
+        }
+      }
+
+      let sink = 0
+
+      return {
+        resources,
+        runIteration() {
+          const resolved = resolveBindingSections(config, {
+            sections,
+            bindingDefaults({ section, binding }) {
+              if (binding.group !== undefined) return
+              return { group: section }
+            },
+          })
           sink += resolved.sections["section-0"]?.length ?? 0
           sink += resolved.get("section-3", "command-4")?.length ?? 0
         },

@@ -127,25 +127,15 @@ function resolveBindingValue<TTarget extends object, TEvent extends KeymapEvent>
     const items = value as readonly BindingSectionItem<TTarget, TEvent>[]
     const bindings = new Array<Binding<TTarget, TEvent>>(items.length)
     for (let index = 0; index < items.length; index += 1) {
-      bindings[index] = withBindingDefaults(
-        section,
-        command,
-        resolveBindingItem(section, command, items[index]!, index),
-        bindingDefaults,
-      )
+      const binding = resolveBindingItem(section, command, items[index]!, index)
+      bindings[index] = bindingDefaults ? withBindingDefaults(section, command, binding, bindingDefaults) : binding
     }
 
     return bindings
   }
 
-  return [
-    withBindingDefaults(
-      section,
-      command,
-      resolveBindingItem(section, command, value as BindingSectionItem<TTarget, TEvent>),
-      bindingDefaults,
-    ),
-  ]
+  const binding = resolveBindingItem(section, command, value as BindingSectionItem<TTarget, TEvent>)
+  return [bindingDefaults ? withBindingDefaults(section, command, binding, bindingDefaults) : binding]
 }
 
 function withBindingDefaults<TTarget extends object, TEvent extends KeymapEvent>(

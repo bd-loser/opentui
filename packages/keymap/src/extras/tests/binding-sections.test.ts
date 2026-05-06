@@ -117,12 +117,13 @@ describe("resolveBindingSections helper", () => {
       { key: "2b", cmd: "second", preventDefault: false },
       { key: "3", cmd: "third" },
     ])
-    expect(resolved.pick("app", [" third ", "missing", "second", "disabled", "first"])).toEqual([
+    expect(resolved.pick("app", ["third", "missing", "second", "disabled", "first"])).toEqual([
       { key: "3", cmd: "third" },
       { key: "2a", cmd: "second" },
       { key: "2b", cmd: "second", preventDefault: false },
       { key: "1", cmd: "first" },
     ])
+    expect(resolved.pick("app", [" third "])).toEqual([])
     expect(resolved.pick("missing", ["first"])).toEqual([])
     expect(resolved.pick("app", [])).toEqual([])
   })

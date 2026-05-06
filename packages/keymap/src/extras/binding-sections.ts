@@ -200,7 +200,7 @@ export function resolveBindingSections<TTarget extends object = object, TEvent e
 
       const result: Binding<TTarget, TEvent>[] = []
       for (const command of commands) {
-        const bindings = lookup.get(command.trim())
+        const bindings = lookup.get(command)
         if (!bindings) continue
         for (let index = 0; index < bindings.length; index += 1) {
           result.push(bindings[index]!)

@@ -1356,6 +1356,75 @@ test("custom renderNode override clears spacing when following code changes", as
   `)
 })
 
+test("custom renderNode override preserves spacing after custom code", async () => {
+  const md = createMarkdownRenderable({
+    id: "custom-code-spacing-after",
+    content: ["```ts", 'console.log("Hello, world!")', "```", "", "After code"].join("\n"),
+    syntaxStyle,
+    renderNode: (node, ctx) => {
+      if (node.type === "code") {
+        return new TextRenderable(renderer, {
+          id: "custom-code-spacing-after-text",
+          content: "CUSTOM CODE",
+          width: "100%",
+        })
+      }
+
+      return ctx.defaultRender()
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    CUSTOM CODE
+
+    After code"
+  `)
+})
+
+test("custom renderNode override clears spacing when custom code becomes last block", async () => {
+  const md = createMarkdownRenderable({
+    id: "custom-code-spacing-update",
+    content: ["```ts", 'console.log("Hello, world!")', "```", "", "After code"].join("\n"),
+    syntaxStyle,
+    renderNode: (node, ctx) => {
+      if (node.type === "code") {
+        return new TextRenderable(renderer, {
+          id: "custom-code-spacing-update-text",
+          content: "CUSTOM CODE",
+          width: "100%",
+        })
+      }
+
+      return ctx.defaultRender()
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates[0]?.customMarginBottom).toBe(1)
+
+  md.content = ["```ts", 'console.log("Hello, world!")', "```"].join("\n")
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates[0]?.customMarginBottom).toBe(0)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    CUSTOM CODE"
+  `)
+})
+
 test("custom renderNode output survives top-level spacing updates", async () => {
   const md = createMarkdownRenderable({
     id: "custom-spacing-update",

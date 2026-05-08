@@ -153,7 +153,7 @@ export interface BlockState {
   tokenRaw: string // Cache raw for comparison
   marginTop?: number
   customRenderNode?: boolean
-  customGapBeforeCode?: boolean
+  customMarginBottom?: number
   renderable: Renderable
   tableContentCache?: TableContentCache
 }
@@ -609,6 +609,18 @@ export class MarkdownRenderable extends Renderable {
 
   private shouldKeepCoalescedGap(nextToken: MarkedToken | undefined): boolean {
     return !!nextToken && (!this.shouldRenderSeparately(nextToken) || this.shouldPreserveCoalescedGapBefore(nextToken))
+  }
+
+  private getCustomRenderMarginBottom(
+    token: MarkedToken,
+    nextToken: MarkedToken | undefined,
+    hasNextToken: boolean,
+  ): number {
+    if (token.raw?.endsWith("\n") && nextToken?.type === "code") {
+      return 1
+    }
+
+    return this.getInterBlockMargin(token, hasNextToken)
   }
 
   private buildRenderableTokens(tokens: MarkedToken[]): MarkedToken[] {
@@ -1240,17 +1252,18 @@ export class MarkdownRenderable extends Renderable {
     const blockTokens = this.buildRenderableTokens(tokens)
     const lastBlockIndex = blockTokens.length - 1
 
-    const updateCustomGapBeforeCode = (
+    const updateCustomMarginBottom = (
       state: BlockState,
       token: MarkedToken,
       nextToken: MarkedToken | undefined,
+      hasNextToken: boolean,
     ): void => {
       if (!state.customRenderNode) return
-      const hasGap = token.raw.endsWith("\n") && nextToken?.type === "code"
-      if (hasGap || state.customGapBeforeCode) {
-        state.renderable.marginBottom = hasGap ? 1 : 0
+      const marginBottom = this.getCustomRenderMarginBottom(token, nextToken, hasNextToken)
+      if (marginBottom !== state.customMarginBottom) {
+        state.renderable.marginBottom = marginBottom
+        state.customMarginBottom = marginBottom
       }
-      state.customGapBeforeCode = hasGap
     }
 
     let blockIndex = 0
@@ -1267,7 +1280,7 @@ export class MarkdownRenderable extends Renderable {
           this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
           existing.tokenRaw = token.raw
         }
-        updateCustomGapBeforeCode(existing, token, nextToken)
+        updateCustomMarginBottom(existing, token, nextToken, hasNextToken)
         blockIndex++
         continue
       }
@@ -1278,7 +1291,7 @@ export class MarkdownRenderable extends Renderable {
           this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
           existing.tokenRaw = token.raw
         }
-        updateCustomGapBeforeCode(existing, token, nextToken)
+        updateCustomMarginBottom(existing, token, nextToken, hasNextToken)
         blockIndex++
         continue
       }
@@ -1288,7 +1301,7 @@ export class MarkdownRenderable extends Renderable {
         existing.token = token
         existing.tokenRaw = token.raw
         existing.customRenderNode = undefined
-        existing.customGapBeforeCode = undefined
+        existing.customMarginBottom = undefined
         blockIndex++
         continue
       }
@@ -1300,7 +1313,7 @@ export class MarkdownRenderable extends Renderable {
       let renderable: Renderable | undefined
       let tableContentCache: TableContentCache | undefined
       let customRenderNode: boolean | undefined
-      let customGapBeforeCode: boolean | undefined
+      let customMarginBottom: number | undefined
 
       if (this._renderNode) {
         let defaultRenderable: Renderable | null = null
@@ -1318,9 +1331,9 @@ export class MarkdownRenderable extends Renderable {
         if (custom) {
           renderable = custom
           customRenderNode = custom !== defaultRenderable
-          customGapBeforeCode = customRenderNode && token.raw.endsWith("\n") && nextToken?.type === "code"
-          if (customGapBeforeCode) {
-            custom.marginBottom = 1
+          if (customRenderNode) {
+            customMarginBottom = this.getCustomRenderMarginBottom(token, nextToken, hasNextToken)
+            custom.marginBottom = customMarginBottom
           }
         }
       }
@@ -1351,7 +1364,7 @@ export class MarkdownRenderable extends Renderable {
           tokenRaw: token.raw,
           renderable,
           customRenderNode,
-          customGapBeforeCode,
+          customMarginBottom,
           tableContentCache,
         }
       }

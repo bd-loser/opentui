@@ -48,7 +48,7 @@ interface NormalizedBindings<TTarget extends object, TEvent extends KeymapEvent>
 
 interface GatheredBindings<TTarget extends object, TEvent extends KeymapEvent> {
   bindings: Binding<TTarget, TEvent>[]
-  byCommand: Map<string, Binding<TTarget, TEvent>[]>
+  byCommand: Map<string, readonly Binding<TTarget, TEvent>[]>
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -181,12 +181,12 @@ function normalizeBindings<TTarget extends object, TEvent extends KeymapEvent>(
     }
 
     const command = normalizeCommand(rawCommand)
-    const bindings = resolveBindingValue(command, config[rawCommand]!, bindingDefaults)
+    const commandBindings = resolveBindingValue(command, config[rawCommand]!, bindingDefaults)
 
-    if (!bindings) {
+    if (!commandBindings) {
       byCommand.delete(command)
     } else {
-      byCommand.set(command, bindings)
+      byCommand.set(command, commandBindings)
     }
   }
 
@@ -200,14 +200,14 @@ function gatherBindings<TTarget extends object, TEvent extends KeymapEvent>(
   byCommand: ReadonlyMap<string, readonly Binding<TTarget, TEvent>[]>,
   commands: readonly string[],
 ): GatheredBindings<TTarget, TEvent> {
-  const gatheredByCommand = new Map<string, Binding<TTarget, TEvent>[]>()
+  const gatheredByCommand = new Map<string, readonly Binding<TTarget, TEvent>[]>()
   const bindings: Binding<TTarget, TEvent>[] = []
 
   for (const command of commands) {
     const commandBindings = byCommand.get(command)
     if (!commandBindings) continue
 
-    gatheredByCommand.set(command, commandBindings.slice())
+    gatheredByCommand.set(command, commandBindings)
     for (let index = 0; index < commandBindings.length; index += 1) {
       bindings.push(commandBindings[index]!)
     }
@@ -258,6 +258,18 @@ export function createBindingLookup<TTarget extends object = object, TEvent exte
       const group = gathered.get(name)
       if (!group) return []
       if (commands.length === 0) return group.bindings.slice()
+
+      if (commands.length === 1) {
+        const omitted = commands[0]
+        const result: Binding<TTarget, TEvent>[] = []
+        for (let index = 0; index < group.bindings.length; index += 1) {
+          const binding = group.bindings[index]!
+          if (typeof binding.cmd === "string" && binding.cmd === omitted) continue
+          result.push(binding)
+        }
+
+        return result
+      }
 
       const omitted = new Set(commands)
       const result: Binding<TTarget, TEvent>[] = []

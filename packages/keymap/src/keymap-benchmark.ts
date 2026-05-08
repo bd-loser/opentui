@@ -1819,6 +1819,198 @@ const scenarios: BenchmarkScenario[] = [
     },
   },
   {
+    name: "binding_lookup_get_large_mixed",
+    description: "Repeated command lookup over a large mixed binding config",
+    async setup() {
+      const resources = await createScenarioResources()
+      const config: Record<string, BindingValue> = Object.create(null)
+
+      for (let commandIndex = 0; commandIndex < 1024; commandIndex += 1) {
+        const command = `command_${commandIndex}`
+        switch (commandIndex % 5) {
+          case 0:
+            config[command] = false
+            break
+          case 1:
+            config[command] = createKey(commandIndex)
+            break
+          case 2:
+            config[command] = [createKey(commandIndex), `ctrl+${createKey(commandIndex + 1)}`]
+            break
+          case 3:
+            config[command] = { key: { name: createKey(commandIndex), ctrl: true }, preventDefault: false }
+            break
+          default:
+            config[command] = []
+            break
+        }
+      }
+
+      const lookup = createBindingLookup(config)
+      const commands = Array.from({ length: 128 }, (_, index) => `command_${(index * 7) % 1024}`)
+      let sink = 0
+
+      return {
+        resources,
+        runIteration(iteration) {
+          sink += lookup.get(commands[iteration % commands.length]!)?.length ?? 0
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "binding_lookup_gather_cached_large_mixed",
+    description: "Repeated cached gather calls for a large mixed binding group",
+    async setup() {
+      const resources = await createScenarioResources()
+      const config: Record<string, BindingValue> = Object.create(null)
+      const commands = Array.from({ length: 512 }, (_, index) => `command_${index}`)
+
+      for (let commandIndex = 0; commandIndex < commands.length; commandIndex += 1) {
+        const command = commands[commandIndex]!
+        switch (commandIndex % 6) {
+          case 0:
+            config[command] = false
+            break
+          case 1:
+            config[command] = []
+            break
+          case 2:
+            config[command] = createKey(commandIndex)
+            break
+          case 3:
+            config[command] = [createKey(commandIndex), `ctrl+${createKey(commandIndex + 1)}`, "none"]
+            break
+          case 4:
+            config[command] = { key: { name: createKey(commandIndex), ctrl: true }, preventDefault: false }
+            break
+          default:
+            config[command] = "none"
+            break
+        }
+      }
+
+      const lookup = createBindingLookup(config)
+      lookup.gather("app", commands)
+      let sink = 0
+
+      return {
+        resources,
+        runIteration() {
+          sink += lookup.gather("app", commands).length
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "binding_lookup_gather_cold_large_mixed",
+    description: "Repeated invalidated gather calls for a large mixed binding group",
+    async setup() {
+      const resources = await createScenarioResources()
+      const config: Record<string, BindingValue> = Object.create(null)
+      const commands = Array.from({ length: 512 }, (_, index) => `command_${index}`)
+
+      for (let commandIndex = 0; commandIndex < commands.length; commandIndex += 1) {
+        const command = commands[commandIndex]!
+        switch (commandIndex % 6) {
+          case 0:
+            config[command] = false
+            break
+          case 1:
+            config[command] = []
+            break
+          case 2:
+            config[command] = createKey(commandIndex)
+            break
+          case 3:
+            config[command] = [createKey(commandIndex), `ctrl+${createKey(commandIndex + 1)}`, "none"]
+            break
+          case 4:
+            config[command] = { key: { name: createKey(commandIndex), ctrl: true }, preventDefault: false }
+            break
+          default:
+            config[command] = "none"
+            break
+        }
+      }
+
+      const lookup = createBindingLookup(config)
+      let sink = 0
+
+      return {
+        resources,
+        runIteration() {
+          lookup.invalidate("app")
+          sink += lookup.gather("app", commands).length
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
+    name: "binding_lookup_update_large_mixed",
+    description: "Repeated lookup rebuilds from large mixed binding configs",
+    async setup() {
+      const resources = await createScenarioResources()
+      const configs = Array.from({ length: 2 }, (_, variant) => {
+        const config: Record<string, BindingValue> = Object.create(null)
+
+        for (let commandIndex = 0; commandIndex < 512; commandIndex += 1) {
+          const command = `command_${commandIndex}`
+          switch ((commandIndex + variant) % 6) {
+            case 0:
+              config[command] = false
+              break
+            case 1:
+              config[command] = []
+              break
+            case 2:
+              config[command] = createKey(commandIndex)
+              break
+            case 3:
+              config[command] = [createKey(commandIndex), `ctrl+${createKey(commandIndex + 1)}`, "none"]
+              break
+            case 4:
+              config[command] = { key: { name: createKey(commandIndex), ctrl: true }, preventDefault: false }
+              break
+            default:
+              config[command] = "none"
+              break
+          }
+        }
+
+        return config
+      })
+      const lookup = createBindingLookup(configs[0]!)
+      const commands = Array.from({ length: 64 }, (_, index) => `command_${index}`)
+      let sink = 0
+
+      return {
+        resources,
+        runIteration(iteration) {
+          lookup.update(configs[iteration % configs.length]!)
+          sink += lookup.gather("app", commands).length
+          sink += lookup.get("command_7")?.length ?? 0
+        },
+        cleanup() {
+          consume(sink)
+          resources.renderer.destroy()
+        },
+      }
+    },
+  },
+  {
     name: "binding_lookup_pick_large_mixed",
     description: "Repeated gathered binding command selection for many commands and binding value shapes",
     async setup() {

@@ -72,7 +72,7 @@ describe("timed leader addon", () => {
     })
 
     registerTimedLeader(keymap, {
-      trigger: bindings.get("leader")!,
+      trigger: bindings.get("leader"),
     })
 
     keymap.registerLayer({

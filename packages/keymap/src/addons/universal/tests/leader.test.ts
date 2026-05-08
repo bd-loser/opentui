@@ -84,7 +84,7 @@ describe("leader addon", () => {
     })
 
     registerLeader(keymap, {
-      trigger: bindings.get("leader")!,
+      trigger: bindings.get("leader"),
     })
 
     keymap.registerLayer({

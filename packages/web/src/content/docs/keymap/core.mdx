@@ -321,6 +321,7 @@ const bindings = createBindingLookup(
 
 keymap.registerLayer({ bindings: bindings.gather("app", ["app.palette.show", "app.exit"]) })
 bindings.get("app.exit")
+bindings.has("app.exit")
 bindings.pick("app", ["app.exit"])
 bindings.omit("app", ["app.palette.show"])
 bindings.invalidate("app")
@@ -331,7 +332,8 @@ The lookup exposes these views:
 | API                      | Description                                                                                              |
 | ------------------------ | -------------------------------------------------------------------------------------------------------- |
 | `bindings`               | All enabled bindings, preserving config order                                                            |
-| `get(command)`           | Bindings for one exact command name, or `undefined` when the command is missing/disabled                 |
+| `get(command)`           | Bindings for one exact command name, or an empty array when the command is missing/disabled              |
+| `has(command)`           | Whether the exact internal command has enabled bindings                                                  |
 | `gather(name, commands)` | Builds and caches a named binding group on first use; later calls with the same name return the cache    |
 | `pick(name, commands)`   | Bindings from an existing gathered group in caller command order; missing groups or commands are skipped |
 | `omit(name, commands)`   | All gathered bindings except matching string-command bindings, preserving group order                    |

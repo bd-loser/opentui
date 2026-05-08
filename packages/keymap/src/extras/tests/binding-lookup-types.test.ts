@@ -18,7 +18,8 @@ const lookup = createBindingLookup(config, {
 
 const typedLookup: BindingLookup = lookup
 const allBindings: readonly Binding[] = lookup.bindings
-const showBindings: readonly Binding[] | undefined = lookup.get("dialog.show")
+const showBindings: readonly Binding[] = lookup.get("dialog.show")
+const hasShowBinding: boolean = lookup.has("dialog.show")
 const dialogBindings: readonly Binding[] = lookup.gather("dialog", ["dialog.show", "close_dialog"])
 const pickedBindings: Binding[] = lookup.pick("dialog", ["dialog.show"])
 const omittedBindings: Binding[] = lookup.omit("dialog", ["close_dialog"])
@@ -34,8 +35,11 @@ typedLookup.invalidate()
 if (allBindings.length !== 2) {
   throw new Error("Expected all bindings")
 }
-if (showBindings?.length !== 1) {
+if (showBindings.length !== 1) {
   throw new Error("Expected show binding")
+}
+if (!hasShowBinding) {
+  throw new Error("Expected show binding to exist")
 }
 if (dialogBindings.length !== 2) {
   throw new Error("Expected gathered bindings")

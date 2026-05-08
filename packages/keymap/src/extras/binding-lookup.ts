@@ -19,6 +19,7 @@ export type BindingConfig<TTarget extends object = object, TEvent extends Keymap
 export type BindingCommandMap = Readonly<Record<string, string>>
 
 const hasOwn = Object.prototype.hasOwnProperty
+const EMPTY_BINDINGS: readonly Binding[] = Object.freeze([])
 
 export interface BindingDefaultsContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   command: string
@@ -36,7 +37,8 @@ export interface CreateBindingLookupOptions<TTarget extends object = object, TEv
 
 export interface BindingLookup<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
   readonly bindings: readonly Binding<TTarget, TEvent>[]
-  get(command: string): readonly Binding<TTarget, TEvent>[] | undefined
+  get(command: string): readonly Binding<TTarget, TEvent>[]
+  has(command: string): boolean
   gather(name: string, commands: readonly string[]): readonly Binding<TTarget, TEvent>[]
   pick(name: string, commands: readonly string[]): Binding<TTarget, TEvent>[]
   omit(name: string, commands: readonly string[]): Binding<TTarget, TEvent>[]
@@ -250,7 +252,10 @@ export function createBindingLookup<TTarget extends object = object, TEvent exte
       return normalized.bindings
     },
     get(command) {
-      return normalized.byCommand.get(command)
+      return normalized.byCommand.get(command) ?? (EMPTY_BINDINGS as readonly Binding<TTarget, TEvent>[])
+    },
+    has(command) {
+      return normalized.byCommand.has(command)
     },
     gather(name, commands) {
       const existing = gathered.get(name)

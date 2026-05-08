@@ -1588,7 +1588,7 @@ const scenarios: BenchmarkScenario[] = [
         runIteration() {
           const lookup = createBindingLookup(config)
           sink += lookup.gather("app", appCommands).length
-          sink += lookup.get("exit_app")?.length ?? 0
+          sink += lookup.get("exit_app").length
         },
         cleanup() {
           consume(sink)
@@ -1627,7 +1627,7 @@ const scenarios: BenchmarkScenario[] = [
             },
           })
           sink += lookup.gather("app", appCommands).length
-          sink += lookup.get("exit_app")?.length ?? 0
+          sink += lookup.get("exit_app").length
         },
         cleanup() {
           consume(sink)
@@ -1749,7 +1749,7 @@ const scenarios: BenchmarkScenario[] = [
         runIteration() {
           const lookup = createBindingLookup(config)
           sink += lookup.gather("group-0", groupCommands[0]!).length
-          sink += lookup.get("group_3_command_4")?.length ?? 0
+          sink += lookup.get("group_3_command_4").length
         },
         cleanup() {
           consume(sink)
@@ -1809,7 +1809,7 @@ const scenarios: BenchmarkScenario[] = [
             },
           })
           sink += lookup.gather("group-0", groupCommands[0]!).length
-          sink += lookup.get("group_3_command_4")?.length ?? 0
+          sink += lookup.get("group_3_command_4").length
         },
         cleanup() {
           consume(sink)
@@ -1853,7 +1853,7 @@ const scenarios: BenchmarkScenario[] = [
       return {
         resources,
         runIteration(iteration) {
-          sink += lookup.get(commands[iteration % commands.length]!)?.length ?? 0
+          sink += lookup.get(commands[iteration % commands.length]!).length
         },
         cleanup() {
           consume(sink)
@@ -2001,7 +2001,7 @@ const scenarios: BenchmarkScenario[] = [
         runIteration(iteration) {
           lookup.update(configs[iteration % configs.length]!)
           sink += lookup.gather("app", commands).length
-          sink += lookup.get("command_7")?.length ?? 0
+          sink += lookup.get("command_7").length
         },
         cleanup() {
           consume(sink)
@@ -2129,7 +2129,7 @@ const scenarios: BenchmarkScenario[] = [
         runIteration() {
           const lookup = createBindingLookup(config)
           sink += lookup.bindings.length
-          sink += lookup.get(" command_7 ")?.length ?? 0
+          sink += lookup.get(" command_7 ").length
         },
         cleanup() {
           consume(sink)

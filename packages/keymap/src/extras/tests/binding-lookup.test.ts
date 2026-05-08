@@ -20,9 +20,11 @@ describe("createBindingLookup helper", () => {
       { key: { name: "o", ctrl: true }, cmd: "open_file" },
     ])
     expect(lookup.get(" show_dialog ")).toEqual([{ key: "ctrl+d", cmd: " show_dialog " }])
-    expect(lookup.get("show_dialog")).toBeUndefined()
-    expect(lookup.get("missing_command")).toBeUndefined()
-    expect(lookup.get("open_file")?.[0]?.key).not.toBe(openKey)
+    expect(lookup.get("show_dialog")).toEqual([])
+    expect(lookup.get("missing_command")).toEqual([])
+    expect(lookup.has(" show_dialog ")).toBe(true)
+    expect(lookup.has("show_dialog")).toBe(false)
+    expect(lookup.get("open_file")[0]?.key).not.toBe(openKey)
   })
 
   test("uses config command keys as the binding command identity", () => {
@@ -35,7 +37,8 @@ describe("createBindingLookup helper", () => {
     })
 
     expect(lookup.bindings).toEqual([{ key: "d", cmd: "show_dialog", preventDefault: false }])
-    expect(lookup.get("ignored_command")).toBeUndefined()
+    expect(lookup.get("ignored_command")).toEqual([])
+    expect(lookup.has("ignored_command")).toBe(false)
   })
 
   test("clones key and binding objects without mutating inputs", () => {
@@ -50,7 +53,7 @@ describe("createBindingLookup helper", () => {
     const lookup = createBindingLookup({
       save_file: binding,
     })
-    const resolvedBinding = lookup.get("save_file")?.[0]
+    const resolvedBinding = lookup.get("save_file")[0]
 
     expect(resolvedBinding).toEqual({
       key: { name: "s", ctrl: true },
@@ -171,7 +174,9 @@ describe("createBindingLookup helper", () => {
     ])
     expect(calls).toEqual(["dialog.show", "dialog.close", "dialog.close", "unmapped_command"])
     expect(lookup.get("dialog.show")).toEqual([{ key: "d", cmd: "dialog.show", group: "Dialog" }])
-    expect(lookup.get("show_dialog")).toBeUndefined()
+    expect(lookup.get("show_dialog")).toEqual([])
+    expect(lookup.has("dialog.show")).toBe(true)
+    expect(lookup.has("show_dialog")).toBe(false)
     expect(lookup.gather("dialog", ["dialog.show", "dialog.close"])).toEqual([
       { key: "d", cmd: "dialog.show", group: "Dialog" },
       { key: "escape", cmd: "dialog.close", group: "Dialog" },
@@ -201,7 +206,7 @@ describe("createBindingLookup helper", () => {
       { key: "s", cmd: "dialog.show.spaced" },
     ])
     expect(lookup.get("show_dialog")).toEqual([{ key: "d", cmd: "show_dialog" }])
-    expect(lookup.get("dialog.show")).toBeUndefined()
+    expect(lookup.get("dialog.show")).toEqual([])
     expect(lookup.get("dialog.show.spaced")).toEqual([{ key: "s", cmd: "dialog.show.spaced" }])
   })
 
@@ -223,7 +228,9 @@ describe("createBindingLookup helper", () => {
 
     expect(lookup.bindings).toEqual([{ key: "3", cmd: "shared.command" }])
     expect(lookup.get("shared.command")).toEqual([{ key: "3", cmd: "shared.command" }])
-    expect(lookup.get("first")).toBeUndefined()
+    expect(lookup.get("first")).toEqual([])
+    expect(lookup.has("shared.command")).toBe(true)
+    expect(lookup.has("first")).toBe(false)
   })
 
   test("translates commands only when creating or updating the lookup", () => {
@@ -235,18 +242,18 @@ describe("createBindingLookup helper", () => {
     commandMap.open_dialog = "dialog.changed"
 
     expect(lookup.get("dialog.open")).toEqual([{ key: "o", cmd: "dialog.open" }])
-    expect(lookup.get("dialog.changed")).toBeUndefined()
+    expect(lookup.get("dialog.changed")).toEqual([])
 
     lookup.update()
 
-    expect(lookup.get("dialog.open")).toBeUndefined()
+    expect(lookup.get("dialog.open")).toEqual([])
     expect(lookup.get("dialog.changed")).toEqual([{ key: "o", cmd: "dialog.changed" }])
 
     commandMap.close_dialog = "dialog.close"
     lookup.update({ close_dialog: "escape" })
 
     expect(lookup.get("dialog.close")).toEqual([{ key: "escape", cmd: "dialog.close" }])
-    expect(lookup.get("close_dialog")).toBeUndefined()
+    expect(lookup.get("close_dialog")).toEqual([])
   })
 
   test("uses exact command names and lets false, none, and empty arrays disable exact commands", () => {
@@ -269,9 +276,12 @@ describe("createBindingLookup helper", () => {
     ])
     expect(lookup.get(" action ")).toEqual([{ key: "a", cmd: " action " }])
     expect(lookup.get("action ")).toEqual([{ key: "c", cmd: "action " }])
-    expect(lookup.get("action")).toBeUndefined()
-    expect(lookup.get("disabled_action")).toBeUndefined()
-    expect(lookup.get("empty_action")).toBeUndefined()
+    expect(lookup.get("action")).toEqual([])
+    expect(lookup.get("disabled_action")).toEqual([])
+    expect(lookup.get("empty_action")).toEqual([])
+    expect(lookup.has(" action ")).toBe(true)
+    expect(lookup.has("action")).toBe(false)
+    expect(lookup.has("disabled_action")).toBe(false)
   })
 
   test("ignores inherited command properties", () => {
@@ -281,7 +291,8 @@ describe("createBindingLookup helper", () => {
     const lookup = createBindingLookup(config as never)
 
     expect(lookup.bindings).toEqual([{ key: "s", cmd: "save_file" }])
-    expect(lookup.get("inherited_command")).toBeUndefined()
+    expect(lookup.get("inherited_command")).toEqual([])
+    expect(lookup.has("inherited_command")).toBe(false)
   })
 
   test("gathers command groups once and returns the cached group on later calls", () => {
@@ -349,9 +360,13 @@ describe("createBindingLookup helper", () => {
 
     const first = lookup.get("first")
     const firstAgain = lookup.get("first")
+    const missing = lookup.get("missing")
+    const missingAgain = lookup.get("missing")
     const group = lookup.gather("group", ["first", "second"])
 
     expect(firstAgain).toBe(first)
+    expect(missing).toEqual([])
+    expect(missingAgain).toBe(missing)
     expect(lookup.gather("group", ["first"])).toBe(group)
     expect(lookup.omit("group", [])).toBe(group)
   })

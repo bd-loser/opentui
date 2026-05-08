@@ -5,6 +5,7 @@ export { formatCommandBindings, formatKeySequence } from "./formatting.js"
 export type {
   BindingConfig,
   BindingConfigItem,
+  BindingCommandMap,
   BindingDefaults,
   BindingDefaultsContext,
   BindingLookup,

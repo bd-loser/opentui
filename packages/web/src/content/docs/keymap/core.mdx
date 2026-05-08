@@ -293,6 +293,8 @@ formatCommandBindings(keymap.getCommandBindings({ visibility: "registered", comm
 
 It deliberately keeps command identity separate from UI/layer grouping. Which bindings a component needs is a use-site concern, not part of the command name, so components gather named binding groups from plain command names when registering layers.
 
+Use `commandMap` when user-facing config names should differ from internal command names. Mapping happens when the lookup is created or updated; runtime lookups use internal command names.
+
 ```ts
 import { createBindingLookup } from "@opentui/keymap/extras"
 
@@ -310,13 +312,17 @@ const bindings = createBindingLookup(
       if (binding.group !== undefined) return
       return { group: "App" }
     },
+    commandMap: {
+      show_palette: "app.palette.show",
+      exit_app: "app.exit",
+    },
   },
 )
 
-keymap.registerLayer({ bindings: bindings.gather("app", ["show_palette", "exit_app"]) })
-bindings.get("exit_app")
-bindings.pick("app", ["exit_app"])
-bindings.omit("app", ["show_palette"])
+keymap.registerLayer({ bindings: bindings.gather("app", ["app.palette.show", "app.exit"]) })
+bindings.get("app.exit")
+bindings.pick("app", ["app.exit"])
+bindings.omit("app", ["app.palette.show"])
 bindings.invalidate("app")
 ```
 

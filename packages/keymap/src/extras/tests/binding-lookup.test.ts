@@ -143,6 +143,112 @@ describe("createBindingLookup helper", () => {
     ])
   })
 
+  test("maps exact config command names to internal command names during normalization", () => {
+    const calls: string[] = []
+    const lookup = createBindingLookup(
+      {
+        show_dialog: "d",
+        close_dialog: ["escape", { key: "ctrl+c", preventDefault: false }],
+        unmapped_command: "u",
+      },
+      {
+        commandMap: {
+          show_dialog: "dialog.show",
+          close_dialog: "dialog.close",
+        },
+        bindingDefaults({ command }) {
+          calls.push(command)
+          return { group: command.startsWith("dialog.") ? "Dialog" : "Other" }
+        },
+      },
+    )
+
+    expect(lookup.bindings).toEqual([
+      { key: "d", cmd: "dialog.show", group: "Dialog" },
+      { key: "escape", cmd: "dialog.close", group: "Dialog" },
+      { key: "ctrl+c", cmd: "dialog.close", preventDefault: false, group: "Dialog" },
+      { key: "u", cmd: "unmapped_command", group: "Other" },
+    ])
+    expect(calls).toEqual(["dialog.show", "dialog.close", "dialog.close", "unmapped_command"])
+    expect(lookup.get("dialog.show")).toEqual([{ key: "d", cmd: "dialog.show", group: "Dialog" }])
+    expect(lookup.get("show_dialog")).toBeUndefined()
+    expect(lookup.gather("dialog", ["dialog.show", "dialog.close"])).toEqual([
+      { key: "d", cmd: "dialog.show", group: "Dialog" },
+      { key: "escape", cmd: "dialog.close", group: "Dialog" },
+      { key: "ctrl+c", cmd: "dialog.close", preventDefault: false, group: "Dialog" },
+    ])
+    expect(lookup.pick("dialog", ["dialog.close"])).toEqual([
+      { key: "escape", cmd: "dialog.close", group: "Dialog" },
+      { key: "ctrl+c", cmd: "dialog.close", preventDefault: false, group: "Dialog" },
+    ])
+    expect(lookup.omit("dialog", ["dialog.close"])).toEqual([{ key: "d", cmd: "dialog.show", group: "Dialog" }])
+  })
+
+  test("uses exact command map keys and ignores inherited command map entries", () => {
+    const commandMap = Object.create({ show_dialog: "dialog.show" }) as Record<string, string>
+    commandMap[" show_dialog "] = "dialog.show.spaced"
+
+    const lookup = createBindingLookup(
+      {
+        show_dialog: "d",
+        " show_dialog ": "s",
+      },
+      { commandMap },
+    )
+
+    expect(lookup.bindings).toEqual([
+      { key: "d", cmd: "show_dialog" },
+      { key: "s", cmd: "dialog.show.spaced" },
+    ])
+    expect(lookup.get("show_dialog")).toEqual([{ key: "d", cmd: "show_dialog" }])
+    expect(lookup.get("dialog.show")).toBeUndefined()
+    expect(lookup.get("dialog.show.spaced")).toEqual([{ key: "s", cmd: "dialog.show.spaced" }])
+  })
+
+  test("lets duplicate mapped commands replace or disable earlier mapped commands", () => {
+    const config: Record<string, BindingValue> = {}
+    config.first = "1"
+    config.second = ["2a", "2b"]
+    config.disabled = false
+    config.third = "3"
+
+    const lookup = createBindingLookup(config, {
+      commandMap: {
+        first: "shared.command",
+        second: "shared.command",
+        disabled: "shared.command",
+        third: "shared.command",
+      },
+    })
+
+    expect(lookup.bindings).toEqual([{ key: "3", cmd: "shared.command" }])
+    expect(lookup.get("shared.command")).toEqual([{ key: "3", cmd: "shared.command" }])
+    expect(lookup.get("first")).toBeUndefined()
+  })
+
+  test("translates commands only when creating or updating the lookup", () => {
+    const commandMap: Record<string, string> = {
+      open_dialog: "dialog.open",
+    }
+    const lookup = createBindingLookup({ open_dialog: "o" }, { commandMap })
+
+    commandMap.open_dialog = "dialog.changed"
+
+    expect(lookup.get("dialog.open")).toEqual([{ key: "o", cmd: "dialog.open" }])
+    expect(lookup.get("dialog.changed")).toBeUndefined()
+
+    lookup.update()
+
+    expect(lookup.get("dialog.open")).toBeUndefined()
+    expect(lookup.get("dialog.changed")).toEqual([{ key: "o", cmd: "dialog.changed" }])
+
+    commandMap.close_dialog = "dialog.close"
+    lookup.update({ close_dialog: "escape" })
+
+    expect(lookup.get("dialog.close")).toEqual([{ key: "escape", cmd: "dialog.close" }])
+    expect(lookup.get("close_dialog")).toBeUndefined()
+  })
+
   test("uses exact command names and lets false, none, and empty arrays disable exact commands", () => {
     const config: Record<string, BindingValue> = {}
     config[" action "] = "a"
@@ -305,6 +411,12 @@ describe("createBindingLookup helper", () => {
 
   test("throws for invalid commands and binding values", () => {
     expect(() => createBindingLookup({ "": "s" } as never)).toThrow("Invalid binding command: command cannot be empty")
+    expect(() => createBindingLookup({ save_file: "s" }, { commandMap: { save_file: "" } })).toThrow(
+      'Invalid binding command map entry for "save_file": command cannot be empty',
+    )
+    expect(() => createBindingLookup({ save_file: "s" }, { commandMap: { save_file: true } as never })).toThrow(
+      'Invalid binding command map entry for "save_file": expected a command string',
+    )
     expect(createBindingLookup({ "   ": "s" } as never).get("   ")).toEqual([{ key: "s", cmd: "   " }])
     expect(() => createBindingLookup({ save_file: true } as never)).toThrow(
       'Invalid binding value for "save_file": expected false, a key, a binding object, or an array of keys/binding objects',

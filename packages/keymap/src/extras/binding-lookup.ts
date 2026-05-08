@@ -16,6 +16,8 @@ export type BindingConfig<TTarget extends object = object, TEvent extends Keymap
   Record<string, BindingValue<TTarget, TEvent>>
 >
 
+export type BindingCommandMap = Readonly<Record<string, string>>
+
 const hasOwn = Object.prototype.hasOwnProperty
 
 export interface BindingDefaultsContext<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
@@ -28,6 +30,7 @@ export type BindingDefaults<TTarget extends object = object, TEvent extends Keym
 ) => Readonly<Record<string, unknown>> | void
 
 export interface CreateBindingLookupOptions<TTarget extends object = object, TEvent extends KeymapEvent = KeymapEvent> {
+  commandMap?: BindingCommandMap
   bindingDefaults?: BindingDefaults<TTarget, TEvent>
 }
 
@@ -73,6 +76,24 @@ function normalizeCommand(command: string): string {
   }
 
   return command
+}
+
+function mapCommand(command: string, commandMap: BindingCommandMap | undefined): string {
+  const configCommand = normalizeCommand(command)
+  if (!commandMap || !hasOwn.call(commandMap, configCommand)) {
+    return configCommand
+  }
+
+  const mappedCommand = commandMap[configCommand]
+  if (typeof mappedCommand !== "string") {
+    throw new Error(`Invalid binding command map entry for "${configCommand}": expected a command string`)
+  }
+
+  if (mappedCommand.length === 0) {
+    throw new Error(`Invalid binding command map entry for "${configCommand}": command cannot be empty`)
+  }
+
+  return mappedCommand
 }
 
 function invalidBindingValue(command: string, index?: number): Error {
@@ -170,6 +191,7 @@ function flattenBindings<TTarget extends object, TEvent extends KeymapEvent>(
 
 function normalizeBindings<TTarget extends object, TEvent extends KeymapEvent>(
   config: BindingConfig<TTarget, TEvent>,
+  commandMap: BindingCommandMap | undefined,
   bindingDefaults: BindingDefaults<TTarget, TEvent> | undefined,
 ): NormalizedBindings<TTarget, TEvent> {
   const byCommand = new Map<string, Binding<TTarget, TEvent>[]>()
@@ -179,7 +201,7 @@ function normalizeBindings<TTarget extends object, TEvent extends KeymapEvent>(
       continue
     }
 
-    const command = normalizeCommand(rawCommand)
+    const command = mapCommand(rawCommand, commandMap)
     const commandBindings = resolveBindingValue(command, config[rawCommand]!, bindingDefaults)
 
     if (!commandBindings) {
@@ -220,7 +242,7 @@ export function createBindingLookup<TTarget extends object = object, TEvent exte
   options?: CreateBindingLookupOptions<TTarget, TEvent>,
 ): BindingLookup<TTarget, TEvent> {
   let currentConfig = config
-  let normalized = normalizeBindings(currentConfig, options?.bindingDefaults)
+  let normalized = normalizeBindings(currentConfig, options?.commandMap, options?.bindingDefaults)
   const gathered = new Map<string, GatheredBindings<TTarget, TEvent>>()
 
   return {
@@ -293,7 +315,7 @@ export function createBindingLookup<TTarget extends object = object, TEvent exte
         currentConfig = nextConfig
       }
 
-      normalized = normalizeBindings(currentConfig, options?.bindingDefaults)
+      normalized = normalizeBindings(currentConfig, options?.commandMap, options?.bindingDefaults)
       gathered.clear()
     },
   }

@@ -7,6 +7,9 @@ const config: BindingConfig = {
 }
 
 const lookup = createBindingLookup(config, {
+  commandMap: {
+    show_dialog: "dialog.show",
+  },
   bindingDefaults({ command, binding }) {
     const value: string = `${command}.${String(binding.key)}`
     return { group: value }
@@ -15,9 +18,9 @@ const lookup = createBindingLookup(config, {
 
 const typedLookup: BindingLookup = lookup
 const allBindings: readonly Binding[] = lookup.bindings
-const showBindings: readonly Binding[] | undefined = lookup.get("show_dialog")
-const dialogBindings: readonly Binding[] = lookup.gather("dialog", ["show_dialog", "close_dialog"])
-const pickedBindings: Binding[] = lookup.pick("dialog", ["show_dialog"])
+const showBindings: readonly Binding[] | undefined = lookup.get("dialog.show")
+const dialogBindings: readonly Binding[] = lookup.gather("dialog", ["dialog.show", "close_dialog"])
+const pickedBindings: Binding[] = lookup.pick("dialog", ["dialog.show"])
 const omittedBindings: Binding[] = lookup.omit("dialog", ["close_dialog"])
 
 const mutableConfig: Record<string, BindingValue> = {

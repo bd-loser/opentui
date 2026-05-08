@@ -7,8 +7,12 @@ export interface LeaderOptions {
   name?: string
 }
 
+function isLeaderTriggerArray(trigger: LeaderTrigger): trigger is readonly Readonly<{ key: KeyLike }>[] {
+  return Array.isArray(trigger)
+}
+
 export function resolveLeaderTrigger(trigger: LeaderTrigger): KeyLike {
-  if (Array.isArray(trigger)) {
+  if (isLeaderTriggerArray(trigger)) {
     if (trigger.length !== 1) {
       throw new Error("Invalid leader trigger: expected exactly one binding")
     }

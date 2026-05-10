@@ -164,9 +164,7 @@ describe("TextBuffer", () => {
         buffer.setText("Hello World")
         buffer.addHighlight(0, { start: 0, end: 5, styleId, priority: 7, hlRef: 42 })
 
-        expect(buffer.getLineHighlights(0)).toEqual([
-          { start: 0, end: 5, styleId, priority: 7, hlRef: 42 },
-        ])
+        expect(buffer.getLineHighlights(0)).toEqual([{ start: 0, end: 5, styleId, priority: 7, hlRef: 42 }])
       } finally {
         style.destroy()
       }

@@ -7,11 +7,14 @@ import {
   LIBRARY_CLOSED,
   NODE_CALLBACK_THREADSAFE,
   NODE_NAPI_UNSUPPORTED,
+  NODE_POINTER_ARGUMENT,
   NODE_POINTER_OVERRIDE,
   NODE_PTR_VALUE,
   NODE_STRING_RETURN,
   NODE_USIZE_UNSUPPORTED,
   POINTER_NEGATIVE,
+  POINTER_OFFSET_NEGATIVE,
+  POINTER_OFFSET_UNSAFE,
   POINTER_UNSAFE,
   createBunBackend,
   createNodeBackend,
@@ -85,6 +88,7 @@ function createMockNodeBackend(options: MockNodeBackendOptions = {}) {
   const events: string[] = []
   const paths: Array<string | null> = []
   const symbolDefinitions: unknown[] = []
+  const functionCalls: Array<{ name: string; args: any[] }> = []
   const callbackDefinitions: unknown[] = []
   const toArrayBufferCalls: Array<{ pointer: bigint; length: number; copy: boolean | undefined }> = []
   const rawPointers = new WeakMap<ArrayBuffer, bigint>()
@@ -120,7 +124,9 @@ function createMockNodeBackend(options: MockNodeBackendOptions = {}) {
             events.push(`callback.unregister:${pointer}`)
           },
         },
-        functions: Object.fromEntries(Object.keys(symbols).map((name) => [name, () => undefined])),
+        functions: Object.fromEntries(
+          Object.keys(symbols).map((name) => [name, (...args: any[]) => void functionCalls.push({ name, args })]),
+        ),
       }
     },
     getRawPointer(source: ArrayBuffer) {
@@ -144,6 +150,7 @@ function createMockNodeBackend(options: MockNodeBackendOptions = {}) {
     backend,
     callbackDefinitions,
     events,
+    functionCalls,
     paths,
     symbolDefinitions,
     toArrayBufferCalls,
@@ -368,6 +375,50 @@ describe("platform/ffi", () => {
       { pointer: 2008n, length: 32, copy: false },
       { pointer: 3000n, length: 16, copy: false },
     ])
+  })
+
+  test("normalizes Node ptr-like arguments from pointers, views, and null", () => {
+    const { backend, functionCalls } = createMockNodeBackend()
+    const buffer = new ArrayBuffer(16)
+    const view = new Uint8Array(buffer, 4, 8)
+    const emptyView = new Uint8Array(buffer, 0, 0)
+    const library = backend.dlopen("mock", {
+      pointers: {
+        args: [FFIType.ptr, FFIType.pointer, FFIType.callback, FFIType.function],
+        returns: FFIType.void,
+      },
+    })
+
+    library.symbols.pointers(view, null, 77 as Pointer, emptyView)
+
+    expect(functionCalls).toEqual([
+      {
+        name: "pointers",
+        args: [1004n, 0n, 77n, 0n],
+      },
+    ])
+  })
+
+  test("rejects invalid Node ptr-like arguments deterministically", () => {
+    const { backend } = createMockNodeBackend()
+    const library = backend.dlopen("mock", {
+      pointers: {
+        args: [FFIType.ptr],
+        returns: FFIType.void,
+      },
+    })
+
+    expect(() => library.symbols.pointers({})).toThrow(NODE_POINTER_ARGUMENT)
+    expect(() => library.symbols.pointers(-1n as Pointer)).toThrow(POINTER_NEGATIVE)
+    expect(() => library.symbols.pointers((Number.MAX_SAFE_INTEGER + 1) as Pointer)).toThrow(POINTER_UNSAFE)
+  })
+
+  test("validates Node pointer offsets before BigInt arithmetic", () => {
+    const { backend } = createMockNodeBackend()
+
+    expect(() => backend.toArrayBuffer(2000n as Pointer, -1, 1)).toThrow(POINTER_OFFSET_NEGATIVE)
+    expect(() => backend.toArrayBuffer(2000n as Pointer, 1.5, 1)).toThrow(POINTER_OFFSET_UNSAFE)
+    expect(() => backend.toArrayBuffer(2000n as Pointer, Number.MAX_SAFE_INTEGER + 1, 1)).toThrow(POINTER_OFFSET_UNSAFE)
   })
 
   test("passes dlopen(null) to Node and rejects it in Bun", () => {

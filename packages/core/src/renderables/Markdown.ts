@@ -152,8 +152,6 @@ export interface BlockState {
   token: MarkedToken
   tokenRaw: string // Cache raw for comparison
   marginTop?: number
-  customRenderNode?: boolean
-  customMarginBottom?: number
   renderable: Renderable
   tableContentCache?: TableContentCache
 }
@@ -164,6 +162,11 @@ interface MarkdownRenderBlock {
   token: MarkedToken
   sourceTokenEnd: number
   marginTop: number
+}
+
+interface CoalescedRenderBlock {
+  token: MarkedToken
+  marginBottom: number
 }
 
 export class MarkdownRenderable extends Renderable {
@@ -585,17 +588,6 @@ export class MarkdownRenderable extends Renderable {
     return nextToken?.type === "code"
   }
 
-  private withPreservedCoalescedGap(token: MarkedToken, gapRaw: string): MarkedToken {
-    if (!token.raw) {
-      return token
-    }
-
-    return {
-      ...token,
-      raw: this.normalizeMarkdownBlockRaw(token.raw + gapRaw),
-    } as MarkedToken
-  }
-
   private getNextNonSpaceToken(tokens: MarkedToken[], startIndex: number): MarkedToken | undefined {
     for (let i = startIndex; i < tokens.length; i += 1) {
       const token = tokens[i]
@@ -611,20 +603,14 @@ export class MarkdownRenderable extends Renderable {
     return !!nextToken && (!this.shouldRenderSeparately(nextToken) || this.shouldPreserveCoalescedGapBefore(nextToken))
   }
 
-  private getCustomRenderMarginBottom(
-    token: MarkedToken,
-    nextToken: MarkedToken | undefined,
-    hasNextToken: boolean,
-  ): number {
-    if (token.raw?.endsWith("\n") && nextToken?.type === "code") {
-      return 1
-    }
-
-    return this.getInterBlockMargin(token, hasNextToken)
+  private shouldApplyInterBlockGap(previousToken: MarkedToken, gapRaw: string): boolean {
+    return (
+      this.shouldRenderSeparately(previousToken) ||
+      TRAILING_MARKDOWN_BLOCK_BREAKS_RE.test(`${previousToken.raw ?? ""}${gapRaw}`)
+    )
   }
 
   private buildRenderableTokens(tokens: MarkedToken[]): MarkedToken[] {
-    const hasCustomRenderer = !!this._renderNode
     const renderTokens: MarkedToken[] = []
     let markdownRaw = ""
 
@@ -641,28 +627,9 @@ export class MarkdownRenderable extends Renderable {
       const token = tokens[i]
 
       if (token.type === "space") {
-        const nextToken = this.getNextNonSpaceToken(tokens, i + 1)
-
-        if (hasCustomRenderer) {
-          const previousToken = renderTokens[renderTokens.length - 1]
-          if (
-            previousToken &&
-            !this.shouldRenderSeparately(previousToken) &&
-            this.shouldPreserveCoalescedGapBefore(nextToken)
-          ) {
-            renderTokens[renderTokens.length - 1] = this.withPreservedCoalescedGap(previousToken, token.raw)
-          }
-          continue
-        }
-
-        if (markdownRaw.length > 0 && this.shouldKeepCoalescedGap(nextToken)) {
+        if (markdownRaw.length > 0 && this.shouldKeepCoalescedGap(this.getNextNonSpaceToken(tokens, i + 1))) {
           markdownRaw += token.raw
         }
-        continue
-      }
-
-      if (hasCustomRenderer) {
-        renderTokens.push(token)
         continue
       }
 
@@ -680,6 +647,38 @@ export class MarkdownRenderable extends Renderable {
     return renderTokens
   }
 
+  private buildCoalescedRenderBlocks(tokens: MarkedToken[]): CoalescedRenderBlock[] {
+    const renderTokens = this.buildRenderableTokens(tokens)
+    const lastBlockIndex = renderTokens.length - 1
+
+    return renderTokens.map((token, index) => ({
+      token,
+      marginBottom: this.getInterBlockMargin(token, index < lastBlockIndex),
+    }))
+  }
+
+  private buildRenderNodeBlocks(tokens: MarkedToken[]): CoalescedRenderBlock[] {
+    const blocks: CoalescedRenderBlock[] = []
+    let gapAfterPrevious = ""
+
+    for (const token of tokens) {
+      if (token.type === "space") {
+        gapAfterPrevious += token.raw
+        continue
+      }
+
+      const previousBlock = blocks[blocks.length - 1]
+      if (previousBlock) {
+        previousBlock.marginBottom = this.shouldApplyInterBlockGap(previousBlock.token, gapAfterPrevious) ? 1 : 0
+      }
+
+      blocks.push({ token, marginBottom: 0 })
+      gapAfterPrevious = ""
+    }
+
+    return blocks
+  }
+
   private buildTopLevelRenderBlocks(tokens: MarkedToken[]): MarkdownRenderBlock[] {
     const blocks: MarkdownRenderBlock[] = []
     let gapBefore = ""
@@ -692,11 +691,7 @@ export class MarkdownRenderable extends Renderable {
       }
 
       const prev = blocks[blocks.length - 1]
-      const marginTop =
-        prev &&
-        (this.shouldRenderSeparately(prev.token) || TRAILING_MARKDOWN_BLOCK_BREAKS_RE.test(prev.token.raw + gapBefore))
-          ? 1
-          : 0
+      const marginTop = prev && this.shouldApplyInterBlockGap(prev.token, gapBefore) ? 1 : 0
 
       blocks.push({
         token,
@@ -1009,7 +1004,7 @@ export class MarkdownRenderable extends Renderable {
     state.tableContentCache = tableContentCache
   }
 
-  private getTopLevelBlockRaw(token: MarkedToken): string | undefined {
+  private getStandaloneBlockRaw(token: MarkedToken): string | undefined {
     if (!token.raw) {
       return undefined
     }
@@ -1036,7 +1031,7 @@ export class MarkdownRenderable extends Renderable {
       return next
     }
 
-    const markdownRaw = this.getTopLevelBlockRaw(token)
+    const markdownRaw = this.getStandaloneBlockRaw(token)
     if (!markdownRaw) {
       return { renderable: undefined }
     }
@@ -1074,9 +1069,13 @@ export class MarkdownRenderable extends Renderable {
     return next ?? this.createTopLevelDefaultRenderable(block, index)
   }
 
-  private createDefaultRenderable(token: MarkedToken, index: number, hasNextToken: boolean = false): Renderable | null {
+  private createDefaultRenderable(
+    token: MarkedToken,
+    index: number,
+    marginBottom: number = 0,
+    standalone: boolean = false,
+  ): Renderable | null {
     const id = `${this.id}-block-${index}`
-    const marginBottom = this.getInterBlockMargin(token, hasNextToken)
 
     if (token.type === "code") {
       return this.createCodeRenderable(token, id, marginBottom)
@@ -1090,16 +1089,21 @@ export class MarkdownRenderable extends Renderable {
       return null
     }
 
-    if (!token.raw) {
+    const markdownRaw = standalone ? this.getStandaloneBlockRaw(token) : token.raw
+    if (!markdownRaw) {
       return null
     }
 
-    return this.createMarkdownCodeRenderable(token.raw, id, marginBottom)
+    return this.createMarkdownCodeRenderable(markdownRaw, id, marginBottom)
   }
 
-  private updateBlockRenderable(state: BlockState, token: MarkedToken, index: number, hasNextToken: boolean): void {
-    const marginBottom = this.getInterBlockMargin(token, hasNextToken)
-
+  private updateBlockRenderable(
+    state: BlockState,
+    token: MarkedToken,
+    index: number,
+    marginBottom: number,
+    standalone: boolean,
+  ): void {
     if (token.type === "code") {
       this.applyCodeBlockRenderable(state.renderable as CodeRenderable, token as Tokens.Code, marginBottom)
       return
@@ -1146,13 +1150,18 @@ export class MarkdownRenderable extends Renderable {
       return
     }
 
+    const markdownRaw = standalone ? this.getStandaloneBlockRaw(token) : token.raw
+    if (!markdownRaw) {
+      return
+    }
+
     if (state.renderable instanceof CodeRenderable) {
-      this.applyMarkdownCodeRenderable(state.renderable, token.raw, marginBottom)
+      this.applyMarkdownCodeRenderable(state.renderable, markdownRaw, marginBottom)
       return
     }
 
     state.renderable.destroyRecursively()
-    const markdownRenderable = this.createMarkdownCodeRenderable(token.raw, `${this.id}-block-${index}`, marginBottom)
+    const markdownRenderable = this.createMarkdownCodeRenderable(markdownRaw, `${this.id}-block-${index}`, marginBottom)
     this.add(markdownRenderable)
     state.renderable = markdownRenderable
   }
@@ -1249,59 +1258,38 @@ export class MarkdownRenderable extends Renderable {
     }
 
     this._stableBlockCount = 0
-    const blockTokens = this.buildRenderableTokens(tokens)
-    const lastBlockIndex = blockTokens.length - 1
-
-    const updateCustomMarginBottom = (
-      state: BlockState,
-      token: MarkedToken,
-      nextToken: MarkedToken | undefined,
-      hasNextToken: boolean,
-    ): void => {
-      if (!state.customRenderNode) return
-      const marginBottom = this.getCustomRenderMarginBottom(token, nextToken, hasNextToken)
-      if (marginBottom !== state.customMarginBottom) {
-        state.renderable.marginBottom = marginBottom
-        state.customMarginBottom = marginBottom
-      }
-    }
+    const standaloneBlocks = !!this._renderNode
+    const blocks = standaloneBlocks ? this.buildRenderNodeBlocks(tokens) : this.buildCoalescedRenderBlocks(tokens)
 
     let blockIndex = 0
-    for (let i = 0; i < blockTokens.length; i++) {
-      const token = blockTokens[i]
-      const nextToken = blockTokens[i + 1]
-      const hasNextToken = i < lastBlockIndex
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i]
+      const { token, marginBottom } = block
       const existing = this._blockStates[blockIndex]
 
       const shouldForceRefresh = forceTableRefresh
 
-      if (existing && existing.token === token) {
-        if (shouldForceRefresh) {
-          this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
-          existing.tokenRaw = token.raw
+      if (existing && existing.token === token && !shouldForceRefresh) {
+        if (existing.renderable.marginBottom !== marginBottom) {
+          existing.renderable.marginBottom = marginBottom
         }
-        updateCustomMarginBottom(existing, token, nextToken, hasNextToken)
         blockIndex++
         continue
       }
 
-      if (existing && existing.tokenRaw === token.raw && existing.token.type === token.type) {
+      if (existing && existing.tokenRaw === token.raw && existing.token.type === token.type && !shouldForceRefresh) {
         existing.token = token
-        if (shouldForceRefresh) {
-          this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
-          existing.tokenRaw = token.raw
+        if (existing.renderable.marginBottom !== marginBottom) {
+          existing.renderable.marginBottom = marginBottom
         }
-        updateCustomMarginBottom(existing, token, nextToken, hasNextToken)
         blockIndex++
         continue
       }
 
-      if (existing && existing.token.type === token.type) {
-        this.updateBlockRenderable(existing, token, blockIndex, hasNextToken)
+      if (!standaloneBlocks && existing && existing.token.type === token.type) {
+        this.updateBlockRenderable(existing, token, blockIndex, marginBottom, standaloneBlocks)
         existing.token = token
         existing.tokenRaw = token.raw
-        existing.customRenderNode = undefined
-        existing.customMarginBottom = undefined
         blockIndex++
         continue
       }
@@ -1312,44 +1300,44 @@ export class MarkdownRenderable extends Renderable {
 
       let renderable: Renderable | undefined
       let tableContentCache: TableContentCache | undefined
-      let customRenderNode: boolean | undefined
-      let customMarginBottom: number | undefined
+      const createDefaultBlock = (): { renderable: Renderable | undefined; tableContentCache?: TableContentCache } => {
+        if (token.type === "table") {
+          return this.createTableBlock(token, `${this.id}-block-${blockIndex}`, marginBottom)
+        }
+
+        return {
+          renderable: this.createDefaultRenderable(token, blockIndex, marginBottom, standaloneBlocks) ?? undefined,
+        }
+      }
 
       if (this._renderNode) {
-        let defaultRenderable: Renderable | null = null
+        let defaultBlock: { renderable: Renderable | undefined; tableContentCache?: TableContentCache } | undefined
+        let usedDefaultRender = false
         const context: RenderNodeContext = {
           syntaxStyle: this._syntaxStyle,
           conceal: this._conceal,
           concealCode: this._concealCode,
           treeSitterClient: this._treeSitterClient,
           defaultRender: () => {
-            defaultRenderable = this.createDefaultRenderable(token, blockIndex, hasNextToken)
-            return defaultRenderable
+            usedDefaultRender = true
+            defaultBlock ??= createDefaultBlock()
+            return defaultBlock.renderable ?? null
           },
         }
         const custom = this._renderNode(token, context)
         if (custom) {
           renderable = custom
-          customRenderNode = custom !== defaultRenderable
-          if (customRenderNode) {
-            customMarginBottom = this.getCustomRenderMarginBottom(token, nextToken, hasNextToken)
-            custom.marginBottom = customMarginBottom
-          }
+          custom.marginBottom = marginBottom
+        } else if (usedDefaultRender) {
+          renderable = defaultBlock?.renderable
+          tableContentCache = defaultBlock?.tableContentCache
         }
       }
 
       if (!renderable) {
-        if (token.type === "table") {
-          const tableBlock = this.createTableBlock(
-            token,
-            `${this.id}-block-${blockIndex}`,
-            this.getInterBlockMargin(token, hasNextToken),
-          )
-          renderable = tableBlock.renderable
-          tableContentCache = tableBlock.tableContentCache
-        } else {
-          renderable = this.createDefaultRenderable(token, blockIndex, hasNextToken) ?? undefined
-        }
+        const defaultBlock = createDefaultBlock()
+        renderable = defaultBlock.renderable
+        tableContentCache = defaultBlock.tableContentCache
       }
 
       if (token.type === "table" && !tableContentCache && renderable instanceof TextTableRenderable) {
@@ -1363,8 +1351,6 @@ export class MarkdownRenderable extends Renderable {
           token,
           tokenRaw: token.raw,
           renderable,
-          customRenderNode,
-          customMarginBottom,
           tableContentCache,
         }
       }
@@ -1395,17 +1381,29 @@ export class MarkdownRenderable extends Renderable {
       return
     }
 
+    const standaloneBlocks = !!this._renderNode
+
     for (let i = 0; i < this._blockStates.length; i++) {
       const state = this._blockStates[i]
-      const hasNextToken = i < this._blockStates.length - 1
-      const marginBottom = this.getInterBlockMargin(state.token, hasNextToken)
+      const marginBottom = typeof state.renderable.marginBottom === "number" ? state.renderable.marginBottom : 0
 
       if (state.token.type === "code") {
+        if (standaloneBlocks && !(state.renderable instanceof CodeRenderable)) {
+          continue
+        }
+
         this.applyCodeBlockRenderable(state.renderable as CodeRenderable, state.token as Tokens.Code, marginBottom)
         continue
       }
 
       if (state.token.type === "table") {
+        if (
+          standaloneBlocks &&
+          !(state.renderable instanceof TextTableRenderable || state.renderable instanceof CodeRenderable)
+        ) {
+          continue
+        }
+
         const tableToken = state.token as Tokens.Table
         const { cache } = this.buildTableContentCache(tableToken, state.tableContentCache, true)
 
@@ -1442,14 +1440,23 @@ export class MarkdownRenderable extends Renderable {
         continue
       }
 
+      const markdownRaw = standaloneBlocks ? this.getStandaloneBlockRaw(state.token) : state.token.raw
+      if (!markdownRaw) {
+        continue
+      }
+
       if (state.renderable instanceof CodeRenderable) {
-        this.applyMarkdownCodeRenderable(state.renderable, state.token.raw, marginBottom)
+        this.applyMarkdownCodeRenderable(state.renderable, markdownRaw, marginBottom)
+        continue
+      }
+
+      if (standaloneBlocks) {
         continue
       }
 
       state.renderable.destroyRecursively()
       const markdownRenderable = this.createMarkdownCodeRenderable(
-        state.token.raw,
+        markdownRaw,
         `${this.id}-block-${i}`,
         marginBottom,
       )

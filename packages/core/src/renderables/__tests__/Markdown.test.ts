@@ -1221,6 +1221,7 @@ Regular paragraph.`,
   expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
     "
     [CUSTOM] Custom Heading
+
     Regular paragraph."
   `)
 })
@@ -1290,6 +1291,28 @@ test("custom renderNode using defaultRender preserves coalesced spacing before c
   `)
 })
 
+test("custom renderNode receives the original marked token raw", async () => {
+  const seenRaw: string[] = []
+
+  const md = createMarkdownRenderable({
+    id: "custom-original-raw",
+    content: ["Example", "", "```ts", 'console.log("Hello, world!")', "```"].join("\n"),
+    syntaxStyle,
+    renderNode: (node, ctx) => {
+      if (node.type === "paragraph") {
+        seenRaw.push(node.raw)
+      }
+
+      return ctx.defaultRender()
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  expect(seenRaw).toEqual(["Example"])
+})
+
 test("custom renderNode override preserves coalesced spacing before default code", async () => {
   const md = createMarkdownRenderable({
     id: "custom-overridden-spacing",
@@ -1356,6 +1379,41 @@ test("custom renderNode override clears spacing when following code changes", as
   `)
 })
 
+test("custom renderNode reevaluates paragraph overrides on same-type updates", async () => {
+  const md = createMarkdownRenderable({
+    id: "custom-overridden-same-type-update",
+    content: "plain",
+    syntaxStyle,
+    renderNode: (node, ctx) => {
+      if (node.type === "paragraph" && node.raw.startsWith("custom")) {
+        return new TextRenderable(renderer, {
+          id: "custom-overridden-same-type-update-text",
+          content: "CUSTOM",
+          width: "100%",
+        })
+      }
+
+      return ctx.defaultRender()
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  md.content = "custom now"
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates[0]?.renderable).toBeInstanceOf(TextRenderable)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    CUSTOM"
+  `)
+})
+
 test("custom renderNode override preserves spacing after custom code", async () => {
   const md = createMarkdownRenderable({
     id: "custom-code-spacing-after",
@@ -1409,12 +1467,8 @@ test("custom renderNode override clears spacing when custom code becomes last bl
   renderer.root.add(md)
   await renderMarkdownRenderable(md)
 
-  expect(md._blockStates[0]?.customMarginBottom).toBe(1)
-
   md.content = ["```ts", 'console.log("Hello, world!")', "```"].join("\n")
   await renderMarkdownRenderable(md)
-
-  expect(md._blockStates[0]?.customMarginBottom).toBe(0)
 
   const lines = captureFrame()
     .split("\n")
@@ -1422,6 +1476,50 @@ test("custom renderNode override clears spacing when custom code becomes last bl
   expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
     "
     CUSTOM CODE"
+  `)
+})
+
+test("custom renderNode re-renders custom code blocks on same-type updates", async () => {
+  const { BoxRenderable } = await import("../Box.js")
+
+  const md = createMarkdownRenderable({
+    id: "custom-code-same-type-update",
+    content: ["```ts", "const a = 1", "```"].join("\n"),
+    syntaxStyle,
+    renderNode: (node, ctx) => {
+      if (node.type === "code") {
+        const box = new BoxRenderable(renderer, {
+          id: "custom-code-same-type-update-box",
+          border: true,
+          borderStyle: "single",
+        })
+        box.add(
+          new TextRenderable(renderer, {
+            id: "custom-code-same-type-update-text",
+            content: `CODE: ${node.text}`,
+          }),
+        )
+        return box
+      }
+
+      return ctx.defaultRender()
+    },
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  md.content = ["```ts", "const a = 2", "```"].join("\n")
+  await renderMarkdownRenderable(md)
+
+  const lines = captureFrame()
+    .split("\n")
+    .map((line) => line.trimEnd())
+  expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
+    "
+    ┌──────────────────────────────────────────────────────────┐
+    │CODE: const a = 2                                         │
+    └──────────────────────────────────────────────────────────┘"
   `)
 })
 
@@ -1483,7 +1581,6 @@ Paragraph text.`,
   expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
     "
     Heading
-
 
     Paragraph text."
   `)

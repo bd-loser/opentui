@@ -34,6 +34,14 @@ describe("EditBuffer", () => {
       buffer.setText(text)
       expect(buffer.getText()).toBe(text)
     })
+
+    it("should return null bytes for zero-length getText output buffer", () => {
+      buffer.setText("Hello World")
+
+      const textBytes = (buffer as any).lib.editBufferGetText(buffer.ptr, 0)
+
+      expect(textBytes).toBeNull()
+    })
   })
 
   describe("cursor position", () => {
@@ -338,6 +346,31 @@ describe("EditBuffer", () => {
       // After deleting Line 2, we should have Line 1 and Line 3
       const result = buffer.getText()
       expect(result === "Line 1\nLine 3" || result === "Line 1\nLine 3\n").toBe(true)
+    })
+  })
+
+  describe("history metadata", () => {
+    it("should return null bytes for zero-length undo and redo output buffers", () => {
+      buffer.setText("Hello")
+      buffer.insertText(" World")
+
+      const lib = (buffer as any).lib
+      const undoBytes = lib.editBufferUndo(buffer.ptr, 0)
+      const redoBytes = lib.editBufferRedo(buffer.ptr, 0)
+
+      expect(undoBytes).toBeNull()
+      expect(redoBytes).toBeNull()
+    })
+  })
+
+  describe("range getters", () => {
+    it("should return null bytes for zero-length range output buffers", () => {
+      buffer.setText("Hello\nWorld")
+
+      const lib = (buffer as any).lib
+
+      expect(lib.editBufferGetTextRange(buffer.ptr, 0, 5, 0)).toBeNull()
+      expect(lib.editBufferGetTextRangeByCoords(buffer.ptr, 0, 0, 1, 5, 0)).toBeNull()
     })
   })
 

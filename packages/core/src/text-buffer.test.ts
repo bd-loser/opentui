@@ -39,6 +39,21 @@ describe("TextBuffer", () => {
     })
 
     it("should handle empty text", () => {
+      buffer.setText("")
+
+      expect(buffer.length).toBe(0)
+      expect(buffer.getPlainText()).toBe("")
+    })
+
+    it("should replace existing text with empty text", () => {
+      buffer.setText("Hello World")
+      buffer.setText("")
+
+      expect(buffer.length).toBe(0)
+      expect(buffer.getPlainText()).toBe("")
+    })
+
+    it("should handle empty styled text", () => {
       const emptyText = stringToStyledText("")
       buffer.setStyledText(emptyText)
 
@@ -107,6 +122,54 @@ describe("TextBuffer", () => {
 
       const plainText = buffer.getPlainText()
       expect(plainText).toBe("Red\nBlue")
+    })
+
+    it("should return null bytes for zero-length plain-text output buffer", () => {
+      buffer.setText("Hello World")
+
+      const plainBytes = (buffer as any).lib.getPlainTextBytes(buffer.ptr, 0)
+
+      expect(plainBytes).toBeNull()
+    })
+  })
+
+  describe("getTextRange", () => {
+    it("should return null bytes for zero-length range output buffers", () => {
+      buffer.setText("Hello World")
+
+      const lib = (buffer as any).lib
+
+      expect(lib.textBufferGetTextRange(buffer.ptr, 0, 5, 0)).toBeNull()
+      expect(lib.textBufferGetTextRangeByCoords(buffer.ptr, 0, 0, 0, 5, 0)).toBeNull()
+    })
+  })
+
+  describe("line highlights", () => {
+    it("should return an empty list when a line has no highlights", () => {
+      buffer.setText("Hello\nWorld")
+
+      expect(buffer.getLineHighlights(0)).toEqual([])
+      expect(buffer.getLineHighlights(1)).toEqual([])
+    })
+
+    it("should round-trip line highlights through the native highlight buffer", () => {
+      const style = SyntaxStyle.create()
+
+      try {
+        const styleId = style.registerStyle("highlight", {
+          fg: RGBA.fromValues(1, 0, 0, 1),
+        })
+
+        buffer.setSyntaxStyle(style)
+        buffer.setText("Hello World")
+        buffer.addHighlight(0, { start: 0, end: 5, styleId, priority: 7, hlRef: 42 })
+
+        expect(buffer.getLineHighlights(0)).toEqual([
+          { start: 0, end: 5, styleId, priority: 7, hlRef: 42 },
+        ])
+      } finally {
+        style.destroy()
+      }
     })
   })
 
@@ -371,6 +434,13 @@ describe("TextBuffer", () => {
       buffer.append("")
       expect(buffer.length).toBe(lengthBefore)
       expect(buffer.getPlainText()).toBe("Hello")
+    })
+
+    it("should append empty string to an empty buffer", () => {
+      buffer.append("")
+
+      expect(buffer.length).toBe(0)
+      expect(buffer.getPlainText()).toBe("")
     })
 
     it("should append unicode content", () => {

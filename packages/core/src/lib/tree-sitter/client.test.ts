@@ -34,6 +34,22 @@ describe("TreeSitterClient", () => {
     expect(client.isInitialized()).toBe(true)
   })
 
+  test("should initialize with a URL worker path override", async () => {
+    const urlClient = new TreeSitterClient({
+      dataPath,
+      workerPath: new URL("./parser.worker.ts", import.meta.url),
+    })
+
+    try {
+      await urlClient.initialize()
+
+      expect(urlClient.isInitialized()).toBe(true)
+      expect(await urlClient.preloadParser("javascript")).toBe(true)
+    } finally {
+      await urlClient.destroy()
+    }
+  })
+
   test("should wait for default parsers before resolving concurrent initialization", async () => {
     let resolveRegistrationStarted!: () => void
     let resolveRegistration!: () => void

@@ -10,13 +10,20 @@ import type {
   Edit,
   PerformanceStats,
   SimpleHighlight,
+  TreeSitterWorkerRequest,
+  TreeSitterWorkerResponse,
 } from "./types.js"
 import { getParsers } from "./default-parsers.js"
 import { resolve, isAbsolute, parse } from "path"
 import { existsSync } from "fs"
 import { registerEnvVar, env } from "../env.js"
 import { isBunfsPath, normalizeBunfsPath } from "../bunfs.js"
-import { Worker as PlatformWorker } from "../../platform/worker.js"
+import {
+  type PlatformWorkerHandle,
+  type WorkerErrorEvent,
+  type WorkerMessageEvent,
+  Worker as PlatformWorker,
+} from "../../platform/worker.js"
 
 registerEnvVar({
   name: "OTUI_TREE_SITTER_WORKER_PATH",
@@ -37,10 +44,7 @@ interface EditQueueItem {
 }
 
 type TreeSitterWorkerPath = string | URL
-type TreeSitterWorkerHandle = Pick<
-  InstanceType<typeof PlatformWorker>,
-  "onerror" | "onmessage" | "postMessage" | "terminate"
->
+type TreeSitterWorkerHandle = Pick<PlatformWorkerHandle, "onerror" | "onmessage" | "postMessage" | "terminate">
 
 let DEFAULT_PARSER_OVERRIDES: FiletypeParserOptions[] = []
 
@@ -97,11 +101,22 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
     const workerPath = this.resolveWorkerPath()
 
-    this.worker = new PlatformWorker(workerPath)
+    const worker = new PlatformWorker(workerPath)
+    this.worker = worker
 
-    this.worker.onmessage = this.handleWorkerMessage.bind(this)
+    worker.onmessage = (event) => {
+      if (this.worker !== worker) {
+        return
+      }
 
-    this.worker.onerror = (error: ErrorEvent) => {
+      this.handleWorkerMessage(event as WorkerMessageEvent<TreeSitterWorkerResponse>)
+    }
+
+    worker.onerror = (error: WorkerErrorEvent) => {
+      if (this.worker !== worker) {
+        return
+      }
+
       console.error("TreeSitter worker error:", error.message)
 
       // If we're still initializing, reject the init promise
@@ -113,6 +128,10 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
       this.emitError(`Worker error: ${error.message}`)
     }
+  }
+
+  private sendWorkerMessage(message: TreeSitterWorkerRequest): void {
+    this.worker?.postMessage(message)
   }
 
   // Path resolution stays in the client for now; runtime-specific Worker construction lives in platform/worker.
@@ -138,19 +157,26 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     return workerPath
   }
 
-  private stopWorker() {
-    if (!this.worker) {
+  private async stopWorker(): Promise<void> {
+    const worker = this.worker
+    if (!worker) {
       return
     }
 
-    this.worker.terminate()
+    worker.onmessage = null
+    worker.onerror = null
     this.worker = undefined
+
+    const termination = worker.terminate()
+    if (termination && typeof (termination as PromiseLike<number>).then === "function") {
+      await termination
+    }
   }
 
   // NOTE: Unused, but useful for debugging and testing
-  private handleReset() {
+  private async handleReset() {
     this.buffers.clear()
-    this.stopWorker()
+    await this.stopWorker()
     this.startWorker()
     this.initialized = false
     this.initializePromise = undefined
@@ -179,7 +205,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
       }, timeoutMs)
 
       this.initializeResolvers = { resolve, reject, timeoutId }
-      this.worker?.postMessage({
+      this.sendWorkerMessage({
         type: "INIT",
         dataPath: this.options.dataPath,
       })
@@ -226,14 +252,14 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
         injections: filetypeParser.queries.injections?.map((path) => this.resolvePath(path)),
       },
     }
-    this.worker?.postMessage({ type: "ADD_FILETYPE_PARSER", filetypeParser: resolvedParser })
+    this.sendWorkerMessage({ type: "ADD_FILETYPE_PARSER", filetypeParser: resolvedParser })
   }
 
   public async getPerformance(): Promise<PerformanceStats> {
     const messageId = `performance_${this.messageIdCounter++}`
     return new Promise<PerformanceStats>((resolve) => {
       this.messageCallbacks.set(messageId, resolve)
-      this.worker?.postMessage({ type: "GET_PERFORMANCE", messageId })
+      this.sendWorkerMessage({ type: "GET_PERFORMANCE", messageId })
     })
   }
 
@@ -252,7 +278,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     const messageId = `oneshot_${this.messageIdCounter++}`
     return new Promise((resolve) => {
       this.messageCallbacks.set(messageId, resolve)
-      this.worker?.postMessage({
+      this.sendWorkerMessage({
         type: "ONESHOT_HIGHLIGHT",
         content,
         filetype,
@@ -261,113 +287,122 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     })
   }
 
-  private handleWorkerMessage(event: MessageEvent) {
-    const { type, bufferId, error, highlights, warning, messageId, hasParser, performance, version } = event.data
+  private handleWorkerMessage(event: WorkerMessageEvent<TreeSitterWorkerResponse>) {
+    const message = event.data
 
-    if (type === "HIGHLIGHT_RESPONSE") {
-      const buffer = this.buffers.get(bufferId)
-      if (!buffer || !buffer.hasParser) return
-      if (buffer.version !== version) {
-        this.resetBuffer(bufferId, buffer.version, buffer.content)
+    switch (message.type) {
+      case "HIGHLIGHT_RESPONSE": {
+        const buffer = this.buffers.get(message.bufferId)
+        if (!buffer || !buffer.hasParser) {
+          return
+        }
+
+        if (buffer.version !== message.version) {
+          this.resetBuffer(message.bufferId, buffer.version, buffer.content)
+          return
+        }
+
+        this.emit("highlights:response", message.bufferId, message.version, message.highlights)
         return
       }
-      this.emit("highlights:response", bufferId, version, highlights)
-    }
 
-    if (type === "INIT_RESPONSE") {
-      if (this.initializeResolvers) {
+      case "INIT_RESPONSE": {
+        if (!this.initializeResolvers) {
+          return
+        }
+
         clearTimeout(this.initializeResolvers.timeoutId)
-        if (error) {
-          console.error("TreeSitter client initialization failed:", error)
-          this.initializeResolvers.reject(new Error(error))
+
+        if (message.error) {
+          console.error("TreeSitter client initialization failed:", message.error)
+          this.initializeResolvers.reject(new Error(message.error))
         } else {
           this.initializeResolvers.resolve()
         }
+
         this.initializeResolvers = undefined
         return
       }
-    }
 
-    if (type === "PARSER_INIT_RESPONSE") {
-      const callback = this.messageCallbacks.get(messageId)
-      if (callback) {
-        this.messageCallbacks.delete(messageId)
-        callback({ hasParser, warning, error })
+      case "PARSER_INIT_RESPONSE": {
+        const callback = this.messageCallbacks.get(message.messageId)
+        if (callback) {
+          this.messageCallbacks.delete(message.messageId)
+          callback({ hasParser: message.hasParser, warning: message.warning, error: message.error })
+        }
+        return
       }
-      return
-    }
 
-    if (type === "PRELOAD_PARSER_RESPONSE") {
-      const callback = this.messageCallbacks.get(messageId)
-      if (callback) {
-        this.messageCallbacks.delete(messageId)
-        callback({ hasParser })
+      case "PRELOAD_PARSER_RESPONSE": {
+        const callback = this.messageCallbacks.get(message.messageId)
+        if (callback) {
+          this.messageCallbacks.delete(message.messageId)
+          callback({ hasParser: message.hasParser })
+        }
+        return
       }
-      return
-    }
 
-    if (type === "BUFFER_DISPOSED") {
-      const callback = this.messageCallbacks.get(`dispose_${bufferId}`)
-      if (callback) {
-        this.messageCallbacks.delete(`dispose_${bufferId}`)
-        callback(true)
+      case "BUFFER_DISPOSED": {
+        const callback = this.messageCallbacks.get(`dispose_${message.bufferId}`)
+        if (callback) {
+          this.messageCallbacks.delete(`dispose_${message.bufferId}`)
+          callback(true)
+        }
+
+        this.emit("buffer:disposed", message.bufferId)
+        return
       }
-      this.emit("buffer:disposed", bufferId)
-      return
-    }
 
-    if (type === "PERFORMANCE_RESPONSE") {
-      const callback = this.messageCallbacks.get(messageId)
-      if (callback) {
-        this.messageCallbacks.delete(messageId)
-        callback(performance)
+      case "PERFORMANCE_RESPONSE": {
+        const callback = this.messageCallbacks.get(message.messageId)
+        if (callback) {
+          this.messageCallbacks.delete(message.messageId)
+          callback(message.performance)
+        }
+        return
       }
-      return
-    }
 
-    if (type === "ONESHOT_HIGHLIGHT_RESPONSE") {
-      const callback = this.messageCallbacks.get(messageId)
-      if (callback) {
-        this.messageCallbacks.delete(messageId)
-        callback({ highlights, warning, error })
+      case "ONESHOT_HIGHLIGHT_RESPONSE": {
+        const callback = this.messageCallbacks.get(message.messageId)
+        if (callback) {
+          this.messageCallbacks.delete(message.messageId)
+          callback({ highlights: message.highlights, warning: message.warning, error: message.error })
+        }
+        return
       }
-      return
-    }
 
-    if (type === "UPDATE_DATA_PATH_RESPONSE") {
-      const callback = this.messageCallbacks.get(messageId)
-      if (callback) {
-        this.messageCallbacks.delete(messageId)
-        callback({ error })
+      case "UPDATE_DATA_PATH_RESPONSE": {
+        const callback = this.messageCallbacks.get(message.messageId)
+        if (callback) {
+          this.messageCallbacks.delete(message.messageId)
+          callback({ error: message.error })
+        }
+        return
       }
-      return
-    }
 
-    if (type === "CLEAR_CACHE_RESPONSE") {
-      const callback = this.messageCallbacks.get(messageId)
-      if (callback) {
-        this.messageCallbacks.delete(messageId)
-        callback({ error })
+      case "CLEAR_CACHE_RESPONSE": {
+        const callback = this.messageCallbacks.get(message.messageId)
+        if (callback) {
+          this.messageCallbacks.delete(message.messageId)
+          callback({ error: message.error })
+        }
+        return
       }
-      return
-    }
 
-    if (warning) {
-      this.emitWarning(warning, bufferId)
-      return
-    }
+      case "WARNING": {
+        this.emitWarning(message.warning, message.bufferId)
+        return
+      }
 
-    if (error) {
-      this.emitError(error, bufferId)
-      return
-    }
+      case "ERROR": {
+        this.emitError(message.error, message.bufferId)
+        return
+      }
 
-    if (type === "WORKER_LOG") {
-      const { logType, data } = event.data
-      const message = data.join(" ")
-
-      this.emit("worker:log", logType, message)
-      return
+      case "WORKER_LOG": {
+        this.emit("worker:log", message.logType, message.data.join(" "))
+        return
+      }
     }
   }
 
@@ -375,7 +410,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     const messageId = `has_parser_${this.messageIdCounter++}`
     const response = await new Promise<{ hasParser: boolean; warning?: string; error?: string }>((resolve) => {
       this.messageCallbacks.set(messageId, resolve)
-      this.worker?.postMessage({
+      this.sendWorkerMessage({
         type: "PRELOAD_PARSER",
         filetype,
         messageId,
@@ -414,7 +449,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     const messageId = `init_${this.messageIdCounter++}`
     const response = await new Promise<{ hasParser: boolean; warning?: string; error?: string }>((resolve) => {
       this.messageCallbacks.set(messageId, resolve)
-      this.worker?.postMessage({
+      this.sendWorkerMessage({
         type: "INITIALIZE_PARSER",
         bufferId: id,
         version,
@@ -473,7 +508,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     version: number,
     isReset = false,
   ): Promise<void> {
-    this.worker?.postMessage({
+    this.sendWorkerMessage({
       type: isReset ? "RESET_BUFFER" : "HANDLE_EDITS",
       bufferId,
       version,
@@ -499,7 +534,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
         const messageId = `dispose_${bufferId}`
         this.messageCallbacks.set(messageId, resolve)
         try {
-          this.worker!.postMessage({
+          this.sendWorkerMessage({
             type: "DISPOSE_BUFFER",
             bufferId,
           })
@@ -547,7 +582,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
     this.editQueues.clear()
     this.buffers.clear()
 
-    this.stopWorker()
+    await this.stopWorker()
 
     this.initialized = false
     this.initializePromise = undefined
@@ -600,7 +635,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
             resolve()
           }
         })
-        this.worker!.postMessage({
+        this.sendWorkerMessage({
           type: "UPDATE_DATA_PATH",
           dataPath,
           messageId,
@@ -623,7 +658,7 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
           resolve()
         }
       })
-      this.worker!.postMessage({
+      this.sendWorkerMessage({
         type: "CLEAR_CACHE",
         messageId,
       })

@@ -58,7 +58,7 @@ comptime {
     _ = native_audio;
 }
 
-export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.c) void) void {
+export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: u32) callconv(.c) void) void {
     logger.setLogCallback(callback);
 }
 
@@ -284,8 +284,8 @@ export fn audioGetStats(engine: *native_audio.Engine, out_stats: ?*native_audio.
     return native_audio.getStats(engine, out_stats);
 }
 
-export fn getArenaAllocatedBytes() usize {
-    return arena.queryCapacity();
+export fn getArenaAllocatedBytes() u64 {
+    return @intCast(arena.queryCapacity());
 }
 
 export fn getBuildOptions(out_ptr: *ExternalBuildOptions) void {

@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { EditBuffer } from "./edit-buffer.js"
+import { resolveRenderLib } from "./zig.js"
 
 describe("EditBuffer", () => {
   let buffer: EditBuffer
@@ -1141,6 +1142,23 @@ describe("EditBuffer Events", () => {
 
       // Count should not have increased after removing listener
       expect(eventCount).toBe(firstCount)
+
+      testBuffer.destroy()
+    })
+
+    it("should deliver native event payload bytes through the event callback bridge", async () => {
+      const lib = resolveRenderLib()
+      const testBuffer = EditBuffer.create("wcwidth")
+
+      const payload = await new Promise<ArrayBuffer>((resolve) => {
+        lib.onceNativeEvent("eb_content-changed", (data) => resolve(data))
+        testBuffer.setText("event payload")
+      })
+
+      const id = new DataView(payload).getUint16(0, true)
+
+      expect(payload.byteLength).toBe(2)
+      expect(id).toBe(testBuffer.id)
 
       testBuffer.destroy()
     })

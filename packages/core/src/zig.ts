@@ -16,6 +16,7 @@ import {
   type TargetChannel,
   type DebugOverlayCorner,
   type WidthMethod,
+  type TerminalCapabilities,
   type Highlight,
   type LineInfo,
   type MousePointerStyle,
@@ -2048,7 +2049,7 @@ export interface RenderLib extends AudioEngineLib {
   syntaxStyleResolveByName: (style: Pointer, name: string) => number | null
   syntaxStyleGetStyleCount: (style: Pointer) => number
 
-  getTerminalCapabilities: (renderer: Pointer) => any
+  getTerminalCapabilities: (renderer: Pointer) => TerminalCapabilities
   processCapabilityResponse: (renderer: Pointer, response: string) => void
 
   encodeUnicode: (
@@ -3955,7 +3956,7 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.bufferClearOpacity(buffer)
   }
 
-  public getTerminalCapabilities(renderer: Pointer) {
+  public getTerminalCapabilities(renderer: Pointer): TerminalCapabilities {
     const capsBuffer = new ArrayBuffer(TerminalCapabilitiesStruct.size)
     this.opentui.symbols.getTerminalCapabilities(renderer, ptr(capsBuffer))
 

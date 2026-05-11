@@ -6,14 +6,40 @@ import { Buffer } from "node:buffer"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import { createTestRenderer, type TestRenderer, type TestRendererOptions } from "../testing/test-renderer.js"
 import { ManualClock } from "../testing/manual-clock.js"
-import type { RenderContext } from "../types.js"
+import type { RenderContext, TerminalCapabilities } from "../types.js"
+import type { RenderLib } from "../zig.js"
 
 let currentRenderer: TestRenderer
 let kittyRenderer: TestRenderer
 let mockProcessCapabilityResponse: any
-let mockGetTerminalCapabilities: any
+let mockGetTerminalCapabilities: RenderLib["getTerminalCapabilities"]
 let currentClock: ManualClock
 let kittyClock: ManualClock
+
+function terminalCapabilities(overrides: Partial<TerminalCapabilities> = {}): TerminalCapabilities {
+  return {
+    kitty_keyboard: false,
+    kitty_graphics: false,
+    rgb: false,
+    ansi256: false,
+    unicode: "unicode",
+    sgr_pixels: false,
+    color_scheme_updates: false,
+    explicit_width: false,
+    scaled_text: false,
+    sixel: false,
+    focus_tracking: false,
+    sync: false,
+    bracketed_paste: false,
+    hyperlinks: false,
+    osc52: false,
+    notifications: false,
+    explicit_cursor_positioning: false,
+    in_tmux: false,
+    terminal: { name: "", version: "", from_xtversion: false },
+    ...overrides,
+  }
+}
 
 beforeEach(async () => {
   currentClock = new ManualClock()
@@ -30,12 +56,12 @@ beforeEach(async () => {
   // @ts-expect-error - mocking for test
   currentRenderer.lib.processCapabilityResponse = () => {}
   // @ts-expect-error - mocking for test
-  currentRenderer.lib.getTerminalCapabilities = () => ({ unicode: "unicode" })
+  currentRenderer.lib.getTerminalCapabilities = () => terminalCapabilities()
 
   // @ts-expect-error - mocking for test
   kittyRenderer.lib.processCapabilityResponse = () => {}
   // @ts-expect-error - mocking for test
-  kittyRenderer.lib.getTerminalCapabilities = () => ({ unicode: "unicode" })
+  kittyRenderer.lib.getTerminalCapabilities = () => terminalCapabilities()
 })
 
 afterEach(() => {
@@ -146,7 +172,7 @@ async function createThemeQueryRenderer(): Promise<{
   // @ts-expect-error - mocking for test
   renderer.lib.processCapabilityResponse = () => {}
   // @ts-expect-error - mocking for test
-  renderer.lib.getTerminalCapabilities = () => ({ unicode: "unicode" })
+  renderer.lib.getTerminalCapabilities = () => terminalCapabilities()
 
   const queryThemeColorsCalls = { count: 0 }
   // @ts-expect-error - mocking for test

@@ -8,6 +8,7 @@ import { ManualClock } from "../testing/manual-clock.js"
 import type { GetPaletteOptions, TerminalColors } from "../lib/terminal-palette.js"
 import { clearEnvCache } from "../lib/env.js"
 import { CliRenderEvents } from "../renderer.js"
+import type { TerminalCapabilities } from "../types.js"
 
 const OSC_SUPPORT_TIMEOUT_MS = 300
 
@@ -27,6 +28,31 @@ function schedule(clock: ManualClock | undefined, fn: () => void): void {
   }
 
   process.nextTick(fn)
+}
+
+function terminalCapabilities(overrides: Partial<TerminalCapabilities> = {}): TerminalCapabilities {
+  return {
+    kitty_keyboard: false,
+    kitty_graphics: false,
+    rgb: false,
+    ansi256: false,
+    unicode: "unicode",
+    sgr_pixels: false,
+    color_scheme_updates: false,
+    explicit_width: false,
+    scaled_text: false,
+    sixel: false,
+    focus_tracking: false,
+    sync: false,
+    bracketed_paste: false,
+    hyperlinks: false,
+    osc52: false,
+    notifications: false,
+    explicit_cursor_positioning: false,
+    in_tmux: false,
+    terminal: { name: "", version: "", from_xtversion: false },
+    ...overrides,
+  }
 }
 
 function createMockStreams(clock?: ManualClock, options: { emitSpecialColors?: boolean } = {}) {
@@ -206,22 +232,22 @@ function startCapabilityDetectionWindow(renderer: any, clock: ManualClock): void
 
 function setNativePaletteRequired(renderer: any): void {
   renderer._terminalIsSetup = true
-  renderer._capabilities = {
-    ...(renderer._capabilities ?? {}),
+  renderer._capabilities = terminalCapabilities({
+    ...renderer._capabilities,
     rgb: false,
     ansi256: true,
     terminal: renderer._capabilities?.terminal ?? { from_xtversion: false, name: "", version: "" },
-  }
+  })
 }
 
 function setNativePaletteUnneeded(renderer: any): void {
   renderer._terminalIsSetup = true
-  renderer._capabilities = {
-    ...(renderer._capabilities ?? {}),
+  renderer._capabilities = terminalCapabilities({
+    ...renderer._capabilities,
     rgb: true,
     ansi256: true,
     terminal: renderer._capabilities?.terminal ?? { from_xtversion: false, name: "", version: "" },
-  }
+  })
 }
 
 describe("Palette caching behavior", () => {
@@ -657,11 +683,12 @@ describe("Palette cache invalidation", () => {
 
     lib.setupTerminal = () => {}
     lib.queryPixelResolution = () => {}
-    lib.getTerminalCapabilities = () => ({
-      rgb: true,
-      ansi256: true,
-      terminal: { name: "Apple_Terminal", version: "", from_xtversion: false },
-    })
+    lib.getTerminalCapabilities = () =>
+      terminalCapabilities({
+        rgb: true,
+        ansi256: true,
+        terminal: { name: "Apple_Terminal", version: "", from_xtversion: false },
+      })
 
     await renderer.setupTerminal()
 
@@ -684,11 +711,12 @@ describe("Palette cache invalidation", () => {
 
     lib.setupTerminal = () => {}
     lib.queryPixelResolution = () => {}
-    lib.getTerminalCapabilities = () => ({
-      rgb: false,
-      ansi256: true,
-      terminal: { name: "Apple_Terminal", version: "", from_xtversion: false },
-    })
+    lib.getTerminalCapabilities = () =>
+      terminalCapabilities({
+        rgb: false,
+        ansi256: true,
+        terminal: { name: "Apple_Terminal", version: "", from_xtversion: false },
+      })
 
     await renderer.setupTerminal()
 
@@ -742,7 +770,7 @@ describe("Capability repaint handling", () => {
     const originalGetTerminalCapabilities = lib.getTerminalCapabilities
 
     lib.processCapabilityResponse = () => {}
-    lib.getTerminalCapabilities = () => ({ rgb: true, ansi256: true, unicode: "unicode" })
+    lib.getTerminalCapabilities = () => terminalCapabilities({ rgb: true, ansi256: true, unicode: "unicode" })
 
     // @ts-expect-error - testing private renderer state
     expect(renderer.forceFullRepaintRequested).toBe(false)
@@ -959,13 +987,12 @@ describe("Palette detection while capabilities are unsettled", () => {
     const { renderer, writes, clock } = await createSilentFollowUpPaletteRenderer()
 
     try {
-      // @ts-expect-error - simulating initial capabilities from TERM_PROGRAM=tmux and TERM_PROGRAM_VERSION
-      renderer._capabilities = {
+      renderer._capabilities = terminalCapabilities({
         in_tmux: true,
         rgb: true,
         ansi256: true,
         terminal: { name: "tmux", version: "3.6a", from_xtversion: false },
-      }
+      })
       startCapabilityDetectionWindow(renderer, clock)
 
       void renderer.getPalette({ size: 16 })

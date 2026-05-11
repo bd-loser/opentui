@@ -1,0 +1,76 @@
+import { spawnSync } from "node:child_process"
+import { cpSync, mkdirSync, rmSync } from "node:fs"
+import { dirname, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
+
+import { ensureNode26 } from "./node26.mjs"
+
+const scriptDir = dirname(fileURLToPath(import.meta.url))
+const packageRoot = resolve(scriptDir, "..")
+const repoRoot = resolve(packageRoot, "../..")
+const coreRoot = resolve(repoRoot, "packages/core")
+const nodePath = ensureNode26()
+const bundleDir = resolve(packageRoot, ".node")
+const bundleEntry = resolve(bundleDir, "index.js")
+
+ensureNativePackage()
+buildNodeExamples()
+
+const result = spawnSync(nodePath, ["--experimental-ffi", "--no-warnings", bundleEntry], {
+  cwd: packageRoot,
+  stdio: "inherit",
+  env: process.env,
+})
+
+if (result.error) {
+  throw result.error
+}
+
+process.exit(result.status ?? 0)
+
+function buildNodeExamples() {
+  rmSync(bundleDir, { recursive: true, force: true })
+
+  run(
+    "bun",
+    [
+      "build",
+      "src/index.ts",
+      "--target=node",
+      "--format=esm",
+      "--splitting",
+      "--outdir",
+      ".node",
+      "--define",
+      "OPENTUI_BUN_ONLY_EXAMPLES=false",
+    ],
+    packageRoot,
+  )
+}
+
+function ensureNativePackage() {
+  const nativePackageName = `core-${process.platform === "win32" ? "win32" : process.platform}-${process.arch}`
+  const sourceNativeDir = resolve(coreRoot, "node_modules", "@opentui", nativePackageName)
+  const targetNativeDir = resolve(packageRoot, "node_modules", "@opentui", nativePackageName)
+
+  run("bun", ["run", "build:native"], coreRoot)
+
+  mkdirSync(resolve(packageRoot, "node_modules", "@opentui"), { recursive: true })
+  rmSync(targetNativeDir, { recursive: true, force: true })
+  cpSync(sourceNativeDir, targetNativeDir, { recursive: true, dereference: true })
+}
+
+function run(command, args, cwd) {
+  const result = spawnSync(command, args, {
+    cwd,
+    stdio: "inherit",
+  })
+
+  if (result.error) {
+    throw result.error
+  }
+
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1)
+  }
+}

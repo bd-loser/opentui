@@ -146,16 +146,32 @@ async function downloadAndCombineQueries(
 }
 
 async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath: string): Promise<void> {
-  const imports = parsers
+  const assetPaths = parsers
     .map((parser) => {
       const safeFiletype = parser.filetype.replace(/[^a-zA-Z0-9]/g, "_")
       const lines = [
-        `import ${safeFiletype}_highlights from "${parser.highlightsPath}" with { type: "file" }`,
-        `import ${safeFiletype}_language from "${parser.languagePath}" with { type: "file" }`,
+        `const ${safeFiletype}_highlights = await resolveBundledFilePath(`,
+        `  () => import("${parser.highlightsPath}" as string, { with: { type: "file" } }),`,
+        `  "${parser.highlightsPath}",`,
+        `  import.meta.url,`,
+        `)`,
+        `const ${safeFiletype}_language = await resolveBundledFilePath(`,
+        `  () => import("${parser.languagePath}" as string, { with: { type: "file" } }),`,
+        `  "${parser.languagePath}",`,
+        `  import.meta.url,`,
+        `)`,
       ]
+
       if (parser.injectionsPath) {
-        lines.push(`import ${safeFiletype}_injections from "${parser.injectionsPath}" with { type: "file" }`)
+        lines.push(
+          `const ${safeFiletype}_injections = await resolveBundledFilePath(`,
+          `  () => import("${parser.injectionsPath}" as string, { with: { type: "file" } }),`,
+          `  "${parser.injectionsPath}",`,
+          `  import.meta.url,`,
+          `)`,
+        )
       }
+
       return lines.join("\n")
     })
     .join("\n")
@@ -163,13 +179,10 @@ async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath
   const parserDefinitions = parsers
     .map((parser) => {
       const safeFiletype = parser.filetype.replace(/[^a-zA-Z0-9]/g, "_")
-      const queriesLines = [
-        `          highlights: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_highlights)],`,
-      ]
+      const queriesLines = [`          highlights: [${safeFiletype}_highlights],`]
+
       if (parser.injectionsPath) {
-        queriesLines.push(
-          `          injections: [resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_injections)],`,
-        )
+        queriesLines.push(`          injections: [${safeFiletype}_injections],`)
       }
 
       const injectionMappingLine = parser.injectionMapping
@@ -182,7 +195,7 @@ async function generateDefaultParsersFile(parsers: GeneratedParser[], outputPath
 ${aliasesLine ? aliasesLine + "\n" : ""}        queries: {
 ${queriesLines.join("\n")}
         },
-        wasm: resolve(dirname(fileURLToPath(import.meta.url)), ${safeFiletype}_language),${injectionMappingLine ? "\n" + injectionMappingLine : ""}
+        wasm: ${safeFiletype}_language,${injectionMappingLine ? "\n" + injectionMappingLine : ""}
       }`
     })
     .join(",\n")
@@ -192,21 +205,24 @@ ${queriesLines.join("\n")}
 // Last generated: ${new Date().toISOString()}
 
 import type { FiletypeParserOptions } from "./types.js"
-import { resolve, dirname } from "path"
-import { fileURLToPath } from "url"
-
-${imports}
+import { resolveBundledFilePath } from "../../platform/runtime.js"
 
 // Cached parsers to avoid re-resolving paths on every call
-let _cachedParsers: FiletypeParserOptions[] | undefined
+let _cachedParsers: Promise<FiletypeParserOptions[]> | undefined
 
-export function getParsers(): FiletypeParserOptions[] {
+export function getParsers(): Promise<FiletypeParserOptions[]> {
   if (!_cachedParsers) {
-    _cachedParsers = [
-${parserDefinitions},
-    ]
+    _cachedParsers = loadParsers()
   }
   return _cachedParsers
+}
+
+async function loadParsers(): Promise<FiletypeParserOptions[]> {
+${assetPaths}
+
+  return [
+${parserDefinitions},
+  ]
 }
 `
 

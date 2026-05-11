@@ -1187,6 +1187,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "i32",
     },
+    audioStartMixer: {
+      args: ["ptr"],
+      returns: "i32",
+    },
     audioStop: {
       args: ["ptr"],
       returns: "i32",
@@ -1546,6 +1550,7 @@ export interface AudioEngineLib {
   audioSelectPlaybackDevice: (engine: Pointer, index: number) => number
   audioClearPlaybackDeviceSelection: (engine: Pointer) => void
   audioStart: (engine: Pointer, options?: AudioStartOptions | null) => number
+  audioStartMixer: (engine: Pointer) => number
   audioStop: (engine: Pointer) => number
   audioLoad: (engine: Pointer, data: Uint8Array) => { status: number; soundId: number | null }
   audioUnload: (engine: Pointer, soundId: number) => number
@@ -4086,6 +4091,10 @@ class FFIRenderLib implements RenderLib {
   public audioStart(engine: Pointer, options?: AudioStartOptions | null): number {
     const optionsBuffer = options == null ? null : AudioStartOptionsStruct.pack(options)
     return this.opentui.symbols.audioStart(engine, optionsBuffer ? ptr(optionsBuffer) : null)
+  }
+
+  public audioStartMixer(engine: Pointer): number {
+    return this.opentui.symbols.audioStartMixer(engine)
   }
 
   public audioStop(engine: Pointer): number {

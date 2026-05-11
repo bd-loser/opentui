@@ -1213,9 +1213,18 @@ test("simple blockquote", async () => {
 })
 
 test("fenced diff blocks color added and removed lines", async () => {
+  const mockTreeSitterClient = new MockTreeSitterClient()
+  mockTreeSitterClient.setMockResult({
+    highlights: [
+      [0, 5, "diff.minus"],
+      [6, 11, "diff.plus"],
+    ],
+  })
+
   const md = createMarkdownRenderable({
     id: "markdown-diff-fence",
     content: "```diff\n- old\n+ new\n unchanged\n```",
+    treeSitterClient: mockTreeSitterClient,
     syntaxStyle: SyntaxStyle.fromStyles({
       default: { fg: RGBA.fromValues(1, 1, 1, 1) },
       "diff.minus": { fg: RGBA.fromValues(1, 0, 0, 1) },
@@ -1229,12 +1238,10 @@ test("fenced diff blocks color added and removed lines", async () => {
   const codeBlock = md._blockStates[0]?.renderable
   expect(codeBlock).toBeInstanceOf(CodeRenderable)
   expect((codeBlock as CodeRenderable).filetype).toBe("diff")
+  expect(mockTreeSitterClient.isHighlighting()).toBe(true)
 
-  const startedAt = Date.now()
-  while ((codeBlock as CodeRenderable).isHighlighting && Date.now() - startedAt < 2000) {
-    await Bun.sleep(10)
-    await renderOnce()
-  }
+  mockTreeSitterClient.resolveAllHighlightOnce()
+  await Bun.sleep(10)
   await renderOnce()
 
   expect(findSpanContaining(captureSpans(), "- old")?.fg?.toInts()).toEqual(RGBA.fromValues(1, 0, 0, 1).toInts())

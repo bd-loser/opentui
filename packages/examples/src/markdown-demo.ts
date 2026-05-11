@@ -407,13 +407,19 @@ const JSON_PARSER_WASM_URL =
   "https://github.com/tree-sitter/tree-sitter-json/releases/download/v0.24.8/tree-sitter-json.wasm"
 const JSON_HIGHLIGHTS_QUERY_URL =
   "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/json/highlights.scm"
+const DIFF_PARSER_WASM_URL =
+  "https://github.com/tree-sitter-grammars/tree-sitter-diff/releases/download/v0.1.0/tree-sitter-diff.wasm"
+const DIFF_HIGHLIGHTS_QUERY_URL =
+  "https://raw.githubusercontent.com/tree-sitter-grammars/tree-sitter-diff/master/queries/highlights.scm"
 
-let jsonParserRegistered = false
+let demoParsersRegistered = false
 
-function registerJsonParserForDemo(): void {
-  if (jsonParserRegistered) return
+function registerTreeSitterParsersForDemo(): void {
+  if (demoParsersRegistered) return
 
-  getTreeSitterClient().addFiletypeParser({
+  const treeSitterClient = getTreeSitterClient()
+
+  treeSitterClient.addFiletypeParser({
     filetype: "json",
     wasm: JSON_PARSER_WASM_URL,
     queries: {
@@ -421,7 +427,15 @@ function registerJsonParserForDemo(): void {
     },
   })
 
-  jsonParserRegistered = true
+  treeSitterClient.addFiletypeParser({
+    filetype: "diff",
+    wasm: DIFF_PARSER_WASM_URL,
+    queries: {
+      highlights: [DIFF_HIGHLIGHTS_QUERY_URL],
+    },
+  })
+
+  demoParsersRegistered = true
 }
 
 function getCurrentTheme() {
@@ -531,7 +545,7 @@ export async function run(rendererInstance: CliRenderer): Promise<void> {
   rendererInstance.on(CliRenderEvents.DESTROY, rendererDestroyHandler)
 
   renderer.start()
-  registerJsonParserForDemo()
+  registerTreeSitterParsersForDemo()
 
   const theme = getCurrentTheme()
   renderer.setBackgroundColor(theme.bg)

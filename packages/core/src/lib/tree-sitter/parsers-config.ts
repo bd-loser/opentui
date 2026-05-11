@@ -69,15 +69,6 @@ export default {
       },
     },
     {
-      filetype: "diff",
-      wasm: "https://github.com/tree-sitter-grammars/tree-sitter-diff/releases/download/v0.1.0/tree-sitter-diff.wasm",
-      queries: {
-        highlights: [
-          "https://raw.githubusercontent.com/tree-sitter-grammars/tree-sitter-diff/master/queries/highlights.scm",
-        ],
-      },
-    },
-    {
       filetype: "zig",
       wasm: "https://github.com/tree-sitter-grammars/tree-sitter-zig/releases/download/v1.1.2/tree-sitter-zig.wasm",
       queries: {

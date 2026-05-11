@@ -17,25 +17,14 @@ import {
   type ThemeMode,
 } from "@opentui/core"
 import { measureText } from "@opentui/core"
-import * as goldenStarDemo from "./golden-star-demo.js"
 import * as boxExample from "./fonts.js"
-import * as fractalShaderExample from "./fractal-shader-demo.js"
 import * as framebufferExample from "./framebuffer-demo.js"
-import * as lightsPhongExample from "./lights-phong-demo.js"
-import * as physxPlanckExample from "./physx-planck-2d-demo.js"
-import * as physxRapierExample from "./physx-rapier-2d-demo.js"
 import * as opentuiDemo from "./opentui-demo.js"
 import * as nestedZIndexDemo from "./nested-zindex-demo.js"
 import * as relativePositioningDemo from "./relative-positioning-demo.js"
 import * as transparencyDemo from "./transparency-demo.js"
-import * as draggableThreeDemo from "./draggable-three-demo.js"
 import * as scrollExample from "./scroll-example.js"
 import * as stickyScrollExample from "./sticky-scroll-example.js"
-import * as shaderCubeExample from "./shader-cube-demo.js"
-import * as spriteAnimationExample from "./sprite-animation-demo.js"
-import * as spriteParticleExample from "./sprite-particle-generator-demo.js"
-import * as staticSpriteExample from "./static-sprite-demo.js"
-import * as textureLoadingExample from "./texture-loading-demo.js"
 import * as timelineExample from "./timeline-example.js"
 import * as tabSelectExample from "./tab-select-demo.js"
 import * as selectExample from "./select-demo.js"
@@ -83,9 +72,16 @@ import * as nativeAudioDemo from "./native-audio-demo.js"
 interface Example {
   name: string
   description: string
-  run?: (renderer: CliRenderer) => void
+  run?: (renderer: CliRenderer) => void | Promise<void>
   destroy?: (renderer: CliRenderer) => void
 }
+
+interface ExampleModule {
+  run?: (renderer: CliRenderer) => void | Promise<void>
+  destroy?: (renderer: CliRenderer) => void
+}
+
+declare const OPENTUI_BUN_ONLY_EXAMPLES: boolean | undefined
 
 interface ExampleTheme {
   titleColor: RGBA
@@ -105,6 +101,36 @@ interface ExampleTheme {
 }
 
 const DEFAULT_THEME_MODE: ThemeMode = "dark"
+const isBunRuntime = typeof process !== "undefined" && typeof process.versions?.bun === "string"
+const includeBunOnlyExamples = typeof OPENTUI_BUN_ONLY_EXAMPLES === "boolean" ? OPENTUI_BUN_ONLY_EXAMPLES : isBunRuntime
+
+function bunOnlyExample(name: string, description: string, load: () => Promise<ExampleModule>): Example {
+  if (!includeBunOnlyExamples) {
+    return {
+      name,
+      description: `${description} (Bun-only for now)`,
+    }
+  }
+
+  let loaded: ExampleModule | null = null
+
+  async function loadModule(): Promise<ExampleModule> {
+    loaded ??= await load()
+    return loaded
+  }
+
+  return {
+    name,
+    description,
+    async run(renderer) {
+      const module = await loadModule()
+      return module.run?.(renderer)
+    },
+    destroy(renderer) {
+      loaded?.destroy?.(renderer)
+    },
+  }
+}
 
 const MENU_THEMES: Record<ThemeMode, ExampleTheme> = {
   dark: {
@@ -141,13 +167,12 @@ const MENU_THEMES: Record<ThemeMode, ExampleTheme> = {
   },
 }
 
-const examples: Example[] = [
-  {
-    name: "Golden Star Demo",
-    description: "3D golden star with particle effects and animated text celebrating 5000 stars",
-    run: goldenStarDemo.run,
-    destroy: goldenStarDemo.destroy,
-  },
+export const examples: Example[] = [
+  bunOnlyExample(
+    "Golden Star Demo",
+    "3D golden star with particle effects and animated text celebrating 5000 stars",
+    () => import("./golden-star-demo.js"),
+  ),
   {
     name: "Mouse Interaction Demo",
     description: "Interactive mouse trails and clickable cells demonstration",
@@ -317,42 +342,25 @@ const examples: Example[] = [
     run: transparencyDemo.run,
     destroy: transparencyDemo.destroy,
   },
-  {
-    name: "Draggable ThreeRenderable",
-    description: "Draggable WebGPU cube with live animation",
-    run: draggableThreeDemo.run,
-    destroy: draggableThreeDemo.destroy,
-  },
-  {
-    name: "Static Sprite",
-    description: "Static sprite rendering demo",
-    run: staticSpriteExample.run,
-    destroy: staticSpriteExample.destroy,
-  },
-  {
-    name: "Sprite Animation",
-    description: "Animated sprite sequences",
-    run: spriteAnimationExample.run,
-    destroy: spriteAnimationExample.destroy,
-  },
-  {
-    name: "Sprite Particles",
-    description: "Particle system with sprites",
-    run: spriteParticleExample.run,
-    destroy: spriteParticleExample.destroy,
-  },
+  bunOnlyExample(
+    "Draggable ThreeRenderable",
+    "Draggable WebGPU cube with live animation",
+    () => import("./draggable-three-demo.js"),
+  ),
+  bunOnlyExample("Static Sprite", "Static sprite rendering demo", () => import("./static-sprite-demo.js")),
+  bunOnlyExample("Sprite Animation", "Animated sprite sequences", () => import("./sprite-animation-demo.js")),
+  bunOnlyExample(
+    "Sprite Particles",
+    "Particle system with sprites",
+    () => import("./sprite-particle-generator-demo.js"),
+  ),
   {
     name: "Framebuffer Demo",
     description: "Framebuffer rendering techniques",
     run: framebufferExample.run,
     destroy: framebufferExample.destroy,
   },
-  {
-    name: "Texture Loading",
-    description: "Loading and displaying textures",
-    run: textureLoadingExample.run,
-    destroy: textureLoadingExample.destroy,
-  },
+  bunOnlyExample("Texture Loading", "Loading and displaying textures", () => import("./texture-loading-demo.js")),
   {
     name: "ScrollBox Demo",
     description: "Scrollable container with customization",
@@ -377,36 +385,11 @@ const examples: Example[] = [
     run: scrollboxOverlayHitTest.run,
     destroy: scrollboxOverlayHitTest.destroy,
   },
-  {
-    name: "Shader Cube",
-    description: "3D cube with custom shaders",
-    run: shaderCubeExample.run,
-    destroy: shaderCubeExample.destroy,
-  },
-  {
-    name: "Fractal Shader",
-    description: "Fractal rendering with shaders",
-    run: fractalShaderExample.run,
-    destroy: fractalShaderExample.destroy,
-  },
-  {
-    name: "Phong Lighting",
-    description: "Phong lighting model demo",
-    run: lightsPhongExample.run,
-    destroy: lightsPhongExample.destroy,
-  },
-  {
-    name: "Physics Planck",
-    description: "2D physics with Planck.js",
-    run: physxPlanckExample.run,
-    destroy: physxPlanckExample.destroy,
-  },
-  {
-    name: "Physics Rapier",
-    description: "2D physics with Rapier",
-    run: physxRapierExample.run,
-    destroy: physxRapierExample.destroy,
-  },
+  bunOnlyExample("Shader Cube", "3D cube with custom shaders", () => import("./shader-cube-demo.js")),
+  bunOnlyExample("Fractal Shader", "Fractal rendering with shaders", () => import("./fractal-shader-demo.js")),
+  bunOnlyExample("Phong Lighting", "Phong lighting model demo", () => import("./lights-phong-demo.js")),
+  bunOnlyExample("Physics Planck", "2D physics with Planck.js", () => import("./physx-planck-2d-demo.js")),
+  bunOnlyExample("Physics Rapier", "2D physics with Rapier", () => import("./physx-rapier-2d-demo.js")),
   {
     name: "Timeline Example",
     description: "Animation timeline system",
@@ -552,7 +535,7 @@ class ExampleSelector {
     const theme = MENU_THEMES[this.themeMode]
 
     // Menu container with column layout
-    this.menuContainer = new BoxRenderable(renderer, {
+    this.menuContainer = new BoxRenderable(this.renderer, {
       id: "example-menu-container",
       flexDirection: "column",
       width: "100%",
@@ -566,7 +549,7 @@ class ExampleSelector {
     const { width: titleWidth } = measureText({ text: titleText, font: titleFont })
     const centerX = Math.floor(width / 2) - Math.floor(titleWidth / 2)
 
-    this.title = new ASCIIFontRenderable(renderer, {
+    this.title = new ASCIIFontRenderable(this.renderer, {
       id: "example-index-title",
       left: centerX,
       margin: 1,
@@ -578,7 +561,7 @@ class ExampleSelector {
     this.menuContainer.add(this.title)
 
     // Filter box with border (grows with content)
-    this.filterBox = new BoxRenderable(renderer, {
+    this.filterBox = new BoxRenderable(this.renderer, {
       id: "example-index-filter-box",
       marginLeft: 1,
       marginRight: 1,
@@ -591,7 +574,7 @@ class ExampleSelector {
     this.menuContainer.add(this.filterBox)
 
     // Filter input inside the box (transparent bg so box bg shows through)
-    this.filterInput = new TextareaRenderable(renderer, {
+    this.filterInput = new TextareaRenderable(this.renderer, {
       id: "example-index-filter-input",
       width: "100%",
       height: 1,
@@ -612,7 +595,7 @@ class ExampleSelector {
     this.filterInput.focus()
 
     // Select box (grows to fill remaining space)
-    this.selectBox = new BoxRenderable(renderer, {
+    this.selectBox = new BoxRenderable(this.renderer, {
       id: "example-selector-box",
       marginLeft: 1,
       marginRight: 1,
@@ -636,7 +619,7 @@ class ExampleSelector {
       value: example,
     }))
 
-    this.selectElement = new SelectRenderable(renderer, {
+    this.selectElement = new SelectRenderable(this.renderer, {
       id: "example-selector",
       height: "100%",
       options: selectOptions,
@@ -655,17 +638,17 @@ class ExampleSelector {
     this.selectBox.add(this.selectElement)
 
     this.selectElement.on(SelectRenderableEvents.ITEM_SELECTED, (index: number, option: SelectOption) => {
-      this.runSelected(option.value as Example)
+      void this.runSelected(option.value as Example)
     })
 
-    this.timeToFirstDrawText = new TimeToFirstDrawRenderable(renderer, {
+    this.timeToFirstDrawText = new TimeToFirstDrawRenderable(this.renderer, {
       id: "example-index-time-to-first-draw",
       fg: theme.instructionsColor,
     })
     this.menuContainer.add(this.timeToFirstDrawText)
 
     // Instructions at the bottom
-    this.instructions = new TextRenderable(renderer, {
+    this.instructions = new TextRenderable(this.renderer, {
       id: "example-index-instructions",
       height: 1,
       flexShrink: 0,
@@ -839,17 +822,17 @@ class ExampleSelector {
     setupCommonDemoKeys(this.renderer)
   }
 
-  private runSelected(selected: Example): void {
+  private async runSelected(selected: Example): Promise<void> {
     this.inMenu = false
     this.hideMenuElements()
 
     if (selected.run) {
       this.currentExample = selected
-      selected.run(this.renderer)
+      await selected.run(this.renderer)
     } else {
       if (!this.notImplementedText) {
         const theme = MENU_THEMES[this.themeMode]
-        this.notImplementedText = new TextRenderable(renderer, {
+        this.notImplementedText = new TextRenderable(this.renderer, {
           id: "not-implemented",
           position: "absolute",
           left: 10,

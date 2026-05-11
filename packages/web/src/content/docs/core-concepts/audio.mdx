@@ -1,7 +1,7 @@
 ---
 title: Native audio
 description: Load, play, mix, and inspect audio with the native miniaudio backend
-order: 10
+order: 11
 skill:
   entry: true
   intents: [audio, native-audio, sound, playback, pcm, fft]
@@ -58,6 +58,30 @@ Create a new `Audio` instance to change `sampleRate` or `playbackChannels`.
 | `setMasterVolume(volume)`       | Set master volume                                             |
 
 `play()` accepts `{ volume, pan, loop, groupId }`. Native playback clamps `volume` to `0..4` and `pan` to `-1..1`. The engine has 32 voice slots.
+
+## Bun standalone executables
+
+Bun embeds files in `bun build --compile` executables when they are imported with `with { type: "file" }`. Read the embedded file as bytes and pass it to `loadSound()` so audio decodes from memory instead of a file path.
+
+```typescript
+import { file } from "bun"
+import { Audio } from "@opentui/core"
+import clickPath from "./click.wav" with { type: "file" }
+
+const audio = Audio.create({ autoStart: false })
+const clickBytes = await file(clickPath).bytes()
+const click = audio.loadSound(clickBytes)
+
+if (click != null && audio.start()) {
+  audio.play(click)
+}
+```
+
+Compile the app normally with `bun build --compile ./app.ts --outfile app`.
+
+## Node.js standalone executables
+
+Coming soon.
 
 ## Devices
 

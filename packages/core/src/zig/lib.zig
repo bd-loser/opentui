@@ -308,9 +308,9 @@ export fn audioGetPlaybackDeviceCount(engine_handle: NativeHandle) u32 {
     return native_audio.getPlaybackDeviceCount(object_ptr);
 }
 
-export fn audioGetPlaybackDeviceName(engine_handle: NativeHandle, index: u32, out_ptr: [*]u8, max_len: usize) usize {
+export fn audioGetPlaybackDeviceName(engine_handle: NativeHandle, index: u32, out_ptr: [*]u8, max_len: u32) u32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return 0;
-    return native_audio.getPlaybackDeviceName(object_ptr, index, out_ptr, max_len);
+    return @intCast(native_audio.getPlaybackDeviceName(object_ptr, index, out_ptr, @as(usize, max_len)));
 }
 
 export fn audioIsPlaybackDeviceDefault(engine_handle: NativeHandle, index: u32) bool {
@@ -343,9 +343,9 @@ export fn audioStop(engine_handle: NativeHandle) i32 {
     return native_audio.stop(object_ptr);
 }
 
-export fn audioLoad(engine_handle: NativeHandle, data_ptr: ?[*]const u8, data_len: usize, out_sound_id: ?*u32) i32 {
+export fn audioLoad(engine_handle: NativeHandle, data_ptr: ?[*]const u8, data_len: u32, out_sound_id: ?*u32) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    return native_audio.load(object_ptr, data_ptr, data_len, out_sound_id);
+    return native_audio.load(object_ptr, data_ptr, @as(usize, data_len), out_sound_id);
 }
 
 export fn audioUnload(engine_handle: NativeHandle, sound_id: u32) i32 {
@@ -368,9 +368,9 @@ export fn audioSetVoiceGroup(engine_handle: NativeHandle, voice_id: u32, group_i
     return native_audio.setVoiceGroup(object_ptr, voice_id, group_id);
 }
 
-export fn audioCreateGroup(engine_handle: NativeHandle, name_ptr: ?[*]const u8, name_len: usize, out_group_id: ?*u32) i32 {
+export fn audioCreateGroup(engine_handle: NativeHandle, name_ptr: ?[*]const u8, name_len: u32, out_group_id: ?*u32) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
-    return native_audio.createGroup(object_ptr, name_ptr, name_len, out_group_id);
+    return native_audio.createGroup(object_ptr, name_ptr, @as(usize, name_len), out_group_id);
 }
 
 export fn audioSetGroupVolume(engine_handle: NativeHandle, group_id: u32, volume: f32) i32 {
@@ -953,10 +953,10 @@ export fn clearClipboardOSC52(renderer_handle: NativeHandle, target: u8) bool {
     return object_ptr.clearClipboardOSC52(targetEnum);
 }
 
-export fn triggerNotification(renderer_handle: NativeHandle, messagePtr: [*]const u8, messageLen: usize, titlePtr: ?[*]const u8, titleLen: usize) bool {
+export fn triggerNotification(renderer_handle: NativeHandle, messagePtr: [*]const u8, messageLen: u32, titlePtr: ?[*]const u8, titleLen: u32) bool {
     const object_ptr = acquireRenderer(renderer_handle) orelse return false;
-    const message = messagePtr[0..messageLen];
-    const title = if (titlePtr) |ptr| ptr[0..titleLen] else null;
+    const message = messagePtr[0..@as(usize, messageLen)];
+    const title = if (titlePtr) |ptr| ptr[0..@as(usize, titleLen)] else null;
     return object_ptr.triggerNotification(message, title);
 }
 

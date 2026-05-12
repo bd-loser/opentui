@@ -46,6 +46,10 @@ interface EditQueueItem {
 type TreeSitterWorkerPath = string | URL
 type TreeSitterWorkerHandle = Pick<PlatformWorkerHandle, "onerror" | "onmessage" | "postMessage" | "terminate">
 
+interface TreeSitterClientInternalOptions {
+  autoStartWorker?: boolean
+}
+
 let DEFAULT_PARSER_OVERRIDES: FiletypeParserOptions[] = []
 
 export function addDefaultParsers(parsers: FiletypeParserOptions[]): void {
@@ -74,12 +78,22 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   private editQueues: Map<number, ProcessQueue<EditQueueItem>> = new Map()
   private debouncer: DebounceController
   private options: TreeSitterClientOptions
+  private destroyCallbacks = new Set<() => void>()
 
-  constructor(options: TreeSitterClientOptions) {
+  constructor(options: TreeSitterClientOptions, internalOptions: TreeSitterClientInternalOptions = {}) {
     super()
     this.options = options
     this.debouncer = createDebounce("tree-sitter-client")
-    this.startWorker()
+    if (internalOptions.autoStartWorker ?? true) {
+      this.startWorker()
+    }
+  }
+
+  public onDestroy(callback: () => void): () => void {
+    this.destroyCallbacks.add(callback)
+    return () => {
+      this.destroyCallbacks.delete(callback)
+    }
   }
 
   private emitError(error: string, bufferId?: number): void {
@@ -136,16 +150,16 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
 
   // Path resolution stays in the client for now; runtime-specific Worker construction lives in platform/worker.
   private resolveWorkerPath(): TreeSitterWorkerPath {
+    if (this.options.workerPath) {
+      return this.options.workerPath
+    }
+
     if (env.OTUI_TREE_SITTER_WORKER_PATH) {
       return env.OTUI_TREE_SITTER_WORKER_PATH
     }
 
     if (typeof OTUI_TREE_SITTER_WORKER_PATH !== "undefined") {
       return OTUI_TREE_SITTER_WORKER_PATH
-    }
-
-    if (this.options.workerPath) {
-      return this.options.workerPath
     }
 
     let workerPath = new URL("./parser.worker.js", import.meta.url).href
@@ -187,6 +201,10 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   async initialize(): Promise<void> {
     if (this.initializePromise) {
       return this.initializePromise
+    }
+
+    if (!this.worker) {
+      this.startWorker()
     }
 
     this.initializePromise = this.initializeClient()
@@ -558,6 +576,15 @@ export class TreeSitterClient extends EventEmitter<TreeSitterClientEvents> {
   }
 
   public async destroy(): Promise<void> {
+    for (const callback of this.destroyCallbacks) {
+      try {
+        callback()
+      } catch (error) {
+        console.error("TreeSitter client destroy callback failed:", error)
+      }
+    }
+    this.destroyCallbacks.clear()
+
     if (this.initializeResolvers) {
       clearTimeout(this.initializeResolvers.timeoutId)
       // Reject pending initialization promise to prevent hanging awaits

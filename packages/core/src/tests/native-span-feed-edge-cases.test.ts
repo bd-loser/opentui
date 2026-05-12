@@ -320,10 +320,15 @@ test("throwing handler does not skip remaining handlers for the same span", () =
     calls.push("B:" + new TextDecoder().decode(data))
   })
 
+  let caughtError: unknown
   try {
     produceData(stream, "msg1")
     stream.drainAll()
-  } catch {}
+  } catch (error) {
+    caughtError = error
+  }
+  expect(caughtError).toBeInstanceOf(Error)
+  expect((caughtError as Error).message).toBe("handler A error")
   expect(calls).toEqual(["A", "B:msg1"])
 
   stream.close()

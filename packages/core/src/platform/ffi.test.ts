@@ -24,6 +24,8 @@ import {
   type Pointer,
 } from "./ffi.js"
 
+const IS_BUN = typeof process.versions?.bun === "string"
+
 function createMockBackend() {
   const events: string[] = []
   const symbolDefinitions: unknown[] = []
@@ -229,9 +231,16 @@ describe("platform/ffi", () => {
     const unsafePointer = (BigInt(Number.MAX_SAFE_INTEGER) + 1n) as Pointer
     const negativePointer = -1n as Pointer
 
-    expect(toPointer(1n)).toBe(1 as Pointer)
-    expect(() => toPointer(BigInt(Number.MAX_SAFE_INTEGER) + 1n)).toThrow(POINTER_UNSAFE)
-    expect(() => toPointer(-1n)).toThrow(POINTER_NEGATIVE)
+    expect(toPointer(1n)).toBe((IS_BUN ? 1 : 1n) as Pointer)
+
+    if (IS_BUN) {
+      expect(() => toPointer(BigInt(Number.MAX_SAFE_INTEGER) + 1n)).toThrow(POINTER_UNSAFE)
+      expect(() => toPointer(-1n)).toThrow(POINTER_NEGATIVE)
+    } else {
+      expect(toPointer(unsafePointer)).toBe(unsafePointer)
+      expect(toPointer(negativePointer)).toBe(negativePointer)
+    }
+
     expect(() => backend.toArrayBuffer(unsafePointer, 0, 1)).toThrow(POINTER_UNSAFE)
     expect(() => backend.dlopen("mock", { withPtr: { ptr: unsafePointer } })).toThrow(POINTER_UNSAFE)
 
@@ -425,10 +434,10 @@ describe("platform/ffi", () => {
     const bun = createMockBackend()
     const node = createMockNodeBackend()
 
-    node.backend.dlopen(null, {})
+    node.backend.dlopen(null as unknown as string, {})
     expect(node.paths).toEqual([null])
 
-    expect(() => bun.backend.dlopen(null, {})).toThrow(BUN_DLOPEN_NULL)
+    expect(() => bun.backend.dlopen(null as unknown as string, {})).toThrow(BUN_DLOPEN_NULL)
   })
 
   test("manages Node callbacks through the loaded library", () => {

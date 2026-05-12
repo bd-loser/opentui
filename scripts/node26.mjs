@@ -6,12 +6,14 @@ import { fileURLToPath } from "node:url"
 export const NODE26_VERSION = "v26.1.0"
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
-const packageRoot = resolve(scriptDir, "..")
-const cacheDir = resolve(packageRoot, ".cache/node26")
+const repoRoot = resolve(scriptDir, "..")
+const cacheDir = resolve(repoRoot, ".cache/node26")
 
 function getTarget() {
   if (process.arch !== "x64") {
-    throw new Error(`This examples runner downloads the x64 Node 26 builds, not ${process.platform}-${process.arch}.`)
+    throw new Error(
+      `This repo Node 26 runner downloads the x64 Node 26 builds, not ${process.platform}-${process.arch}.`,
+    )
   }
 
   switch (process.platform) {
@@ -37,7 +39,7 @@ function getTarget() {
         url: `https://nodejs.org/dist/${NODE26_VERSION}/node-${NODE26_VERSION}-win-x64.zip`,
       }
     default:
-      throw new Error(`This examples runner does not have a Node 26 download for ${process.platform}-${process.arch}.`)
+      throw new Error(`This repo Node 26 runner does not have a download for ${process.platform}-${process.arch}.`)
   }
 }
 

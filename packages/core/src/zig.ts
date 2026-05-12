@@ -173,6 +173,7 @@ registerEnvVar({
 const CURSOR_STYLE_TO_ID = { block: 0, line: 1, underline: 2, default: 3 } as const
 const CURSOR_ID_TO_STYLE = ["block", "line", "underline", "default"] as const
 const MOUSE_STYLE_TO_ID = { default: 0, pointer: 1, text: 2, crosshair: 3, move: 4, "not-allowed": 5 } as const
+const MAX_FFI_U32 = 0xffff_ffff
 // Global singleton state for FFI tracing to prevent duplicate exit handlers
 let globalTraceSymbols: Record<string, number[]> | null = null
 let globalFFILogPath: string | null = null
@@ -192,6 +193,14 @@ function toSafeByteCount(value: number | bigint, label: string): number {
   }
 
   return Number(value)
+}
+
+function toSafeFFIU32Length(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_FFI_U32) {
+    throw new RangeError(`${label} exceeds native u32 length limit`)
+  }
+
+  return value
 }
 
 function ptrOrNull(value: ArrayBufferView): Pointer | null {
@@ -480,7 +489,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "bool",
     },
     triggerNotification: {
-      args: ["ptr", "ptr", "usize", "ptr", "usize"],
+      args: ["ptr", "ptr", "u32", "ptr", "u32"],
       returns: "bool",
     },
 
@@ -1249,8 +1258,8 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     audioGetPlaybackDeviceName: {
-      args: ["ptr", "u32", "ptr", "usize"],
-      returns: "usize",
+      args: ["ptr", "u32", "ptr", "u32"],
+      returns: "u32",
     },
     audioIsPlaybackDeviceDefault: {
       args: ["ptr", "u32"],
@@ -1277,7 +1286,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     audioLoad: {
-      args: ["ptr", "ptr", "u64", "ptr"],
+      args: ["ptr", "ptr", "u32", "ptr"],
       returns: "i32",
     },
     audioUnload: {
@@ -1297,7 +1306,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "i32",
     },
     audioCreateGroup: {
-      args: ["ptr", "ptr", "u64", "ptr"],
+      args: ["ptr", "ptr", "u32", "ptr"],
       returns: "i32",
     },
     audioSetGroupVolume: {
@@ -2941,22 +2950,24 @@ class FFIRenderLib implements RenderLib {
   }
 
   public copyToClipboardOSC52(renderer: Pointer, target: number, payload: Uint8Array): boolean {
-    return this.opentui.symbols.copyToClipboardOSC52(renderer, target, ptrOrNull(payload), payload.byteLength)
+    return Boolean(this.opentui.symbols.copyToClipboardOSC52(renderer, target, ptrOrNull(payload), payload.byteLength))
   }
 
   public clearClipboardOSC52(renderer: Pointer, target: number): boolean {
-    return this.opentui.symbols.clearClipboardOSC52(renderer, target)
+    return Boolean(this.opentui.symbols.clearClipboardOSC52(renderer, target))
   }
 
   public triggerNotification(renderer: Pointer, message: string, title?: string): boolean {
     const messageBytes = this.encoder.encode(message)
     const titleBytes = title === undefined ? null : this.encoder.encode(title)
-    return this.opentui.symbols.triggerNotification(
-      renderer,
-      messageBytes,
-      messageBytes.length,
-      titleBytes,
-      titleBytes?.length ?? 0,
+    return Boolean(
+      this.opentui.symbols.triggerNotification(
+        renderer,
+        messageBytes,
+        messageBytes.length,
+        titleBytes,
+        titleBytes?.length ?? 0,
+      ),
     )
   }
 
@@ -3324,7 +3335,7 @@ class FFIRenderLib implements RenderLib {
   ): boolean {
     const bg = optionalRgbaPtr(bgColor)
     const fg = optionalRgbaPtr(fgColor)
-    return this.opentui.symbols.textBufferViewSetLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg)
+    return Boolean(this.opentui.symbols.textBufferViewSetLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg))
   }
 
   public textBufferViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
@@ -3344,7 +3355,9 @@ class FFIRenderLib implements RenderLib {
   ): boolean {
     const bg = optionalRgbaPtr(bgColor)
     const fg = optionalRgbaPtr(fgColor)
-    return this.opentui.symbols.textBufferViewUpdateLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg)
+    return Boolean(
+      this.opentui.symbols.textBufferViewUpdateLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg),
+    )
   }
 
   public textBufferViewResetLocalSelection(view: Pointer): void {
@@ -3813,11 +3826,11 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editBufferCanUndo(buffer: Pointer): boolean {
-    return this.opentui.symbols.editBufferCanUndo(buffer)
+    return Boolean(this.opentui.symbols.editBufferCanUndo(buffer))
   }
 
   public editBufferCanRedo(buffer: Pointer): boolean {
-    return this.opentui.symbols.editBufferCanRedo(buffer)
+    return Boolean(this.opentui.symbols.editBufferCanRedo(buffer))
   }
 
   public editBufferClearHistory(buffer: Pointer): void {
@@ -3943,16 +3956,18 @@ class FFIRenderLib implements RenderLib {
   ): boolean {
     const bg = optionalRgbaPtr(bgColor)
     const fg = optionalRgbaPtr(fgColor)
-    return this.opentui.symbols.editorViewSetLocalSelection(
-      view,
-      anchorX,
-      anchorY,
-      focusX,
-      focusY,
-      bg,
-      fg,
-      ffiBool(updateCursor),
-      ffiBool(followCursor),
+    return Boolean(
+      this.opentui.symbols.editorViewSetLocalSelection(
+        view,
+        anchorX,
+        anchorY,
+        focusX,
+        focusY,
+        bg,
+        fg,
+        ffiBool(updateCursor),
+        ffiBool(followCursor),
+      ),
     )
   }
 
@@ -3975,16 +3990,18 @@ class FFIRenderLib implements RenderLib {
   ): boolean {
     const bg = optionalRgbaPtr(bgColor)
     const fg = optionalRgbaPtr(fgColor)
-    return this.opentui.symbols.editorViewUpdateLocalSelection(
-      view,
-      anchorX,
-      anchorY,
-      focusX,
-      focusY,
-      bg,
-      fg,
-      ffiBool(updateCursor),
-      ffiBool(followCursor),
+    return Boolean(
+      this.opentui.symbols.editorViewUpdateLocalSelection(
+        view,
+        anchorX,
+        anchorY,
+        focusX,
+        focusY,
+        bg,
+        fg,
+        ffiBool(updateCursor),
+        ffiBool(followCursor),
+      ),
     )
   }
 
@@ -4245,7 +4262,8 @@ class FFIRenderLib implements RenderLib {
 
   public audioLoad(engine: Pointer, data: Uint8Array): { status: number; soundId: number | null } {
     const outBuffer = new ArrayBuffer(4)
-    const status = this.opentui.symbols.audioLoad(engine, ptr(data), data.length, ptr(outBuffer))
+    const dataLength = toSafeFFIU32Length(data.byteLength, "Audio data length")
+    const status = this.opentui.symbols.audioLoad(engine, ptr(data), dataLength, ptr(outBuffer))
     if (status !== 0) {
       return { status, soundId: null }
     }
@@ -4288,7 +4306,8 @@ class FFIRenderLib implements RenderLib {
   public audioCreateGroup(engine: Pointer, name: string): { status: number; groupId: number | null } {
     const outBuffer = new ArrayBuffer(4)
     const nameBytes = this.encoder.encode(name)
-    const status = this.opentui.symbols.audioCreateGroup(engine, ptr(nameBytes), nameBytes.length, ptr(outBuffer))
+    const nameLength = toSafeFFIU32Length(nameBytes.byteLength, "Audio group name length")
+    const status = this.opentui.symbols.audioCreateGroup(engine, ptr(nameBytes), nameLength, ptr(outBuffer))
     if (status !== 0) {
       return { status, groupId: null }
     }
@@ -4309,7 +4328,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public audioEnableTap(engine: Pointer, enabled: boolean, capacityFrames: number): number {
-    return this.opentui.symbols.audioEnableTap(engine, enabled, capacityFrames)
+    return this.opentui.symbols.audioEnableTap(engine, ffiBool(enabled), capacityFrames)
   }
 
   public audioReadTap(

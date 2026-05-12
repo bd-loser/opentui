@@ -3,10 +3,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { TextBuffer } from "./text-buffer.js"
+import { resolveRenderLib } from "./zig.js"
 import { StyledText, stringToStyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
 import { SyntaxStyle } from "./syntax-style.js"
-import { resolveRenderLib } from "./zig.js"
 
 const MALFORMED_UTF8_ABOVE_UNICODE_RANGE = new Uint8Array([0x41, 0xf4, 0x90, 0x80, 0x80, 0x42])
 const MALFORMED_UTF8_TEXT = "A" + "\uFFFD".repeat(4) + "B"
@@ -361,11 +361,23 @@ describe("TextBuffer", () => {
       expect(buffer.length).toBe(11)
       expect(buffer.getPlainText()).toBe("After reset")
     })
+
+    it("recovers if the native memory registry entry was cleared", () => {
+      buffer.setText("Hello World")
+
+      resolveRenderLib().textBufferClearMemRegistry(buffer.ptr)
+
+      buffer.setText("Recovered")
+
+      expect(buffer.length).toBe(9)
+      expect(buffer.byteSize).toBe(9)
+      expect(buffer.getPlainText()).toBe("Recovered")
+    })
   })
 
   describe("malformed UTF-8 bytes", () => {
     it("loadFile should preserve malformed UTF-8 bytes without panicking", () => {
-      const dir = mkdtempSync(join(tmpdir(), "opentui-text-buffer-"))
+      const dir = mkdtempSync(join(process.env.OTUI_TEXT_BUFFER_TEST_TMPDIR ?? tmpdir(), "opentui-text-buffer-"))
       const path = join(dir, "malformed.txt")
       const unicodeBuffer = TextBuffer.create("unicode")
 

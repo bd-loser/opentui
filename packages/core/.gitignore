@@ -1,4 +1,5 @@
 # Zig build cache
 .zig-cache
+.node-test
 zig-out
 src/zig/lib

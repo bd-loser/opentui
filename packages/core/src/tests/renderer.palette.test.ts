@@ -654,6 +654,7 @@ describe("Palette cache invalidation", () => {
     const originalSetupTerminal = lib.setupTerminal
     const originalGetTerminalCapabilities = lib.getTerminalCapabilities
     const originalQueryPixelResolution = lib.queryPixelResolution
+    // @ts-expect-error - spying on private method for startup palette gate
     const refresh = spyOn(renderer, "refreshPalette")
 
     lib.setupTerminal = () => {}
@@ -682,6 +683,7 @@ describe("Palette cache invalidation", () => {
     const originalSetupTerminal = lib.setupTerminal
     const originalGetTerminalCapabilities = lib.getTerminalCapabilities
     const originalQueryPixelResolution = lib.queryPixelResolution
+    // @ts-expect-error - spying on private method for startup palette gate
     const refresh = spyOn(renderer, "refreshPalette").mockImplementation(() => {})
 
     lib.setupTerminal = () => {}

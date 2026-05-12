@@ -23,12 +23,12 @@ import { type MouseEventType, type RawMouseEvent, type ScrollInfo } from "./lib/
 import { Selection } from "./lib/selection.js"
 import { Clipboard, type ClipboardTarget } from "./lib/clipboard.js"
 import { EventEmitter } from "events"
-import { destroySingleton, hasSingleton, singleton } from "./lib/singleton.js"
+import { singleton } from "./lib/singleton.js"
 import { getObjectsInViewport } from "./lib/objects-in-viewport.js"
 import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler.js"
 import { isEditBufferRenderable, type EditBufferRenderable } from "./renderables/EditBufferRenderable.js"
 import { env, registerEnvVar } from "./lib/env.js"
-import { getTreeSitterClient } from "./lib/tree-sitter/index.js"
+import { destroyTreeSitterClient } from "./lib/tree-sitter/index.js"
 import {
   buildTerminalPaletteSignature,
   createTerminalPalette,
@@ -600,11 +600,9 @@ const rendererTracker = singleton("RendererTracker", () => {
       renderers.delete(renderer)
       if (renderers.size === 0) {
         process.stdin.pause()
-
-        if (hasSingleton("tree-sitter-client")) {
-          getTreeSitterClient().destroy()
-          destroySingleton("tree-sitter-client")
-        }
+        void destroyTreeSitterClient().catch((error) => {
+          console.error("Failed to destroy tree-sitter client:", error)
+        })
       }
     },
   }

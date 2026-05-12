@@ -439,6 +439,18 @@
 
     "@opentui/core": ["@opentui/core@workspace:packages/core"],
 
+    "@opentui/core-darwin-arm64": ["@opentui/core-darwin-arm64@0.2.7", "", { "os": "darwin", "cpu": "arm64" }, "sha512-CAy6cL3byz2Xf6gFiJHBpcnsp/2ADEWLLOUokVypOyPLcy8GY3sPzlA4pkAjVGQMYQhDj+Y3+SXz4uTLt4AETg=="],
+
+    "@opentui/core-darwin-x64": ["@opentui/core-darwin-x64@0.2.7", "", { "os": "darwin", "cpu": "x64" }, "sha512-K06h333rMkC9cyMJr/VvcRK3ik81Admd8ZsES5uf5YXWPdYhXGf75I1T8mKIThhUmoFLb8R5xqfuPmoocsjM7Q=="],
+
+    "@opentui/core-linux-arm64": ["@opentui/core-linux-arm64@0.2.7", "", { "os": "linux", "cpu": "arm64" }, "sha512-iYWGTztbdG9yYSB5Alxuo0dWAmkWQR0+/paNWUyPOocjigmKgMmACDtHgYqa7sxkIcWgmXljt/f8rgXDG4wdMg=="],
+
+    "@opentui/core-linux-x64": ["@opentui/core-linux-x64@0.2.7", "", { "os": "linux", "cpu": "x64" }, "sha512-tymBCfYbsDRfHQNXsolkFfaTEIDhemD4+1ZovUztQd7i+0Ggnu9WbPN1SNCiRz6PjrlaNeQzZE3Wl8FfVdw/cw=="],
+
+    "@opentui/core-win32-arm64": ["@opentui/core-win32-arm64@0.2.7", "", { "os": "win32", "cpu": "arm64" }, "sha512-XLPJWdT8QOukrYDkpIng6+uNUlF66ByXcQlC3qA9JbrUTBetZhgXs8Q2jEjRfc+Ty3uh1iRSA6PgJGbbOK/f4Q=="],
+
+    "@opentui/core-win32-x64": ["@opentui/core-win32-x64@0.2.7", "", { "os": "win32", "cpu": "x64" }, "sha512-CzVGEfqysVk8Hxcj0RDv/DtXIM6iZmbmr23kW7y8CJMPtmV1gmKI4D9abVjynWJnGbaSBnDi43mgZnGMgOdyEg=="],
+
     "@opentui/examples": ["@opentui/examples@workspace:packages/examples"],
 
     "@opentui/keymap": ["@opentui/keymap@workspace:packages/keymap"],

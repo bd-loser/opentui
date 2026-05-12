@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process"
 import { cpSync, mkdirSync, rmSync } from "node:fs"
 import { dirname, resolve } from "node:path"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
-import { ensureNode26 } from "./node26.mjs"
+import { ensureNode26 } from "../../../scripts/node26.mjs"
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const packageRoot = resolve(scriptDir, "..")
@@ -12,6 +12,7 @@ const coreRoot = resolve(repoRoot, "packages/core")
 const nodePath = ensureNode26()
 const bundleDir = resolve(packageRoot, ".node")
 const bundleEntry = resolve(bundleDir, "index.js")
+const workerEntry = resolve(bundleDir, "parser.worker.js")
 
 ensureNativePackage()
 buildNodeExamples()
@@ -19,7 +20,10 @@ buildNodeExamples()
 const result = spawnSync(nodePath, ["--experimental-ffi", "--no-warnings", bundleEntry], {
   cwd: packageRoot,
   stdio: "inherit",
-  env: process.env,
+  env: {
+    ...process.env,
+    OTUI_TREE_SITTER_WORKER_PATH: pathToFileURL(workerEntry).href,
+  },
 })
 
 if (result.error) {
@@ -36,11 +40,14 @@ function buildNodeExamples() {
     [
       "build",
       "src/index.ts",
+      "../core/src/lib/tree-sitter/parser.worker.ts",
       "--target=node",
       "--format=esm",
       "--splitting",
       "--outdir",
       ".node",
+      "--entry-naming",
+      "[name].[ext]",
       "--define",
       "OPENTUI_BUN_ONLY_EXAMPLES=false",
     ],

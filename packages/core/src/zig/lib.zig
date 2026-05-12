@@ -222,8 +222,8 @@ export fn audioGetPlaybackDeviceCount(engine: *native_audio.Engine) u32 {
     return native_audio.getPlaybackDeviceCount(engine);
 }
 
-export fn audioGetPlaybackDeviceName(engine: *native_audio.Engine, index: u32, out_ptr: [*]u8, max_len: usize) usize {
-    return native_audio.getPlaybackDeviceName(engine, index, out_ptr, max_len);
+export fn audioGetPlaybackDeviceName(engine: *native_audio.Engine, index: u32, out_ptr: [*]u8, max_len: u32) u32 {
+    return @intCast(native_audio.getPlaybackDeviceName(engine, index, out_ptr, @as(usize, max_len)));
 }
 
 export fn audioIsPlaybackDeviceDefault(engine: *native_audio.Engine, index: u32) bool {
@@ -250,8 +250,8 @@ export fn audioStop(engine: *native_audio.Engine) i32 {
     return native_audio.stop(engine);
 }
 
-export fn audioLoad(engine: *native_audio.Engine, data_ptr: ?[*]const u8, data_len: usize, out_sound_id: ?*u32) i32 {
-    return native_audio.load(engine, data_ptr, data_len, out_sound_id);
+export fn audioLoad(engine: *native_audio.Engine, data_ptr: ?[*]const u8, data_len: u32, out_sound_id: ?*u32) i32 {
+    return native_audio.load(engine, data_ptr, @as(usize, data_len), out_sound_id);
 }
 
 export fn audioUnload(engine: *native_audio.Engine, sound_id: u32) i32 {
@@ -270,8 +270,8 @@ export fn audioSetVoiceGroup(engine: *native_audio.Engine, voice_id: u32, group_
     return native_audio.setVoiceGroup(engine, voice_id, group_id);
 }
 
-export fn audioCreateGroup(engine: *native_audio.Engine, name_ptr: ?[*]const u8, name_len: usize, out_group_id: ?*u32) i32 {
-    return native_audio.createGroup(engine, name_ptr, name_len, out_group_id);
+export fn audioCreateGroup(engine: *native_audio.Engine, name_ptr: ?[*]const u8, name_len: u32, out_group_id: ?*u32) i32 {
+    return native_audio.createGroup(engine, name_ptr, @as(usize, name_len), out_group_id);
 }
 
 export fn audioSetGroupVolume(engine: *native_audio.Engine, group_id: u32, volume: f32) i32 {
@@ -766,9 +766,9 @@ export fn clearClipboardOSC52(rendererPtr: *renderer.CliRenderer, target: u8) bo
     return rendererPtr.clearClipboardOSC52(targetEnum);
 }
 
-export fn triggerNotification(rendererPtr: *renderer.CliRenderer, messagePtr: [*]const u8, messageLen: usize, titlePtr: ?[*]const u8, titleLen: usize) bool {
-    const message = messagePtr[0..messageLen];
-    const title = if (titlePtr) |ptr| ptr[0..titleLen] else null;
+export fn triggerNotification(rendererPtr: *renderer.CliRenderer, messagePtr: [*]const u8, messageLen: u32, titlePtr: ?[*]const u8, titleLen: u32) bool {
+    const message = messagePtr[0..@as(usize, messageLen)];
+    const title = if (titlePtr) |ptr| ptr[0..@as(usize, titleLen)] else null;
     return rendererPtr.triggerNotification(message, title);
 }
 

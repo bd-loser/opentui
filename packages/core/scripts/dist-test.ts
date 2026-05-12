@@ -144,10 +144,12 @@ const nativePackageName = ${JSON.stringify(nativePackageName)}
 
 const core = await import(${JSON.stringify(packageJson.name)})
 const testing = await import(${JSON.stringify(`${packageJson.name}/testing`)})
+const parserWorker = await import(${JSON.stringify(`${packageJson.name}/parser.worker`)})
 const nativePackage = await import(nativePackageName)
 
 assert.equal(typeof core.createCliRenderer, "function")
 assert.equal(typeof testing.createTestRenderer, "function")
+assert.equal(typeof parserWorker, "object")
 assert.equal(typeof nativePackage.default, "string")
 
 const expectBunOnlyFailure = async (specifier, expectedMessage) => {
@@ -180,11 +182,13 @@ describe("${packageJson.name} dist smoke test", () => {
   test("imports portable and Bun-only entrypoints", async () => {
     const core = await import(${JSON.stringify(packageJson.name)})
     const testing = await import(${JSON.stringify(`${packageJson.name}/testing`)})
+    const parserWorker = await import(${JSON.stringify(`${packageJson.name}/parser.worker`)})
     const runtimePlugin = await import(${JSON.stringify(`${packageJson.name}/runtime-plugin`)})
     const nativePackage = await import(${JSON.stringify(nativePackageName)})
 
     expect(typeof core.createCliRenderer).toBe("function")
     expect(typeof testing.createTestRenderer).toBe("function")
+    expect(typeof parserWorker).toBe("object")
     expect(typeof runtimePlugin.createRuntimePlugin).toBe("function")
     expect(typeof nativePackage.default).toBe("string")
   })

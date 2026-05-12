@@ -404,9 +404,7 @@ if (buildLib) {
   const writeBunOnlyStub = (fileName: string, specifier: string, exportNames: string[]): void => {
     const errorMessage = `${specifier} is Bun-only and is not available in Node.js. Use Bun to import this entrypoint.`
     const namedExports = exportNames
-      .map(
-        (exportName) => `export function ${exportName}() {\n  throw new Error(${JSON.stringify(errorMessage)})\n}`,
-      )
+      .map((exportName) => `export function ${exportName}() {\n  throw new Error(${JSON.stringify(errorMessage)})\n}`)
       .join("\n\n")
 
     writeFileSync(

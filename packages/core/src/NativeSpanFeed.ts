@@ -19,6 +19,12 @@ function toNumber(value: number | bigint): number {
 
 export type DataHandler = (data: Uint8Array) => void | Promise<void>
 
+const canThrowAcrossNativeCallback =
+  typeof process !== "undefined" &&
+  typeof process.versions === "object" &&
+  process.versions !== null &&
+  typeof process.versions.bun === "string"
+
 /**
  * Zero-copy wrapper over Zig memory; not a full stream interface.
  */
@@ -74,6 +80,8 @@ export class NativeSpanFeed {
   private inCallback = false
   private closeQueued = false
   private idleResolvers: Array<() => void> = []
+  private pendingHandlerError: unknown = null
+  private pendingHandlerErrorQueued = false
 
   private constructor(streamPtr: Pointer) {
     this.streamPtr = streamPtr
@@ -251,6 +259,29 @@ export class NativeSpanFeed {
     }
   }
 
+  private queuePendingHandlerError(error: unknown): void {
+    this.pendingHandlerError ??= error
+    if (this.pendingHandlerErrorQueued) return
+
+    this.pendingHandlerErrorQueued = true
+    queueMicrotask(() => {
+      this.pendingHandlerErrorQueued = false
+      if (this.pendingHandlerError === null) return
+
+      const pendingError = this.pendingHandlerError
+      this.pendingHandlerError = null
+      throw pendingError
+    })
+  }
+
+  private throwPendingHandlerError(): void {
+    if (this.pendingHandlerError === null) return
+
+    const pendingError = this.pendingHandlerError
+    this.pendingHandlerError = null
+    throw pendingError
+  }
+
   private drainOnce(): number {
     if (!this.drainBuffer || this.draining || this.pendingClose) return 0
     const capacity = Math.floor(this.drainBuffer.byteLength / SpanInfoStruct.size)
@@ -316,7 +347,15 @@ export class NativeSpanFeed {
       this.resolveIdleIfNeeded()
     }
 
-    if (firstError) throw firstError
+    if (firstError) {
+      if (!this.inCallback || canThrowAcrossNativeCallback) {
+        throw firstError
+      }
+
+      // Node FFI terminates when JS exceptions cross a native callback boundary.
+      // Surface the error after the callback returns instead of swallowing it.
+      this.queuePendingHandlerError(firstError)
+    }
 
     return count
   }
@@ -325,6 +364,9 @@ export class NativeSpanFeed {
     let count = this.drainOnce()
     while (count > 0) {
       count = this.drainOnce()
+    }
+    if (!this.inCallback) {
+      this.throwPendingHandlerError()
     }
   }
 }

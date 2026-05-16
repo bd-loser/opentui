@@ -2090,6 +2090,7 @@ class FFIRenderLib implements RenderLib {
   private logCallbackWrapper: FFICallbackInstance | null = null
   private eventCallbackWrapper: FFICallbackInstance | null = null
   private eventSinkPtr: Pointer | null = null
+  private eventSinkCleanupRegistered = false
   private _nativeEvents: EventEmitter = new EventEmitter()
   private _anyEventHandlers: Array<(name: string, data: ArrayBuffer) => void> = []
   private nativeSpanFeedCallbackWrapper: FFICallbackInstance | null = null
@@ -2212,6 +2213,24 @@ class FFIRenderLib implements RenderLib {
       this.eventCallbackWrapper = null
       throw new Error("Failed to create native event sink")
     }
+
+    this.registerEventSinkCleanup()
+  }
+
+  private registerEventSinkCleanup() {
+    if (this.eventSinkCleanupRegistered) return
+    this.eventSinkCleanupRegistered = true
+    process.once("exit", () => this.destroyEventSink())
+  }
+
+  private destroyEventSink() {
+    if (this.eventSinkPtr) {
+      this.opentui.symbols.destroyEventSink(this.eventSinkPtr)
+      this.eventSinkPtr = null
+    }
+
+    this.eventCallbackWrapper?.close()
+    this.eventCallbackWrapper = null
   }
 
   private ensureNativeSpanFeedCallback(): FFICallbackInstance {

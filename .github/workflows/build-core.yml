@@ -19,7 +19,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.13
 
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
@@ -64,7 +64,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.13
 
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
@@ -95,6 +95,13 @@ jobs:
         run: |
           cd packages/core
           bun run build:lib
+
+      - name: Run native event worker repro
+        if: matrix.os == 'windows-latest'
+        timeout-minutes: 2
+        run: |
+          cd packages/core
+          OPENTUI_NATIVE_EVENT_WORKER_REPRO=1 bun test --timeout 10000 src/native-event-worker-repro.test.ts
 
       - name: Run TypeScript tests
         run: |

@@ -9,8 +9,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  test:
-    name: Test (${{ matrix.os }})
+  bun-test:
+    name: Bun Test (${{ matrix.os }})
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -40,31 +40,106 @@ jobs:
         run: bun install
 
       - name: Build core
-        run: |
-          cd packages/core
-          bun run build
+        working-directory: packages/core
+        run: bun run build
 
       - name: Build
-        run: |
-          cd packages/solid
-          bun run build --ci
+        working-directory: packages/solid
+        run: bun run build --ci
 
       - name: Run tests
-        run: |
-          cd packages/solid
-          bun run test
+        working-directory: packages/solid
+        run: bun run test
+
+  node-source:
+    name: Node Source Lane
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build core
+        working-directory: packages/core
+        run: bun run build
+
+      - name: Build solid
+        working-directory: packages/solid
+        run: bun run build --ci
+
+      - name: Run Node source lane
+        working-directory: packages/solid
+        run: bun run test:js:node
+
+  packed-consumer:
+    name: Packed Consumer Smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build core
+        working-directory: packages/core
+        run: bun run build
+
+      - name: Build solid
+        working-directory: packages/solid
+        run: bun run build --ci
+
+      - name: Run packed consumer smoke test
+        working-directory: packages/solid
+        run: bun run test:dist --skip-build
 
   # Gate job for branch protection
   build-complete:
     name: Solid - Build and Test
-    needs: [test]
+    needs: [bun-test, node-source, packed-consumer]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check test results
         run: |
-          if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "Tests failed"
+          if [ "${{ needs.bun-test.result }}" != "success" ]; then
+            echo "Bun tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.node-source.result }}" != "success" ]; then
+            echo "Node source lane failed"
+            exit 1
+          fi
+          if [ "${{ needs.packed-consumer.result }}" != "success" ]; then
+            echo "Packed consumer smoke test failed"
             exit 1
           fi
           echo "All tests passed"

@@ -54,12 +54,8 @@ export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, m
     logger.setLogCallback(callback);
 }
 
-export fn setEventCallback(callback: ?*const fn (namePtr: [*]const u8, nameLen: usize, dataPtr: [*]const u8, dataLen: usize) callconv(.c) void) void {
-    event_bus.setEventCallback(callback);
-}
-
 export fn createEventSink(callback: ?event_bus.EventCallback) ?*event_bus.EventSink {
-    return event_bus.createEventSink(globalAllocator, callback) catch null;
+    return event_bus.createEventSink(globalAllocator, callback orelse return null) catch null;
 }
 
 export fn destroyEventSink(sink: *event_bus.EventSink) void {

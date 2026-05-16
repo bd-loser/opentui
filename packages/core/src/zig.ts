@@ -144,10 +144,6 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     // Event bus
-    setEventCallback: {
-      args: ["ptr"],
-      returns: "void",
-    },
     createEventSink: {
       args: ["ptr"],
       returns: "ptr",

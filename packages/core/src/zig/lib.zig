@@ -58,6 +58,14 @@ export fn setEventCallback(callback: ?*const fn (namePtr: [*]const u8, nameLen: 
     event_bus.setEventCallback(callback);
 }
 
+export fn createEventSink(callback: ?event_bus.EventCallback) ?*event_bus.EventSink {
+    return event_bus.createEventSink(globalAllocator, callback) catch null;
+}
+
+export fn destroyEventSink(sink: *event_bus.EventSink) void {
+    event_bus.destroyEventSink(globalAllocator, sink);
+}
+
 var gpa: std.heap.GeneralPurposeAllocator(.{
     .enable_memory_limit = build_options.gpa_safe_stats,
     .safety = build_options.gpa_safe_stats,
@@ -1302,16 +1310,17 @@ export fn textBufferViewMeasureForDimensions(view: *text_buffer_view.UnifiedText
 
 // ===== EditBuffer Exports =====
 
-export fn createEditBuffer(widthMethod: u8) ?*edit_buffer_mod.EditBuffer {
+export fn createEditBuffer(widthMethod: u8, event_sink: ?*event_bus.EventSink) ?*edit_buffer_mod.EditBuffer {
     const pool = gp.initGlobalPool(globalArena);
     const link_pool = link.initGlobalLinkPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
-    return edit_buffer_mod.EditBuffer.init(
+    return edit_buffer_mod.EditBuffer.initWithEventSink(
         globalAllocator,
         pool,
         link_pool,
         wMethod,
+        event_sink,
     ) catch null;
 }
 

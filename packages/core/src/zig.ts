@@ -8,11 +8,8 @@ import {
   type Pointer,
 } from "./platform/ffi.js"
 import { writeFile } from "./platform/runtime.js"
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "fs"
+import { existsSync, writeFileSync } from "fs"
 import { EventEmitter } from "events"
-import { tmpdir } from "node:os"
-import path from "node:path"
-import { isMainThread, threadId } from "node:worker_threads"
 import {
   type CursorStyle,
   type CursorStyleOptions,
@@ -67,7 +64,6 @@ import { isBunfsPath } from "./lib/bunfs.js"
 
 const nativePackage = await import(`@opentui/core-${process.platform}-${process.arch}`)
 let targetLibPath = nativePackage.default
-let workerLibPath: string | undefined
 
 if (isBunfsPath(targetLibPath)) {
   targetLibPath = targetLibPath.replace("../", "")
@@ -139,7 +135,7 @@ function optionalRgbaPtr(value: RGBA | null | undefined): Pointer | null {
 }
 
 function getOpenTUILib(libPath?: string) {
-  const resolvedLibPath = libPath || resolveTargetLibPath()
+  const resolvedLibPath = libPath || targetLibPath
 
   const rawSymbols = dlopen(resolvedLibPath, {
     // Logging
@@ -149,6 +145,14 @@ function getOpenTUILib(libPath?: string) {
     },
     // Event bus
     setEventCallback: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    createEventSink: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    destroyEventSink: {
       args: ["ptr"],
       returns: "void",
     },
@@ -839,7 +843,7 @@ function getOpenTUILib(libPath?: string) {
 
     // EditBuffer functions
     createEditBuffer: {
-      args: ["u8"],
+      args: ["u8", "ptr"],
       returns: "ptr",
     },
     destroyEditBuffer: {
@@ -1308,20 +1312,6 @@ function getOpenTUILib(libPath?: string) {
   }
 
   return rawSymbols
-}
-
-function resolveTargetLibPath() {
-  if (isMainThread) return targetLibPath
-  if (workerLibPath) return workerLibPath
-
-  mkdirSync(path.join(tmpdir(), "opentui-native-workers"), { recursive: true })
-  workerLibPath = path.join(
-    tmpdir(),
-    "opentui-native-workers",
-    `${path.basename(targetLibPath, path.extname(targetLibPath))}-${process.pid}-${threadId}${path.extname(targetLibPath)}`,
-  )
-  copyFileSync(targetLibPath, workerLibPath)
-  return workerLibPath
 }
 
 function convertToDebugSymbols<T extends Record<string, any>>(symbols: T): T {
@@ -2103,6 +2093,7 @@ class FFIRenderLib implements RenderLib {
   public readonly decoder: TextDecoder = new TextDecoder()
   private logCallbackWrapper: FFICallbackInstance | null = null
   private eventCallbackWrapper: FFICallbackInstance | null = null
+  private eventSinkPtr: Pointer | null = null
   private _nativeEvents: EventEmitter = new EventEmitter()
   private _anyEventHandlers: Array<(name: string, data: ArrayBuffer) => void> = []
   private nativeSpanFeedCallbackWrapper: FFICallbackInstance | null = null
@@ -2186,18 +2177,17 @@ class FFIRenderLib implements RenderLib {
             return
           }
 
-          const nameBuffer = toArrayBuffer(namePtr, 0, nameLen)
-          const nameBytes = new Uint8Array(nameBuffer)
-          const eventName = this.decoder.decode(nameBytes)
-
-          let eventData: ArrayBuffer
-          if (dataLen > 0 && dataPtr) {
-            eventData = toArrayBuffer(dataPtr, 0, dataLen).slice()
-          } else {
-            eventData = new ArrayBuffer(0)
-          }
+          const nameBytes = new Uint8Array(toArrayBuffer(namePtr, 0, nameLen)).slice()
+          const eventDataBytes =
+            dataLen > 0 && dataPtr ? new Uint8Array(toArrayBuffer(dataPtr, 0, dataLen)).slice() : new Uint8Array()
 
           queueMicrotask(() => {
+            const eventName = this.decoder.decode(nameBytes)
+            const eventData = eventDataBytes.buffer.slice(
+              eventDataBytes.byteOffset,
+              eventDataBytes.byteOffset + eventDataBytes.byteLength,
+            )
+
             this._nativeEvents.emit(eventName, eventData)
 
             for (const handler of this._anyEventHandlers) {
@@ -2220,7 +2210,12 @@ class FFIRenderLib implements RenderLib {
       throw new Error("Failed to create event callback")
     }
 
-    this.setEventCallback(eventCallback.ptr)
+    this.eventSinkPtr = this.opentui.symbols.createEventSink(eventCallback.ptr)
+    if (!this.eventSinkPtr) {
+      eventCallback.close()
+      this.eventCallbackWrapper = null
+      throw new Error("Failed to create native event sink")
+    }
   }
 
   private ensureNativeSpanFeedCallback(): FFICallbackInstance {
@@ -2248,10 +2243,6 @@ class FFIRenderLib implements RenderLib {
     }
 
     return callback
-  }
-
-  private setEventCallback(callbackPtr: Pointer) {
-    this.opentui.symbols.setEventCallback(callbackPtr)
   }
 
   public createRenderer(width: number, height: number, options: { testing?: boolean; remote?: boolean } = {}) {
@@ -3550,7 +3541,7 @@ class FFIRenderLib implements RenderLib {
   // EditBuffer implementations
   public createEditBuffer(widthMethod: WidthMethod): Pointer {
     const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
-    const bufferPtr = this.opentui.symbols.createEditBuffer(widthMethodCode)
+    const bufferPtr = this.opentui.symbols.createEditBuffer(widthMethodCode, this.eventSinkPtr)
     if (!bufferPtr) {
       throw new Error("Failed to create EditBuffer")
     }

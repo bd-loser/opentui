@@ -131,12 +131,23 @@ pub const EditBuffer = struct {
     allocator: Allocator,
     events: event_emitter.EventEmitter(EditBufferEvent),
     segment_splitter: UnifiedRope.Node.LeafSplitFn,
+    event_sink: ?*event_bus.EventSink,
 
     pub fn init(
         allocator: Allocator,
         pool: *gp.GraphemePool,
         link_pool: *link.LinkPool,
         width_method: utf8.WidthMethod,
+    ) !*EditBuffer {
+        return initWithEventSink(allocator, pool, link_pool, width_method, null);
+    }
+
+    pub fn initWithEventSink(
+        allocator: Allocator,
+        pool: *gp.GraphemePool,
+        link_pool: *link.LinkPool,
+        width_method: utf8.WidthMethod,
+        event_sink: ?*event_bus.EventSink,
     ) !*EditBuffer {
         const self = try allocator.create(EditBuffer);
         errdefer allocator.destroy(self);
@@ -163,6 +174,7 @@ pub const EditBuffer = struct {
             .allocator = allocator,
             .events = event_emitter.EventEmitter(EditBufferEvent).init(allocator),
             .segment_splitter = .{ .ctx = self, .splitFn = splitSegmentCallback },
+            .event_sink = event_sink,
         };
 
         return self;
@@ -190,7 +202,7 @@ pub const EditBuffer = struct {
         const full_name = std.fmt.allocPrint(self.allocator, "eb_{s}", .{event_name}) catch return;
         defer self.allocator.free(full_name);
 
-        event_bus.emit(full_name, &id_bytes);
+        event_bus.emit(self.event_sink, full_name, &id_bytes);
     }
 
     pub fn getTextBuffer(self: *EditBuffer) *UnifiedTextBuffer {

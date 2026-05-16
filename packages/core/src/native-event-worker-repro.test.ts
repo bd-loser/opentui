@@ -20,8 +20,6 @@ function waitForWorker(worker: Worker) {
 
 describe("native event worker callback repro", () => {
   test("keeps native event callback valid after a worker installs and releases its callback", async () => {
-    if (process.env.OPENTUI_NATIVE_EVENT_WORKER_REPRO !== "1") return
-
     const first = EditBuffer.create("unicode")
     first.on("content-changed", () => {})
     first.setText("main-before-worker")

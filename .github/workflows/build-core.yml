@@ -45,7 +45,6 @@ jobs:
     name: Test (${{ matrix.os }})
     needs: build
     strategy:
-      fail-fast: false
       matrix:
         include:
           - os: macos-latest

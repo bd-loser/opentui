@@ -7,7 +7,7 @@
  */
 
 import { spawnSync, type SpawnSyncReturns } from "node:child_process"
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, relative, resolve } from "node:path"
 import process from "node:process"
@@ -303,6 +303,8 @@ function installAndTest(nodeDir: string): void {
   runCommand("npm", ["install", "--ignore-scripts", "--no-package-lock"], nodeDir, "Node dist test install failed")
 
   const nodePath = ensureNode26()
+  const nodeRealDir = realpathSync(nodeDir)
+  const nodePermissionDirs = [...new Set([nodeDir, nodeRealDir])]
   runCommand(nodePath, ["-e", `import(${JSON.stringify(packageJson.name)})`], nodeDir, "Node import smoke check failed")
   runCommand(
     nodePath,
@@ -310,8 +312,8 @@ function installAndTest(nodeDir: string): void {
       "--disable-warning=SecurityWarning",
       "--disable-warning=ExperimentalWarning",
       "--permission",
-      `--allow-fs-read=${nodeDir}`,
-      `--allow-fs-write=${nodeDir}`,
+      ...nodePermissionDirs.map((path) => `--allow-fs-read=${path}`),
+      ...nodePermissionDirs.map((path) => `--allow-fs-write=${path}`),
       "--allow-ffi",
       "--experimental-ffi",
       "index.mjs",

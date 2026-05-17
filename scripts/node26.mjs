@@ -10,34 +10,40 @@ const repoRoot = resolve(scriptDir, "..")
 const cacheDir = resolve(repoRoot, ".cache/node26")
 
 function getTarget() {
-  if (process.arch !== "x64") {
-    throw new Error(
-      `This repo Node 26 runner downloads the x64 Node 26 builds, not ${process.platform}-${process.arch}.`,
-    )
-  }
+  const arch = getNodeDownloadArch()
 
   switch (process.platform) {
     case "linux":
       return {
-        archiveName: `node-${NODE26_VERSION}-linux-x64.tar.xz`,
-        directoryName: `node-${NODE26_VERSION}-linux-x64`,
+        archiveName: `node-${NODE26_VERSION}-linux-${arch}.tar.xz`,
+        directoryName: `node-${NODE26_VERSION}-linux-${arch}`,
         nodeRelativePath: "bin/node",
-        url: `https://nodejs.org/dist/${NODE26_VERSION}/node-${NODE26_VERSION}-linux-x64.tar.xz`,
+        url: `https://nodejs.org/dist/${NODE26_VERSION}/node-${NODE26_VERSION}-linux-${arch}.tar.xz`,
       }
     case "darwin":
       return {
-        archiveName: `node-${NODE26_VERSION}-darwin-x64.tar.gz`,
-        directoryName: `node-${NODE26_VERSION}-darwin-x64`,
+        archiveName: `node-${NODE26_VERSION}-darwin-${arch}.tar.gz`,
+        directoryName: `node-${NODE26_VERSION}-darwin-${arch}`,
         nodeRelativePath: "bin/node",
-        url: `https://nodejs.org/dist/${NODE26_VERSION}/node-${NODE26_VERSION}-darwin-x64.tar.gz`,
+        url: `https://nodejs.org/dist/${NODE26_VERSION}/node-${NODE26_VERSION}-darwin-${arch}.tar.gz`,
       }
     case "win32":
       return {
-        archiveName: `node-${NODE26_VERSION}-win-x64.zip`,
-        directoryName: `node-${NODE26_VERSION}-win-x64`,
+        archiveName: `node-${NODE26_VERSION}-win-${arch}.zip`,
+        directoryName: `node-${NODE26_VERSION}-win-${arch}`,
         nodeRelativePath: "node.exe",
-        url: `https://nodejs.org/dist/${NODE26_VERSION}/node-${NODE26_VERSION}-win-x64.zip`,
+        url: `https://nodejs.org/dist/${NODE26_VERSION}/node-${NODE26_VERSION}-win-${arch}.zip`,
       }
+    default:
+      throw new Error(`This repo Node 26 runner does not have a download for ${process.platform}-${process.arch}.`)
+  }
+}
+
+function getNodeDownloadArch() {
+  switch (process.arch) {
+    case "x64":
+    case "arm64":
+      return process.arch
     default:
       throw new Error(`This repo Node 26 runner does not have a download for ${process.platform}-${process.arch}.`)
   }

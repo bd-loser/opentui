@@ -98,6 +98,15 @@ jobs:
 
           echo "Package extraction complete"
 
+      - name: Run packed Node smoke tests
+        run: |
+          cd packages/core
+          bun run test:dist --skip-build
+          cd ../solid
+          bun run test:dist --skip-build
+          cd ../keymap
+          bun run test:dist --skip-build
+
       - name: Publish packages (dry-run)
         if: ${{ inputs.isDryRun }}
         run: |

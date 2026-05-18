@@ -1554,7 +1554,7 @@ export class MarkdownRenderable extends Renderable {
       `${this.id}-block-${index}`,
       marginBottom,
     )
-    this.add(markdownRenderable)
+    this.add(markdownRenderable, index)
     state.renderable = markdownRenderable
   }
 
@@ -1613,7 +1613,7 @@ export class MarkdownRenderable extends Renderable {
 
       const next = this.createTopLevelRenderable(block, blockIndex)
       if (next.renderable) {
-        this.add(next.renderable)
+        this.add(next.renderable, blockIndex)
         this._blockStates[blockIndex] = {
           token: block.token,
           tokenRaw: block.token.raw,
@@ -1756,7 +1756,7 @@ export class MarkdownRenderable extends Renderable {
       }
 
       if (renderable) {
-        this.add(renderable)
+        this.add(renderable, blockIndex)
         this._blockStates[blockIndex] = {
           token,
           tokenRaw: token.raw,
@@ -1830,7 +1830,7 @@ export class MarkdownRenderable extends Renderable {
               `${this.id}-block-${i}`,
               marginBottom,
             )
-            this.add(fallbackRenderable)
+            this.add(fallbackRenderable, i)
             state.renderable = fallbackRenderable
           }
           state.tableContentCache = undefined
@@ -1847,7 +1847,7 @@ export class MarkdownRenderable extends Renderable {
 
         state.renderable.destroyRecursively()
         const tableRenderable = this.createTextTableRenderable(cache.content, `${this.id}-block-${i}`, marginBottom)
-        this.add(tableRenderable)
+        this.add(tableRenderable, i)
         state.renderable = tableRenderable
         state.tableContentCache = cache
         continue
@@ -1868,7 +1868,7 @@ export class MarkdownRenderable extends Renderable {
         `${this.id}-block-${i}`,
         marginBottom,
       )
-      this.add(markdownRenderable)
+      this.add(markdownRenderable, i)
       state.renderable = markdownRenderable
     }
   }

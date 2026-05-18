@@ -2256,6 +2256,100 @@ test("internalBlockMode=top-level updates code renderable filetype when fence ch
   expect((md._blockStates[0]?.renderable as CodeRenderable).filetype).toBe("diff")
 })
 
+test("internalBlockMode=top-level preserves child order when replacing an earlier block", () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-top-level-replacement-order",
+    content: "# A\n\n```ts\nconst a = 1\n```\n\nTail A",
+    syntaxStyle,
+    internalBlockMode: "top-level",
+  })
+
+  renderer.root.add(md)
+  const codeBlock = md._blockStates[1]?.renderable
+
+  md.content = "Intro B\n\n```ts\nconst b = 2\n```\n\nTail B"
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["paragraph", "code", "paragraph"])
+  expect(md._blockStates[1]?.renderable).toBe(codeBlock)
+  expect(md.getChildren().map((child) => child.id)).toEqual(md._blockStates.map((state) => state.renderable.id))
+})
+
+test("incremental update preserves child order when replacing an earlier coalesced block", () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-coalesced-replacement-order",
+    content: "- one\n\n```ts\nconst a = 1\n```\n\nTail A",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  const codeBlock = md._blockStates[1]?.renderable
+
+  md.content = "Intro B\n\n```ts\nconst b = 2\n```\n\nTail B"
+
+  expect(md._blockStates.map((state) => state.token.type)).toEqual(["paragraph", "code", "paragraph"])
+  expect(md._blockStates[1]?.renderable).toBe(codeBlock)
+  expect(md.getChildren().map((child) => child.id)).toEqual(md._blockStates.map((state) => state.renderable.id))
+})
+
+test("refreshStyles preserves child order when replacing an earlier table renderable", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-table-refresh-order",
+    content: "| A | B |\n|---|---|\n| 1 | 2 |\n\n```ts\nconst x = 1\n```\n\nTail",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const codeBlock = md._blockStates[1]?.renderable
+  const tailBlock = md._blockStates[2]?.renderable
+  const staleTable = md._blockStates[0]?.renderable
+
+  staleTable?.destroyRecursively()
+  const wrongRenderable = new BoxRenderable(renderer, { id: "markdown-table-refresh-order-wrong", width: "100%" })
+  md.add(wrongRenderable, 0)
+  md._blockStates[0]!.renderable = wrongRenderable
+
+  md.refreshStyles()
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates[0]?.renderable).toBeInstanceOf(TextTableRenderable)
+  expect(md._blockStates[1]?.renderable).toBe(codeBlock)
+  expect(md._blockStates[2]?.renderable).toBe(tailBlock)
+  expect(md.getChildren().map((child) => child.id)).toEqual(md._blockStates.map((state) => state.renderable.id))
+})
+
+test("refreshStyles preserves child order when replacing an earlier header-only table fallback", async () => {
+  const md = createMarkdownRenderable({
+    id: "markdown-table-fallback-refresh-order",
+    content: "| A | B |\n|---|---|\n\n```ts\nconst x = 1\n```\n\nTail",
+    syntaxStyle,
+  })
+
+  renderer.root.add(md)
+  await renderMarkdownRenderable(md)
+
+  const codeBlock = md._blockStates[1]?.renderable
+  const tailBlock = md._blockStates[2]?.renderable
+  const staleFallback = md._blockStates[0]?.renderable
+
+  staleFallback?.destroyRecursively()
+  const wrongRenderable = new BoxRenderable(renderer, {
+    id: "markdown-table-fallback-refresh-order-wrong",
+    width: "100%",
+  })
+  md.add(wrongRenderable, 0)
+  md._blockStates[0]!.renderable = wrongRenderable
+
+  md.refreshStyles()
+  await renderMarkdownRenderable(md)
+
+  expect(md._blockStates[0]?.renderable).toBeInstanceOf(CodeRenderable)
+  expect(md._blockStates[1]?.renderable).toBe(codeBlock)
+  expect(md._blockStates[2]?.renderable).toBe(tailBlock)
+  expect(md.getChildren().map((child) => child.id)).toEqual(md._blockStates.map((state) => state.renderable.id))
+})
+
 test("internalBlockMode=top-level normalizes one blank row between top-level blocks", async () => {
   const md = createMarkdownRenderable({
     id: "markdown-top-level-spacing",

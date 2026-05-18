@@ -77,8 +77,8 @@ pub export fn benchProduceWrite(
         else
             @as(usize, @intCast(remaining));
 
-        const to_write = @min(pattern_slice.len, remaining_usize);
-        const status = raw.streamWrite(stream, @ptrCast(pattern_slice.ptr), to_write);
+        const to_write = @min(@min(pattern_slice.len, remaining_usize), std.math.maxInt(u32));
+        const status = raw.streamWrite(stream, @ptrCast(pattern_slice.ptr), @intCast(to_write));
         if (status != raw.Status.ok) return status;
 
         bytes_since_commit += @as(u64, to_write);

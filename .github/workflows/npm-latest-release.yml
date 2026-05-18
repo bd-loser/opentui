@@ -68,6 +68,8 @@ jobs:
             rm -rf packages/core/node_modules/@opentui/core-darwin-arm64
             rm -rf packages/core/node_modules/@opentui/core-linux-x64
             rm -rf packages/core/node_modules/@opentui/core-linux-arm64
+            rm -rf packages/core/node_modules/@opentui/core-linux-x64-musl
+            rm -rf packages/core/node_modules/@opentui/core-linux-arm64-musl
             rm -rf packages/core/node_modules/@opentui/core-win32-x64
             rm -rf packages/core/node_modules/@opentui/core-win32-arm64
 

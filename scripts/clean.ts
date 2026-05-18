@@ -31,7 +31,7 @@ Removes build artifacts from the OpenTUI workspace.
 Scopes (combine freely; if none given, lib + native + caches are cleaned):
   --lib        Library outputs: packages/*/dist, *.tsbuildinfo, *.tgz, out/, packed/
   --native     Native (Zig) artifacts: .zig-cache/, zig-out/, src/zig/lib/,
-               and prebuilt @opentui/core-<platform>-<arch> in node_modules
+               and prebuilt @opentui/core-<platform>-<arch>[-musl] in node_modules
   --caches     Caches & coverage: .cache/, coverage/, *.lcov
   --deps       node_modules in the root and every package (full reset)
   --all        Same as --lib --native --caches --deps
@@ -144,7 +144,7 @@ function collectTargets(flags: Flags): CleanTarget[] {
 
     const coreOpentui = join(packagesDir, "core", "node_modules", "@opentui")
     for (const entry of safeReaddir(coreOpentui)) {
-      if (entry.isDirectory() && /^core-(darwin|linux|win32)-(x64|arm64)$/.test(entry.name)) {
+      if (entry.isDirectory() && /^core-(darwin|linux|win32)-(x64|arm64)(-musl)?$/.test(entry.name)) {
         add(join(coreOpentui, entry.name), "prebuilt native package")
       }
     }

@@ -8,6 +8,9 @@ import path from "path"
 interface Variant {
   platform: string
   arch: string
+  libc?: "glibc" | "musl"
+  zigTarget: string
+  outputName: string
 }
 
 interface PackageJson {
@@ -44,16 +47,51 @@ const buildAll = args.includes("--all") // Build for all platforms
 const gpaSafeStats = args.includes("--gpa-safe-stats")
 
 const variants: Variant[] = [
-  { platform: "darwin", arch: "x64" },
-  { platform: "darwin", arch: "arm64" },
-  { platform: "linux", arch: "x64" },
-  { platform: "linux", arch: "arm64" },
-  { platform: "win32", arch: "x64" },
-  { platform: "win32", arch: "arm64" },
+  { platform: "darwin", arch: "x64", zigTarget: "x86_64-macos", outputName: "x86_64-macos" },
+  { platform: "darwin", arch: "arm64", zigTarget: "aarch64-macos", outputName: "aarch64-macos" },
+  { platform: "linux", arch: "x64", libc: "glibc", zigTarget: "x86_64-linux-gnu.2.17", outputName: "x86_64-linux" },
+  { platform: "linux", arch: "arm64", libc: "glibc", zigTarget: "aarch64-linux-gnu.2.17", outputName: "aarch64-linux" },
+  { platform: "linux", arch: "x64", libc: "musl", zigTarget: "x86_64-linux-musl", outputName: "x86_64-linux-musl" },
+  { platform: "linux", arch: "arm64", libc: "musl", zigTarget: "aarch64-linux-musl", outputName: "aarch64-linux-musl" },
+  { platform: "win32", arch: "x64", zigTarget: "x86_64-windows-gnu", outputName: "x86_64-windows" },
+  { platform: "win32", arch: "arm64", zigTarget: "aarch64-windows-gnu", outputName: "aarch64-windows" },
 ]
 
+const detectHostLinuxLibc = (): "glibc" | "musl" => {
+  try {
+    const report = process.report?.getReport?.()
+    if (report?.header?.glibcVersionRuntime || report?.header?.glibcVersionCompiler) {
+      return "glibc"
+    }
+
+    const sharedObjects = report?.sharedObjects ?? []
+    if (sharedObjects.some((path) => path.includes("ld-musl") || path.includes("libc.musl"))) {
+      return "musl"
+    }
+  } catch {
+    // Fall back to /proc below.
+  }
+
+  try {
+    const maps = readFileSync("/proc/self/maps", "utf8")
+    if (maps.includes("ld-musl") || maps.includes("libc.musl")) {
+      return "musl"
+    }
+  } catch {
+    // Default to the mainstream Linux package when libc cannot be detected.
+  }
+
+  return "glibc"
+}
+
 const getHostVariant = (): Variant => {
-  const hostVariant = variants.find((variant) => variant.platform === process.platform && variant.arch === process.arch)
+  const hostLibc = process.platform === "linux" ? detectHostLinuxLibc() : undefined
+  const hostVariant = variants.find(
+    (variant) =>
+      variant.platform === process.platform &&
+      variant.arch === process.arch &&
+      (variant.platform !== "linux" || variant.libc === hostLibc),
+  )
   if (!hostVariant) {
     console.error(`Error: Unsupported host platform for native builds: ${process.platform}-${process.arch}`)
     process.exit(1)
@@ -66,11 +104,8 @@ if (!buildLib && !buildNative) {
   process.exit(1)
 }
 
-const getZigTarget = (platform: string, arch: string): string => {
-  const platformMap: Record<string, string> = { darwin: "macos", win32: "windows", linux: "linux" }
-  const archMap: Record<string, string> = { x64: "x86_64", arm64: "aarch64" }
-  return `${archMap[arch] ?? arch}-${platformMap[platform] ?? platform}`
-}
+const getNativePackageName = (variant: Variant): string =>
+  `${packageJson.name}-${variant.platform}-${variant.arch}${variant.libc === "musl" ? "-musl" : ""}`
 
 const replaceLinks = (text: string): string => {
   return packageJson.homepage
@@ -94,6 +129,8 @@ if (buildNative) {
   const zigArgs = ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`]
   if (buildAll) {
     zigArgs.push("-Dall")
+  } else {
+    zigArgs.push(`-Dtarget=${getHostVariant().zigTarget}`)
   }
   if (gpaSafeStats) {
     zigArgs.push("-Dgpa-safe-stats=true")
@@ -116,10 +153,11 @@ if (buildNative) {
 
   const variantsToPackage = buildAll ? variants : [getHostVariant()]
 
-  for (const { platform, arch } of variantsToPackage) {
-    const nativeName = `${packageJson.name}-${platform}-${arch}`
+  for (const variant of variantsToPackage) {
+    const { platform, arch } = variant
+    const nativeName = getNativePackageName(variant)
     const nativeDir = join(rootDir, "node_modules", nativeName)
-    const libDir = join(rootDir, "src", "zig", "lib", getZigTarget(platform, arch))
+    const libDir = join(rootDir, "src", "zig", "lib", variant.outputName)
 
     rmSync(nativeDir, { recursive: true, force: true })
     mkdirSync(nativeDir, { recursive: true })
@@ -167,7 +205,7 @@ export default module.default
         {
           name: nativeName,
           version: packageJson.version,
-          description: `Prebuilt ${platform}-${arch} binaries for ${packageJson.name}`,
+          description: `Prebuilt ${platform}-${arch}${variant.libc ? ` ${variant.libc}` : ""} binaries for ${packageJson.name}`,
           type: "module",
           main: "index.js",
           module: "index.js",
@@ -177,7 +215,7 @@ export default module.default
           homepage: packageJson.homepage,
           repository: packageJson.repository,
           bugs: packageJson.bugs,
-          keywords: [...(packageJson.keywords ?? []), "prebuild", "prebuilt"],
+          keywords: [...(packageJson.keywords ?? []), "prebuild", "prebuilt", ...(variant.libc ? [variant.libc] : [])],
           exports: {
             ".": {
               bun: "./index.bun.js",
@@ -187,6 +225,7 @@ export default module.default
           },
           os: [platform],
           cpu: [arch],
+          ...(variant.libc ? { libc: [variant.libc] } : {}),
         },
         null,
         2,
@@ -195,7 +234,9 @@ export default module.default
 
     writeFileSync(
       join(nativeDir, "README.md"),
-      replaceLinks(`## ${nativeName}\n\n> Prebuilt ${platform}-${arch} binaries for \`${packageJson.name}\`.`),
+      replaceLinks(
+        `## ${nativeName}\n\n> Prebuilt ${platform}-${arch}${variant.libc ? ` ${variant.libc}` : ""} binaries for \`${packageJson.name}\`.`,
+      ),
     )
 
     if (existsSync(licensePath)) copyFileSync(licensePath, join(nativeDir, "LICENSE"))
@@ -410,7 +451,7 @@ if (buildLib) {
   }
 
   const optionalDeps: Record<string, string> = Object.fromEntries(
-    variants.map(({ platform, arch }) => [`${packageJson.name}-${platform}-${arch}`, packageJson.version]),
+    variants.map((variant) => [getNativePackageName(variant), packageJson.version]),
   )
 
   writeFileSync(

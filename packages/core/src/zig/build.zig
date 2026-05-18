@@ -21,6 +21,8 @@ const SupportedTarget = struct {
 const SUPPORTED_TARGETS = [_]SupportedTarget{
     .{ .zig_target = "x86_64-linux-gnu.2.17", .output_name = "x86_64-linux", .description = "Linux x86_64" },
     .{ .zig_target = "aarch64-linux-gnu.2.17", .output_name = "aarch64-linux", .description = "Linux aarch64" },
+    .{ .zig_target = "x86_64-linux-musl", .output_name = "x86_64-linux-musl", .description = "Linux x86_64 musl" },
+    .{ .zig_target = "aarch64-linux-musl", .output_name = "aarch64-linux-musl", .description = "Linux aarch64 musl" },
     .{ .zig_target = "x86_64-macos", .output_name = "x86_64-macos", .description = "macOS x86_64 (Intel)" },
     .{ .zig_target = "aarch64-macos", .output_name = "aarch64-macos", .description = "macOS aarch64 (Apple Silicon)" },
     .{ .zig_target = "x86_64-windows-gnu", .output_name = "x86_64-windows", .description = "Windows x86_64" },
@@ -44,6 +46,54 @@ fn nativeExecutableTarget(b: *std.Build) std.Build.ResolvedTarget {
     query.abi = .musl;
     query.glibc_version = null;
     return b.resolveTargetQuery(query);
+}
+
+fn isMuslAbi(abi: std.Target.Abi) bool {
+    return switch (abi) {
+        .musl,
+        .muslabin32,
+        .muslabi64,
+        .musleabi,
+        .musleabihf,
+        .muslf32,
+        .muslsf,
+        .muslx32,
+        => true,
+        else => false,
+    };
+}
+
+fn isGnuAbi(abi: std.Target.Abi) bool {
+    return switch (abi) {
+        .gnu,
+        .gnuabin32,
+        .gnuabi64,
+        .gnueabi,
+        .gnueabihf,
+        .gnuf32,
+        .gnusf,
+        .gnux32,
+        => true,
+        else => false,
+    };
+}
+
+fn supportedTargetMatchesNative(supported_target: SupportedTarget, native_arch: []const u8, native_os: []const u8) bool {
+    if (std.mem.indexOf(u8, supported_target.zig_target, native_arch) == null or
+        std.mem.indexOf(u8, supported_target.zig_target, native_os) == null)
+    {
+        return false;
+    }
+
+    if (builtin.os.tag != .linux) return true;
+
+    const is_musl_target = std.mem.indexOf(u8, supported_target.zig_target, "-musl") != null;
+    const is_gnu_target = std.mem.indexOf(u8, supported_target.zig_target, "-gnu") != null;
+
+    if (isMuslAbi(builtin.abi)) return is_musl_target;
+    if (isGnuAbi(builtin.abi)) return is_gnu_target;
+
+    return true;
 }
 
 fn pathExists(path: []const u8) bool {
@@ -231,7 +281,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const bench_optimize = b.option(std.builtin.OptimizeMode, "bench-optimize", "Optimize mode for benchmarks") orelse .ReleaseFast;
     const debug_use_llvm = b.option(bool, "debug-llvm", "Use LLVM backend for debug/test artifacts");
-    const target_option = b.option([]const u8, "target", "Build for specific target (e.g., 'x86_64-linux-gnu.2.17').");
+    const target_option = b.option([]const u8, "target", "Build for specific target (e.g., 'x86_64-linux-gnu.2.17' or 'x86_64-linux-musl').");
     const build_all = b.option(bool, "all", "Build for all supported targets") orelse false;
     const gpa_safe_stats = b.option(bool, "gpa-safe-stats", "Enable GPA safety checks for trustworthy allocator stats") orelse false;
     const macos_sdk_path = resolveMacOSSDKPath(b);
@@ -368,10 +418,8 @@ fn buildNativeTarget(
     const native_os = @tagName(builtin.os.tag);
 
     for (SUPPORTED_TARGETS) |supported_target| {
-        // Check if this target matches the native platform
-        if (std.mem.indexOf(u8, supported_target.zig_target, native_arch) != null and
-            std.mem.indexOf(u8, supported_target.zig_target, native_os) != null)
-        {
+        // Check if this target matches the native platform and libc ABI.
+        if (supportedTargetMatchesNative(supported_target, native_arch, native_os)) {
             try buildTarget(
                 b,
                 supported_target.zig_target,

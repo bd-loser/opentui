@@ -27,6 +27,7 @@ import { RGBA } from "./lib/RGBA.js"
 import { OptimizedBuffer } from "./buffer.js"
 import { TextBuffer } from "./text-buffer.js"
 import { env, registerEnvVar } from "./lib/env.js"
+import { getNativePackageName } from "./native-package.js"
 import {
   StyledChunkStruct,
   HighlightStruct,
@@ -62,7 +63,10 @@ import type {
 } from "./zig-structs.js"
 import { isBunfsPath } from "./lib/bunfs.js"
 
-const nativePackage = await import(`@opentui/core-${process.platform}-${process.arch}`)
+const nativePackageName = getNativePackageName()
+const nativePackage = await import(nativePackageName).catch((cause) => {
+  throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`, { cause })
+})
 let targetLibPath = nativePackage.default
 
 if (isBunfsPath(targetLibPath)) {
@@ -70,7 +74,9 @@ if (isBunfsPath(targetLibPath)) {
 }
 
 if (!existsSync(targetLibPath)) {
-  throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
+  throw new Error(
+    `opentui native package ${nativePackageName} did not contain a library for the current platform: ${process.platform}-${process.arch}`,
+  )
 }
 
 registerEnvVar({

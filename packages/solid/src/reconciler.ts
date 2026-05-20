@@ -7,11 +7,13 @@ import {
   isTextNodeRenderable,
   parseColor,
   Renderable,
+  RootTextNodeRenderable,
   ScrollBoxRenderable,
   SelectRenderable,
   SelectRenderableEvents,
   TabSelectRenderable,
   TabSelectRenderableEvents,
+  TextNodeRenderable,
   TextRenderable,
   type TextNodeOptions,
 } from "@opentui/core"
@@ -23,13 +25,13 @@ import {
   getTextRenderableParent,
   MarkerRenderable,
   RendererContext,
+  SolidRootTextNodeRenderable,
   SolidTextRenderable,
-  SolidTextNodeRenderable,
 } from "./elements/index.js"
 import { getNextId } from "./utils/id-counter.js"
 import { log } from "./utils/log.js"
 
-class TextNode extends SolidTextNodeRenderable {
+class TextNode extends TextNodeRenderable {
   public static override fromString(text: string, options: Partial<TextNodeOptions> = {}): TextNode {
     const node = new TextNode(options)
     node.add(text)
@@ -72,8 +74,9 @@ function _insertNode(parent: DomNode, node: DomNode, anchor?: DomNode): void {
   )
 
   if (
-    (node instanceof TextRenderable && !(node instanceof SolidTextRenderable)) ||
-    (isTextNodeRenderable(node) && !(node instanceof SolidTextNodeRenderable))
+    node instanceof MarkerRenderable &&
+    ((parent instanceof TextRenderable && !(parent instanceof SolidTextRenderable)) ||
+      (parent instanceof RootTextNodeRenderable && !(parent instanceof SolidRootTextNodeRenderable)))
   ) {
     console.warn(
       "Markers are not supported in core Text renderables and can cause unexpected behavior, prefer using solid Text renderable variants",

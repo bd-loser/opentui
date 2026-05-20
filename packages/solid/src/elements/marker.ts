@@ -7,11 +7,7 @@ import {
   type StyledText,
   type TextChunk,
 } from "@opentui/core"
-import {
-  BrandedMarkerRenderable,
-  isMarkerRenderable as isMarkerRenderableNode,
-  registerMarkerRenderable,
-} from "./marker-brand.js"
+import { BrandedMarkerRenderable, isMarkerRenderable as isMarkerRenderableNode } from "./marker-brand.js"
 import { SolidTextNodeRenderable } from "./text.js"
 
 type YogaNode = ReturnType<typeof Yoga.default.Node.create>
@@ -31,7 +27,6 @@ export class MarkerRenderable extends SolidTextNodeRenderable {
   constructor(options: BaseRenderableOptions) {
     super(options)
     this._visible = false
-    registerMarkerRenderable(this.id)
   }
 
   public get isDestroyed(): boolean {

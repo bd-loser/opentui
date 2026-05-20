@@ -270,12 +270,11 @@ describe("TextNodeRenderable", () => {
       expect(child.parent).toBeNull()
     })
 
-    it("should throw error when child not found in remove", () => {
+    it("should no-op when child not found in remove", () => {
       const node = new TextNodeRenderable({})
 
-      expect(() => {
-        node.remove("nonexistent-id")
-      }).toThrow("Child not found in children")
+      expect(() => node.remove("nonexistent-id")).not.toThrow()
+      expect(node.children).toEqual([])
     })
   })
 

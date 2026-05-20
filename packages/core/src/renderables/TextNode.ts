@@ -153,7 +153,7 @@ export class TextNodeRenderable extends BaseRenderable {
   public remove(id: string): this {
     const childIndex = this.getRenderableIndex(id)
     if (childIndex === -1) {
-      throw new Error("Child not found in children")
+      return this
     }
 
     const child = this._children[childIndex] as TextNodeRenderable

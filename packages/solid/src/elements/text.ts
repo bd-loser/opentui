@@ -8,7 +8,7 @@ import {
   type StyledText,
   type TextNodeOptions,
 } from "@opentui/core"
-import { isMarkerRenderable, isRegisteredMarkerId } from "./marker-brand.js"
+import { isMarkerRenderable } from "./marker-brand.js"
 
 export function getTextRenderableParent(node: BaseRenderable | undefined): TextRenderable | undefined {
   if (node instanceof RootTextNodeRenderable || node instanceof SolidRootTextNodeRenderable) {
@@ -99,10 +99,6 @@ export class SolidTextNodeRenderable extends TextNodeRenderable {
 
   public override remove(id: string): this {
     const childIndex = this.getRenderableIndex(id)
-    if (childIndex === -1 && isRegisteredMarkerId(id)) {
-      return this
-    }
-
     const child = this.children[childIndex]
     if (isMarkerRenderable(child)) {
       this.children.splice(childIndex, 1)

@@ -11,12 +11,11 @@ import {
   TabSelectRenderable,
   TextareaRenderable,
   TextAttributes,
-  TextRenderable,
   type RenderContext,
   type TextNodeOptions,
 } from "@opentui/core"
 import type { RenderableConstructor } from "../types/elements.js"
-import { SolidTextNodeRenderable } from "./text.js"
+import { SolidTextNodeRenderable, SolidTextRenderable } from "./text.js"
 
 class SpanRenderable extends SolidTextNodeRenderable {
   constructor(
@@ -90,7 +89,7 @@ export class LinkRenderable extends SpanRenderable {
 
 export const baseComponents = {
   box: BoxRenderable,
-  text: TextRenderable,
+  text: SolidTextRenderable,
   input: InputRenderable,
   select: SelectRenderable,
   textarea: TextareaRenderable,

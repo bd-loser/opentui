@@ -24,14 +24,39 @@ function detachMarkerChild(child: TextNodeRenderable): void {
 }
 
 export class SolidTextNodeRenderable extends TextNodeRenderable {
+  private markerChildren?: Set<TextNodeRenderable>
+
+  public override get children(): (string | TextNodeRenderable)[] {
+    return super.children
+  }
+
+  public override set children(children: (string | TextNodeRenderable)[]) {
+    const markerChildren = new Set<TextNodeRenderable>()
+    for (const child of children) {
+      if (isMarkerRenderable(child)) {
+        markerChildren.add(child)
+      }
+    }
+
+    for (const child of this.markerChildren ?? []) {
+      if (!markerChildren.has(child) && child.parent === this) {
+        child.parent = null
+      }
+    }
+
+    this.markerChildren = markerChildren.size > 0 ? markerChildren : undefined
+    super.children = children
+  }
+
   public override add(obj: TextNodeRenderable | StyledText | string, index?: number): number {
     if (isMarkerRenderable(obj)) {
       detachMarkerChild(obj)
 
       const insertIndex = index ?? this.children.length
-      this.children.splice(insertIndex, 0, obj)
       obj.parent = this
-      this.requestRender()
+      const children = [...this.children]
+      children.splice(insertIndex, 0, obj)
+      this.children = children
       return insertIndex
     }
 
@@ -45,19 +70,16 @@ export class SolidTextNodeRenderable extends TextNodeRenderable {
         return
       }
 
-      if (isMarkerRenderable(previous) && previous.parent === this) {
-        previous.parent = null
-      }
-
       if (isMarkerRenderable(obj)) {
         detachMarkerChild(obj)
       }
 
-      this.children[index] = obj
       if (typeof obj !== "string") {
         obj.parent = this
       }
-      this.requestRender()
+      const children = [...this.children]
+      children[index] = obj
+      this.children = children
       return
     }
 
@@ -88,9 +110,10 @@ export class SolidTextNodeRenderable extends TextNodeRenderable {
         throw new Error("Anchor node not found in children")
       }
 
-      this.children.splice(anchorIndex, 0, child)
       child.parent = this
-      this.requestRender()
+      const children = [...this.children]
+      children.splice(anchorIndex, 0, child)
+      this.children = children
       return this
     }
 
@@ -101,12 +124,9 @@ export class SolidTextNodeRenderable extends TextNodeRenderable {
     const childIndex = this.getRenderableIndex(id)
     const child = this.children[childIndex]
     if (isMarkerRenderable(child)) {
-      this.children.splice(childIndex, 1)
-      if (child.parent === this) {
-        child.parent = null
-      }
-
-      this.requestRender()
+      const children = [...this.children]
+      children.splice(childIndex, 1)
+      this.children = children
       return this
     }
 
@@ -115,13 +135,13 @@ export class SolidTextNodeRenderable extends TextNodeRenderable {
   }
 
   public override clear(): void {
-    for (const child of this.children) {
+    for (const child of [...(this.markerChildren ?? [])]) {
       if (isMarkerRenderable(child) && child.parent === this) {
-        child.parent = null
+        child.destroy()
       }
     }
 
-    super.clear()
+    this.children = []
   }
 }
 

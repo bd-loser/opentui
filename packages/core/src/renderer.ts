@@ -1424,6 +1424,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   public set screenMode(mode: ScreenMode) {
     if (this.externalOutputMode === "capture-stdout" && mode !== "split-footer") {
+      if (this.isSplitFooterResizeResetPending()) {
+        this.pendingExternalOutputMode = "passthrough"
+        this.cancelSplitFooterResizeReset("screen-mode-change", { emitResize: false, requestRender: false })
+      }
+
       if (this.pendingExternalOutputMode === "passthrough") {
         this.flushPendingSplitOutputBeforeLeavingSplitFooter()
       }

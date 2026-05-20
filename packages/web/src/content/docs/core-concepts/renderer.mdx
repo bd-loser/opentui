@@ -106,7 +106,7 @@ Split-footer bookkeeping lives in the native renderer. A shared `SplitScrollback
 
 ### Split-footer resize behavior
 
-In split-footer mode with `externalOutputMode: "capture-stdout"` is destructive.
+Split-footer mode with `externalOutputMode: "capture-stdout"` uses destructive resize behavior.
 On the first resize in a burst, OpenTUI:
 
 1. Clears the old footer surface.
@@ -125,7 +125,9 @@ Once resize settles, OpenTUI:
 To observe this lifecycle directly, listen for
 `CliRenderEvents.SPLIT_FOOTER_RESIZE_RESET`. The payload reports the current
 phase: entering a resize burst, updating the target size, settling, or
-canceling.## External output mode
+canceling.
+
+## External output mode
 
 The `externalOutputMode` option controls what happens to writes that go through the renderer's configured `stdout.write` while the renderer is active. It does not change `stderr`, and it is separate from the built-in console overlay.
 

@@ -64,7 +64,18 @@ import type {
 } from "./zig-structs.js"
 import { isBunfsPath } from "./lib/bunfs.js"
 
-const nativePackage = await import(`@opentui/core-${process.platform}-${process.arch}`)
+async function resolveNativePackage() {
+  if (process.platform === "linux") {
+    const muslPkg = `@opentui/core-linux-${process.arch}-musl`
+    try {
+      return await import(muslPkg)
+    } catch {
+      // fall through to glibc variant
+    }
+  }
+  return await import(`@opentui/core-${process.platform}-${process.arch}`)
+}
+const nativePackage = await resolveNativePackage()
 let targetLibPath = nativePackage.default
 
 if (isBunfsPath(targetLibPath)) {

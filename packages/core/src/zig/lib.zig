@@ -87,6 +87,8 @@ pub const ExternalRenderStats = extern struct {
     last_frame_time: f64,
     average_frame_time: f64,
     render_time: f64,
+    // ABI names keep stdout terminology for compatibility; the value is the
+    // backend output write time for stdout, memory, or feed output.
     stdout_write_time: f64,
     frame_count: u64,
     cells_updated: u32,
@@ -314,15 +316,53 @@ export fn getAllocatorStats(out_ptr: *ExternalAllocatorStats) void {
     };
 }
 
-export fn createRenderer(width: u32, height: u32, testing: bool, remote: bool) ?*renderer.CliRenderer {
+/// Create a renderer.
+///
+/// Output transport selection:
+///   - `feedPtr != null`: writes go to the provided NativeSpanFeed stream
+///     (FeedBackend), which the TS side pipes onward to a user-supplied Writable
+///   - `feedPtr == null`: writes go through a buffered backend selected by
+///     `bufferedDestinationKind` (0 = process stdout, 1 = memory)
+///
+/// `remoteModeValue` is 0 = auto, 1 = local, 2 = remote. The TS side decides
+/// the appropriate default for process stdout, memory output, and feed output.
+export fn createRenderer(
+    width: u32,
+    height: u32,
+    bufferedDestinationKind: u8,
+    remoteModeValue: u8,
+    feedPtr: ?*native_span_feed.Stream,
+) ?*renderer.CliRenderer {
     if (width == 0 or height == 0) {
         logger.warn("Invalid renderer dimensions: {}x{}", .{ width, height });
         return null;
     }
 
+    const remote_mode: terminal.Terminal.RemoteMode = switch (remoteModeValue) {
+        0 => .auto,
+        1 => .local,
+        2 => .remote,
+        else => .local,
+    };
+
     const pool = gp.initGlobalPool(globalArena);
     _ = link.initGlobalLinkPool(globalArena);
-    return renderer.CliRenderer.createWithOptions(globalAllocator, width, height, pool, testing, remote) catch |err| {
+
+    const output_target: renderer.CliRenderer.OutputTarget = if (feedPtr) |feed|
+        .{ .feed = feed }
+    else switch (bufferedDestinationKind) {
+        0 => .stdout,
+        1 => .memory,
+        else => {
+            logger.warn("Invalid buffered destination kind: {}", .{bufferedDestinationKind});
+            return null;
+        },
+    };
+
+    return renderer.CliRenderer.createWithOptions(globalAllocator, width, height, pool, .{
+        .remote_mode = remote_mode,
+        .output = output_target,
+    }) catch |err| {
         logger.err("Failed to create renderer: {}", .{err});
         return null;
     };
@@ -404,12 +444,12 @@ export fn getRenderStats(rendererPtr: *renderer.CliRenderer, outPtr: *ExternalRe
         .last_frame_time = stats.lastFrameTime,
         .average_frame_time = stats.averageFrameTime,
         .render_time = stats.renderTime orelse 0,
-        .stdout_write_time = stats.stdoutWriteTime orelse 0,
+        .stdout_write_time = stats.outputWriteTime orelse 0,
         .frame_count = stats.frameCount,
         .cells_updated = stats.cellsUpdated,
         .average_cells_updated = stats.averageCellsUpdated,
         .render_time_valid = stats.renderTime != null,
-        .stdout_write_time_valid = stats.stdoutWriteTime != null,
+        .stdout_write_time_valid = stats.outputWriteTime != null,
     };
 }
 
@@ -419,17 +459,6 @@ export fn getNextBuffer(rendererPtr: *renderer.CliRenderer) *buffer.OptimizedBuf
 
 export fn getCurrentBuffer(rendererPtr: *renderer.CliRenderer) *buffer.OptimizedBuffer {
     return rendererPtr.getCurrentBuffer();
-}
-
-const OutputSlice = extern struct {
-    ptr: [*]const u8,
-    len: usize,
-};
-
-export fn getLastOutputForTest(rendererPtr: *renderer.CliRenderer, outSlice: *OutputSlice) void {
-    const output = rendererPtr.getLastOutputForTest();
-    outSlice.ptr = output.ptr;
-    outSlice.len = output.len;
 }
 
 export fn setHyperlinksCapability(rendererPtr: *renderer.CliRenderer, enabled: bool) void {
@@ -448,16 +477,20 @@ export fn getBufferHeight(bufferPtr: *buffer.OptimizedBuffer) u32 {
     return bufferPtr.height;
 }
 
-export fn render(rendererPtr: *renderer.CliRenderer, force: bool) void {
-    rendererPtr.render(force);
+export fn render(rendererPtr: *renderer.CliRenderer, force: bool) u8 {
+    return @intFromEnum(rendererPtr.render(force));
+}
+
+fn packRenderResult(result: renderer.RenderResult) u64 {
+    return @as(u64, result.renderOffset) | (@as(u64, @intFromEnum(result.status)) << 32);
 }
 
 export fn repaintSplitFooter(
     rendererPtr: *renderer.CliRenderer,
     pinnedRenderOffset: u32,
     force: bool,
-) u32 {
-    return rendererPtr.repaintSplitFooter(pinnedRenderOffset, force);
+) u64 {
+    return packRenderResult(rendererPtr.repaintSplitFooter(pinnedRenderOffset, force));
 }
 
 export fn commitSplitFooterSnapshot(
@@ -470,14 +503,14 @@ export fn commitSplitFooterSnapshot(
     force: bool,
     beginFrame: bool,
     finalizeFrame: bool,
-) u32 {
+) u64 {
     // JS passes rowColumns/startOnNewLine/trailingNewline per commit from
     // writeToScrollback or captured stdout chunking. This entrypoint is the ABI
     // boundary where that metadata enters the native split append algorithm.
     // Route all commits through the batched renderer path so sync/cursor framing
     // happens exactly once per JS flush cycle.
     if (beginFrame and finalizeFrame) {
-        return rendererPtr.commitSplitFooterSnapshotBatched(
+        return packRenderResult(rendererPtr.commitSplitFooterSnapshotBatched(
             snapshotBufferPtr,
             rowColumns,
             startOnNewLine,
@@ -486,10 +519,10 @@ export fn commitSplitFooterSnapshot(
             force,
             true,
             true,
-        );
+        ));
     }
 
-    return rendererPtr.commitSplitFooterSnapshotBatched(
+    return packRenderResult(rendererPtr.commitSplitFooterSnapshotBatched(
         snapshotBufferPtr,
         rowColumns,
         startOnNewLine,
@@ -498,7 +531,7 @@ export fn commitSplitFooterSnapshot(
         force,
         beginFrame,
         finalizeFrame,
-    );
+    ));
 }
 
 export fn createOptimizedBuffer(width: u32, height: u32, respectAlpha: bool, widthMethod: u8, idPtr: [*]const u8, idLen: usize) ?*buffer.OptimizedBuffer {
@@ -563,7 +596,8 @@ pub const ExternalCapabilities = extern struct {
     osc52: bool,
     notifications: bool,
     explicit_cursor_positioning: bool,
-    in_tmux: bool,
+    remote: bool,
+    multiplexer: u8,
     term_name_ptr: [*]const u8,
     term_name_len: usize,
     term_version_ptr: [*]const u8,
@@ -593,7 +627,8 @@ export fn getTerminalCapabilities(rendererPtr: *renderer.CliRenderer, capsPtr: *
         .osc52 = caps.osc52,
         .notifications = caps.notifications,
         .explicit_cursor_positioning = caps.explicit_cursor_positioning,
-        .in_tmux = term.in_tmux,
+        .remote = caps.remote,
+        .multiplexer = @intFromEnum(term.multiplexer),
         .term_name_ptr = &term.term_info.name,
         .term_name_len = term.term_info.name_len,
         .term_version_ptr = &term.term_info.version,
@@ -1023,8 +1058,8 @@ export fn dumpBuffers(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
     rendererPtr.dumpBuffers(timestamp);
 }
 
-export fn dumpStdoutBuffer(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
-    rendererPtr.dumpStdoutBuffer(timestamp);
+export fn dumpOutputBuffer(rendererPtr: *renderer.CliRenderer, timestamp: i64) void {
+    rendererPtr.dumpOutputBuffer(timestamp);
 }
 
 export fn restoreTerminalModes(rendererPtr: *renderer.CliRenderer) void {

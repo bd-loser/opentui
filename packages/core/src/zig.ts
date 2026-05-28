@@ -167,7 +167,7 @@ function getOpenTUILib(libPath?: string) {
     },
     // Renderer management
     createRenderer: {
-      args: ["u32", "u32", "bool", "bool"],
+      args: ["u32", "u32", "u8", "u8", "ptr"],
       returns: "ptr",
     },
     setTerminalEnvVar: {
@@ -228,18 +228,18 @@ function getOpenTUILib(libPath?: string) {
     },
     render: {
       args: ["ptr", "bool"],
-      returns: "void",
+      returns: "u8",
     },
     repaintSplitFooter: {
       args: ["ptr", "u32", "bool"],
-      returns: "u32",
+      returns: "u64",
     },
     // Single FFI entrypoint for split commit append. beginFrame/finalizeFrame let
     // native code decide whether this call is a standalone commit or part of a
     // larger batched frame envelope.
     commitSplitFooterSnapshot: {
       args: ["ptr", "ptr", "u32", "bool", "bool", "u32", "bool", "bool", "bool"],
-      returns: "u32",
+      returns: "u64",
     },
     getNextBuffer: {
       args: ["ptr"],
@@ -518,7 +518,7 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "i64"],
       returns: "void",
     },
-    dumpStdoutBuffer: {
+    dumpOutputBuffer: {
       args: ["ptr", "i64"],
       returns: "void",
     },
@@ -1562,6 +1562,19 @@ export interface CursorState {
 
 export type NativeSpanFeedEventHandler = (eventId: number, arg0: Pointer, arg1: number | bigint) => void
 
+export type NativeBufferedOutput = "stdout" | "memory"
+
+export interface NativeRendererCreateOptions {
+  remote?: boolean
+  feedPtr?: Pointer | null
+  bufferedOutput?: NativeBufferedOutput
+}
+
+export interface NativeRenderOperationResult {
+  renderOffset: number
+  status: number
+}
+
 export interface AudioEngineLib {
   createAudioEngine: (options?: AudioCreateOptions | null) => Pointer | null
   destroyAudioEngine: (engine: Pointer) => void
@@ -1598,7 +1611,7 @@ export interface AudioEngineLib {
 }
 
 export interface RenderLib extends AudioEngineLib {
-  createRenderer: (width: number, height: number, options?: { testing?: boolean; remote?: boolean }) => Pointer | null
+  createRenderer: (width: number, height: number, options?: NativeRendererCreateOptions) => Pointer | null
   setTerminalEnvVar: (renderer: Pointer, key: string, value: string) => boolean
   destroyRenderer: (renderer: Pointer) => void
   setUseThread: (renderer: Pointer, useThread: boolean) => void
@@ -1621,8 +1634,8 @@ export interface RenderLib extends AudioEngineLib {
   updateStats: (renderer: Pointer, time: number, fps: number, frameCallbackTime: number) => void
   updateMemoryStats: (renderer: Pointer, heapUsed: number, heapTotal: number, arrayBuffers: number) => void
   getRenderStats: (renderer: Pointer) => NativeRenderStats
-  render: (renderer: Pointer, force: boolean) => void
-  repaintSplitFooter: (renderer: Pointer, pinnedRenderOffset: number, force: boolean) => number
+  render: (renderer: Pointer, force: boolean) => number
+  repaintSplitFooter: (renderer: Pointer, pinnedRenderOffset: number, force: boolean) => NativeRenderOperationResult
   commitSplitFooterSnapshot: (
     renderer: Pointer,
     snapshot: OptimizedBuffer,
@@ -1635,7 +1648,7 @@ export interface RenderLib extends AudioEngineLib {
     // multiple stdout snapshots. Defaults preserve old one-call behavior.
     beginFrame?: boolean,
     finalizeFrame?: boolean,
-  ) => number
+  ) => NativeRenderOperationResult
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
   rendererSetPaletteState: (
@@ -1803,7 +1816,7 @@ export interface RenderLib extends AudioEngineLib {
   getHitGridDirty: (renderer: Pointer) => boolean
   dumpHitGrid: (renderer: Pointer) => void
   dumpBuffers: (renderer: Pointer, timestamp?: number) => void
-  dumpStdoutBuffer: (renderer: Pointer, timestamp?: number) => void
+  dumpOutputBuffer: (renderer: Pointer, timestamp?: number) => void
   restoreTerminalModes: (renderer: Pointer) => void
   enableMouse: (renderer: Pointer, enableMovement: boolean) => void
   disableMouse: (renderer: Pointer) => void
@@ -2252,10 +2265,14 @@ class FFIRenderLib implements RenderLib {
     return callback
   }
 
-  public createRenderer(width: number, height: number, options: { testing?: boolean; remote?: boolean } = {}) {
-    const testing = options.testing ?? false
-    const remote = options.remote ?? false
-    return this.opentui.symbols.createRenderer(width, height, ffiBool(testing), ffiBool(remote))
+  public createRenderer(width: number, height: number, options: NativeRendererCreateOptions = {}) {
+    const bufferedOutputKind = options.bufferedOutput === "memory" ? 1 : 0
+    const remoteMode = options.remote === undefined ? 0 : options.remote ? 2 : 1
+    // `feedPtr` is an internal wiring detail: non-null selects the feed backend
+    // used for custom Writable output. When null, `bufferedOutput` selects the
+    // buffered stdout or memory backend.
+    const feedPtr = options.feedPtr ?? null
+    return this.opentui.symbols.createRenderer(width, height, bufferedOutputKind, remoteMode, feedPtr)
   }
 
   public setTerminalEnvVar(renderer: Pointer, key: string, value: string): boolean {
@@ -2746,12 +2763,26 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.setCursorStyleOptions(renderer, ptr(buffer))
   }
 
-  public render(renderer: Pointer, force: boolean) {
-    this.opentui.symbols.render(renderer, ffiBool(force))
+  public render(renderer: Pointer, force: boolean): number {
+    return this.opentui.symbols.render(renderer, ffiBool(force))
   }
 
-  public repaintSplitFooter(renderer: Pointer, pinnedRenderOffset: number, force: boolean): number {
-    return this.opentui.symbols.repaintSplitFooter(renderer, pinnedRenderOffset, ffiBool(force))
+  private unpackRenderOperationResult(value: number | bigint): NativeRenderOperationResult {
+    const packed = typeof value === "bigint" ? value : BigInt(value)
+    return {
+      renderOffset: Number(packed & 0xffffffffn),
+      status: Number((packed >> 32n) & 0xffn),
+    }
+  }
+
+  public repaintSplitFooter(
+    renderer: Pointer,
+    pinnedRenderOffset: number,
+    force: boolean,
+  ): NativeRenderOperationResult {
+    return this.unpackRenderOperationResult(
+      this.opentui.symbols.repaintSplitFooter(renderer, pinnedRenderOffset, ffiBool(force)),
+    )
   }
 
   public commitSplitFooterSnapshot(
@@ -2764,17 +2795,19 @@ class FFIRenderLib implements RenderLib {
     force: boolean,
     beginFrame: boolean = true,
     finalizeFrame: boolean = true,
-  ): number {
-    return this.opentui.symbols.commitSplitFooterSnapshot(
-      renderer,
-      snapshot.ptr,
-      rowColumns,
-      ffiBool(startOnNewLine),
-      ffiBool(trailingNewline),
-      pinnedRenderOffset,
-      ffiBool(force),
-      ffiBool(beginFrame),
-      ffiBool(finalizeFrame),
+  ): NativeRenderOperationResult {
+    return this.unpackRenderOperationResult(
+      this.opentui.symbols.commitSplitFooterSnapshot(
+        renderer,
+        snapshot.ptr,
+        rowColumns,
+        ffiBool(startOnNewLine),
+        ffiBool(trailingNewline),
+        pinnedRenderOffset,
+        ffiBool(force),
+        ffiBool(beginFrame),
+        ffiBool(finalizeFrame),
+      ),
     )
   }
 
@@ -2909,9 +2942,9 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.dumpBuffers(renderer, ts)
   }
 
-  public dumpStdoutBuffer(renderer: Pointer, timestamp?: number): void {
+  public dumpOutputBuffer(renderer: Pointer, timestamp?: number): void {
     const ts = timestamp ?? Date.now()
-    this.opentui.symbols.dumpStdoutBuffer(renderer, ts)
+    this.opentui.symbols.dumpOutputBuffer(renderer, ts)
   }
 
   public restoreTerminalModes(renderer: Pointer): void {
@@ -4012,7 +4045,8 @@ class FFIRenderLib implements RenderLib {
       osc52: caps.osc52,
       notifications: caps.notifications,
       explicit_cursor_positioning: caps.explicit_cursor_positioning,
-      in_tmux: caps.in_tmux,
+      remote: caps.remote,
+      multiplexer: caps.multiplexer,
       terminal: {
         name: caps.term_name ?? "",
         version: caps.term_version ?? "",

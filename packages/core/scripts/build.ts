@@ -120,10 +120,10 @@ if (buildNative) {
 
   const variantsToPackage = buildAll ? variants : [getHostVariant()]
 
-  for (const { platform, arch } of variantsToPackage) {
-    const nativeName = `${packageJson.name}-${platform}-${arch}`
+  for (const { platform, arch, abi } of variantsToPackage) {
+    const nativeName = `${packageJson.name}-${platform}-${arch}${abi ? `-${abi}` : ""}`
     const nativeDir = join(rootDir, "node_modules", nativeName)
-    const libDir = join(rootDir, "src", "zig", "lib", getZigTarget(platform, arch))
+    const libDir = join(rootDir, "src", "zig", "lib", getZigTarget(platform, arch, abi))
 
     rmSync(nativeDir, { recursive: true, force: true })
     mkdirSync(nativeDir, { recursive: true })
@@ -171,7 +171,7 @@ export default module.default
         {
           name: nativeName,
           version: packageJson.version,
-          description: `Prebuilt ${platform}-${arch} binaries for ${packageJson.name}`,
+          description: `Prebuilt ${platform}-${arch}${abi ? `-${abi}` : ""} binaries for ${packageJson.name}`,
           type: "module",
           main: "index.js",
           module: "index.js",
@@ -191,6 +191,7 @@ export default module.default
           },
           os: [platform],
           cpu: [arch],
+          ...(abi ? { libc: [abi] } : {}),
         },
         null,
         2,
@@ -199,7 +200,9 @@ export default module.default
 
     writeFileSync(
       join(nativeDir, "README.md"),
-      replaceLinks(`## ${nativeName}\n\n> Prebuilt ${platform}-${arch} binaries for \`${packageJson.name}\`.`),
+      replaceLinks(
+        `## ${nativeName}\n\n> Prebuilt ${platform}-${arch}${abi ? `-${abi}` : ""} binaries for \`${packageJson.name}\`.`,
+      ),
     )
 
     if (existsSync(licensePath)) copyFileSync(licensePath, join(nativeDir, "LICENSE"))

@@ -1369,6 +1369,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "ptr"],
       returns: "void",
     },
+    streamSetDirectCallback: {
+      args: ["ptr", "bool"],
+      returns: "void",
+    },
   })
 
   if (env.OTUI_DEBUG_FFI || env.OTUI_TRACE_FFI) {
@@ -1614,7 +1618,13 @@ export interface CursorState {
   color: RGBA
 }
 
-export type NativeSpanFeedEventHandler = (eventId: number, arg0: Pointer, arg1: number | bigint) => void
+export type NativeSpanFeedEventHandler = (
+  eventId: number,
+  arg0: Pointer,
+  arg1: number,
+  arg2?: number,
+  arg3?: number,
+) => void
 
 export type NativeBufferedOutput = "stdout" | "memory"
 
@@ -2162,6 +2172,7 @@ export interface RenderLib extends AudioEngineLib {
   streamGetStats: (stream: Pointer) => NativeSpanFeedStats | null
   streamReserve: (stream: Pointer, minLen: number) => { status: number; info: ReserveInfo | null }
   streamCommitReserved: (stream: Pointer, length: number) => number
+  streamSetDirectCallback: (stream: Pointer, enabled: boolean) => void
 
   onNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
   onceNativeEvent: (name: string, handler: (data: ArrayBuffer) => void) => void
@@ -2299,14 +2310,14 @@ class FFIRenderLib implements RenderLib {
     }
 
     const callback = this.opentui.createCallback(
-      (streamHandle: Pointer, eventId: number, arg0: Pointer, arg1: number | bigint) => {
+      (streamHandle: Pointer, eventId: number, arg0: Pointer, arg1: number, arg2: number, arg3: number) => {
         const handler = this.nativeSpanFeedHandlers.get(streamHandle)
         if (handler) {
-          handler(eventId, arg0, arg1)
+          handler(eventId, arg0, arg1, arg2, arg3)
         }
       },
       {
-        args: ["ptr", "u32", "ptr", "u64"],
+        args: ["ptr", "u32", "ptr", "u32", "u32", "u32"],
         returns: "void",
       },
     )
@@ -4411,6 +4422,10 @@ class FFIRenderLib implements RenderLib {
 
   public streamCommitReserved(stream: Pointer, length: number): number {
     return this.opentui.symbols.streamCommitReserved(stream, length)
+  }
+
+  public streamSetDirectCallback(stream: Pointer, enabled: boolean): void {
+    this.opentui.symbols.streamSetDirectCallback(stream, ffiBool(enabled))
   }
 
   public createSyntaxStyle(): SyntaxStyleHandle {

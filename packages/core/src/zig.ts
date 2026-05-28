@@ -1614,11 +1614,7 @@ export interface CursorState {
   color: RGBA
 }
 
-export type NativeSpanFeedEventHandler = (
-  eventId: number,
-  arg0: Pointer,
-  arg1: number | bigint,
-) => void
+export type NativeSpanFeedEventHandler = (eventId: number, arg0: Pointer, arg1: number | bigint) => void
 
 export type NativeBufferedOutput = "stdout" | "memory"
 
@@ -1693,7 +1689,11 @@ export interface RenderLib extends AudioEngineLib {
   updateMemoryStats: (renderer: RendererHandle, heapUsed: number, heapTotal: number, arrayBuffers: number) => void
   getRenderStats: (renderer: RendererHandle) => NativeRenderStats
   render: (renderer: RendererHandle, force: boolean) => number
-  repaintSplitFooter: (renderer: RendererHandle, pinnedRenderOffset: number, force: boolean) => NativeRenderOperationResult
+  repaintSplitFooter: (
+    renderer: RendererHandle,
+    pinnedRenderOffset: number,
+    force: boolean,
+  ) => NativeRenderOperationResult
   commitSplitFooterSnapshot: (
     renderer: RendererHandle,
     snapshot: OptimizedBuffer,
@@ -1773,7 +1773,14 @@ export interface RenderLib extends AudioEngineLib {
     bgColor: RGBA,
     attributes?: number,
   ) => void
-  bufferFillRect: (buffer: OptimizedBufferHandle, x: number, y: number, width: number, height: number, color: RGBA) => void
+  bufferFillRect: (
+    buffer: OptimizedBufferHandle,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    color: RGBA,
+  ) => void
   bufferColorMatrix: (
     buffer: OptimizedBufferHandle,
     matrixPtr: Pointer,
@@ -1782,7 +1789,12 @@ export interface RenderLib extends AudioEngineLib {
     strength: number,
     target: TargetChannel,
   ) => void
-  bufferColorMatrixUniform: (buffer: OptimizedBufferHandle, matrixPtr: Pointer, strength: number, target: TargetChannel) => void
+  bufferColorMatrixUniform: (
+    buffer: OptimizedBufferHandle,
+    matrixPtr: Pointer,
+    strength: number,
+    target: TargetChannel,
+  ) => void
   bufferDrawSuperSampleBuffer: (
     buffer: OptimizedBufferHandle,
     x: number,
@@ -1953,7 +1965,12 @@ export interface RenderLib extends AudioEngineLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
   ) => boolean
-  textBufferViewUpdateSelection: (view: TextBufferViewHandle, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
+  textBufferViewUpdateSelection: (
+    view: TextBufferViewHandle,
+    end: number,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
+  ) => void
   textBufferViewUpdateLocalSelection: (
     view: TextBufferViewHandle,
     anchorX: number,
@@ -2000,7 +2017,13 @@ export interface RenderLib extends AudioEngineLib {
   editBufferInsertText: (buffer: EditBufferHandle, text: string) => void
   editBufferDeleteChar: (buffer: EditBufferHandle) => void
   editBufferDeleteCharBackward: (buffer: EditBufferHandle) => void
-  editBufferDeleteRange: (buffer: EditBufferHandle, startLine: number, startCol: number, endLine: number, endCol: number) => void
+  editBufferDeleteRange: (
+    buffer: EditBufferHandle,
+    startLine: number,
+    startCol: number,
+    endLine: number,
+    endCol: number,
+  ) => void
   editBufferNewLine: (buffer: EditBufferHandle) => void
   editBufferDeleteLine: (buffer: EditBufferHandle) => void
   editBufferMoveCursorLeft: (buffer: EditBufferHandle) => void
@@ -2024,7 +2047,10 @@ export interface RenderLib extends AudioEngineLib {
   editBufferGetNextWordBoundary: (buffer: EditBufferHandle) => { row: number; col: number; offset: number }
   editBufferGetPrevWordBoundary: (buffer: EditBufferHandle) => { row: number; col: number; offset: number }
   editBufferGetEOL: (buffer: EditBufferHandle) => { row: number; col: number; offset: number }
-  editBufferOffsetToPosition: (buffer: EditBufferHandle, offset: number) => { row: number; col: number; offset: number } | null
+  editBufferOffsetToPosition: (
+    buffer: EditBufferHandle,
+    offset: number,
+  ) => { row: number; col: number; offset: number } | null
   editBufferPositionToOffset: (buffer: EditBufferHandle, row: number, col: number) => number
   editBufferGetLineStartOffset: (buffer: EditBufferHandle, row: number) => number
   editBufferGetTextRange: (
@@ -2139,7 +2165,13 @@ export interface RenderLib extends AudioEngineLib {
 
   createSyntaxStyle: () => SyntaxStyleHandle
   destroySyntaxStyle: (style: SyntaxStyleHandle) => void
-  syntaxStyleRegister: (style: SyntaxStyleHandle, name: string, fg: RGBA | null, bg: RGBA | null, attributes: number) => number
+  syntaxStyleRegister: (
+    style: SyntaxStyleHandle,
+    name: string,
+    fg: RGBA | null,
+    bg: RGBA | null,
+    attributes: number,
+  ) => number
   syntaxStyleResolveByName: (style: SyntaxStyleHandle, name: string) => number | null
   syntaxStyleGetStyleCount: (style: SyntaxStyleHandle) => number
 
@@ -2151,7 +2183,15 @@ export interface RenderLib extends AudioEngineLib {
     widthMethod: WidthMethod,
   ) => { ptr: Pointer; data: Array<{ width: number; char: number }> } | null
   freeUnicode: (encoded: { ptr: Pointer; data: Array<{ width: number; char: number }> }) => void
-  bufferDrawChar: (buffer: OptimizedBufferHandle, char: number, x: number, y: number, fg: RGBA, bg: RGBA, attributes?: number) => void
+  bufferDrawChar: (
+    buffer: OptimizedBufferHandle,
+    char: number,
+    x: number,
+    y: number,
+    fg: RGBA,
+    bg: RGBA,
+    attributes?: number,
+  ) => void
 
   registerNativeSpanFeedStream: (stream: Pointer, handler: NativeSpanFeedEventHandler) => void
   unregisterNativeSpanFeedStream: (stream: Pointer) => void
@@ -2330,7 +2370,13 @@ class FFIRenderLib implements RenderLib {
     // used for custom Writable output. When null, `bufferedOutput` selects the
     // buffered stdout or memory backend.
     const feedPtr = options.feedPtr ?? null
-    const renderer = this.opentui.symbols.createRenderer(width, height, bufferedOutputKind, remoteMode, feedPtr) as RendererHandle
+    const renderer = this.opentui.symbols.createRenderer(
+      width,
+      height,
+      bufferedOutputKind,
+      remoteMode,
+      feedPtr,
+    ) as RendererHandle
     return renderer ? renderer : null
   }
 
@@ -3551,8 +3597,16 @@ class FFIRenderLib implements RenderLib {
   }
 
   // EditorView methods
-  public createEditorView(editBufferPtr: EditBufferHandle, viewportWidth: number, viewportHeight: number): EditorViewHandle {
-    const viewPtr = this.opentui.symbols.createEditorView(editBufferPtr, viewportWidth, viewportHeight) as EditorViewHandle
+  public createEditorView(
+    editBufferPtr: EditBufferHandle,
+    viewportWidth: number,
+    viewportHeight: number,
+  ): EditorViewHandle {
+    const viewPtr = this.opentui.symbols.createEditorView(
+      editBufferPtr,
+      viewportWidth,
+      viewportHeight,
+    ) as EditorViewHandle
     if (!viewPtr) {
       throw new Error("Failed to create EditorView")
     }
@@ -4179,7 +4233,9 @@ class FFIRenderLib implements RenderLib {
 
   public createAudioEngine(options?: AudioCreateOptions | null): AudioEngineHandle | null {
     const optionsBuffer = options == null ? null : AudioCreateOptionsStruct.pack(options)
-    const engineHandle = this.opentui.symbols.createAudioEngine(optionsBuffer ? ptr(optionsBuffer) : null) as AudioEngineHandle
+    const engineHandle = this.opentui.symbols.createAudioEngine(
+      optionsBuffer ? ptr(optionsBuffer) : null,
+    ) as AudioEngineHandle
     return engineHandle ? engineHandle : null
   }
 

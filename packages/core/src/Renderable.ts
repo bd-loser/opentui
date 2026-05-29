@@ -201,6 +201,31 @@ const yogaConfig: Config = Yoga.Config.create()
 yogaConfig.setUseWebDefaults(false)
 yogaConfig.setPointScaleFactor(1)
 
+interface LayoutGenerationContext extends RenderContext {
+  __otuiLayoutGeneration?: number
+  __otuiRenderListRevision?: number
+}
+
+function getLayoutGeneration(ctx: RenderContext): number {
+  return (ctx as LayoutGenerationContext).__otuiLayoutGeneration ?? 0
+}
+
+function bumpLayoutGeneration(ctx: RenderContext): number {
+  const next = getLayoutGeneration(ctx) + 1
+  const generationContext = ctx as LayoutGenerationContext
+  generationContext.__otuiLayoutGeneration = next
+  return next
+}
+
+function getRenderListRevision(ctx: RenderContext): number {
+  return (ctx as LayoutGenerationContext).__otuiRenderListRevision ?? 0
+}
+
+function bumpRenderListRevision(ctx: RenderContext): void {
+  const generationContext = ctx as LayoutGenerationContext
+  generationContext.__otuiRenderListRevision = getRenderListRevision(ctx) + 1
+}
+
 export abstract class Renderable extends BaseRenderable {
   static renderablesByNumber: Map<number, Renderable> = new Map()
 
@@ -342,6 +367,7 @@ export abstract class Renderable extends BaseRenderable {
     const wasVisible = this._visible
     this._visible = value
     this.yogaNode.setDisplay(value ? Display.Flex : Display.None)
+    bumpRenderListRevision(this._ctx)
 
     if (this._live) {
       if (!wasVisible && value) {
@@ -365,6 +391,7 @@ export abstract class Renderable extends BaseRenderable {
     const clamped = Math.max(0, Math.min(1, value))
     if (this._opacity !== clamped) {
       this._opacity = clamped
+      bumpRenderListRevision(this._ctx)
       this.requestRender()
     }
   }
@@ -517,6 +544,7 @@ export abstract class Renderable extends BaseRenderable {
     const parentScreenX = this.parent ? this.parent._screenX : 0
     this._screenX = parentScreenX + this._x + this._translateX
     if (this.parent) this.parent.childrenPrimarySortDirty = true
+    bumpRenderListRevision(this._ctx)
     this.requestRender()
   }
 
@@ -530,6 +558,7 @@ export abstract class Renderable extends BaseRenderable {
     const parentScreenY = this.parent ? this.parent._screenY : 0
     this._screenY = parentScreenY + this._y + this._translateY
     if (this.parent) this.parent.childrenPrimarySortDirty = true
+    bumpRenderListRevision(this._ctx)
     this.requestRender()
   }
 
@@ -655,6 +684,7 @@ export abstract class Renderable extends BaseRenderable {
     if (this._zIndex !== value) {
       this._zIndex = value
       this.parent?.requestZIndexSort()
+      bumpRenderListRevision(this._ctx)
       this.requestRender()
     }
   }
@@ -845,6 +875,7 @@ export abstract class Renderable extends BaseRenderable {
 
     this._overflow = overflow
     this.yogaNode.setOverflow(parseOverflow(overflow))
+    bumpRenderListRevision(this._ctx)
     this.requestRender()
   }
 
@@ -1222,6 +1253,7 @@ export abstract class Renderable extends BaseRenderable {
 
     this.childrenPrimarySortDirty = true
     this._shouldUpdateBefore.add(renderable)
+    bumpRenderListRevision(this._ctx)
 
     this.requestRender()
 
@@ -1301,6 +1333,7 @@ export abstract class Renderable extends BaseRenderable {
     this.yogaNode.insertChild(renderable.getLayoutNode(), insertedIndex)
 
     this._shouldUpdateBefore.add(renderable)
+    bumpRenderListRevision(this._ctx)
 
     this.requestRender()
 
@@ -1344,6 +1377,7 @@ export abstract class Renderable extends BaseRenderable {
         }
 
         this.childrenPrimarySortDirty = true
+        bumpRenderListRevision(this._ctx)
       }
     }
   }
@@ -1483,6 +1517,14 @@ export abstract class Renderable extends BaseRenderable {
 
   protected _getVisibleChildren(): number[] {
     return this._childrenInZIndexOrder.map((child) => child.num)
+  }
+
+  public canReuseRenderCommandList(): boolean {
+    return (
+      this.onUpdate === Renderable.prototype.onUpdate &&
+      (this._overflow === "visible" || this.getScissorRect === Renderable.prototype.getScissorRect) &&
+      !this._hasVisibleChildFilter()
+    )
   }
 
   protected onUpdate(deltaTime: number): void {
@@ -1710,6 +1752,9 @@ export type RenderCommand =
 
 export class RootRenderable extends Renderable {
   private renderList: RenderCommand[] = []
+  private appliedLayoutGeneration: number = -1
+  private appliedRenderListRevision: number = -1
+  private renderListReusable: boolean = false
 
   constructor(ctx: RenderContext) {
     super(ctx, {
@@ -1751,11 +1796,25 @@ export class RootRenderable extends Renderable {
     // 1. Calculate layout from root
     if (this.yogaNode.isDirty()) {
       this.calculateLayout()
+    } else {
+      this.syncExternalLayoutGeneration()
     }
 
     // 2. Update layout throughout the tree and collect render list
-    this.renderList.length = 0
-    this.updateLayout(deltaTime, this.renderList)
+    const layoutGeneration = getLayoutGeneration(this._ctx)
+    const renderListRevision = getRenderListRevision(this._ctx)
+    const canReuseRenderList =
+      this.renderListReusable &&
+      this.appliedLayoutGeneration === layoutGeneration &&
+      this.appliedRenderListRevision === renderListRevision
+
+    if (!canReuseRenderList) {
+      this.renderList.length = 0
+      super.updateLayout(deltaTime, this.renderList)
+      this.appliedLayoutGeneration = layoutGeneration
+      this.appliedRenderListRevision = getRenderListRevision(this._ctx)
+      this.renderListReusable = this.canReuseCurrentRenderList()
+    }
 
     // 3. Render all collected renderables
     this._ctx.clearHitGridScissorRects()
@@ -1799,7 +1858,26 @@ export class RootRenderable extends Renderable {
 
   public calculateLayout(): void {
     this.yogaNode.calculateLayout(this.width, this.height, Direction.LTR)
+    bumpLayoutGeneration(this._ctx)
+    this.yogaNode.markLayoutSeen()
     this.emit(LayoutEvents.LAYOUT_CHANGED)
+  }
+
+  private syncExternalLayoutGeneration(): void {
+    if (!this.yogaNode.hasNewLayout()) return
+    bumpLayoutGeneration(this._ctx)
+    this.yogaNode.markLayoutSeen()
+  }
+
+  private canReuseCurrentRenderList(): boolean {
+    if (this._liveCount > 0) return false
+
+    for (const command of this.renderList) {
+      if (command.action !== "render") continue
+      if (!command.renderable.canReuseRenderCommandList()) return false
+    }
+
+    return true
   }
 
   public resize(width: number, height: number): void {

@@ -79,6 +79,10 @@ pub const LinkPool = struct {
         return &self.slots.items[offset];
     }
 
+    fn slotHeaderPtr(p: *u8) *align(1) SlotHeader {
+        return @ptrCast(p);
+    }
+
     fn packId(slot_index: u32, generation: u32) LinkPoolError!IdPayload {
         if (slot_index > SLOT_MASK) return LinkPoolError.OutOfMemory;
         return ((generation & GEN_MASK) << SLOT_BITS) | (slot_index & SLOT_MASK);
@@ -151,7 +155,7 @@ pub const LinkPool = struct {
 
         const slot_index = self.free_list.pop().?;
         const p = self.slotPtr(slot_index);
-        const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+        const header_ptr = slotHeaderPtr(p);
 
         // Increment generation when reusing a slot; reserve generation 0 so ID 0 remains an error sentinel in FFI.
         var new_generation = (header_ptr.generation + 1) & GEN_MASK;
@@ -174,7 +178,7 @@ pub const LinkPool = struct {
         if (unpacked.slot_index >= self.num_slots) return LinkPoolError.InvalidId;
 
         const p = self.slotPtr(unpacked.slot_index);
-        const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+        const header_ptr = slotHeaderPtr(p);
 
         if (header_ptr.generation != unpacked.generation) {
             return LinkPoolError.WrongGeneration;
@@ -194,7 +198,7 @@ pub const LinkPool = struct {
         if (unpacked.slot_index >= self.num_slots) return LinkPoolError.InvalidId;
 
         const p = self.slotPtr(unpacked.slot_index);
-        const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+        const header_ptr = slotHeaderPtr(p);
 
         if (header_ptr.refcount == 0) return LinkPoolError.InvalidId;
         if (header_ptr.generation != unpacked.generation) return LinkPoolError.WrongGeneration;
@@ -216,7 +220,7 @@ pub const LinkPool = struct {
         if (unpacked.slot_index >= self.num_slots) return LinkPoolError.InvalidId;
 
         const p = self.slotPtr(unpacked.slot_index);
-        const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+        const header_ptr = slotHeaderPtr(p);
 
         if (header_ptr.generation != unpacked.generation) return LinkPoolError.WrongGeneration;
 
@@ -229,7 +233,7 @@ pub const LinkPool = struct {
         if (unpacked.slot_index >= self.num_slots) return LinkPoolError.InvalidId;
 
         const p = self.slotPtr(unpacked.slot_index);
-        const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+        const header_ptr = slotHeaderPtr(p);
 
         if (header_ptr.generation != unpacked.generation) return LinkPoolError.WrongGeneration;
 

@@ -302,6 +302,14 @@ pub const GraphemePool = struct {
             return &self.slots.items[offset];
         }
 
+        fn slotHeaderPtr(p: *u8) *align(1) SlotHeader {
+            return @ptrCast(p);
+        }
+
+        fn unownedPointerStorage(data_ptr: [*]u8) *align(1) [*]const u8 {
+            return @ptrCast(data_ptr);
+        }
+
         pub fn allocInternal(self: *ClassPool, bytes: []const u8, is_owned: bool) GraphemePoolError!u32 {
             // Validate size for owned allocations
             if (is_owned and bytes.len > self.slot_capacity) {
@@ -312,7 +320,7 @@ pub const GraphemePool = struct {
 
             const slot_index = self.free_list.pop().?;
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
 
             // Increment generation when reusing a slot, wrapping at 7 bits (128 values)
             const new_generation = (header_ptr.generation + 1) & GENERATION_MASK;
@@ -334,7 +342,7 @@ pub const GraphemePool = struct {
                 @memcpy(data_ptr[0..header_ptr.len], bytes[0..header_ptr.len]);
             } else {
                 // Unowned: store pointer to external memory
-                const ptr_storage = @as(*[*]const u8, @ptrCast(@alignCast(data_ptr)));
+                const ptr_storage = unownedPointerStorage(data_ptr);
                 ptr_storage.* = bytes.ptr;
             }
 
@@ -344,13 +352,13 @@ pub const GraphemePool = struct {
         pub fn getGeneration(self: *ClassPool, slot_index: u32) u32 {
             if (slot_index >= self.num_slots) return 0;
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
             return header_ptr.generation;
         }
 
         pub fn incref(self: *ClassPool, slot_index: u32, expected_generation: u32) GraphemePoolError!void {
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
             if (header_ptr.generation != expected_generation) {
                 // Generation mismatch - this is a stale reference
                 return GraphemePoolError.WrongGeneration;
@@ -360,7 +368,7 @@ pub const GraphemePool = struct {
 
         pub fn decref(self: *ClassPool, slot_index: u32, expected_generation: u32) GraphemePoolError!void {
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
 
             if (header_ptr.refcount == 0) return GraphemePoolError.InvalidId;
             if (header_ptr.generation != expected_generation) return GraphemePoolError.WrongGeneration;
@@ -378,7 +386,7 @@ pub const GraphemePool = struct {
         pub fn freeUnreferenced(self: *ClassPool, slot_index: u32, expected_generation: u32) GraphemePoolError!void {
             if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
 
             if (header_ptr.generation != expected_generation) return GraphemePoolError.WrongGeneration;
             if (header_ptr.refcount != 0) return GraphemePoolError.InvalidId; // Not unreferenced
@@ -390,7 +398,7 @@ pub const GraphemePool = struct {
             if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
 
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
             // Validate generation to prevent accessing stale data
             if (header_ptr.generation != expected_generation) return GraphemePoolError.WrongGeneration;
 
@@ -401,7 +409,7 @@ pub const GraphemePool = struct {
                 return data_ptr[0..header_ptr.len];
             } else {
                 // Unowned memory: dereference stored pointer
-                const ptr_storage = @as(*[*]const u8, @ptrCast(@alignCast(data_ptr)));
+                const ptr_storage = unownedPointerStorage(data_ptr);
                 const external_ptr = ptr_storage.*;
                 return external_ptr[0..header_ptr.len];
             }
@@ -410,7 +418,7 @@ pub const GraphemePool = struct {
         pub fn getRefcount(self: *ClassPool, slot_index: u32, expected_generation: u32) GraphemePoolError!u32 {
             if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
             if (header_ptr.generation != expected_generation) return GraphemePoolError.WrongGeneration;
             return header_ptr.refcount;
         }
@@ -418,7 +426,7 @@ pub const GraphemePool = struct {
         pub fn isOwned(self: *ClassPool, slot_index: u32, expected_generation: u32) GraphemePoolError!bool {
             if (slot_index >= self.num_slots) return GraphemePoolError.InvalidId;
             const p = self.slotPtr(slot_index);
-            const header_ptr = @as(*SlotHeader, @ptrCast(@alignCast(p)));
+            const header_ptr = slotHeaderPtr(p);
             if (header_ptr.generation != expected_generation) return GraphemePoolError.WrongGeneration;
             return header_ptr.is_owned == 1;
         }

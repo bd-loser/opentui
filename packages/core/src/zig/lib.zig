@@ -20,6 +20,7 @@ const event_bus = @import("event-bus.zig");
 const native_span_feed = @import("native-span-feed.zig");
 const native_audio = @import("audio.zig");
 const buffer_effects = @import("buffer-methods.zig");
+const native_yoga = @import("yoga.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -48,6 +49,7 @@ inline fn selectionStyle(bg: ?RGBA, fg: ?RGBA) text_buffer_view.SelectionStyle {
 comptime {
     _ = native_span_feed;
     _ = native_audio;
+    _ = native_yoga;
 }
 
 export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: usize) callconv(.c) void) void {

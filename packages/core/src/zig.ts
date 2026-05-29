@@ -1282,6 +1282,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr", "bool"],
       returns: "void",
     },
+    yogaNodeGetAlwaysFormsContainingBlock: {
+      args: ["ptr"],
+      returns: "bool",
+    },
     yogaNodeGetComputedLayout: {
       args: ["ptr", "ptr"],
       returns: "void",
@@ -1333,6 +1337,14 @@ function getOpenTUILib(libPath?: string) {
     yogaNodeHasMeasureFunc: {
       args: ["ptr"],
       returns: "bool",
+    },
+    yogaNodeSetDirtiedFunc: {
+      args: ["ptr", "ptr"],
+      returns: "void",
+    },
+    yogaNodeUnsetDirtiedFunc: {
+      args: ["ptr"],
+      returns: "void",
     },
     yogaStoreMeasureResult: {
       args: ["f32", "f32"],
@@ -1759,6 +1771,8 @@ export type NativeYogaMeasureCallback = (
   heightMode: number,
 ) => void
 
+export type NativeYogaDirtiedCallback = () => void
+
 export interface AudioEngineLib {
   createAudioEngine: (options?: AudioCreateOptions | null) => Pointer | null
   destroyAudioEngine: (engine: Pointer) => void
@@ -2046,6 +2060,7 @@ export interface RenderLib extends AudioEngineLib {
   yogaNodeSetIsReferenceBaseline: (node: Pointer, isReferenceBaseline: boolean) => void
   yogaNodeIsReferenceBaseline: (node: Pointer) => boolean
   yogaNodeSetAlwaysFormsContainingBlock: (node: Pointer, alwaysFormsContainingBlock: boolean) => void
+  yogaNodeGetAlwaysFormsContainingBlock: (node: Pointer) => boolean
   yogaNodeGetComputedLayout: (node: Pointer) => NativeYogaLayout
   yogaNodeLayoutGetEdge: (node: Pointer, kind: number, edge: number) => number
   yogaNodeStyleSetEnum: (node: Pointer, kind: number, value: number) => void
@@ -2059,8 +2074,11 @@ export interface RenderLib extends AudioEngineLib {
   yogaNodeSetMeasureFunc: (node: Pointer, callback: Pointer | null) => void
   yogaNodeUnsetMeasureFunc: (node: Pointer) => void
   yogaNodeHasMeasureFunc: (node: Pointer) => boolean
+  yogaNodeSetDirtiedFunc: (node: Pointer, callback: Pointer | null) => void
+  yogaNodeUnsetDirtiedFunc: (node: Pointer) => void
   yogaStoreMeasureResult: (width: number, height: number) => void
   createYogaMeasureCallback: (callback: NativeYogaMeasureCallback) => FFICallbackInstance
+  createYogaDirtiedCallback: (callback: NativeYogaDirtiedCallback) => FFICallbackInstance
 
   // TextBuffer methods
   createTextBuffer: (widthMethod: WidthMethod) => TextBuffer
@@ -3363,6 +3381,10 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.yogaNodeSetAlwaysFormsContainingBlock(node, ffiBool(alwaysFormsContainingBlock))
   }
 
+  public yogaNodeGetAlwaysFormsContainingBlock(node: Pointer): boolean {
+    return this.opentui.symbols.yogaNodeGetAlwaysFormsContainingBlock(node)
+  }
+
   public yogaNodeGetComputedLayout(node: Pointer): NativeYogaLayout {
     const layout = new Float32Array(6)
     this.opentui.symbols.yogaNodeGetComputedLayout(node, ptr(layout))
@@ -3424,6 +3446,14 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.yogaNodeHasMeasureFunc(node)
   }
 
+  public yogaNodeSetDirtiedFunc(node: Pointer, callback: Pointer | null): void {
+    this.opentui.symbols.yogaNodeSetDirtiedFunc(node, callback)
+  }
+
+  public yogaNodeUnsetDirtiedFunc(node: Pointer): void {
+    this.opentui.symbols.yogaNodeUnsetDirtiedFunc(node)
+  }
+
   public yogaStoreMeasureResult(width: number, height: number): void {
     this.opentui.symbols.yogaStoreMeasureResult(width, height)
   }
@@ -3431,6 +3461,13 @@ class FFIRenderLib implements RenderLib {
   public createYogaMeasureCallback(callback: NativeYogaMeasureCallback): FFICallbackInstance {
     return this.opentui.createCallback(callback, {
       args: ["ptr", "f32", "u32", "f32", "u32"],
+      returns: "void",
+    })
+  }
+
+  public createYogaDirtiedCallback(callback: NativeYogaDirtiedCallback): FFICallbackInstance {
+    return this.opentui.createCallback(callback, {
+      args: [],
       returns: "void",
     })
   }

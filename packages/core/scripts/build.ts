@@ -227,6 +227,7 @@ if (buildLib) {
     "src/runtime-plugin.ts",
     "src/runtime-plugin-support.ts",
     "src/runtime-plugin-support-configure.ts",
+    "src/yoga.ts",
   ]
 
   // Build main entry points with code splitting
@@ -305,6 +306,7 @@ if (buildLib) {
     "dist/runtime-plugin.js",
     "dist/runtime-plugin-support.js",
     "dist/runtime-plugin-support-configure.js",
+    "dist/yoga.js",
     "dist/lib/tree-sitter/update-assets.js",
     "dist/lib/tree-sitter/parser.worker.js",
   ]
@@ -396,6 +398,11 @@ if (buildLib) {
       import: "./runtime-plugin-support-configure.js",
       require: "./runtime-plugin-support-configure.js",
       types: "./runtime-plugin-support-configure.d.ts",
+    },
+    "./yoga": {
+      import: "./yoga.js",
+      require: "./yoga.js",
+      types: "./yoga.d.ts",
     },
     "./tree-sitter/update-assets": {
       import: "./lib/tree-sitter/update-assets.js",

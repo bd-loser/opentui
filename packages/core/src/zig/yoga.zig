@@ -1,13 +1,8 @@
 const std = @import("std");
 
-const c = @cImport({
-    @cInclude("yoga/Yoga.h");
-});
-
-const YGNodeRef = c.YGNodeRef;
-const YGNodeConstRef = c.YGNodeConstRef;
-const YGConfigRef = c.YGConfigRef;
-const YGConfigConstRef = c.YGConfigConstRef;
+const root_module = @import("root");
+const allocator = if (@hasDecl(root_module, "globalAllocator")) root_module.globalAllocator else std.testing.allocator;
+const nan = std.math.nan(f32);
 
 const YogaEnumKind = enum(u32) {
     direction = 0,
@@ -50,11 +45,98 @@ const YogaEdgeLayoutKind = enum(u32) {
     border = 2,
 };
 
-const YogaUnit = enum(u32) {
+const Direction = enum(u32) {
+    inherit = 0,
+    ltr = 1,
+    rtl = 2,
+};
+
+const FlexDirection = enum(u32) {
+    column = 0,
+    column_reverse = 1,
+    row = 2,
+    row_reverse = 3,
+};
+
+const Justify = enum(u32) {
+    flex_start = 0,
+    center = 1,
+    flex_end = 2,
+    space_between = 3,
+    space_around = 4,
+    space_evenly = 5,
+};
+
+const Align = enum(u32) {
+    auto = 0,
+    flex_start = 1,
+    center = 2,
+    flex_end = 3,
+    stretch = 4,
+    baseline = 5,
+    space_between = 6,
+    space_around = 7,
+    space_evenly = 8,
+};
+
+const PositionType = enum(u32) {
+    static = 0,
+    relative = 1,
+    absolute = 2,
+};
+
+const Wrap = enum(u32) {
+    no_wrap = 0,
+    wrap = 1,
+    wrap_reverse = 2,
+};
+
+const Overflow = enum(u32) {
+    visible = 0,
+    hidden = 1,
+    scroll = 2,
+};
+
+const Display = enum(u32) {
+    flex = 0,
+    none = 1,
+    contents = 2,
+};
+
+const BoxSizing = enum(u32) {
+    border_box = 0,
+    content_box = 1,
+};
+
+const Unit = enum(u32) {
     undefined = 0,
     point = 1,
     percent = 2,
     auto = 3,
+};
+
+const Edge = enum(u32) {
+    left = 0,
+    top = 1,
+    right = 2,
+    bottom = 3,
+    start = 4,
+    end = 5,
+    horizontal = 6,
+    vertical = 7,
+    all = 8,
+};
+
+const Gutter = enum(u32) {
+    column = 0,
+    row = 1,
+    all = 2,
+};
+
+const MeasureMode = enum(u32) {
+    undefined = 0,
+    exactly = 1,
+    at_most = 2,
 };
 
 pub const ExternalYogaLayout = extern struct {
@@ -66,496 +148,1695 @@ pub const ExternalYogaLayout = extern struct {
     height: f32,
 };
 
-const CallbackContext = struct {
-    measure_callback: ?*const anyopaque = null,
-    dirtied_callback: ?*const anyopaque = null,
+const Size = struct {
+    width: f32 = 0,
+    height: f32 = 0,
+};
+
+const Rect = struct {
+    left: f32 = 0,
+    top: f32 = 0,
+    right: f32 = 0,
+    bottom: f32 = 0,
+};
+
+const StyleValue = extern struct {
+    value: f32,
+    unit: Unit,
+
+    fn undef() StyleValue {
+        return .{ .value = nan, .unit = .undefined };
+    }
+
+    fn auto() StyleValue {
+        return .{ .value = nan, .unit = .auto };
+    }
+
+    fn point(value: f32) StyleValue {
+        return .{ .value = value, .unit = .point };
+    }
+
+    fn percent(value: f32) StyleValue {
+        return .{ .value = value, .unit = .percent };
+    }
+
+    fn eql(self: StyleValue, other: StyleValue) bool {
+        if (self.unit != other.unit) return false;
+        if (std.math.isNan(self.value) and std.math.isNan(other.value)) return true;
+        return self.value == other.value;
+    }
+};
+
+const Style = struct {
+    direction: Direction = .inherit,
+    flex_direction: FlexDirection = .column,
+    justify_content: Justify = .flex_start,
+    align_content: Align = .flex_start,
+    align_items: Align = .stretch,
+    align_self: Align = .auto,
+    position_type: PositionType = .relative,
+    flex_wrap: Wrap = .no_wrap,
+    overflow: Overflow = .visible,
+    display: Display = .flex,
+    box_sizing: BoxSizing = .border_box,
+
+    flex: f32 = nan,
+    flex_grow: f32 = 0,
+    flex_shrink: f32 = 0,
+    aspect_ratio: f32 = nan,
+
+    width: StyleValue = StyleValue.auto(),
+    height: StyleValue = StyleValue.auto(),
+    min_width: StyleValue = StyleValue.undef(),
+    min_height: StyleValue = StyleValue.undef(),
+    max_width: StyleValue = StyleValue.undef(),
+    max_height: StyleValue = StyleValue.undef(),
+    flex_basis: StyleValue = StyleValue.auto(),
+    margin: [9]StyleValue = [_]StyleValue{StyleValue.undef()} ** 9,
+    padding: [9]StyleValue = [_]StyleValue{StyleValue.undef()} ** 9,
+    position: [9]StyleValue = [_]StyleValue{StyleValue.undef()} ** 9,
+    border: [9]f32 = [_]f32{nan} ** 9,
+    gap: [3]StyleValue = [_]StyleValue{StyleValue.undef()} ** 3,
+};
+
+const Layout = struct {
+    left: f32 = 0,
+    top: f32 = 0,
+    right: f32 = 0,
+    bottom: f32 = 0,
+    width: f32 = 0,
+    height: f32 = 0,
+    margin: Rect = .{},
+    padding: Rect = .{},
+    border: Rect = .{},
+};
+
+const Config = struct {
+    use_web_defaults: bool = false,
+    point_scale_factor: f32 = 1,
+    errata: u32 = 0,
+    experimental_features: u32 = 0,
 };
 
 const JsMeasureCallback = *const fn (?*anyopaque, f32, u32, f32, u32) callconv(.c) void;
 const JsDirtiedCallback = *const fn () callconv(.c) void;
-const callback_allocator = std.heap.c_allocator;
+
+threadlocal var current_layout_generation: u64 = 0;
+
+const Node = struct {
+    config: ?*const Config = null,
+    parent: ?*Node = null,
+    children: std.ArrayListUnmanaged(*Node) = .{},
+    style: Style = .{},
+    layout: Layout = .{},
+    dirty: bool = true,
+    self_dirty: bool = true,
+    style_dirty: bool = true,
+    dirty_child_count: u32 = 0,
+    dirty_child: ?*Node = null,
+    has_new_layout: bool = true,
+    is_reference_baseline: bool = false,
+    always_forms_containing_block: bool = false,
+    measure_callback: ?*const anyopaque = null,
+    dirtied_callback: ?*const anyopaque = null,
+    dirtied_notified: bool = false,
+    has_cached_layout: bool = false,
+    cached_assigned_width: f32 = nan,
+    cached_assigned_height: f32 = nan,
+    cached_owner_width: f32 = nan,
+    cached_owner_height: f32 = nan,
+    cached_direction: Direction = .ltr,
+    cached_generation: u64 = 0,
+    containing_width: f32 = 0,
+    containing_height: f32 = 0,
+
+    fn deinit(self: *Node) void {
+        self.children.deinit(allocator);
+    }
+};
+
+const LineItem = struct {
+    node: *Node,
+    base_width: f32,
+    base_height: f32,
+    target_width: f32,
+    target_height: f32,
+    margin: Rect,
+    margin_left_auto: bool,
+    margin_right_auto: bool,
+    margin_top_auto: bool,
+    margin_bottom_auto: bool,
+    outer_main: f32,
+    outer_cross: f32,
+    flex_grow: f32,
+    flex_shrink: f32,
+    has_explicit_width: bool,
+    has_explicit_height: bool,
+    frozen: bool = false,
+};
+
+const FlexLine = struct {
+    start: usize,
+    end: usize,
+    main: f32,
+    cross: f32,
+    grow: f32,
+    shrink: f32,
+};
+
+const JustifyLayout = struct {
+    offset: f32,
+    gap: f32,
+};
+
+const STACK_FLEX_ITEMS = 8;
 
 threadlocal var tls_measure_width: f32 = 0;
 threadlocal var tls_measure_height: f32 = 0;
 
 fn enumValue(value: anytype) u32 {
-    return @intCast(value);
+    return @intFromEnum(value);
 }
 
-fn toAlign(value: u32) c.YGAlign {
-    return @intCast(value);
+fn nonNan(value: f32, fallback: f32) f32 {
+    return if (std.math.isNan(value)) fallback else value;
 }
 
-fn toBoxSizing(value: u32) c.YGBoxSizing {
-    return @intCast(value);
+fn isDefined(value: StyleValue) bool {
+    return value.unit != .undefined;
 }
 
-fn toDirection(value: u32) c.YGDirection {
-    return @intCast(value);
+fn isConcrete(value: StyleValue) bool {
+    return value.unit == .point or value.unit == .percent;
 }
 
-fn toDisplay(value: u32) c.YGDisplay {
-    return @intCast(value);
+fn optionalSize(value: f32) ?f32 {
+    return if (std.math.isNan(value)) null else value;
 }
 
-fn toEdge(value: u32) c.YGEdge {
-    return @intCast(value);
+fn optionalToFloat(value: ?f32) f32 {
+    return value orelse nan;
 }
 
-fn toErrata(value: u32) c.YGErrata {
-    return @intCast(value);
+fn cachedFloatEqual(left: f32, right: f32) bool {
+    if (std.math.isNan(left) and std.math.isNan(right)) return true;
+    return left == right;
 }
 
-fn toExperimentalFeature(value: u32) c.YGExperimentalFeature {
-    return @intCast(value);
+fn cachedConstraintsMatch(node: *const Node, assigned_width: f32, assigned_height: f32, owner_width: f32, owner_height: f32, direction: Direction) bool {
+    return node.has_cached_layout and
+        cachedFloatEqual(node.cached_assigned_width, assigned_width) and
+        cachedFloatEqual(node.cached_assigned_height, assigned_height) and
+        cachedFloatEqual(node.cached_owner_width, owner_width) and
+        cachedFloatEqual(node.cached_owner_height, owner_height) and
+        node.cached_direction == direction;
 }
 
-fn toFlexDirection(value: u32) c.YGFlexDirection {
-    return @intCast(value);
+fn optionalFromCached(value: f32) ?f32 {
+    return if (std.math.isNan(value)) null else value;
 }
 
-fn toGutter(value: u32) c.YGGutter {
-    return @intCast(value);
+fn resolveValue(value: StyleValue, owner_size: ?f32) ?f32 {
+    return switch (value.unit) {
+        .point => value.value,
+        .percent => if (owner_size) |size| size * value.value / 100 else null,
+        .auto, .undefined => null,
+    };
 }
 
-fn toJustify(value: u32) c.YGJustify {
-    return @intCast(value);
+fn resolveValueOrZero(value: StyleValue, owner_size: ?f32) f32 {
+    return resolveValue(value, owner_size) orelse 0;
 }
 
-fn toOverflow(value: u32) c.YGOverflow {
-    return @intCast(value);
+fn edgeIndex(edge: Edge) usize {
+    return @intFromEnum(edge);
 }
 
-fn toPositionType(value: u32) c.YGPositionType {
-    return @intCast(value);
+fn gutterIndex(gutter: Gutter) usize {
+    return @intFromEnum(gutter);
 }
 
-fn toWrap(value: u32) c.YGWrap {
-    return @intCast(value);
+fn edgeValue(values: *const [9]StyleValue, edge: Edge, direction: Direction) StyleValue {
+    switch (edge) {
+        .left => {
+            const logical = values[edgeIndex(if (direction == .rtl) Edge.end else Edge.start)];
+            if (isDefined(logical)) return logical;
+            const specific = values[edgeIndex(edge)];
+            if (isDefined(specific)) return specific;
+            const horizontal = values[edgeIndex(.horizontal)];
+            if (isDefined(horizontal)) return horizontal;
+        },
+        .right => {
+            const logical = values[edgeIndex(if (direction == .rtl) Edge.start else Edge.end)];
+            if (isDefined(logical)) return logical;
+            const specific = values[edgeIndex(edge)];
+            if (isDefined(specific)) return specific;
+            const horizontal = values[edgeIndex(.horizontal)];
+            if (isDefined(horizontal)) return horizontal;
+        },
+        .top, .bottom => {
+            const specific = values[edgeIndex(edge)];
+            if (isDefined(specific)) return specific;
+            const vertical = values[edgeIndex(.vertical)];
+            if (isDefined(vertical)) return vertical;
+        },
+        .start => {
+            const physical = values[edgeIndex(if (direction == .rtl) Edge.right else Edge.left)];
+            if (isDefined(physical)) return physical;
+        },
+        .end => {
+            const physical = values[edgeIndex(if (direction == .rtl) Edge.left else Edge.right)];
+            if (isDefined(physical)) return physical;
+        },
+        .horizontal, .vertical, .all => {},
+    }
+
+    const all = values[edgeIndex(.all)];
+    if (isDefined(all)) return all;
+    return StyleValue.undef();
 }
 
-fn undefinedValue() c.YGValue {
-    return .{ .value = std.math.nan(f32), .unit = c.YGUnitUndefined };
+fn edgeBorder(values: *const [9]f32, edge: Edge, direction: Direction) f32 {
+    const specific = values[edgeIndex(edge)];
+    if (!std.math.isNan(specific)) return specific;
+
+    switch (edge) {
+        .left => {
+            const logical = values[edgeIndex(if (direction == .rtl) Edge.end else Edge.start)];
+            if (!std.math.isNan(logical)) return logical;
+            const horizontal = values[edgeIndex(.horizontal)];
+            if (!std.math.isNan(horizontal)) return horizontal;
+        },
+        .right => {
+            const logical = values[edgeIndex(if (direction == .rtl) Edge.start else Edge.end)];
+            if (!std.math.isNan(logical)) return logical;
+            const horizontal = values[edgeIndex(.horizontal)];
+            if (!std.math.isNan(horizontal)) return horizontal;
+        },
+        .top, .bottom => {
+            const vertical = values[edgeIndex(.vertical)];
+            if (!std.math.isNan(vertical)) return vertical;
+        },
+        else => {},
+    }
+
+    const all = values[edgeIndex(.all)];
+    return nonNan(all, 0);
 }
 
-fn pointValue(value: f32) c.YGValue {
-    return .{ .value = value, .unit = c.YGUnitPoint };
+fn resolveRect(values: *const [9]StyleValue, width_owner: ?f32, height_owner: ?f32, direction: Direction) Rect {
+    return .{
+        .left = resolveValueOrZero(edgeValue(values, .left, direction), width_owner),
+        .right = resolveValueOrZero(edgeValue(values, .right, direction), width_owner),
+        .top = resolveValueOrZero(edgeValue(values, .top, direction), height_owner),
+        .bottom = resolveValueOrZero(edgeValue(values, .bottom, direction), height_owner),
+    };
 }
 
-fn packValue(value: c.YGValue) u64 {
-    const unit_bits: u32 = enumValue(value.unit);
+fn resolveSpacingRect(values: *const [9]StyleValue, owner_width: ?f32, direction: Direction) Rect {
+    return .{
+        .left = resolveValueOrZero(edgeValue(values, .left, direction), owner_width),
+        .right = resolveValueOrZero(edgeValue(values, .right, direction), owner_width),
+        .top = resolveValueOrZero(edgeValue(values, .top, direction), owner_width),
+        .bottom = resolveValueOrZero(edgeValue(values, .bottom, direction), owner_width),
+    };
+}
+
+fn resolveBorderRect(values: *const [9]f32, direction: Direction) Rect {
+    return .{
+        .left = edgeBorder(values, .left, direction),
+        .right = edgeBorder(values, .right, direction),
+        .top = edgeBorder(values, .top, direction),
+        .bottom = edgeBorder(values, .bottom, direction),
+    };
+}
+
+fn rectHorizontal(rect: Rect) f32 {
+    return rect.left + rect.right;
+}
+
+fn rectVertical(rect: Rect) f32 {
+    return rect.top + rect.bottom;
+}
+
+fn updateContainingBlock(node: *Node, width: f32, height: f32) void {
+    if (node.style.position_type == .static) {
+        if (node.parent) |parent| {
+            node.containing_width = parent.containing_width;
+            node.containing_height = parent.containing_height;
+            return;
+        }
+    }
+
+    node.containing_width = @max(0, width - rectHorizontal(node.layout.border));
+    node.containing_height = @max(0, height - rectVertical(node.layout.border));
+}
+
+fn resolveGap(style: *const Style, gutter: Gutter, owner_size: ?f32) f32 {
+    const specific = style.gap[gutterIndex(gutter)];
+    if (isDefined(specific)) return resolveValueOrZero(specific, owner_size);
+    const all = style.gap[gutterIndex(.all)];
+    return resolveValueOrZero(all, owner_size);
+}
+
+fn clampDimension(value: f32, min_value: StyleValue, max_value: StyleValue, owner_size: ?f32) f32 {
+    var result = @max(0, nonNan(value, 0));
+    if (resolveValue(min_value, owner_size)) |min_resolved| {
+        result = @max(result, min_resolved);
+    }
+    if (resolveValue(max_value, owner_size)) |max_resolved| {
+        result = @min(result, max_resolved);
+    }
+    return result;
+}
+
+fn clampNodeSize(node: *const Node, size: Size, owner_width: ?f32, owner_height: ?f32, direction: Direction) Size {
+    const min_width = if (outerDimensionFromStyle(node, node.style.min_width, owner_width, owner_width, owner_height, direction, true)) |value| StyleValue.point(value) else StyleValue.undef();
+    const min_height = if (outerDimensionFromStyle(node, node.style.min_height, owner_height, owner_width, owner_height, direction, false)) |value| StyleValue.point(value) else StyleValue.undef();
+    const max_width = if (outerDimensionFromStyle(node, node.style.max_width, owner_width, owner_width, owner_height, direction, true)) |value| StyleValue.point(value) else StyleValue.undef();
+    const max_height = if (outerDimensionFromStyle(node, node.style.max_height, owner_height, owner_width, owner_height, direction, false)) |value| StyleValue.point(value) else StyleValue.undef();
+    return .{
+        .width = clampDimension(size.width, min_width, max_width, null),
+        .height = clampDimension(size.height, min_height, max_height, null),
+    };
+}
+
+fn packValue(value: StyleValue) u64 {
+    const unit_bits: u32 = @intFromEnum(value.unit);
     const value_bits: u32 = @bitCast(value.value);
     return (@as(u64, value_bits) << 32) | @as(u64, unit_bits);
 }
 
-fn getContext(node: YGNodeConstRef) ?*CallbackContext {
-    const existing = c.YGNodeGetContext(node);
-    if (existing) |ptr| {
-        return @ptrCast(@alignCast(ptr));
+fn markDirtyFromChild(node: *Node, child: *Node) void {
+    node.dirty_child_count +|= 1;
+    node.dirty_child = if (node.dirty_child_count == 1) child else null;
+
+    const was_dirty = node.dirty;
+    node.dirty = true;
+
+    if (!node.dirtied_notified) {
+        if (node.dirtied_callback) |callback| {
+            const trampoline: JsDirtiedCallback = @ptrCast(@alignCast(callback));
+            trampoline();
+        }
+        node.dirtied_notified = true;
     }
-    return null;
-}
 
-fn getOrCreateContext(node: YGNodeRef) *CallbackContext {
-    if (getContext(node)) |ctx| {
-        return ctx;
-    }
-
-    const ctx = callback_allocator.create(CallbackContext) catch @panic("failed to allocate Yoga callback context");
-    ctx.* = .{};
-    c.YGNodeSetContext(node, ctx);
-    return ctx;
-}
-
-fn freeContext(node: YGNodeRef) void {
-    const existing = c.YGNodeGetContext(node);
-    if (existing) |ptr| {
-        const ctx: *CallbackContext = @ptrCast(@alignCast(ptr));
-        callback_allocator.destroy(ctx);
-        c.YGNodeSetContext(node, null);
-    }
-}
-
-fn freeContextIfUnused(node: YGNodeRef) void {
-    const existing = c.YGNodeGetContext(node);
-    if (existing) |ptr| {
-        const ctx: *CallbackContext = @ptrCast(@alignCast(ptr));
-        if (ctx.measure_callback == null and ctx.dirtied_callback == null) {
-            callback_allocator.destroy(ctx);
-            c.YGNodeSetContext(node, null);
+    if (!was_dirty) {
+        if (node.parent) |parent| {
+            markDirtyFromChild(parent, node);
         }
     }
 }
 
-fn freeContextRecursive(node: YGNodeRef) void {
-    const child_count = c.YGNodeGetChildCount(node);
-    var index: usize = 0;
-    while (index < child_count) : (index += 1) {
-        const child = c.YGNodeGetChild(node, index);
-        freeContextRecursive(child);
+fn markDirtyInternal(node: *Node, style_dirty: bool) void {
+    const was_dirty = node.dirty;
+    node.dirty = true;
+    node.self_dirty = true;
+    node.style_dirty = node.style_dirty or style_dirty;
+
+    if (!node.dirtied_notified) {
+        if (node.dirtied_callback) |callback| {
+            const trampoline: JsDirtiedCallback = @ptrCast(@alignCast(callback));
+            trampoline();
+        }
+        node.dirtied_notified = true;
     }
-    freeContext(node);
+
+    if (!was_dirty) {
+        if (node.parent) |parent| {
+            markDirtyFromChild(parent, node);
+        }
+    }
 }
 
-fn internalMeasureFunc(
-    node: YGNodeConstRef,
-    width: f32,
-    width_mode: c.YGMeasureMode,
-    height: f32,
-    height_mode: c.YGMeasureMode,
-) callconv(.c) c.YGSize {
-    tls_measure_width = std.math.nan(f32);
-    tls_measure_height = std.math.nan(f32);
+fn markDirty(node: *Node) void {
+    markDirtyInternal(node, true);
+}
 
-    if (getContext(node)) |ctx| {
-        if (ctx.measure_callback) |callback| {
-            const trampoline: JsMeasureCallback = @ptrCast(@alignCast(callback));
-            trampoline(null, width, enumValue(width_mode), height, enumValue(height_mode));
-        }
+fn markMeasureDirty(node: *Node) void {
+    markDirtyInternal(node, false);
+}
+
+fn markDirtyWithoutCallback(node: *Node, style_dirty: bool) void {
+    const was_dirty = node.dirty;
+    node.dirty = true;
+    node.self_dirty = true;
+    node.style_dirty = node.style_dirty or style_dirty;
+    if (!was_dirty) {
+        if (node.parent) |parent| markDirtyFromChild(parent, node);
+    }
+}
+
+fn markCleanRecursive(node: *Node) void {
+    node.dirty = false;
+    node.self_dirty = false;
+    node.style_dirty = false;
+    node.dirty_child_count = 0;
+    node.dirty_child = null;
+    node.dirtied_notified = false;
+    node.has_new_layout = true;
+    for (node.children.items) |child| {
+        markCleanRecursive(child);
+    }
+}
+
+fn zeroLayoutRecursive(node: *Node) void {
+    node.layout = .{};
+    for (node.children.items) |child| {
+        zeroLayoutRecursive(child);
+    }
+}
+
+fn freeRecursiveInternal(node: *Node) void {
+    var index = node.children.items.len;
+    while (index > 0) {
+        index -= 1;
+        freeRecursiveInternal(node.children.items[index]);
+    }
+    node.deinit();
+    allocator.destroy(node);
+}
+
+fn callMeasure(node: *const Node, width: f32, width_mode: MeasureMode, height: f32, height_mode: MeasureMode) Size {
+    tls_measure_width = nan;
+    tls_measure_height = nan;
+
+    if (node.measure_callback) |callback| {
+        const trampoline: JsMeasureCallback = @ptrCast(@alignCast(callback));
+        trampoline(null, width, enumValue(width_mode), height, enumValue(height_mode));
     }
 
     return .{ .width = tls_measure_width, .height = tls_measure_height };
 }
 
-fn internalDirtiedFunc(node: YGNodeConstRef) callconv(.c) void {
-    if (getContext(node)) |ctx| {
-        if (ctx.dirtied_callback) |callback| {
-            const trampoline: JsDirtiedCallback = @ptrCast(@alignCast(callback));
-            trampoline();
+fn measureLeaf(node: *const Node, width: ?f32, height: ?f32, owner_width: ?f32, owner_height: ?f32) Size {
+    const width_mode: MeasureMode = if (width) |_| .exactly else if (owner_width) |_| .at_most else .undefined;
+    const height_mode: MeasureMode = if (height) |_| .exactly else if (owner_height) |_| .at_most else .undefined;
+    const measure_width = width orelse owner_width orelse nan;
+    const measure_height = height orelse owner_height orelse nan;
+    const measured = callMeasure(node, measure_width, width_mode, measure_height, height_mode);
+
+    var result = Size{
+        .width = width orelse nonNan(measured.width, if (width_mode == .undefined) 0 else measure_width),
+        .height = height orelse nonNan(measured.height, 0),
+    };
+    result = clampNodeSize(node, result, owner_width, owner_height, .ltr);
+    return result;
+}
+
+fn hasStyleWidth(node: *const Node) bool {
+    return isConcrete(node.style.width);
+}
+
+fn hasStyleHeight(node: *const Node) bool {
+    return isConcrete(node.style.height);
+}
+
+fn outerDimensionFromStyle(node: *const Node, value: StyleValue, owner_size: ?f32, owner_width: ?f32, _: ?f32, direction: Direction, is_width: bool) ?f32 {
+    const resolved = resolveValue(value, owner_size) orelse return null;
+    const padding = resolveSpacingRect(&node.style.padding, owner_width orelse resolved, direction);
+    const border = resolveBorderRect(&node.style.border, direction);
+    const chrome = if (is_width) rectHorizontal(padding) + rectHorizontal(border) else rectVertical(padding) + rectVertical(border);
+    return if (node.style.box_sizing == .content_box) resolved + chrome else @max(resolved, chrome);
+}
+
+fn nodeOuterWidthFromStyle(node: *const Node, owner_width: ?f32, owner_height: ?f32, direction: Direction) ?f32 {
+    return outerDimensionFromStyle(node, node.style.width, owner_width, owner_width, owner_height, direction, true);
+}
+
+fn nodeOuterHeightFromStyle(node: *const Node, owner_width: ?f32, owner_height: ?f32, direction: Direction) ?f32 {
+    return outerDimensionFromStyle(node, node.style.height, owner_height, owner_width, owner_height, direction, false);
+}
+
+fn baseSize(node: *Node, owner_width: ?f32, owner_height: ?f32, direction: Direction) Size {
+    if (node.style.display == .none) return .{};
+
+    var width = nodeOuterWidthFromStyle(node, owner_width, owner_height, direction);
+    var height = nodeOuterHeightFromStyle(node, owner_width, owner_height, direction);
+
+    if (node.measure_callback != null) {
+        if (nonNan(node.style.flex_grow, 0) > 0 and nonNan(node.style.flex_shrink, 0) > 0 and width == null and height == null) {
+            return .{};
+        }
+        return measureLeaf(node, width, height, owner_width, owner_height);
+    }
+
+    if (node.children.items.len == 0) {
+        const padding = resolveSpacingRect(&node.style.padding, owner_width orelse width, direction);
+        const border = resolveBorderRect(&node.style.border, direction);
+        return clampNodeSize(node, .{
+            .width = @max(width orelse 0, rectHorizontal(padding) + rectHorizontal(border)),
+            .height = @max(height orelse 0, rectVertical(padding) + rectVertical(border)),
+        }, owner_width, owner_height, direction);
+    }
+
+    const measured = layoutNode(node, width, height, owner_width, owner_height, direction);
+    width = width orelse measured.width;
+    height = height orelse measured.height;
+    return clampNodeSize(node, .{ .width = width orelse 0, .height = height orelse 0 }, owner_width, owner_height, direction);
+}
+
+fn makeLineItem(node: *Node, container_width: ?f32, container_height: ?f32, is_row: bool, direction: Direction) LineItem {
+    var basis = baseSize(node, container_width, container_height, direction);
+    if (isConcrete(node.style.flex_basis)) {
+        const owner_main = if (is_row) container_width else container_height;
+        if (resolveValue(node.style.flex_basis, owner_main)) |resolved_basis| {
+            const padding = resolveSpacingRect(&node.style.padding, container_width, direction);
+            const border = resolveBorderRect(&node.style.border, direction);
+            const chrome_main = if (is_row) rectHorizontal(padding) + rectHorizontal(border) else rectVertical(padding) + rectVertical(border);
+            const outer_basis = if (node.style.box_sizing == .content_box) resolved_basis + chrome_main else @max(resolved_basis, chrome_main);
+            if (is_row) basis.width = outer_basis else basis.height = outer_basis;
+        }
+    }
+    basis = clampNodeSize(node, basis, container_width, container_height, direction);
+    const margin = resolveSpacingRect(&node.style.margin, container_width, direction);
+    const has_explicit_width = hasStyleWidth(node);
+    const has_explicit_height = hasStyleHeight(node);
+
+    const base_main = if (is_row) basis.width else basis.height;
+    const base_cross = if (is_row) basis.height else basis.width;
+    const margin_main = if (is_row) margin.left + margin.right else margin.top + margin.bottom;
+    const margin_cross = if (is_row) margin.top + margin.bottom else margin.left + margin.right;
+
+    return .{
+        .node = node,
+        .base_width = basis.width,
+        .base_height = basis.height,
+        .target_width = basis.width,
+        .target_height = basis.height,
+        .margin = margin,
+        .margin_left_auto = edgeValue(&node.style.margin, .left, direction).unit == .auto,
+        .margin_right_auto = edgeValue(&node.style.margin, .right, direction).unit == .auto,
+        .margin_top_auto = edgeValue(&node.style.margin, .top, direction).unit == .auto,
+        .margin_bottom_auto = edgeValue(&node.style.margin, .bottom, direction).unit == .auto,
+        .outer_main = base_main + margin_main,
+        .outer_cross = base_cross + margin_cross,
+        .flex_grow = nonNan(node.style.flex_grow, 0),
+        .flex_shrink = nonNan(node.style.flex_shrink, 0),
+        .has_explicit_width = has_explicit_width,
+        .has_explicit_height = has_explicit_height,
+    };
+}
+
+fn flowChildCount(node: *const Node) usize {
+    var count: usize = 0;
+    for (node.children.items) |child| {
+        if (child.style.display == .none) continue;
+        if (child.style.display == .contents) {
+            count += flowChildCount(child);
+            continue;
+        }
+        if (child.style.position_type != .absolute) count += 1;
+    }
+    return count;
+}
+
+fn collectFlexItems(node: *Node, items: []LineItem, container_width: ?f32, container_height: ?f32, is_row: bool, direction: Direction) usize {
+    var count: usize = 0;
+    for (node.children.items) |child| {
+        if (child.style.display == .none) {
+            zeroLayoutRecursive(child);
+            continue;
+        }
+        if (child.style.display == .contents) {
+            child.layout = .{};
+            const added = collectFlexItems(child, items[count..], container_width, container_height, is_row, direction);
+            count += added;
+            continue;
+        }
+        if (child.style.position_type == .absolute) continue;
+        items[count] = makeLineItem(child, container_width, container_height, is_row, direction);
+        count += 1;
+    }
+    return count;
+}
+
+fn buildFlexLines(items: []LineItem, lines: []FlexLine, main_limit: ?f32, gap: f32, wrap: Wrap) usize {
+    if (items.len == 0) return 0;
+
+    var line_count: usize = 0;
+    var start: usize = 0;
+    var line_main: f32 = 0;
+    var line_cross: f32 = 0;
+    var line_grow: f32 = 0;
+    var line_shrink: f32 = 0;
+
+    for (items, 0..) |item, index| {
+        const add_gap = if (index == start) 0 else gap;
+        const next_main = line_main + add_gap + item.outer_main;
+        if (wrap != .no_wrap and main_limit != null and index > start and next_main > main_limit.?) {
+            lines[line_count] = .{ .start = start, .end = index, .main = line_main, .cross = line_cross, .grow = line_grow, .shrink = line_shrink };
+            line_count += 1;
+            start = index;
+            line_main = item.outer_main;
+            line_cross = item.outer_cross;
+            line_grow = item.flex_grow;
+            line_shrink = item.flex_shrink * @max(0, item.outer_main);
+            continue;
+        }
+
+        line_main = next_main;
+        line_cross = @max(line_cross, item.outer_cross);
+        line_grow += item.flex_grow;
+        line_shrink += item.flex_shrink * @max(0, item.outer_main);
+    }
+
+    lines[line_count] = .{ .start = start, .end = items.len, .main = line_main, .cross = line_cross, .grow = line_grow, .shrink = line_shrink };
+    return line_count + 1;
+}
+
+fn clampFlexMainSize(node: *const Node, value: f32, is_row: bool, content_main: f32, direction: Direction) f32 {
+    const min_value = if (is_row)
+        outerDimensionFromStyle(node, node.style.min_width, content_main, content_main, null, direction, true)
+    else
+        outerDimensionFromStyle(node, node.style.min_height, content_main, null, content_main, direction, false);
+    const max_value = if (is_row)
+        outerDimensionFromStyle(node, node.style.max_width, content_main, content_main, null, direction, true)
+    else
+        outerDimensionFromStyle(node, node.style.max_height, content_main, null, content_main, direction, false);
+
+    var result = @max(0, value);
+    if (min_value) |min_resolved| result = @max(result, min_resolved);
+    if (max_value) |max_resolved| result = @min(result, max_resolved);
+    return result;
+}
+
+fn applyFlexDistribution(items: []LineItem, line: FlexLine, is_row: bool, content_main: f32, gap: f32, direction: Direction) void {
+    const item_count = line.end - line.start;
+    const total_gap = if (item_count > 0) gap * @as(f32, @floatFromInt(item_count - 1)) else 0;
+    var occupied = total_gap;
+
+    for (items[line.start..line.end]) |item| {
+        occupied += item.outer_main;
+    }
+
+    var free = content_main - occupied;
+    for (items[line.start..line.end]) |*item| {
+        item.frozen = false;
+    }
+
+    if (free > 0 and line.grow > 0) {
+        var remaining_grow = line.grow;
+        while (remaining_grow > 0) {
+            var used = total_gap;
+            for (items[line.start..line.end]) |item| {
+                const margin_main = if (is_row) item.margin.left + item.margin.right else item.margin.top + item.margin.bottom;
+                const main_base = if (is_row) item.base_width else item.base_height;
+                const current_target = if (is_row) item.target_width else item.target_height;
+                const main_size = if (item.frozen) current_target else @max(main_base, current_target);
+                used += main_size + margin_main;
+            }
+
+            free = content_main - used;
+            const distributable_free = if (remaining_grow < 1) free * remaining_grow else free;
+            var froze_any = false;
+
+            for (items[line.start..line.end]) |*item| {
+                if (item.frozen or item.flex_grow <= 0) continue;
+                const original_base = if (is_row) item.base_width else item.base_height;
+                const current_target = if (is_row) item.target_width else item.target_height;
+                const main_base = @max(original_base, current_target);
+                var proposed = main_base + distributable_free * item.flex_grow / remaining_grow;
+                proposed = @max(0, proposed);
+                const clamped = clampFlexMainSize(item.node, proposed, is_row, content_main, direction);
+                if (is_row) item.target_width = clamped else item.target_height = clamped;
+                if (clamped < proposed) {
+                    item.frozen = true;
+                    remaining_grow -= item.flex_grow;
+                    froze_any = true;
+                }
+            }
+
+            if (!froze_any) break;
+        }
+
+        var final_used = total_gap;
+        var shrink_capacity: f32 = 0;
+        for (items[line.start..line.end]) |item| {
+            const margin_main = if (is_row) item.margin.left + item.margin.right else item.margin.top + item.margin.bottom;
+            const target = if (is_row) item.target_width else item.target_height;
+            const min_target = if (is_row)
+                outerDimensionFromStyle(item.node, item.node.style.min_width, content_main, content_main, null, direction, true) orelse 0
+            else
+                outerDimensionFromStyle(item.node, item.node.style.min_height, content_main, null, content_main, direction, false) orelse 0;
+            final_used += target + margin_main;
+            shrink_capacity += @max(0, target - min_target);
+        }
+        const overflow = final_used - content_main;
+        if (overflow > 0 and shrink_capacity > 0) {
+            for (items[line.start..line.end]) |*item| {
+                const target = if (is_row) item.target_width else item.target_height;
+                const min_target = if (is_row)
+                    outerDimensionFromStyle(item.node, item.node.style.min_width, content_main, content_main, null, direction, true) orelse 0
+                else
+                    outerDimensionFromStyle(item.node, item.node.style.min_height, content_main, null, content_main, direction, false) orelse 0;
+                const capacity = @max(0, target - min_target);
+                const reduced = target - overflow * capacity / shrink_capacity;
+                if (is_row) item.target_width = @max(min_target, reduced) else item.target_height = @max(min_target, reduced);
+            }
+        }
+        return;
+    }
+
+    for (items[line.start..line.end]) |*item| {
+        const main_base = if (is_row) item.base_width else item.base_height;
+        var main = main_base;
+        if (free < 0 and line.shrink > 0 and item.flex_shrink > 0) {
+            const scaled = item.flex_shrink * @max(0, item.outer_main);
+            main += free * scaled / line.shrink;
+        }
+        main = @max(0, main);
+
+        if (is_row) {
+            item.target_width = clampFlexMainSize(item.node, main, true, content_main, direction);
+        } else {
+            item.target_height = clampFlexMainSize(item.node, main, false, content_main, direction);
         }
     }
 }
 
-export fn yogaConfigCreate() YGConfigRef {
-    return c.YGConfigNew();
+fn justifyOffsetAndGap(justify: Justify, free: f32, item_count: usize, base_gap: f32) JustifyLayout {
+    if (item_count == 0) return .{ .offset = 0, .gap = base_gap };
+    if (free <= 0) {
+        return switch (justify) {
+            .center => .{ .offset = free / 2, .gap = base_gap },
+            .flex_end => .{ .offset = free, .gap = base_gap },
+            else => .{ .offset = 0, .gap = base_gap },
+        };
+    }
+
+    return switch (justify) {
+        .flex_start => .{ .offset = 0, .gap = base_gap },
+        .center => .{ .offset = free / 2, .gap = base_gap },
+        .flex_end => .{ .offset = free, .gap = base_gap },
+        .space_between => if (item_count > 1)
+            .{ .offset = 0, .gap = base_gap + free / @as(f32, @floatFromInt(item_count - 1)) }
+        else
+            .{ .offset = 0, .gap = base_gap },
+        .space_around => .{ .offset = free / @as(f32, @floatFromInt(item_count)) / 2, .gap = base_gap + free / @as(f32, @floatFromInt(item_count)) },
+        .space_evenly => .{ .offset = free / @as(f32, @floatFromInt(item_count + 1)), .gap = base_gap + free / @as(f32, @floatFromInt(item_count + 1)) },
+    };
 }
 
-export fn yogaConfigFree(config: YGConfigRef) void {
-    c.YGConfigFree(config);
+fn justifyStaticOffset(justify: Justify, available: f32, reversed: bool) f32 {
+    return switch (justify) {
+        .center => available / 2,
+        .flex_end => if (reversed) 0 else available,
+        .flex_start, .space_between, .space_around, .space_evenly => if (reversed) available else 0,
+    };
 }
 
-export fn yogaConfigSetUseWebDefaults(config: YGConfigRef, enabled: bool) void {
-    c.YGConfigSetUseWebDefaults(config, enabled);
+fn alignStaticOffset(alignment: Align, available: f32, reversed: bool) f32 {
+    return switch (alignment) {
+        .center => available / 2,
+        .flex_end => if (reversed) 0 else available,
+        else => if (reversed) available else 0,
+    };
 }
 
-export fn yogaConfigGetUseWebDefaults(config: YGConfigConstRef) bool {
-    return c.YGConfigGetUseWebDefaults(config);
+fn nodeBaseline(node: *const Node) f32 {
+    for (node.children.items) |child| {
+        if (child.style.display == .none or child.style.position_type == .absolute) continue;
+        if (child.style.align_self == .baseline and child.layout.top == 0) {
+            return child.layout.top + nodeBaseline(child);
+        }
+    }
+    for (node.children.items) |child| {
+        if (child.style.display == .none or child.style.position_type == .absolute) continue;
+        return child.layout.top + nodeBaseline(child);
+    }
+    return node.layout.height;
 }
 
-export fn yogaConfigSetPointScaleFactor(config: YGConfigRef, point_scale_factor: f32) void {
-    c.YGConfigSetPointScaleFactor(config, point_scale_factor);
+fn childAlign(parent: *const Node, child: *const Node) Align {
+    if (child.style.align_self != .auto) return child.style.align_self;
+    return parent.style.align_items;
 }
 
-export fn yogaConfigGetPointScaleFactor(config: YGConfigConstRef) f32 {
-    return c.YGConfigGetPointScaleFactor(config);
+fn applyRelativePosition(node: *const Node, x: *f32, y: *f32, owner_width: f32, owner_height: f32, direction: Direction) void {
+    if (node.style.position_type == .static) return;
+
+    const left = resolveValue(edgeValue(&node.style.position, .left, direction), owner_width);
+    const right = resolveValue(edgeValue(&node.style.position, .right, direction), owner_width);
+    const top = resolveValue(edgeValue(&node.style.position, .top, direction), owner_height);
+    const bottom = resolveValue(edgeValue(&node.style.position, .bottom, direction), owner_height);
+
+    if (left) |value| x.* += value else if (right) |value| x.* -= value;
+    if (top) |value| y.* += value else if (bottom) |value| y.* -= value;
 }
 
-export fn yogaConfigSetErrata(config: YGConfigRef, errata: u32) void {
-    c.YGConfigSetErrata(config, toErrata(errata));
+fn setChildLayout(parent: *Node, child: *Node, x: f32, y: f32, width: f32, height: f32, content_width: f32, content_height: f32) void {
+    child.layout.left = x;
+    child.layout.top = y;
+    child.layout.width = width;
+    child.layout.height = height;
+    child.layout.right = @max(0, content_width - x - width);
+    child.layout.bottom = @max(0, content_height - y - height);
+    _ = parent;
 }
 
-export fn yogaConfigGetErrata(config: YGConfigConstRef) u32 {
-    return enumValue(c.YGConfigGetErrata(config));
+fn layoutAbsoluteChild(parent: *Node, child: *Node, content_width: f32, content_height: f32, origin_x: f32, origin_y: f32, direction: Direction) void {
+    const containing_width = if (parent.containing_width > 0) parent.containing_width else content_width;
+    const containing_height = if (parent.containing_height > 0) parent.containing_height else content_height;
+    var size = baseSize(child, containing_width, containing_height, direction);
+    const margin = resolveSpacingRect(&child.style.margin, containing_width, direction);
+    const position = resolveRect(&child.style.position, containing_width, containing_height, direction);
+    const left_value = resolveValue(edgeValue(&child.style.position, .left, direction), containing_width);
+    const right_value = resolveValue(edgeValue(&child.style.position, .right, direction), containing_width);
+    const top_value = resolveValue(edgeValue(&child.style.position, .top, direction), containing_height);
+    const bottom_value = resolveValue(edgeValue(&child.style.position, .bottom, direction), containing_height);
+
+    if (left_value != null and right_value != null and !hasStyleWidth(child)) {
+        size.width = @max(0, containing_width - left_value.? - right_value.? - margin.left - margin.right);
+    }
+    if (top_value != null and bottom_value != null and !hasStyleHeight(child)) {
+        size.height = @max(0, containing_height - top_value.? - bottom_value.? - margin.top - margin.bottom);
+    }
+
+    var x = origin_x + margin.left + position.left;
+    var y = origin_y + margin.top + position.top;
+    const parent_is_row = parent.style.flex_direction == .row or parent.style.flex_direction == .row_reverse;
+    var parent_main_reversed = parent.style.flex_direction == .row_reverse or parent.style.flex_direction == .column_reverse;
+    if (parent_is_row and direction == .rtl) parent_main_reversed = !parent_main_reversed;
+    const child_alignment = childAlign(parent, child);
+    const static_origin_x = origin_x + parent.layout.padding.left;
+    const static_origin_y = origin_y + parent.layout.padding.top;
+    const cross_static_reversed = if (parent_is_row) parent.style.flex_wrap == .wrap_reverse else (direction == .rtl) != (parent.style.flex_wrap == .wrap_reverse);
+
+    if (left_value != null and right_value != null and hasStyleWidth(child) and direction == .rtl) {
+        x = origin_x + containing_width - size.width - margin.right - right_value.?;
+    } else if (left_value == null and right_value == null) {
+        const available = content_width - size.width - margin.left - margin.right;
+        if (parent_is_row) {
+            x = static_origin_x + margin.left + justifyStaticOffset(parent.style.justify_content, available, parent_main_reversed);
+        } else {
+            x = static_origin_x + margin.left + alignStaticOffset(child_alignment, available, cross_static_reversed);
+        }
+    } else if (left_value == null and right_value != null) {
+        x = origin_x + containing_width - size.width - margin.right - right_value.?;
+    }
+    if (top_value == null and bottom_value == null) {
+        const available = content_height - size.height - margin.top - margin.bottom;
+        if (parent_is_row) {
+            y = static_origin_y + margin.top + alignStaticOffset(child_alignment, available, cross_static_reversed);
+        } else {
+            y = static_origin_y + margin.top + justifyStaticOffset(parent.style.justify_content, available, parent_main_reversed);
+        }
+    } else if (top_value == null and bottom_value != null) {
+        y = origin_y + containing_height - size.height - margin.bottom - bottom_value.?;
+    }
+
+    if (parent.style.position_type == .static) {
+        var static_parent: ?*Node = parent;
+        while (static_parent) |current| {
+            if (current.style.position_type != .static) break;
+            x -= current.layout.left;
+            y -= current.layout.top;
+            static_parent = current.parent;
+        }
+    }
+
+    _ = layoutNode(child, size.width, size.height, containing_width, containing_height, direction);
+    setChildLayout(parent, child, x, y, child.layout.width, child.layout.height, containing_width, containing_height);
 }
 
-export fn yogaConfigSetExperimentalFeatureEnabled(config: YGConfigRef, feature: u32, enabled: bool) void {
-    c.YGConfigSetExperimentalFeatureEnabled(config, toExperimentalFeature(feature), enabled);
+fn layoutAbsoluteChildren(node: *Node, content_width: f32, content_height: f32, origin_x: f32, origin_y: f32, direction: Direction) void {
+    for (node.children.items) |child| {
+        if (child.style.display == .none) continue;
+        if (child.style.display == .contents) {
+            child.layout = .{};
+            continue;
+        }
+        if (child.style.position_type == .absolute) {
+            layoutAbsoluteChild(node, child, content_width, content_height, origin_x, origin_y, direction);
+        }
+    }
 }
 
-export fn yogaConfigIsExperimentalFeatureEnabled(config: YGConfigConstRef, feature: u32) bool {
-    return c.YGConfigIsExperimentalFeatureEnabled(config, toExperimentalFeature(feature));
+fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32, owner_height: ?f32, direction: Direction) void {
+    const is_row = node.style.flex_direction == .row or node.style.flex_direction == .row_reverse;
+    var main_reversed = node.style.flex_direction == .row_reverse or node.style.flex_direction == .column_reverse;
+    if (is_row and direction == .rtl) main_reversed = !main_reversed;
+
+    node.layout.padding = resolveSpacingRect(&node.style.padding, owner_width orelse width.*, direction);
+    node.layout.border = resolveBorderRect(&node.style.border, direction);
+    const chrome_width = rectHorizontal(node.layout.padding) + rectHorizontal(node.layout.border);
+    const chrome_height = rectVertical(node.layout.padding) + rectVertical(node.layout.border);
+
+    const known_content_width = optionalSize(width.*).? - chrome_width;
+    const known_content_height = optionalSize(height.*).? - chrome_height;
+    const content_width_known = width.* > 0;
+    const content_height_known = height.* > 0;
+    var content_width: ?f32 = if (content_width_known) @max(0, known_content_width) else null;
+    var content_height: ?f32 = if (content_height_known) @max(0, known_content_height) else null;
+
+    if (node.style.flex_wrap != .no_wrap) {
+        if (is_row and content_width == null) {
+            if (owner_width) |available_width| content_width = @max(0, available_width - chrome_width);
+        } else if (!is_row and content_height == null) {
+            if (owner_height) |available_height| content_height = @max(0, available_height - chrome_height);
+        }
+    }
+
+    const child_count = flowChildCount(node);
+    if (child_count == 0) {
+        if (content_width == null) content_width = 0;
+        if (content_height == null) content_height = 0;
+        width.* = clampDimension(content_width.? + chrome_width, node.style.min_width, node.style.max_width, owner_width);
+        height.* = clampDimension(content_height.? + chrome_height, node.style.min_height, node.style.max_height, owner_height);
+        updateContainingBlock(node, width.*, height.*);
+        layoutAbsoluteChildren(node, content_width.?, content_height.?, node.layout.border.left, node.layout.border.top, direction);
+        return;
+    }
+
+    var stack_items: [STACK_FLEX_ITEMS]LineItem = undefined;
+    var heap_items: ?[]LineItem = null;
+    const items = if (child_count <= stack_items.len) stack_items[0..child_count] else blk: {
+        const allocated = allocator.alloc(LineItem, child_count) catch @panic("failed to allocate Zig Yoga flex items");
+        heap_items = allocated;
+        break :blk allocated;
+    };
+    defer if (heap_items) |allocated| allocator.free(allocated);
+
+    const actual_count = collectFlexItems(node, items, content_width, content_height, is_row, direction);
+    const active_items = items[0..actual_count];
+
+    const line_storage_count = @max(@as(usize, 1), actual_count);
+    var stack_lines: [STACK_FLEX_ITEMS]FlexLine = undefined;
+    var heap_lines: ?[]FlexLine = null;
+    const line_storage = if (line_storage_count <= stack_lines.len) stack_lines[0..line_storage_count] else blk: {
+        const allocated = allocator.alloc(FlexLine, line_storage_count) catch @panic("failed to allocate Zig Yoga flex lines");
+        heap_lines = allocated;
+        break :blk allocated;
+    };
+    defer if (heap_lines) |allocated| allocator.free(allocated);
+
+    const main_limit = if (is_row) content_width else content_height;
+    const gap = resolveGap(&node.style, if (is_row) .column else .row, main_limit);
+    const line_count = buildFlexLines(active_items, line_storage, main_limit, gap, node.style.flex_wrap);
+    const lines = line_storage[0..line_count];
+
+    var natural_main: f32 = 0;
+    var natural_cross: f32 = 0;
+    const cross_gap = resolveGap(&node.style, if (is_row) .row else .column, if (is_row) content_height else content_width);
+    for (lines, 0..) |line, line_index| {
+        natural_main = @max(natural_main, line.main);
+        natural_cross += line.cross;
+        if (line_index > 0) natural_cross += cross_gap;
+    }
+
+    if (is_row) {
+        if (content_width == null) content_width = natural_main;
+        if (content_height == null) content_height = natural_cross;
+    } else {
+        if (content_height == null) content_height = natural_main;
+        if (content_width == null) content_width = natural_cross;
+    }
+
+    width.* = clampDimension(content_width.? + chrome_width, node.style.min_width, node.style.max_width, owner_width);
+    height.* = clampDimension(content_height.? + chrome_height, node.style.min_height, node.style.max_height, owner_height);
+    content_width = @max(0, width.* - chrome_width);
+    content_height = @max(0, height.* - chrome_height);
+    updateContainingBlock(node, width.*, height.*);
+
+    const origin_x = node.layout.border.left + node.layout.padding.left;
+    const origin_y = node.layout.border.top + node.layout.padding.top;
+    var cross_cursor: f32 = 0;
+    var distributed_cross_gap = cross_gap;
+    var stretch_line_extra: f32 = 0;
+    const cross_axis_reversed = if (is_row) node.style.flex_wrap == .wrap_reverse else (direction == .rtl) != (node.style.flex_wrap == .wrap_reverse);
+    if (node.style.flex_wrap != .no_wrap and lines.len > 0) {
+        const content_cross = if (is_row) content_height.? else content_width.?;
+        const free_cross = content_cross - natural_cross;
+        switch (node.style.align_content) {
+            .flex_start, .auto, .baseline => {},
+            .flex_end => cross_cursor = free_cross,
+            .center => cross_cursor = free_cross / 2,
+            .stretch => if (free_cross > 0) {
+                stretch_line_extra = free_cross / @as(f32, @floatFromInt(lines.len));
+            },
+            .space_between => if (free_cross > 0 and lines.len > 1) {
+                    distributed_cross_gap += free_cross / @as(f32, @floatFromInt(lines.len - 1));
+            },
+            .space_around => if (free_cross > 0) {
+                    const space = free_cross / @as(f32, @floatFromInt(lines.len));
+                    cross_cursor = space / 2;
+                    distributed_cross_gap += space;
+            },
+            .space_evenly => if (free_cross > 0) {
+                    const space = free_cross / @as(f32, @floatFromInt(lines.len + 1));
+                    cross_cursor = space;
+                    distributed_cross_gap += space;
+            },
+        }
+    }
+
+    for (lines) |line| {
+        const content_main = if (is_row) content_width.? else content_height.?;
+        const content_cross = if (is_row) content_height.? else content_width.?;
+        applyFlexDistribution(active_items, line, is_row, content_main, gap, direction);
+
+        var occupied: f32 = 0;
+        var auto_main_margins: usize = 0;
+        for (active_items[line.start..line.end]) |item| {
+            const item_main = if (is_row) item.target_width else item.target_height;
+            const margin_main = if (is_row) item.margin.left + item.margin.right else item.margin.top + item.margin.bottom;
+            occupied += item_main + margin_main;
+            if (is_row) {
+                if (item.margin_left_auto) auto_main_margins += 1;
+                if (item.margin_right_auto) auto_main_margins += 1;
+            } else {
+                if (item.margin_top_auto) auto_main_margins += 1;
+                if (item.margin_bottom_auto) auto_main_margins += 1;
+            }
+        }
+        const item_count = line.end - line.start;
+        if (item_count > 1) occupied += gap * @as(f32, @floatFromInt(item_count - 1));
+
+        var free = content_main - occupied;
+        if (free > 0 and auto_main_margins > 0) {
+            const auto_margin = free / @as(f32, @floatFromInt(auto_main_margins));
+            for (active_items[line.start..line.end]) |*item| {
+                if (is_row) {
+                    if (item.margin_left_auto) item.margin.left = auto_margin;
+                    if (item.margin_right_auto) item.margin.right = auto_margin;
+                } else {
+                    if (item.margin_top_auto) item.margin.top = auto_margin;
+                    if (item.margin_bottom_auto) item.margin.bottom = auto_margin;
+                }
+            }
+            free = 0;
+        }
+
+        const justify: JustifyLayout = if (auto_main_margins > 0) .{ .offset = 0, .gap = gap } else justifyOffsetAndGap(node.style.justify_content, free, item_count, gap);
+        var main_cursor = justify.offset;
+        var line_cross = if (node.style.flex_wrap == .no_wrap) content_cross else line.cross + stretch_line_extra;
+        var line_baseline: f32 = 0;
+
+        if (is_row) {
+            for (active_items[line.start..line.end]) |*item| {
+                if (childAlign(node, item.node) != .baseline) continue;
+                const baseline_width = item.target_width;
+                const baseline_height = item.target_height;
+                if (item.node.has_cached_layout and
+                    (item.node.cached_generation == current_layout_generation or !item.node.dirty) and
+                    item.node.layout.width == baseline_width and
+                    item.node.layout.height == baseline_height)
+                {
+                    // Reuse existing layout for baseline measurement.
+                } else {
+                    _ = layoutNode(item.node, baseline_width, baseline_height, content_width, content_height, direction);
+                }
+                line_baseline = @max(line_baseline, item.margin.top + nodeBaseline(item.node));
+            }
+
+            for (active_items[line.start..line.end]) |*item| {
+                if (childAlign(node, item.node) != .baseline) continue;
+                const item_baseline = nodeBaseline(item.node);
+                const baseline_offset = line_baseline - item.margin.top - item_baseline;
+                line_cross = @max(line_cross, baseline_offset + item.margin.top + item.node.layout.height + item.margin.bottom);
+            }
+        }
+
+        const line_cross_origin = if (cross_axis_reversed) content_cross - cross_cursor - line_cross else cross_cursor;
+
+        var item_index: usize = 0;
+        while (item_index < item_count) : (item_index += 1) {
+            const storage_index = line.start + item_index;
+            const item = &active_items[storage_index];
+
+            var child_width = item.target_width;
+            var child_height = item.target_height;
+            const child_alignment = childAlign(node, item.node);
+            const item_cross_margin = if (is_row) item.margin.top + item.margin.bottom else item.margin.left + item.margin.right;
+            var cross_offset: f32 = 0;
+            const cross_reversed = cross_axis_reversed;
+
+            if (child_alignment == .stretch) {
+                const stretched = @max(0, line_cross - item_cross_margin);
+                if (is_row and !item.has_explicit_height) child_height = stretched;
+                if (!is_row and !item.has_explicit_width) child_width = stretched;
+            }
+
+            if (item.node.has_cached_layout and
+                (item.node.cached_generation == current_layout_generation or !item.node.dirty) and
+                item.node.layout.width == child_width and
+                item.node.layout.height == child_height)
+            {
+                // Natural sizing already laid this subtree out with the final size.
+            } else if (item.node.measure_callback != null and item.node.children.items.len == 0) {
+                item.node.layout.margin = item.margin;
+                item.node.layout.padding = resolveSpacingRect(&item.node.style.padding, content_width, direction);
+                item.node.layout.border = resolveBorderRect(&item.node.style.border, direction);
+                item.node.layout.width = child_width;
+                item.node.layout.height = child_height;
+            } else {
+                _ = layoutNode(item.node, child_width, child_height, content_width, content_height, direction);
+            }
+
+            child_width = item.node.layout.width;
+            child_height = item.node.layout.height;
+
+            const item_cross_size = if (is_row) child_height else child_width;
+            var available_cross = line_cross - item_cross_size - item_cross_margin;
+            if (available_cross > 0) {
+                if (is_row) {
+                    if (item.margin_top_auto and item.margin_bottom_auto) {
+                        item.margin.top = available_cross / 2;
+                        item.margin.bottom = available_cross / 2;
+                        available_cross = 0;
+                    } else if (item.margin_top_auto) {
+                        item.margin.top = available_cross;
+                        available_cross = 0;
+                    } else if (item.margin_bottom_auto) {
+                        item.margin.bottom = available_cross;
+                        available_cross = 0;
+                    }
+                } else {
+                    if (item.margin_left_auto and item.margin_right_auto) {
+                        item.margin.left = available_cross / 2;
+                        item.margin.right = available_cross / 2;
+                        available_cross = 0;
+                    } else if (item.margin_left_auto) {
+                        item.margin.left = available_cross;
+                        available_cross = 0;
+                    } else if (item.margin_right_auto) {
+                        item.margin.right = available_cross;
+                        available_cross = 0;
+                    }
+                }
+            }
+            if (child_alignment == .center) {
+                cross_offset = available_cross / 2;
+            } else if (child_alignment == .flex_end) {
+                cross_offset = if (cross_reversed) 0 else available_cross;
+            } else if (child_alignment == .baseline and is_row) {
+                cross_offset = line_baseline - item.margin.top - nodeBaseline(item.node);
+            } else if (cross_reversed) {
+                cross_offset = available_cross;
+            }
+
+            var x: f32 = origin_x;
+            var y: f32 = origin_y;
+            if (is_row) {
+                if (main_reversed) {
+                    x += content_main - main_cursor - item.margin.right - child_width;
+                } else {
+                    x += main_cursor + item.margin.left;
+                }
+                y += line_cross_origin + cross_offset + item.margin.top;
+            } else {
+                x += line_cross_origin + cross_offset + item.margin.left;
+                if (main_reversed) {
+                    y += content_main - main_cursor - item.margin.bottom - child_height;
+                } else {
+                    y += main_cursor + item.margin.top;
+                }
+            }
+
+            applyRelativePosition(item.node, &x, &y, content_width.?, content_height.?, direction);
+            setChildLayout(node, item.node, x, y, item.node.layout.width, item.node.layout.height, content_width.?, content_height.?);
+            const child_content_width = @max(0, item.node.layout.width - rectHorizontal(item.node.layout.padding) - rectHorizontal(item.node.layout.border));
+            const child_content_height = @max(0, item.node.layout.height - rectVertical(item.node.layout.padding) - rectVertical(item.node.layout.border));
+            layoutAbsoluteChildren(item.node, child_content_width, child_content_height, item.node.layout.border.left, item.node.layout.border.top, direction);
+
+            const item_main = if (is_row) item.node.layout.width else item.node.layout.height;
+            const margin_main = if (is_row) item.margin.left + item.margin.right else item.margin.top + item.margin.bottom;
+            main_cursor += item_main + margin_main + justify.gap;
+        }
+
+        cross_cursor += line_cross + distributed_cross_gap;
+    }
+
+    layoutAbsoluteChildren(node, content_width.?, content_height.?, node.layout.border.left, node.layout.border.top, direction);
 }
 
-export fn yogaNodeCreate() YGNodeRef {
-    return c.YGNodeNew();
+fn layoutNode(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_width: ?f32, owner_height: ?f32, direction: Direction) Size {
+    if (node.style.display == .none) {
+        zeroLayoutRecursive(node);
+        return .{};
+    }
+
+    const assigned_width_value = optionalToFloat(assigned_width);
+    const assigned_height_value = optionalToFloat(assigned_height);
+    const owner_width_value = optionalToFloat(owner_width);
+    const owner_height_value = optionalToFloat(owner_height);
+    if ((node.cached_generation == current_layout_generation or !node.dirty) and
+        cachedConstraintsMatch(node, assigned_width_value, assigned_height_value, owner_width_value, owner_height_value, direction))
+    {
+        return .{ .width = node.layout.width, .height = node.layout.height };
+    }
+
+    if (node.dirty and
+        !node.self_dirty and
+        node.dirty_child_count == 1 and
+        node.dirty_child != null and
+        node.style.flex_wrap == .no_wrap and
+        cachedConstraintsMatch(node, assigned_width_value, assigned_height_value, owner_width_value, owner_height_value, direction))
+    {
+        const child = node.dirty_child.?;
+        if (!child.style_dirty and child.has_cached_layout) {
+            const old_child_width = child.layout.width;
+            const old_child_height = child.layout.height;
+            const child_size = layoutNode(
+                child,
+                optionalFromCached(child.cached_assigned_width),
+                optionalFromCached(child.cached_assigned_height),
+                optionalFromCached(child.cached_owner_width),
+                optionalFromCached(child.cached_owner_height),
+                child.cached_direction,
+            );
+
+            if (child_size.width == old_child_width and child_size.height == old_child_height) {
+                node.cached_generation = current_layout_generation;
+                return .{ .width = node.layout.width, .height = node.layout.height };
+            }
+        }
+    }
+
+    node.layout.margin = resolveSpacingRect(&node.style.margin, owner_width, direction);
+    node.layout.padding = resolveSpacingRect(&node.style.padding, owner_width orelse assigned_width, direction);
+    node.layout.border = resolveBorderRect(&node.style.border, direction);
+
+    var width = assigned_width orelse nodeOuterWidthFromStyle(node, owner_width, owner_height, direction) orelse nan;
+    var height = assigned_height orelse nodeOuterHeightFromStyle(node, owner_width, owner_height, direction) orelse nan;
+
+    if (std.math.isNan(width)) {
+        const min_width = outerDimensionFromStyle(node, node.style.min_width, owner_width, owner_width, owner_height, direction, true);
+        const max_width = outerDimensionFromStyle(node, node.style.max_width, owner_width, owner_width, owner_height, direction, true);
+        if (min_width != null and max_width != null and min_width.? == max_width.?) width = min_width.?;
+    }
+    if (std.math.isNan(height)) {
+        const min_height = outerDimensionFromStyle(node, node.style.min_height, owner_height, owner_width, owner_height, direction, false);
+        const max_height = outerDimensionFromStyle(node, node.style.max_height, owner_height, owner_width, owner_height, direction, false);
+        if (min_height != null and max_height != null and min_height.? == max_height.?) height = min_height.?;
+    }
+
+    if (node.measure_callback != null) {
+        const measured = measureLeaf(node, optionalSize(width), optionalSize(height), owner_width, owner_height);
+        if (std.math.isNan(width)) width = measured.width;
+        if (std.math.isNan(height)) height = measured.height;
+    } else if (node.children.items.len > 0) {
+        if (std.math.isNan(width)) width = 0;
+        if (std.math.isNan(height)) height = 0;
+        layoutFlexChildren(node, &width, &height, owner_width, owner_height, direction);
+    } else {
+        if (std.math.isNan(width)) width = 0;
+        if (std.math.isNan(height)) height = 0;
+    }
+
+    const chrome_width = rectHorizontal(node.layout.padding) + rectHorizontal(node.layout.border);
+    const chrome_height = rectVertical(node.layout.padding) + rectVertical(node.layout.border);
+    width = @max(width, chrome_width);
+    height = @max(height, chrome_height);
+
+    const clamped = clampNodeSize(node, .{ .width = width, .height = height }, owner_width, owner_height, direction);
+    node.layout.width = clamped.width;
+    node.layout.height = clamped.height;
+    updateContainingBlock(node, clamped.width, clamped.height);
+    node.cached_assigned_width = assigned_width_value;
+    node.cached_assigned_height = assigned_height_value;
+    node.cached_owner_width = owner_width_value;
+    node.cached_owner_height = owner_height_value;
+    node.cached_direction = direction;
+    node.cached_generation = current_layout_generation;
+    node.has_cached_layout = true;
+    return clamped;
 }
 
-export fn yogaNodeCreateWithConfig(config: YGConfigConstRef) YGNodeRef {
-    return c.YGNodeNewWithConfig(config);
+fn setRootLayout(node: *Node, width: ?f32, height: ?f32, direction: Direction) void {
+    const size = layoutNode(node, width, height, width, height, direction);
+    var left = node.layout.margin.left;
+    var top = node.layout.margin.top;
+    applyRelativePosition(node, &left, &top, size.width, size.height, direction);
+    node.layout.left = left;
+    node.layout.top = top;
+    node.layout.right = 0;
+    node.layout.bottom = 0;
+    node.layout.width = size.width;
+    node.layout.height = size.height;
 }
 
-export fn yogaNodeFree(node: YGNodeRef) void {
-    freeContext(node);
-    c.YGNodeFree(node);
+fn roundToPixelGrid(value: f32, point_scale_factor: f32) f32 {
+    if (point_scale_factor == 0 or std.math.isNan(value)) return value;
+    const rounded = @round(value * point_scale_factor) / point_scale_factor;
+    return if (rounded == 0) 0 else rounded;
 }
 
-export fn yogaNodeFreeRecursive(node: YGNodeRef) void {
-    freeContextRecursive(node);
-    c.YGNodeFreeRecursive(node);
+fn roundLayoutRecursive(node: *Node, parent_abs_left: f32, parent_abs_top: f32, parent_round_left: f32, parent_round_top: f32, point_scale_factor: f32) void {
+    const abs_left = parent_abs_left + node.layout.left;
+    const abs_top = parent_abs_top + node.layout.top;
+    const abs_right = abs_left + node.layout.width;
+    const abs_bottom = abs_top + node.layout.height;
+
+    const round_left = roundToPixelGrid(abs_left, point_scale_factor);
+    const round_top = roundToPixelGrid(abs_top, point_scale_factor);
+    const round_right = roundToPixelGrid(abs_right, point_scale_factor);
+    const round_bottom = roundToPixelGrid(abs_bottom, point_scale_factor);
+
+    node.layout.left = round_left - parent_round_left;
+    node.layout.top = round_top - parent_round_top;
+    node.layout.width = round_right - round_left;
+    node.layout.height = round_bottom - round_top;
+
+    for (node.children.items) |child| {
+        roundLayoutRecursive(child, abs_left, abs_top, round_left, round_top, point_scale_factor);
+    }
 }
 
-export fn yogaNodeReset(node: YGNodeRef) void {
-    freeContext(node);
-    c.YGNodeReset(node);
+export fn yogaConfigCreate() *Config {
+    const config = allocator.create(Config) catch @panic("failed to allocate Zig Yoga config");
+    config.* = .{};
+    return config;
 }
 
-export fn yogaNodeCopyStyle(dst_node: YGNodeRef, src_node: YGNodeConstRef) void {
-    c.YGNodeCopyStyle(dst_node, src_node);
+export fn yogaConfigFree(config: *Config) void {
+    allocator.destroy(config);
 }
 
-export fn yogaNodeInsertChild(node: YGNodeRef, child: YGNodeRef, index: u32) void {
-    c.YGNodeInsertChild(node, child, index);
+export fn yogaConfigSetUseWebDefaults(config: *Config, enabled: bool) void {
+    config.use_web_defaults = enabled;
 }
 
-export fn yogaNodeRemoveChild(node: YGNodeRef, child: YGNodeRef) void {
-    c.YGNodeRemoveChild(node, child);
+export fn yogaConfigGetUseWebDefaults(config: *const Config) bool {
+    return config.use_web_defaults;
 }
 
-export fn yogaNodeRemoveAllChildren(node: YGNodeRef) void {
-    c.YGNodeRemoveAllChildren(node);
+export fn yogaConfigSetPointScaleFactor(config: *Config, point_scale_factor: f32) void {
+    config.point_scale_factor = point_scale_factor;
 }
 
-export fn yogaNodeGetChild(node: YGNodeRef, index: u32) YGNodeRef {
-    return c.YGNodeGetChild(node, index);
+export fn yogaConfigGetPointScaleFactor(config: *const Config) f32 {
+    return config.point_scale_factor;
 }
 
-export fn yogaNodeGetChildCount(node: YGNodeConstRef) u32 {
-    return @intCast(c.YGNodeGetChildCount(node));
+export fn yogaConfigSetErrata(config: *Config, errata: u32) void {
+    config.errata = errata;
 }
 
-export fn yogaNodeGetParent(node: YGNodeRef) YGNodeRef {
-    return c.YGNodeGetParent(node);
+export fn yogaConfigGetErrata(config: *const Config) u32 {
+    return config.errata;
 }
 
-export fn yogaNodeCalculateLayout(node: YGNodeRef, width: f32, height: f32, direction: u32) void {
-    c.YGNodeCalculateLayout(node, width, height, toDirection(direction));
+export fn yogaConfigSetExperimentalFeatureEnabled(config: *Config, feature: u32, enabled: bool) void {
+    const bit = @as(u32, 1) << @intCast(feature);
+    if (enabled) config.experimental_features |= bit else config.experimental_features &= ~bit;
 }
 
-export fn yogaNodeIsDirty(node: YGNodeConstRef) bool {
-    return c.YGNodeIsDirty(node);
+export fn yogaConfigIsExperimentalFeatureEnabled(config: *const Config, feature: u32) bool {
+    const bit = @as(u32, 1) << @intCast(feature);
+    return (config.experimental_features & bit) != 0;
 }
 
-export fn yogaNodeMarkDirty(node: YGNodeRef) void {
-    c.YGNodeMarkDirty(node);
+export fn yogaNodeCreate() *Node {
+    const node = allocator.create(Node) catch @panic("failed to allocate Zig Yoga node");
+    node.* = .{};
+    return node;
 }
 
-export fn yogaNodeGetHasNewLayout(node: YGNodeConstRef) bool {
-    return c.YGNodeGetHasNewLayout(node);
+export fn yogaNodeCreateWithConfig(config: *const Config) *Node {
+    const node = yogaNodeCreate();
+    node.config = config;
+    if (config.use_web_defaults) {
+        node.style.flex_shrink = 1;
+    }
+    return node;
 }
 
-export fn yogaNodeSetHasNewLayout(node: YGNodeRef, has_new_layout: bool) void {
-    c.YGNodeSetHasNewLayout(node, has_new_layout);
+export fn yogaNodeFree(node: *Node) void {
+    if (node.parent) |parent| {
+        yogaNodeRemoveChild(parent, node);
+    }
+    node.deinit();
+    allocator.destroy(node);
 }
 
-export fn yogaNodeSetIsReferenceBaseline(node: YGNodeRef, is_reference_baseline: bool) void {
-    c.YGNodeSetIsReferenceBaseline(node, is_reference_baseline);
+export fn yogaNodeFreeRecursive(node: *Node) void {
+    if (node.parent) |parent| {
+        yogaNodeRemoveChild(parent, node);
+    }
+    freeRecursiveInternal(node);
 }
 
-export fn yogaNodeIsReferenceBaseline(node: YGNodeConstRef) bool {
-    return c.YGNodeIsReferenceBaseline(node);
+export fn yogaNodeReset(node: *Node) void {
+    node.style = .{};
+    node.layout = .{};
+    node.measure_callback = null;
+    node.dirtied_callback = null;
+    node.is_reference_baseline = false;
+    node.always_forms_containing_block = false;
+    node.has_new_layout = true;
+    markDirty(node);
 }
 
-export fn yogaNodeSetAlwaysFormsContainingBlock(node: YGNodeRef, always_forms_containing_block: bool) void {
-    c.YGNodeSetAlwaysFormsContainingBlock(node, always_forms_containing_block);
+export fn yogaNodeCopyStyle(dst_node: *Node, src_node: *const Node) void {
+    dst_node.style = src_node.style;
+    markDirty(dst_node);
 }
 
-export fn yogaNodeGetAlwaysFormsContainingBlock(node: YGNodeConstRef) bool {
-    return c.YGNodeGetAlwaysFormsContainingBlock(node);
+export fn yogaNodeInsertChild(node: *Node, child: *Node, index: u32) void {
+    if (child.parent) |parent| {
+        yogaNodeRemoveChild(parent, child);
+    }
+    const insert_index = @min(@as(usize, @intCast(index)), node.children.items.len);
+    node.children.insert(allocator, insert_index, child) catch @panic("failed to insert Zig Yoga child");
+    child.parent = node;
+    markDirty(node);
 }
 
-export fn yogaNodeGetComputedLayout(node: YGNodeConstRef, out_ptr: *ExternalYogaLayout) void {
+export fn yogaNodeRemoveChild(node: *Node, child: *Node) void {
+    for (node.children.items, 0..) |candidate, index| {
+        if (candidate == child) {
+            _ = node.children.orderedRemove(index);
+            child.parent = null;
+            markDirty(node);
+            return;
+        }
+    }
+}
+
+export fn yogaNodeRemoveAllChildren(node: *Node) void {
+    for (node.children.items) |child| {
+        child.parent = null;
+    }
+    node.children.clearRetainingCapacity();
+    markDirty(node);
+}
+
+export fn yogaNodeGetChild(node: *Node, index: u32) ?*Node {
+    const child_index = @as(usize, @intCast(index));
+    if (child_index >= node.children.items.len) return null;
+    return node.children.items[child_index];
+}
+
+export fn yogaNodeGetChildCount(node: *const Node) u32 {
+    return @intCast(node.children.items.len);
+}
+
+export fn yogaNodeGetParent(node: *Node) ?*Node {
+    return node.parent;
+}
+
+export fn yogaNodeCalculateLayout(node: *Node, width: f32, height: f32, direction: u32) void {
+    current_layout_generation +%= 1;
+    if (current_layout_generation == 0) current_layout_generation = 1;
+
+    const layout_direction: Direction = switch (@as(Direction, @enumFromInt(direction))) {
+        .inherit => .ltr,
+        else => |value| value,
+    };
+    const resolved_width = nodeOuterWidthFromStyle(node, null, null, layout_direction) orelse optionalSize(width);
+    const resolved_height = nodeOuterHeightFromStyle(node, null, null, layout_direction) orelse optionalSize(height);
+    setRootLayout(node, resolved_width, resolved_height, layout_direction);
+    const point_scale_factor = if (node.config) |config| config.point_scale_factor else 1;
+    roundLayoutRecursive(node, 0, 0, 0, 0, point_scale_factor);
+    markCleanRecursive(node);
+}
+
+export fn yogaNodeIsDirty(node: *const Node) bool {
+    return node.dirty;
+}
+
+export fn yogaNodeMarkDirty(node: *Node) void {
+    markMeasureDirty(node);
+}
+
+export fn yogaNodeGetHasNewLayout(node: *const Node) bool {
+    return node.has_new_layout;
+}
+
+export fn yogaNodeSetHasNewLayout(node: *Node, has_new_layout: bool) void {
+    node.has_new_layout = has_new_layout;
+}
+
+export fn yogaNodeSetIsReferenceBaseline(node: *Node, is_reference_baseline: bool) void {
+    node.is_reference_baseline = is_reference_baseline;
+}
+
+export fn yogaNodeIsReferenceBaseline(node: *const Node) bool {
+    return node.is_reference_baseline;
+}
+
+export fn yogaNodeSetAlwaysFormsContainingBlock(node: *Node, always_forms_containing_block: bool) void {
+    node.always_forms_containing_block = always_forms_containing_block;
+}
+
+export fn yogaNodeGetAlwaysFormsContainingBlock(node: *const Node) bool {
+    return node.always_forms_containing_block;
+}
+
+export fn yogaNodeGetComputedLayout(node: *const Node, out_ptr: *ExternalYogaLayout) void {
     out_ptr.* = .{
-        .left = c.YGNodeLayoutGetLeft(node),
-        .top = c.YGNodeLayoutGetTop(node),
-        .right = c.YGNodeLayoutGetRight(node),
-        .bottom = c.YGNodeLayoutGetBottom(node),
-        .width = c.YGNodeLayoutGetWidth(node),
-        .height = c.YGNodeLayoutGetHeight(node),
+        .left = node.layout.left,
+        .top = node.layout.top,
+        .right = node.layout.right,
+        .bottom = node.layout.bottom,
+        .width = node.layout.width,
+        .height = node.layout.height,
     };
 }
 
-export fn yogaNodeLayoutGetEdge(node: YGNodeConstRef, kind: u32, edge: u32) f32 {
-    const edge_value = toEdge(edge);
-    return switch (@as(YogaEdgeLayoutKind, @enumFromInt(kind))) {
-        .margin => c.YGNodeLayoutGetMargin(node, edge_value),
-        .padding => c.YGNodeLayoutGetPadding(node, edge_value),
-        .border => c.YGNodeLayoutGetBorder(node, edge_value),
+export fn yogaNodeLayoutGetEdge(node: *const Node, kind: u32, edge: u32) f32 {
+    const edge_value = @as(Edge, @enumFromInt(edge));
+    const rect = switch (@as(YogaEdgeLayoutKind, @enumFromInt(kind))) {
+        .margin => node.layout.margin,
+        .padding => node.layout.padding,
+        .border => node.layout.border,
+    };
+    return switch (edge_value) {
+        .left, .start => rect.left,
+        .top => rect.top,
+        .right, .end => rect.right,
+        .bottom => rect.bottom,
+        .horizontal => rect.left + rect.right,
+        .vertical => rect.top + rect.bottom,
+        .all => @max(@max(rect.left, rect.right), @max(rect.top, rect.bottom)),
     };
 }
 
-export fn yogaNodeStyleSetEnum(node: YGNodeRef, kind: u32, value: u32) void {
+export fn yogaNodeStyleSetEnum(node: *Node, kind: u32, value: u32) void {
     switch (@as(YogaEnumKind, @enumFromInt(kind))) {
-        .direction => c.YGNodeStyleSetDirection(node, toDirection(value)),
-        .flex_direction => c.YGNodeStyleSetFlexDirection(node, toFlexDirection(value)),
-        .justify_content => c.YGNodeStyleSetJustifyContent(node, toJustify(value)),
-        .align_content => c.YGNodeStyleSetAlignContent(node, toAlign(value)),
-        .align_items => c.YGNodeStyleSetAlignItems(node, toAlign(value)),
-        .align_self => c.YGNodeStyleSetAlignSelf(node, toAlign(value)),
-        .position_type => c.YGNodeStyleSetPositionType(node, toPositionType(value)),
-        .flex_wrap => c.YGNodeStyleSetFlexWrap(node, toWrap(value)),
-        .overflow => c.YGNodeStyleSetOverflow(node, toOverflow(value)),
-        .display => c.YGNodeStyleSetDisplay(node, toDisplay(value)),
-        .box_sizing => c.YGNodeStyleSetBoxSizing(node, toBoxSizing(value)),
+        .direction => node.style.direction = @enumFromInt(value),
+        .flex_direction => node.style.flex_direction = @enumFromInt(value),
+        .justify_content => node.style.justify_content = @enumFromInt(value),
+        .align_content => node.style.align_content = @enumFromInt(value),
+        .align_items => node.style.align_items = @enumFromInt(value),
+        .align_self => node.style.align_self = @enumFromInt(value),
+        .position_type => node.style.position_type = @enumFromInt(value),
+        .flex_wrap => node.style.flex_wrap = @enumFromInt(value),
+        .overflow => node.style.overflow = @enumFromInt(value),
+        .display => node.style.display = @enumFromInt(value),
+        .box_sizing => node.style.box_sizing = @enumFromInt(value),
     }
+    markDirty(node);
 }
 
-export fn yogaNodeStyleGetEnum(node: YGNodeConstRef, kind: u32) u32 {
+export fn yogaNodeStyleGetEnum(node: *const Node, kind: u32) u32 {
     return switch (@as(YogaEnumKind, @enumFromInt(kind))) {
-        .direction => enumValue(c.YGNodeStyleGetDirection(node)),
-        .flex_direction => enumValue(c.YGNodeStyleGetFlexDirection(node)),
-        .justify_content => enumValue(c.YGNodeStyleGetJustifyContent(node)),
-        .align_content => enumValue(c.YGNodeStyleGetAlignContent(node)),
-        .align_items => enumValue(c.YGNodeStyleGetAlignItems(node)),
-        .align_self => enumValue(c.YGNodeStyleGetAlignSelf(node)),
-        .position_type => enumValue(c.YGNodeStyleGetPositionType(node)),
-        .flex_wrap => enumValue(c.YGNodeStyleGetFlexWrap(node)),
-        .overflow => enumValue(c.YGNodeStyleGetOverflow(node)),
-        .display => enumValue(c.YGNodeStyleGetDisplay(node)),
-        .box_sizing => enumValue(c.YGNodeStyleGetBoxSizing(node)),
+        .direction => enumValue(node.style.direction),
+        .flex_direction => enumValue(node.style.flex_direction),
+        .justify_content => enumValue(node.style.justify_content),
+        .align_content => enumValue(node.style.align_content),
+        .align_items => enumValue(node.style.align_items),
+        .align_self => enumValue(node.style.align_self),
+        .position_type => enumValue(node.style.position_type),
+        .flex_wrap => enumValue(node.style.flex_wrap),
+        .overflow => enumValue(node.style.overflow),
+        .display => enumValue(node.style.display),
+        .box_sizing => enumValue(node.style.box_sizing),
     };
 }
 
-export fn yogaNodeStyleSetFloat(node: YGNodeRef, kind: u32, value: f32) void {
+export fn yogaNodeStyleSetFloat(node: *Node, kind: u32, value: f32) void {
     switch (@as(YogaFloatKind, @enumFromInt(kind))) {
-        .flex => c.YGNodeStyleSetFlex(node, value),
-        .flex_grow => c.YGNodeStyleSetFlexGrow(node, value),
-        .flex_shrink => c.YGNodeStyleSetFlexShrink(node, value),
-        .aspect_ratio => c.YGNodeStyleSetAspectRatio(node, value),
+        .flex => node.style.flex = value,
+        .flex_grow => node.style.flex_grow = value,
+        .flex_shrink => node.style.flex_shrink = value,
+        .aspect_ratio => node.style.aspect_ratio = value,
     }
+    markDirty(node);
 }
 
-export fn yogaNodeStyleGetFloat(node: YGNodeConstRef, kind: u32) f32 {
+export fn yogaNodeStyleGetFloat(node: *const Node, kind: u32) f32 {
     return switch (@as(YogaFloatKind, @enumFromInt(kind))) {
-        .flex => c.YGNodeStyleGetFlex(node),
-        .flex_grow => c.YGNodeStyleGetFlexGrow(node),
-        .flex_shrink => c.YGNodeStyleGetFlexShrink(node),
-        .aspect_ratio => c.YGNodeStyleGetAspectRatio(node),
+        .flex => node.style.flex,
+        .flex_grow => node.style.flex_grow,
+        .flex_shrink => node.style.flex_shrink,
+        .aspect_ratio => node.style.aspect_ratio,
     };
 }
 
-export fn yogaNodeStyleSetBorder(node: YGNodeRef, edge: u32, border: f32) void {
-    c.YGNodeStyleSetBorder(node, toEdge(edge), border);
+export fn yogaNodeStyleSetBorder(node: *Node, edge: u32, border: f32) void {
+    node.style.border[edge] = border;
+    markDirty(node);
 }
 
-export fn yogaNodeStyleGetBorder(node: YGNodeConstRef, edge: u32) f32 {
-    return c.YGNodeStyleGetBorder(node, toEdge(edge));
+export fn yogaNodeStyleGetBorder(node: *const Node, edge: u32) f32 {
+    return node.style.border[edge];
 }
 
-export fn yogaNodeStyleSetValue(node: YGNodeRef, kind: u32, edge_or_gutter: u32, unit: u32, value: f32) void {
-    const value_kind = @as(YogaValueKind, @enumFromInt(kind));
-    const value_unit = @as(YogaUnit, @enumFromInt(unit));
+export fn yogaNodeStyleSetValue(node: *Node, kind: u32, edge_or_gutter: u32, unit: u32, value: f32) void {
+    const style_value = switch (@as(Unit, @enumFromInt(unit))) {
+        .undefined => StyleValue.undef(),
+        .point => StyleValue.point(value),
+        .percent => StyleValue.percent(value),
+        .auto => StyleValue.auto(),
+    };
 
-    switch (value_kind) {
-        .width => switch (value_unit) {
-            .point => c.YGNodeStyleSetWidth(node, value),
-            .percent => c.YGNodeStyleSetWidthPercent(node, value),
-            .auto => c.YGNodeStyleSetWidthAuto(node),
-            .undefined => {},
-        },
-        .height => switch (value_unit) {
-            .point => c.YGNodeStyleSetHeight(node, value),
-            .percent => c.YGNodeStyleSetHeightPercent(node, value),
-            .auto => c.YGNodeStyleSetHeightAuto(node),
-            .undefined => {},
-        },
-        .min_width => switch (value_unit) {
-            .point => c.YGNodeStyleSetMinWidth(node, value),
-            .percent => c.YGNodeStyleSetMinWidthPercent(node, value),
-            else => {},
-        },
-        .min_height => switch (value_unit) {
-            .point => c.YGNodeStyleSetMinHeight(node, value),
-            .percent => c.YGNodeStyleSetMinHeightPercent(node, value),
-            else => {},
-        },
-        .max_width => switch (value_unit) {
-            .point => c.YGNodeStyleSetMaxWidth(node, value),
-            .percent => c.YGNodeStyleSetMaxWidthPercent(node, value),
-            else => {},
-        },
-        .max_height => switch (value_unit) {
-            .point => c.YGNodeStyleSetMaxHeight(node, value),
-            .percent => c.YGNodeStyleSetMaxHeightPercent(node, value),
-            else => {},
-        },
-        .flex_basis => switch (value_unit) {
-            .point => c.YGNodeStyleSetFlexBasis(node, value),
-            .percent => c.YGNodeStyleSetFlexBasisPercent(node, value),
-            .auto => c.YGNodeStyleSetFlexBasisAuto(node),
-            .undefined => {},
-        },
-        .margin => switch (value_unit) {
-            .point => c.YGNodeStyleSetMargin(node, toEdge(edge_or_gutter), value),
-            .percent => c.YGNodeStyleSetMarginPercent(node, toEdge(edge_or_gutter), value),
-            .auto => c.YGNodeStyleSetMarginAuto(node, toEdge(edge_or_gutter)),
-            .undefined => {},
-        },
-        .padding => switch (value_unit) {
-            .point => c.YGNodeStyleSetPadding(node, toEdge(edge_or_gutter), value),
-            .percent => c.YGNodeStyleSetPaddingPercent(node, toEdge(edge_or_gutter), value),
-            else => {},
-        },
-        .position => switch (value_unit) {
-            .point => c.YGNodeStyleSetPosition(node, toEdge(edge_or_gutter), value),
-            .percent => c.YGNodeStyleSetPositionPercent(node, toEdge(edge_or_gutter), value),
-            .auto => c.YGNodeStyleSetPositionAuto(node, toEdge(edge_or_gutter)),
-            .undefined => {},
-        },
-        .gap => switch (value_unit) {
-            .point => c.YGNodeStyleSetGap(node, toGutter(edge_or_gutter), value),
-            .percent => c.YGNodeStyleSetGapPercent(node, toGutter(edge_or_gutter), value),
-            else => {},
-        },
+    switch (@as(YogaValueKind, @enumFromInt(kind))) {
+        .width => node.style.width = style_value,
+        .height => node.style.height = style_value,
+        .min_width => node.style.min_width = style_value,
+        .min_height => node.style.min_height = style_value,
+        .max_width => node.style.max_width = style_value,
+        .max_height => node.style.max_height = style_value,
+        .flex_basis => node.style.flex_basis = style_value,
+        .margin => node.style.margin[edge_or_gutter] = style_value,
+        .padding => node.style.padding[edge_or_gutter] = style_value,
+        .position => node.style.position[edge_or_gutter] = style_value,
+        .gap => node.style.gap[edge_or_gutter] = style_value,
     }
+    markDirty(node);
 }
 
-export fn yogaNodeStyleGetValue(node: YGNodeConstRef, kind: u32, edge_or_gutter: u32) u64 {
+export fn yogaNodeStyleGetValue(node: *const Node, kind: u32, edge_or_gutter: u32) u64 {
     const value = switch (@as(YogaValueKind, @enumFromInt(kind))) {
-        .width => c.YGNodeStyleGetWidth(node),
-        .height => c.YGNodeStyleGetHeight(node),
-        .min_width => c.YGNodeStyleGetMinWidth(node),
-        .min_height => c.YGNodeStyleGetMinHeight(node),
-        .max_width => c.YGNodeStyleGetMaxWidth(node),
-        .max_height => c.YGNodeStyleGetMaxHeight(node),
-        .flex_basis => c.YGNodeStyleGetFlexBasis(node),
-        .margin => c.YGNodeStyleGetMargin(node, toEdge(edge_or_gutter)),
-        .padding => c.YGNodeStyleGetPadding(node, toEdge(edge_or_gutter)),
-        .position => c.YGNodeStyleGetPosition(node, toEdge(edge_or_gutter)),
-        .gap => pointValue(c.YGNodeStyleGetGap(node, toGutter(edge_or_gutter))),
+        .width => node.style.width,
+        .height => node.style.height,
+        .min_width => node.style.min_width,
+        .min_height => node.style.min_height,
+        .max_width => node.style.max_width,
+        .max_height => node.style.max_height,
+        .flex_basis => node.style.flex_basis,
+        .margin => node.style.margin[edge_or_gutter],
+        .padding => node.style.padding[edge_or_gutter],
+        .position => node.style.position[edge_or_gutter],
+        .gap => node.style.gap[edge_or_gutter],
     };
     return packValue(value);
 }
 
-export fn yogaNodeSetMeasureFunc(node: YGNodeRef, callback: ?*const anyopaque) void {
-    if (callback) |callback_ptr| {
-        const ctx = getOrCreateContext(node);
-        ctx.measure_callback = callback_ptr;
-        c.YGNodeSetMeasureFunc(node, &internalMeasureFunc);
-        return;
-    }
-
-    yogaNodeUnsetMeasureFunc(node);
+export fn yogaNodeSetMeasureFunc(node: *Node, callback: ?*const anyopaque) void {
+    node.measure_callback = callback;
+    markDirtyWithoutCallback(node, true);
 }
 
-export fn yogaNodeUnsetMeasureFunc(node: YGNodeRef) void {
-    if (getContext(node)) |ctx| {
-        ctx.measure_callback = null;
-    }
-    c.YGNodeSetMeasureFunc(node, null);
-    freeContextIfUnused(node);
+export fn yogaNodeUnsetMeasureFunc(node: *Node) void {
+    node.measure_callback = null;
+    markDirtyWithoutCallback(node, true);
 }
 
-export fn yogaNodeHasMeasureFunc(node: YGNodeConstRef) bool {
-    return c.YGNodeHasMeasureFunc(node);
+export fn yogaNodeHasMeasureFunc(node: *const Node) bool {
+    return node.measure_callback != null;
 }
 
-export fn yogaNodeSetDirtiedFunc(node: YGNodeRef, callback: ?*const anyopaque) void {
-    if (callback) |callback_ptr| {
-        const ctx = getOrCreateContext(node);
-        ctx.dirtied_callback = callback_ptr;
-        c.YGNodeSetDirtiedFunc(node, &internalDirtiedFunc);
-        return;
-    }
-
-    yogaNodeUnsetDirtiedFunc(node);
+export fn yogaNodeSetDirtiedFunc(node: *Node, callback: ?*const anyopaque) void {
+    node.dirtied_callback = callback;
 }
 
-export fn yogaNodeUnsetDirtiedFunc(node: YGNodeRef) void {
-    if (getContext(node)) |ctx| {
-        ctx.dirtied_callback = null;
-    }
-    c.YGNodeSetDirtiedFunc(node, null);
-    freeContextIfUnused(node);
+export fn yogaNodeUnsetDirtiedFunc(node: *Node) void {
+    node.dirtied_callback = null;
 }
 
 export fn yogaStoreMeasureResult(width: f32, height: f32) void {
@@ -563,23 +1844,22 @@ export fn yogaStoreMeasureResult(width: f32, height: f32) void {
     tls_measure_height = height;
 }
 
-test "Yoga wrapper computes basic flex layout" {
+test "Zig Yoga computes basic flex layout" {
     const config = yogaConfigCreate();
     defer yogaConfigFree(config);
 
     const root = yogaNodeCreateWithConfig(config);
-    defer yogaNodeFree(root);
+    defer yogaNodeFreeRecursive(root);
 
-    yogaNodeStyleSetEnum(root, @intFromEnum(YogaEnumKind.flex_direction), enumValue(c.YGFlexDirectionRow));
-    yogaNodeStyleSetValue(root, @intFromEnum(YogaValueKind.width), 0, @intFromEnum(YogaUnit.point), 100);
-    yogaNodeStyleSetValue(root, @intFromEnum(YogaValueKind.height), 0, @intFromEnum(YogaUnit.point), 100);
+    yogaNodeStyleSetEnum(root, @intFromEnum(YogaEnumKind.flex_direction), enumValue(FlexDirection.row));
+    yogaNodeStyleSetValue(root, @intFromEnum(YogaValueKind.width), 0, @intFromEnum(Unit.point), 100);
+    yogaNodeStyleSetValue(root, @intFromEnum(YogaValueKind.height), 0, @intFromEnum(Unit.point), 100);
 
     const child = yogaNodeCreateWithConfig(config);
-    defer yogaNodeFree(child);
     yogaNodeStyleSetFloat(child, @intFromEnum(YogaFloatKind.flex_grow), 1);
     yogaNodeInsertChild(root, child, 0);
 
-    yogaNodeCalculateLayout(root, std.math.nan(f32), std.math.nan(f32), enumValue(c.YGDirectionLTR));
+    yogaNodeCalculateLayout(root, nan, nan, enumValue(Direction.ltr));
 
     var layout: ExternalYogaLayout = undefined;
     yogaNodeGetComputedLayout(child, &layout);
@@ -587,25 +1867,25 @@ test "Yoga wrapper computes basic flex layout" {
     try std.testing.expectApproxEqAbs(@as(f32, 100), layout.height, 0.001);
 }
 
-test "Yoga wrapper packs style values" {
+test "Zig Yoga packs style values" {
     const node = yogaNodeCreate();
     defer yogaNodeFree(node);
 
-    yogaNodeStyleSetValue(node, @intFromEnum(YogaValueKind.flex_basis), 0, @intFromEnum(YogaUnit.point), 10);
+    yogaNodeStyleSetValue(node, @intFromEnum(YogaValueKind.flex_basis), 0, @intFromEnum(Unit.point), 10);
     const packed_value = yogaNodeStyleGetValue(node, @intFromEnum(YogaValueKind.flex_basis), 0);
     const unit: u32 = @intCast(packed_value & 0xffffffff);
     const value_bits: u32 = @intCast((packed_value >> 32) & 0xffffffff);
     const value: f32 = @bitCast(value_bits);
 
-    try std.testing.expectEqual(@as(u32, @intFromEnum(YogaUnit.point)), unit);
+    try std.testing.expectEqual(@as(u32, @intFromEnum(Unit.point)), unit);
     try std.testing.expectApproxEqAbs(@as(f32, 10), value, 0.001);
 }
 
-test "Yoga wrapper stores dirtied callback alongside measure callback" {
+test "Zig Yoga stores dirtied callback alongside measure callback" {
     const node = yogaNodeCreate();
     defer yogaNodeFree(node);
 
     yogaNodeSetMeasureFunc(node, null);
     yogaNodeSetDirtiedFunc(node, null);
-    try std.testing.expect(c.YGNodeGetContext(node) == null);
+    try std.testing.expect(!yogaNodeHasMeasureFunc(node));
 }

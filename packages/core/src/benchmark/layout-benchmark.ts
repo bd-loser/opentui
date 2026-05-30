@@ -8,7 +8,15 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
-import { BoxRenderable, RGBA, ScrollBoxRenderable, TextRenderable } from "../index.js"
+import {
+  BoxRenderable,
+  DiffRenderable,
+  MarkdownRenderable,
+  RGBA,
+  ScrollBoxRenderable,
+  SyntaxStyle,
+  TextRenderable,
+} from "../index.js"
 import type { Renderable, RenderCommand } from "../Renderable.js"
 import { createTestRenderer, type TestRenderer } from "../testing.js"
 
@@ -26,6 +34,8 @@ type BenchmarkKind =
   | "text-measure"
   | "tree-mutation"
   | "scrollbox"
+  | "markdown-scrollbox"
+  | "diff-view"
   | "top-branch"
   | "wide-shallow"
   | "deep-chain"
@@ -45,6 +55,7 @@ interface BenchmarkArgs {
   listScenarios: boolean
   output: boolean
   skipValidation: boolean
+  includeRealWorld: boolean
 }
 
 interface BenchmarkContext {
@@ -93,6 +104,7 @@ interface ScenarioMetricsTracker {
 interface BenchmarkScenario {
   name: string
   description: string
+  defaultEnabled?: boolean
   setup: (ctx: BenchmarkContext) => Promise<ScenarioRuntime>
 }
 
@@ -189,6 +201,26 @@ interface ScrollboxReflowState {
   stats: TreeStats
 }
 
+interface MarkdownScrollbackState {
+  root: BoxRenderable
+  scrollBox: ScrollBoxRenderable
+  assistantCards: BoxRenderable[]
+  markdowns: MarkdownRenderable[]
+  diffs: DiffRenderable[]
+  syntaxStyle: SyntaxStyle
+  stats: TreeStats
+}
+
+interface DiffViewerTreeState {
+  root: BoxRenderable
+  patchScrollBox: ScrollBoxRenderable
+  fileRows: BoxRenderable[]
+  patchNodes: BoxRenderable[]
+  diffs: DiffRenderable[]
+  syntaxStyle: SyntaxStyle
+  stats: TreeStats
+}
+
 interface ValidationOptions {
   expectProbeChange?: boolean
   minimumSettlePasses?: number
@@ -233,6 +265,7 @@ function parseArgs(argv: string[]): BenchmarkArgs {
   let listScenarios = false
   let output = true
   let skipValidation = false
+  let includeRealWorld = false
 
   for (const arg of argv) {
     if (arg === "--list-scenarios") {
@@ -247,6 +280,11 @@ function parseArgs(argv: string[]): BenchmarkArgs {
 
     if (arg === "--skip-validation") {
       skipValidation = true
+      continue
+    }
+
+    if (arg === "--include-real-world") {
+      includeRealWorld = true
       continue
     }
 
@@ -318,6 +356,7 @@ function parseArgs(argv: string[]): BenchmarkArgs {
     listScenarios,
     output,
     skipValidation,
+    includeRealWorld,
   }
 }
 
@@ -647,6 +686,34 @@ function validateCalculateRecalculation(
   const afterFirst = readProbe()
 
   consume(mutate(1))
+  assertLayoutDirty(ctx, scenarioName)
+  calculateLayout(ctx, scenarioName)
+  const afterSecond = readProbe()
+
+  assertProbeChanged(scenarioName, "first calculate-layout mutation", before, afterFirst)
+  assertProbeChanged(scenarioName, "second calculate-layout mutation", afterFirst, afterSecond)
+
+  consume(before + afterFirst + afterSecond)
+}
+
+async function validateAsyncCalculateRecalculation(
+  ctx: BenchmarkContext,
+  scenarioName: string,
+  mutate: (iteration: number) => unknown,
+  readProbe: () => number,
+): Promise<void> {
+  calculateLayout(ctx, scenarioName)
+  assertLayoutClean(ctx, scenarioName)
+
+  const before = readProbe()
+  consume(mutate(0))
+  await Promise.resolve()
+  assertLayoutDirty(ctx, scenarioName)
+  calculateLayout(ctx, scenarioName)
+  const afterFirst = readProbe()
+
+  consume(mutate(1))
+  await Promise.resolve()
   assertLayoutDirty(ctx, scenarioName)
   calculateLayout(ctx, scenarioName)
   const afterSecond = readProbe()
@@ -1539,6 +1606,127 @@ function createScenarios(): BenchmarkScenario[] {
         )
       },
     },
+    {
+      name: "opencode_markdown_scrollback_full_render",
+      description:
+        "Explicit real-world: large OpenCode-like sticky scrollback with MarkdownRenderable assistant blocks, tool cards, and diff output",
+      defaultEnabled: false,
+      setup: async (ctx) => {
+        const state = await buildMarkdownScrollbackState(ctx, Math.max(36, ctx.height + 8))
+        calculateLayout(ctx, "opencode_markdown_scrollback_full_render")
+        state.stats = collectRenderableTreeStats(state.root)
+        const metrics = createMetricsTracker()
+
+        const cardVersions = new Array<number>(state.assistantCards.length).fill(0)
+        const mutate = (iteration: number): number => {
+          const cardWindow = Math.min(32, state.assistantCards.length)
+          const cardIndex = state.assistantCards.length - 1 - (iteration % cardWindow)
+          const card = state.assistantCards[cardIndex]!
+          cardVersions[cardIndex] += 1
+          card.paddingTop = cardVersions[cardIndex] % 2 === 0 ? 0 : 1
+          card.paddingBottom = cardVersions[cardIndex] % 2 === 0 ? 0 : 1
+
+          state.scrollBox.scrollTo(state.scrollBox.scrollHeight)
+          return card.paddingTop + card.paddingBottom + cardIndex
+        }
+        const readProbe = () =>
+          layoutChecksum(state.assistantCards.slice(-16)) +
+          layoutChecksum(state.markdowns.slice(-16)) +
+          layoutChecksum(state.diffs.slice(0, 8)) +
+          state.markdowns[state.markdowns.length - 1]!.content.length
+
+        return withMetrics(
+          {
+            kind: "markdown-scrollbox",
+            phase: "calculate-layout",
+            passMode: "calculate-only",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: 2,
+            runIteration(iteration) {
+              consume(mutate(iteration))
+              const passes = calculateLayout(ctx, "opencode_markdown_scrollback_full_render")
+              metrics.recordSettlePasses(passes)
+              return readProbe() + passes
+            },
+            validate: () =>
+              validateCalculateRecalculation(ctx, "opencode_markdown_scrollback_full_render", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+              state.syntaxStyle.destroy()
+            },
+          },
+          metrics,
+        )
+      },
+    },
+    {
+      name: "opencode_diff_viewer_full_render",
+      description:
+        "Explicit real-world: OpenCode diff viewer with file tree, patch scrollbox, split diff renderables, headers, and reviewed-state layout",
+      defaultEnabled: false,
+      setup: async (ctx) => {
+        const state = await buildDiffViewerTreeState(ctx, Math.max(10, Math.floor(ctx.height * 0.35)))
+        await renderUntilLayoutClean(ctx, "opencode_diff_viewer_full_render")
+        state.stats = collectRenderableTreeStats(state.root)
+        const metrics = createMetricsTracker()
+
+        const diffVersions = new Array<number>(state.diffs.length).fill(0)
+        const mutate = (iteration: number): number => {
+          const targetIndex = iteration % state.diffs.length
+          const diff = state.diffs[targetIndex]!
+          diffVersions[targetIndex] += 1
+          diff.diff = createUnifiedDiffPatch(
+            targetIndex,
+            diffVersions[targetIndex],
+            24 + (targetIndex % 4) * 8 + (diffVersions[targetIndex] % 2) * 6,
+          )
+
+          const reviewedRow = state.fileRows[targetIndex]
+          if (reviewedRow) {
+            reviewedRow.paddingLeft =
+              diffVersions[targetIndex] % 2 === 0 ? 1 + (targetIndex % 3) : 2 + (targetIndex % 3)
+          }
+
+          state.patchScrollBox.scrollTo(
+            Math.max(0, state.patchScrollBox.scrollHeight - state.patchScrollBox.viewport.height),
+          )
+          return diff.diff.length + targetIndex + (reviewedRow?.paddingLeft ?? 0)
+        }
+        const readProbe = () =>
+          layoutChecksum(state.patchNodes.slice(0, 12)) +
+          layoutChecksum(state.fileRows.slice(0, 18)) +
+          state.diffs.slice(0, 8).reduce((total, diff) => total + diff.diff.length, 0) +
+          state.diffs[0]!.diff.length
+
+        return withMetrics(
+          {
+            kind: "diff-view",
+            phase: "calculate-layout",
+            passMode: "calculate-only",
+            renderablesPerIteration: state.stats.renderables,
+            layoutNodesPerIteration: state.stats.layoutNodes,
+            layoutOnlyBoxesPerIteration: state.stats.layoutOnlyBoxes,
+            layoutMutationsPerIteration: 2,
+            async runIteration(iteration) {
+              consume(mutate(iteration))
+              await Promise.resolve()
+              const passes = calculateLayout(ctx, "opencode_diff_viewer_full_render")
+              metrics.recordSettlePasses(passes)
+              return readProbe() + passes
+            },
+            validate: () =>
+              validateAsyncCalculateRecalculation(ctx, "opencode_diff_viewer_full_render", mutate, readProbe),
+            cleanup: () => {
+              state.root.destroyRecursively()
+              state.syntaxStyle.destroy()
+            },
+          },
+          metrics,
+        )
+      },
+    },
   ]
 }
 
@@ -2181,6 +2369,605 @@ async function buildScrollboxReflowState(ctx: BenchmarkContext, itemCount: numbe
   }
 }
 
+async function buildMarkdownScrollbackState(
+  ctx: BenchmarkContext,
+  turnCount: number,
+): Promise<MarkdownScrollbackState> {
+  clearRoot(ctx.renderer)
+  resetBuffers(ctx.renderer)
+
+  const syntaxStyle = createBenchmarkSyntaxStyle()
+  const assistantCards: BoxRenderable[] = []
+  const markdowns: MarkdownRenderable[] = []
+  const diffs: DiffRenderable[] = []
+
+  const root = new BoxRenderable(ctx.renderer, {
+    id: "bench-opencode-markdown-root",
+    width: "100%",
+    height: "100%",
+    flexDirection: "column",
+    backgroundColor: COLORS.transparent,
+  })
+  ctx.renderer.root.add(root)
+
+  const header = new BoxRenderable(ctx.renderer, {
+    id: "bench-opencode-markdown-header",
+    width: "100%",
+    height: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: 2,
+    paddingRight: 2,
+    gap: 2,
+    flexShrink: 0,
+    backgroundColor: COLORS.menu,
+  })
+  header.add(new TextRenderable(ctx.renderer, { id: "bench-opencode-markdown-title", content: "OpenCode Session" }))
+  header.add(new TextRenderable(ctx.renderer, { id: "bench-opencode-markdown-model", content: "gpt-5.5 / build" }))
+  root.add(header)
+
+  const body = new BoxRenderable(ctx.renderer, {
+    id: "bench-opencode-markdown-body",
+    width: "100%",
+    flexGrow: 1,
+    minHeight: 0,
+    flexDirection: "row",
+  })
+  root.add(body)
+
+  if (ctx.width > 110) {
+    const sidebar = new BoxRenderable(ctx.renderer, {
+      id: "bench-opencode-markdown-sidebar",
+      width: 30,
+      flexShrink: 0,
+      flexDirection: "column",
+      paddingLeft: 1,
+      paddingRight: 1,
+      gap: 1,
+      backgroundColor: COLORS.panel,
+    })
+    for (let index = 0; index < 14; index += 1) {
+      sidebar.add(
+        new TextRenderable(ctx.renderer, {
+          id: `bench-opencode-markdown-sidebar-row-${index}`,
+          content: `${index === 0 ? ">" : " "} workspace/file-${index}.ts`,
+          width: "100%",
+        }),
+      )
+    }
+    body.add(sidebar)
+  }
+
+  const main = new BoxRenderable(ctx.renderer, {
+    id: "bench-opencode-markdown-main",
+    flexGrow: 1,
+    minWidth: 0,
+    minHeight: 0,
+    flexDirection: "column",
+    backgroundColor: COLORS.transparent,
+  })
+  body.add(main)
+
+  const scrollBox = new ScrollBoxRenderable(ctx.renderer, {
+    id: "bench-opencode-markdown-scrollbox",
+    flexGrow: 1,
+    minHeight: 0,
+    stickyScroll: true,
+    stickyStart: "bottom",
+    viewportCulling: true,
+    rootOptions: {
+      backgroundColor: COLORS.transparent,
+    },
+    viewportOptions: {
+      paddingRight: 0,
+    },
+    contentOptions: {
+      flexDirection: "column",
+      minWidth: "100%",
+      maxWidth: "100%",
+      paddingLeft: 1,
+      paddingRight: 1,
+    },
+    verticalScrollbarOptions: {
+      visible: false,
+    },
+    horizontalScrollbarOptions: {
+      visible: false,
+    },
+  })
+  main.add(scrollBox)
+
+  for (let index = 0; index < turnCount; index += 1) {
+    const user = new BoxRenderable(ctx.renderer, {
+      id: `bench-opencode-user-${index}`,
+      width: "100%",
+      flexShrink: 0,
+      border: ["left"],
+      paddingLeft: 2,
+      paddingTop: 1,
+      paddingBottom: 1,
+      marginTop: index === 0 ? 0 : 1,
+      backgroundColor: COLORS.panel,
+    })
+    user.add(
+      new TextRenderable(ctx.renderer, {
+        id: `bench-opencode-user-text-${index}`,
+        content: createOpencodeUserPrompt(index),
+        width: "100%",
+      }),
+    )
+    scrollBox.add(user)
+
+    const assistant = new BoxRenderable(ctx.renderer, {
+      id: `bench-opencode-assistant-${index}`,
+      width: "100%",
+      flexShrink: 0,
+      paddingLeft: 3,
+      marginTop: 1,
+      backgroundColor: COLORS.transparent,
+    })
+    const markdown = new MarkdownRenderable(ctx.renderer, {
+      id: `bench-opencode-assistant-markdown-${index}`,
+      content: createOpencodeSessionMarkdown(index, 0),
+      syntaxStyle,
+      width: "100%",
+      fg: "#c0caf5",
+      conceal: true,
+      concealCode: false,
+      streaming: true,
+      internalBlockMode: "top-level",
+      tableOptions: {
+        style: "columns",
+        widthMode: "full",
+        columnFitter: "balanced",
+        wrapMode: "word",
+      },
+      flexShrink: 0,
+    })
+    assistant.add(markdown)
+    assistantCards.push(assistant)
+    markdowns.push(markdown)
+    scrollBox.add(assistant)
+
+    if (index % 12 === 4) {
+      const tool = createOpencodeDiffToolCard(ctx, syntaxStyle, index, 0)
+      scrollBox.add(tool.card)
+      diffs.push(tool.diff)
+    } else if (index % 10 === 7) {
+      scrollBox.add(createOpencodeTodoToolCard(ctx, index))
+    }
+  }
+
+  const prompt = new BoxRenderable(ctx.renderer, {
+    id: "bench-opencode-markdown-prompt",
+    width: "100%",
+    minHeight: 4,
+    flexShrink: 0,
+    border: ["top"],
+    paddingLeft: 2,
+    paddingRight: 2,
+    paddingTop: 1,
+    backgroundColor: COLORS.menu,
+  })
+  prompt.add(
+    new TextRenderable(ctx.renderer, {
+      id: "bench-opencode-markdown-prompt-text",
+      content: "Prompt: inspect the session, summarize diffs, and continue streaming output...",
+      width: "100%",
+    }),
+  )
+  main.add(prompt)
+
+  scrollBox.scrollTo(scrollBox.scrollHeight)
+
+  return {
+    root,
+    scrollBox,
+    assistantCards,
+    markdowns,
+    diffs,
+    syntaxStyle,
+    stats: collectRenderableTreeStats(root),
+  }
+}
+
+async function buildDiffViewerTreeState(ctx: BenchmarkContext, fileCount: number): Promise<DiffViewerTreeState> {
+  clearRoot(ctx.renderer)
+  resetBuffers(ctx.renderer)
+
+  const syntaxStyle = createBenchmarkSyntaxStyle()
+  const fileRows: BoxRenderable[] = []
+  const patchNodes: BoxRenderable[] = []
+  const diffs: DiffRenderable[] = []
+
+  const root = new BoxRenderable(ctx.renderer, {
+    id: "bench-opencode-diff-root",
+    width: "100%",
+    height: "100%",
+    flexDirection: "column",
+    backgroundColor: COLORS.transparent,
+  })
+  ctx.renderer.root.add(root)
+
+  const body = new BoxRenderable(ctx.renderer, {
+    id: "bench-opencode-diff-body",
+    width: "100%",
+    flexGrow: 1,
+    minHeight: 0,
+    flexDirection: "row",
+  })
+  root.add(body)
+
+  const fileTree = new ScrollBoxRenderable(ctx.renderer, {
+    id: "bench-opencode-diff-file-tree",
+    width: 32,
+    flexShrink: 0,
+    viewportCulling: true,
+    contentOptions: {
+      flexDirection: "column",
+      minWidth: "100%",
+      maxWidth: "100%",
+    },
+    rootOptions: {
+      backgroundColor: COLORS.panel,
+      border: ["right"],
+    },
+    verticalScrollbarOptions: {
+      visible: false,
+    },
+    horizontalScrollbarOptions: {
+      visible: false,
+    },
+  })
+  body.add(fileTree)
+
+  const patchPanel = new BoxRenderable(ctx.renderer, {
+    id: "bench-opencode-diff-patch-panel",
+    flexGrow: 1,
+    minWidth: 0,
+    minHeight: 0,
+    flexDirection: "column",
+  })
+  body.add(patchPanel)
+
+  const patchScrollBox = new ScrollBoxRenderable(ctx.renderer, {
+    id: "bench-opencode-diff-patches",
+    flexGrow: 1,
+    minHeight: 0,
+    viewportCulling: true,
+    contentOptions: {
+      flexDirection: "column",
+      minWidth: "100%",
+      maxWidth: "100%",
+    },
+    verticalScrollbarOptions: {
+      visible: false,
+    },
+    horizontalScrollbarOptions: {
+      visible: false,
+    },
+  })
+  patchPanel.add(patchScrollBox)
+
+  const footer = new BoxRenderable(ctx.renderer, {
+    id: "bench-opencode-diff-footer",
+    width: "100%",
+    height: 2,
+    flexShrink: 0,
+    flexDirection: "row",
+    gap: 2,
+    paddingLeft: 1,
+    backgroundColor: COLORS.menu,
+  })
+  footer.add(new TextRenderable(ctx.renderer, { id: "bench-opencode-diff-footer-a", content: "tab focus file tree" }))
+  footer.add(new TextRenderable(ctx.renderer, { id: "bench-opencode-diff-footer-b", content: "j/k next file" }))
+  patchPanel.add(footer)
+
+  for (let index = 0; index < fileCount; index += 1) {
+    const filePath = createDiffFilePath(index)
+    const fileRow = new BoxRenderable(ctx.renderer, {
+      id: `bench-opencode-diff-file-row-${index}`,
+      width: "100%",
+      height: 1,
+      flexShrink: 0,
+      flexDirection: "row",
+      paddingLeft: 1 + (index % 3),
+      paddingRight: 1,
+      backgroundColor: index % 7 === 0 ? COLORS.menu : COLORS.transparent,
+    })
+    fileRow.add(
+      new TextRenderable(ctx.renderer, {
+        id: `bench-opencode-diff-file-row-text-${index}`,
+        content: `${index % 4 === 0 ? "+" : "~"} ${filePath}`,
+        width: "100%",
+      }),
+    )
+    fileTree.add(fileRow)
+    fileRows.push(fileRow)
+
+    const patchNode = new BoxRenderable(ctx.renderer, {
+      id: `bench-opencode-diff-patch-node-${index}`,
+      width: "100%",
+      flexShrink: 0,
+      border: index === 0 ? [] : ["top"],
+      paddingTop: index === 0 ? 0 : 1,
+      paddingBottom: 1,
+    })
+    const header = new BoxRenderable(ctx.renderer, {
+      id: `bench-opencode-diff-patch-header-${index}`,
+      width: "100%",
+      flexDirection: "row",
+      gap: 1,
+      paddingLeft: 1,
+      paddingRight: 1,
+      flexShrink: 0,
+    })
+    header.add(new TextRenderable(ctx.renderer, { id: `bench-opencode-diff-patch-name-${index}`, content: filePath }))
+    header.add(new BoxRenderable(ctx.renderer, { id: `bench-opencode-diff-patch-spacer-${index}`, flexGrow: 1 }))
+    header.add(
+      new TextRenderable(ctx.renderer, { id: `bench-opencode-diff-patch-add-${index}`, content: `+${12 + index}` }),
+    )
+    header.add(
+      new TextRenderable(ctx.renderer, {
+        id: `bench-opencode-diff-patch-del-${index}`,
+        content: `-${5 + (index % 9)}`,
+      }),
+    )
+    patchNode.add(header)
+
+    const diff = new DiffRenderable(ctx.renderer, {
+      id: `bench-opencode-diff-renderable-${index}`,
+      diff: createUnifiedDiffPatch(index, 0, 24 + (index % 4) * 8),
+      view: ctx.width > 120 ? "split" : "unified",
+      filetype: "typescript",
+      syntaxStyle,
+      showLineNumbers: true,
+      width: "100%",
+      wrapMode: "char",
+      fg: "#c0caf5",
+      addedBg: "#173b26",
+      removedBg: "#432025",
+      contextBg: "transparent",
+      addedSignColor: "#9ece6a",
+      removedSignColor: "#f7768e",
+      lineNumberFg: "#565f89",
+      addedLineNumberBg: "#12301d",
+      removedLineNumberBg: "#34181d",
+      flexShrink: 0,
+    })
+    patchNode.add(diff)
+    patchScrollBox.add(patchNode)
+    patchNodes.push(patchNode)
+    diffs.push(diff)
+  }
+
+  patchScrollBox.scrollTo(0)
+
+  return {
+    root,
+    patchScrollBox,
+    fileRows,
+    patchNodes,
+    diffs,
+    syntaxStyle,
+    stats: collectRenderableTreeStats(root),
+  }
+}
+
+function collectRenderableTreeStats(root: Renderable): TreeStats {
+  const stats: TreeStats = {
+    renderables: 0,
+    layoutNodes: 0,
+    layoutOnlyBoxes: 0,
+  }
+
+  const visit = (node: Renderable): void => {
+    stats.renderables += 1
+    stats.layoutNodes += 1
+    if (node instanceof BoxRenderable) {
+      stats.layoutOnlyBoxes += 1
+    }
+    for (const child of node.getChildren()) {
+      visit(child)
+    }
+  }
+
+  visit(root)
+  return stats
+}
+
+function createBenchmarkSyntaxStyle(): SyntaxStyle {
+  return SyntaxStyle.fromStyles({
+    default: { fg: "#c0caf5" },
+    conceal: { fg: "#565f89" },
+    markup: { fg: "#7aa2f7" },
+    "markup.heading": { fg: "#7dcfff", bold: true },
+    "markup.strong": { fg: "#e0af68", bold: true },
+    "markup.italic": { fg: "#bb9af7", italic: true },
+    "markup.raw": { fg: "#9ece6a" },
+    "markup.link": { fg: "#7aa2f7", underline: true },
+    "markup.link.label": { fg: "#7dcfff" },
+    "markup.link.url": { fg: "#89ddff" },
+    "markup.quote": { fg: "#9aa5ce", italic: true },
+    keyword: { fg: "#bb9af7", bold: true },
+    string: { fg: "#9ece6a" },
+    comment: { fg: "#565f89", italic: true },
+    number: { fg: "#e0af68" },
+    function: { fg: "#7dcfff" },
+    type: { fg: "#f7768e" },
+    variable: { fg: "#c0caf5" },
+    property: { fg: "#7aa2f7" },
+    punctuation: { fg: "#9aa5ce" },
+  })
+}
+
+function createOpencodeUserPrompt(index: number): string {
+  const target = index % 3 === 0 ? "session view" : index % 3 === 1 ? "diff viewer" : "markdown scrollback"
+  return `User #${index}: Please inspect the ${target}, summarize what changed, and keep enough context for follow-up work. Include file paths, tool output, and a concise next action.`
+}
+
+function createOpencodeSessionMarkdown(index: number, version: number): string {
+  const extraRows = 2 + ((index + version) % 2)
+  const bullets = Array.from(
+    { length: 2 + ((index + version) % 2) },
+    (_, row) =>
+      `- Step ${row + 1}: update \`packages/core/src/renderables/${row % 2 === 0 ? "Markdown" : "ScrollBox"}.ts\` and verify layout pass ${version}.`,
+  ).join("\n")
+  const tableRows = Array.from(
+    { length: extraRows },
+    (_, row) => `| case-${index}-${row} | ${row % 2 === 0 ? "changed" : "stable"} | ${24 + row + version} |`,
+  ).join("\n")
+
+  return `## Assistant turn ${index}.${version}
+
+The session contains a large scrollback, several tool cards, markdown tables, code fences, and wrapped prose. This block intentionally resembles a streamed assistant response inside a sticky-bottom ScrollBox.
+
+${bullets}
+
+> Keep the viewport pinned to the bottom unless the user manually scrolls. The layout should stay stable while content grows.
+
+| Area | State | Lines |
+| --- | --- | --- |
+${tableRows}
+
+\`\`\`ts
+export function updateSessionLayout${index}(pass: number) {
+  const width = Math.max(40, pass + ${index})
+  const visibleRows = Array.from({ length: ${extraRows + 2} }, (_, row) => row + width)
+  return visibleRows.join(",")
+}
+\`\`\`
+
+The final paragraph is long enough to wrap across a typical terminal width, which forces measured text height to change when the content version changes and when the benchmark viewport is resized.`
+}
+
+function createOpencodeDiffToolCard(
+  ctx: BenchmarkContext,
+  syntaxStyle: SyntaxStyle,
+  index: number,
+  version: number,
+): { card: BoxRenderable; diff: DiffRenderable } {
+  const card = new BoxRenderable(ctx.renderer, {
+    id: `bench-opencode-tool-diff-${index}`,
+    width: "100%",
+    flexShrink: 0,
+    border: ["left"],
+    borderColor: COLORS.accent,
+    paddingTop: 1,
+    paddingBottom: 1,
+    paddingLeft: 2,
+    marginTop: 1,
+    gap: 1,
+    backgroundColor: COLORS.panel,
+  })
+  card.add(
+    new TextRenderable(ctx.renderer, {
+      id: `bench-opencode-tool-diff-title-${index}`,
+      content: `# edit ${createDiffFilePath(index)}`,
+      width: "100%",
+    }),
+  )
+  const diff = new DiffRenderable(ctx.renderer, {
+    id: `bench-opencode-tool-diff-renderable-${index}`,
+    diff: createUnifiedDiffPatch(index, version, 18 + (index % 3) * 6),
+    view: ctx.width > 120 ? "split" : "unified",
+    filetype: "typescript",
+    syntaxStyle,
+    showLineNumbers: true,
+    width: "100%",
+    wrapMode: "word",
+    fg: "#c0caf5",
+    addedBg: "#173b26",
+    removedBg: "#432025",
+    contextBg: "transparent",
+    addedSignColor: "#9ece6a",
+    removedSignColor: "#f7768e",
+    lineNumberFg: "#565f89",
+    addedLineNumberBg: "#12301d",
+    removedLineNumberBg: "#34181d",
+    flexShrink: 0,
+  })
+  card.add(diff)
+  return { card, diff }
+}
+
+function createOpencodeTodoToolCard(ctx: BenchmarkContext, index: number): BoxRenderable {
+  const card = new BoxRenderable(ctx.renderer, {
+    id: `bench-opencode-tool-todo-${index}`,
+    width: "100%",
+    flexShrink: 0,
+    border: ["left"],
+    borderColor: COLORS.warning,
+    paddingTop: 1,
+    paddingBottom: 1,
+    paddingLeft: 2,
+    marginTop: 1,
+    gap: 1,
+    backgroundColor: COLORS.panel,
+  })
+  card.add(new TextRenderable(ctx.renderer, { id: `bench-opencode-tool-todo-title-${index}`, content: "# Todos" }))
+  for (let row = 0; row < 5; row += 1) {
+    card.add(
+      new TextRenderable(ctx.renderer, {
+        id: `bench-opencode-tool-todo-row-${index}-${row}`,
+        content: `${row < 2 ? "[x]" : "[ ]"} benchmark realistic layout branch ${index}.${row}`,
+        width: "100%",
+      }),
+    )
+  }
+  return card
+}
+
+function createDiffFilePath(index: number): string {
+  const dirs = [
+    "packages/opencode/src/session",
+    "packages/opencode/src/cli/cmd/tui/routes",
+    "packages/core/src/renderables",
+  ]
+  const names = ["message", "diff-viewer", "scrollbox", "markdown", "tool-output", "session-view"]
+  return `${dirs[index % dirs.length]}/${names[index % names.length]}-${index}.ts`
+}
+
+function createUnifiedDiffPatch(index: number, version: number, lineTarget: number): string {
+  const filePath = createDiffFilePath(index)
+  const body: string[] = []
+  let oldCount = 0
+  let newCount = 0
+
+  for (let line = 0; line < lineTarget; line += 1) {
+    const selector = (line + index + version) % 11
+    if (selector === 0) {
+      body.push(`-  const stale${line} = session.parts[${line}] ?? null`)
+      body.push(`+  const next${line} = session.parts[${line}] ?? { type: "text", version: ${version} }`)
+      oldCount += 1
+      newCount += 1
+      continue
+    }
+    if (selector === 3) {
+      body.push(`+  layout.markDirty("${filePath}:${line}:${version}")`)
+      newCount += 1
+      continue
+    }
+    if (selector === 7) {
+      body.push(`-  cache.delete("${filePath}:${line}")`)
+      oldCount += 1
+      continue
+    }
+
+    body.push(`   const row${line} = renderMessagePart(session, ${line}, viewportWidth)`)
+    oldCount += 1
+    newCount += 1
+  }
+
+  return [
+    `diff --git a/${filePath} b/${filePath}`,
+    `--- a/${filePath}`,
+    `+++ b/${filePath}`,
+    `@@ -1,${oldCount} +1,${newCount} @@`,
+    ...body,
+  ].join("\n")
+}
+
 function trackLayoutBox<T extends BoxRenderable>(stats: TreeStats, box: T): T {
   stats.renderables += 1
   stats.layoutNodes += 1
@@ -2487,7 +3274,7 @@ async function main(): Promise<void> {
 
   const selectedScenarios = args.scenarioNames
     ? scenarios.filter((scenario) => args.scenarioNames!.has(scenario.name))
-    : scenarios
+    : scenarios.filter((scenario) => args.includeRealWorld || scenario.defaultEnabled !== false)
 
   if (selectedScenarios.length === 0) {
     throw new Error("No benchmark scenarios matched the provided --scenario filter")

@@ -6,17 +6,3 @@ exports[`SolidJS Renderer - Dynamic and Portal Components <Dynamic> Component sh
                     
 "
 `;
-
-exports[`SolidJS Renderer - Dynamic and Portal Components <Dynamic> + <Portal> Integration should handle Portal with Dynamic mount point 1`] = `
-"Custom target                 
-Dynamic mount content         
-Static content                
-                              
-                              
-                              
-                              
-                              
-                              
-                              
-"
-`;

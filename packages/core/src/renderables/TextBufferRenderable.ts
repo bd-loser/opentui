@@ -286,9 +286,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       if (value !== "none" && this.width > 0) {
         this.textBufferView.setWrapWidth(this.width)
       }
-      // Changing wrap mode can change dimensions, so mark yoga node dirty to trigger re-measurement
-      this.yogaNode.markDirty()
-      this.requestRender()
+      this.updateTextInfo()
     }
   }
 
@@ -335,9 +333,25 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   protected onResize(width: number, height: number): void {
     this.textBufferView.setViewport(this._scrollX, this._scrollY, width, height)
+    this.syncAutoHeightFromContent()
     this.yogaNode.markDirty()
     this.requestRender()
     this.emit("line-info-change")
+  }
+
+  private syncAutoHeightFromContent(): void {
+    if (this._height !== "auto") return
+    let lineCount = Math.max(1, this.textBufferView.getVirtualLineCount())
+    if (this._firstLineOffset > 0) {
+      const text = this.textBuffer.getPlainText()
+      const firstLineCapacity = Math.max(1, this._ctx.width - this._firstLineOffset)
+      if (text.length > firstLineCapacity) {
+        lineCount = Math.max(lineCount, 1 + Math.ceil((text.length - firstLineCapacity) / Math.max(1, this._ctx.width)))
+      }
+    }
+    if (lineCount !== this.height) {
+      this.yogaNode.setHeight(lineCount)
+    }
   }
 
   protected refreshLocalSelection(): boolean {
@@ -369,6 +383,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     }
 
     this.yogaNode.markDirty()
+    this.syncAutoHeightFromContent()
     this.requestRender()
     this.emit("line-info-change")
   }
@@ -389,12 +404,12 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       // which triggers no-wrap mode and returns iter_mod.getMaxLineWidth()
       let effectiveWidth: number
       if (widthMode === MeasureMode.Undefined || isNaN(width)) {
-        effectiveWidth = 0
+        effectiveWidth = this._firstLineOffset > 0 ? this._ctx.width : 0
       } else {
         effectiveWidth = width
       }
 
-      const effectiveHeight = isNaN(height) ? 1 : height
+      const effectiveHeight = heightMode === MeasureMode.Exactly && !isNaN(height) ? height : 10_000
 
       const measureResult = this.textBufferView.measureForDimensions(
         Math.floor(effectiveWidth),
@@ -407,7 +422,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       if (widthMode === MeasureMode.AtMost && this._positionType !== "absolute") {
         return {
           width: Math.min(effectiveWidth, measuredWidth),
-          height: Math.min(effectiveHeight, measuredHeight),
+          height: measuredHeight,
         }
       }
 

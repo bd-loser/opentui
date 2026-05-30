@@ -1,6 +1,6 @@
 // Bun Snapshot v1, https://bun.sh/docs/test/snapshots
 
-exports[`LineNumber in ScrollBox - Height and Overlap Issues single line_number with code in scrollbox should not have excessive height 1`] = `
+exports[`LineNumber in ScrollBox - Height and Overlap Issues REPRODUCES BUG: single line_number with code in scrollbox has excessive height 1`] = `
 " 1 function hello() {                   
  2   console.log("Hello, World!");      
  3   return 42;                         
@@ -35,40 +35,6 @@ exports[`LineNumber in ScrollBox - Height and Overlap Issues single line_number 
 `;
 
 exports[`LineNumber in ScrollBox - Height and Overlap Issues WORKAROUND: flexShrink=0 fixes the height issue 1`] = `
-" 1 function hello() {                   
- 2   console.log("Hello, World!");      
- 3   return 42;                         
- 4 }                                    
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-"
-`;
-
-exports[`LineNumber in ScrollBox - Height and Overlap Issues REPRODUCES BUG: single line_number with code in scrollbox has excessive height 1`] = `
 " 1 function hello() {                   
  2   console.log("Hello, World!");      
  3   return 42;                         

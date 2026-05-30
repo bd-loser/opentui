@@ -1576,29 +1576,29 @@ Then continue with prose immediately after the code block.
   expect("\n" + lines.join("\n").trimEnd()).toMatchInlineSnapshot(`
     "
     OpenTUI Markdown Demo
-    
+
     Welcome to the MarkdownRenderable showcase! This
     demonstrates automatic table alignment.
-    
+
     Features
-    
+
     - Automatic table column alignment based on content width
     - Proper handling of inline code, bold, and italic in tables
-    
+
     Renderer Stress Cases
-    
+
     Interleaved Code
-    
+
     Start with a short conclusion before any code appears.
-    
+
     export function parse(input: string) {
       return input.trim().split(/\\\\s+/)
     }
-    
+
     Then continue with prose immediately after the code block.
-    
+
     Quote, Table, Diff
-    
+
     │ Quoted note after the list. It should preserve quote
     │ styling.
 
@@ -1609,10 +1609,10 @@ Then continue with prose immediately after the code block.
     ├──────────┼─────────────────────────────┤
     │ Renderer │ wrapping and spacing        │
     └──────────┴─────────────────────────────┘
-    
+
     - const renderer = oldMarkdown
     + const renderer = experimentalMarkdown
-    
+
     ────────────────────────────────────────────────────────────"
   `)
 })

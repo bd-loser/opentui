@@ -15,10 +15,10 @@ exports[`LineNumberRenderable renders line numbers correctly 1`] = `
 `;
 
 exports[`LineNumberRenderable renders line numbers for wrapping text 1`] = `
-" 1 Line 1 is very l 
-   ong and should w 
-   rap around multi 
-   ple lines        
+" 1 Line 1 is very lo
+    and should wrap 
+   ound multiple lin
+                    
                     
                     
                     
@@ -92,33 +92,33 @@ exports[`LineNumberRenderable maintains consistent left padding for all line num
 exports[`LineNumberRenderable maintains stable visual line count when scrolling and typing with word wrap 1`] = `
 "                                   
  ┌───────────────────────────────┐ 
- │     Ctrl+Y to redo            │ 
- │  36                           │ 
- │  37 VIEW:                     │ 
- │  38   • Shift+W to toggle     │ 
- │     wrap mode (word/char/     │ 
- │     none)                     │ 
- │  39   • Shift+L to toggle     │ 
- │     line numbers              │ 
- │  40                           │ 
- │  41 FEATURES:                 │ 
- │  42   ✓ Grapheme-aware        │ 
- │     cursor movement           │ 
- │  43   ✓ Unicode (emoji 🌟     │ 
- │     and CJK 世界, 你好世界,   │ 
- │     中文, 한글)               │ 
- │  44   ✓ Incremental editing   │ 
- │  45   ✓ Text wrapping and     │ 
- │     viewport management       │ 
- │  46   ✓ Undo/redo support     │ 
- │  47   ✓ Word-based            │ 
- │     navigation and deletion   │ 
- │  48   ✓ Text selection with   │ 
- │     shift keys                │ 
- │  49                           │ 
- │  50 Press ESC to return to    │ 
- │     main menu                 │ 
- └───────────────────────────────┘ 
+ │   1 Welcome to the            │ 
+ │     TextareaRenderable Demo!  │ 
+ │   2                           │ 
+ │   3 This is an interactive    │ 
+ │     text editor powered by    │ 
+ │     EditBuffer and            │ 
+ │     EditorView.               │ 
+ │   4                           │ 
+ │   5 → This is a tab           │ 
+ │   6 → → → Multiple tabs       │ 
+ │   7                           │ 
+ │   8 Emojis:                   │ 
+ │   9 👩🏽‍💻  👨‍👩‍👧‍👦  🏳️‍🌈  🇺🇸  🇩🇪  🇯🇵    │ 
+ │     🇮🇳                        │ 
+ │  10                           │ 
+ │  11 NAVIGATION:               │ 
+ │  12   • Arrow keys to move    │ 
+ │     cursor                    │ 
+ │  13   • Home/End for line     │ 
+ │     navigation                │ 
+ │  14   • Ctrl+A/Ctrl+E for     │ 
+ │     buffer start/end          │ 
+ │  15   • Alt+F/Alt+B for       │ 
+ │     word forward/backward     │ 
+ │  16   • Alt+Left/Alt+Right    │ 
+ │     for word forward/         │ 
+ └─────backward──────────────────┘ 
                                    
 "
 `;
@@ -126,33 +126,33 @@ exports[`LineNumberRenderable maintains stable visual line count when scrolling 
 exports[`LineNumberRenderable maintains stable visual line count when scrolling and typing with word wrap 2`] = `
 "                                   
  ┌───────────────────────────────┐ 
- │     Ctrl+Y to redo            │ 
- │  36                           │ 
- │  37 VIEW:                     │ 
- │  38   • Shift+W to toggle     │ 
- │     wrap mode (word/char/     │ 
- │     none)                     │ 
- │  39   • Shift+L to toggle     │ 
- │     line numbers              │ 
- │  40                           │ 
- │  41 FEATURES:                 │ 
- │  42   ✓ Grapheme-aware        │ 
- │     cursor movement           │ 
- │  43   ✓ Unicode (emoji 🌟     │ 
- │     and CJK 世界, 你好世界,   │ 
- │     中文, 한글)               │ 
- │  44   ✓ Incremental editing   │ 
- │  45   ✓ Text wrapping and     │ 
- │     viewport management       │ 
- │  46   ✓ Undo/redo support     │ 
- │  47   ✓ Word-based            │ 
- │     navigation and deletion   │ 
- │  48   ✓ Text selection with   │ 
- │     shift keys                │ 
- │  49 a                         │ 
- │  50 Press ESC to return to    │ 
- │     main menu                 │ 
- └───────────────────────────────┘ 
+ │   1 Welcome to the            │ 
+ │     TextareaRenderable Demo!  │ 
+ │   2                           │ 
+ │   3 This is an interactive    │ 
+ │     text editor powered by    │ 
+ │     EditBuffer and            │ 
+ │     EditorView.               │ 
+ │   4                           │ 
+ │   5 → This is a tab           │ 
+ │   6 → → → Multiple tabs       │ 
+ │   7                           │ 
+ │   8 Emojis:                   │ 
+ │   9 👩🏽‍💻  👨‍👩‍👧‍👦  🏳️‍🌈  🇺🇸  🇩🇪  🇯🇵    │ 
+ │     🇮🇳                        │ 
+ │  10                           │ 
+ │  11 NAVIGATION:               │ 
+ │  12   • Arrow keys to move    │ 
+ │     cursor                    │ 
+ │  13   • Home/End for line     │ 
+ │     navigation                │ 
+ │  14   • Ctrl+A/Ctrl+E for     │ 
+ │     buffer start/end          │ 
+ │  15   • Alt+F/Alt+B for       │ 
+ │     word forward/backward     │ 
+ │  16   • Alt+Left/Alt+Right    │ 
+ │     for word forward/         │ 
+ └─────backward──────────────────┘ 
                                    
 "
 `;

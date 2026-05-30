@@ -261,6 +261,7 @@ const Node = struct {
     measure_callback: ?*const anyopaque = null,
     dirtied_callback: ?*const anyopaque = null,
     dirtied_notified: bool = false,
+    has_measure_subtree: bool = false,
     has_cached_layout: bool = false,
     cached_assigned_width: f32 = nan,
     cached_assigned_height: f32 = nan,
@@ -312,7 +313,7 @@ const JustifyLayout = struct {
     gap: f32,
 };
 
-const STACK_FLEX_ITEMS = 8;
+const STACK_FLEX_ITEMS = 64;
 
 threadlocal var tls_measure_width: f32 = 0;
 threadlocal var tls_measure_height: f32 = 0;
@@ -536,6 +537,7 @@ fn markDirtyFromChild(node: *Node, child: *Node) void {
 
     const was_dirty = node.dirty;
     node.dirty = true;
+    node.has_cached_layout = false;
 
     if (!node.dirtied_notified) {
         if (node.dirtied_callback) |callback| {
@@ -557,6 +559,7 @@ fn markDirtyInternal(node: *Node, style_dirty: bool) void {
     node.dirty = true;
     node.self_dirty = true;
     node.style_dirty = node.style_dirty or style_dirty;
+    node.has_cached_layout = false;
 
     if (!node.dirtied_notified) {
         if (node.dirtied_callback) |callback| {
@@ -586,6 +589,7 @@ fn markDirtyWithoutCallback(node: *Node, style_dirty: bool) void {
     node.dirty = true;
     node.self_dirty = true;
     node.style_dirty = node.style_dirty or style_dirty;
+    node.has_cached_layout = false;
     if (!was_dirty) {
         if (node.parent) |parent| markDirtyFromChild(parent, node);
     }
@@ -628,6 +632,21 @@ fn freeRecursiveInternal(node: *Node) void {
     }
     node.deinit();
     allocator.destroy(node);
+}
+
+fn refreshMeasureSubtreeUpwards(start: *Node) void {
+    var current: ?*Node = start;
+    while (current) |node| {
+        var has_measure = node.measure_callback != null;
+        for (node.children.items) |child| {
+            has_measure = has_measure or child.has_measure_subtree;
+        }
+        if (node.has_measure_subtree == has_measure) {
+            if (node.parent == null) return;
+        }
+        node.has_measure_subtree = has_measure;
+        current = node.parent;
+    }
 }
 
 fn callMeasure(node: *const Node, width: f32, width_mode: MeasureMode, height: f32, height_mode: MeasureMode) Size {
@@ -930,13 +949,57 @@ fn applyFlexDistribution(items: []LineItem, line: FlexLine, is_row: bool, conten
         return;
     }
 
+    if (free < 0 and line.shrink > 0) {
+        var remaining_shrink = line.shrink;
+        while (remaining_shrink > 0) {
+            var used = total_gap;
+            for (items[line.start..line.end]) |item| {
+                const margin_main = if (is_row) item.margin.left + item.margin.right else item.margin.top + item.margin.bottom;
+                const current_target = if (is_row) item.target_width else item.target_height;
+                const main_base = item.flex_base_main;
+                const main_size = if (item.frozen) current_target else main_base;
+                used += main_size + margin_main;
+            }
+
+            free = content_main - used;
+            var froze_any = false;
+            var total_violation: f32 = 0;
+
+            for (items[line.start..line.end]) |*item| {
+                if (item.frozen or item.flex_shrink <= 0) continue;
+                const main_base = item.flex_base_main;
+                const scaled = item.flex_shrink * @max(0, main_base);
+                var proposed = main_base + free * scaled / remaining_shrink;
+                proposed = @max(0, proposed);
+                const clamped = clampFlexMainSize(item.node, proposed, is_row, content_main, direction);
+                if (is_row) item.target_width = clamped else item.target_height = clamped;
+                item.violation = clamped - proposed;
+                total_violation += item.violation;
+            }
+
+            for (items[line.start..line.end]) |*item| {
+                if (item.frozen or item.flex_shrink <= 0) continue;
+                const should_freeze = if (total_violation > 0)
+                    item.violation > 0
+                else if (total_violation < 0)
+                    item.violation < 0
+                else
+                    false;
+                if (should_freeze) {
+                    item.frozen = true;
+                    remaining_shrink -= item.flex_shrink * @max(0, item.flex_base_main);
+                    froze_any = true;
+                }
+            }
+
+            if (!froze_any) break;
+        }
+        return;
+    }
+
     for (items[line.start..line.end]) |*item| {
         const main_base = item.flex_base_main;
         var main = main_base;
-        if (free < 0 and line.shrink > 0 and item.flex_shrink > 0) {
-            const scaled = item.flex_shrink * @max(0, item.outer_main);
-            main += free * scaled / line.shrink;
-        }
         main = @max(0, main);
 
         if (is_row) {
@@ -1004,6 +1067,10 @@ fn nodeBaseline(node: *const Node) f32 {
         return child.layout.top + nodeBaseline(child);
     }
     return node.layout.height;
+}
+
+fn subtreeHasMeasureFunc(node: *const Node) bool {
+    return node.has_measure_subtree;
 }
 
 fn childAlign(parent: *const Node, child: *const Node) Align {
@@ -1355,7 +1422,14 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
                 if (!is_row and !item.has_explicit_width) child_width = stretched;
             }
 
-            if (item.node.has_cached_layout and
+            const relax_auto_cross_measure = subtreeHasMeasureFunc(item.node);
+            const assigned_child_width: ?f32 = if (!is_row and content_width_was_auto and !item.has_explicit_width and relax_auto_cross_measure) null else child_width;
+            const assigned_child_height: ?f32 = if (is_row and content_height_was_auto and !item.has_explicit_height and relax_auto_cross_measure) null else child_height;
+
+            const must_relayout_auto_cross_measure = relax_auto_cross_measure and ((is_row and content_height_was_auto and !item.has_explicit_height) or (!is_row and content_width_was_auto and !item.has_explicit_width));
+
+            if (!must_relayout_auto_cross_measure and
+                item.node.has_cached_layout and
                 (item.node.cached_generation == current_layout_generation or !item.node.dirty) and
                 item.node.layout.width == child_width and
                 item.node.layout.height == child_height)
@@ -1368,7 +1442,9 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
                 item.node.layout.width = child_width;
                 item.node.layout.height = child_height;
             } else {
-                _ = layoutNode(item.node, child_width, child_height, content_width, content_height, direction);
+                const child_owner_width = if (!is_row and content_width_was_auto and !item.has_explicit_width and relax_auto_cross_measure) null else content_width;
+                const child_owner_height = if (is_row and content_height_was_auto and !item.has_explicit_height and relax_auto_cross_measure) null else content_height;
+                _ = layoutNode(item.node, assigned_child_width, assigned_child_height, child_owner_width, child_owner_height, direction);
             }
 
             child_width = item.node.layout.width;
@@ -1455,12 +1531,14 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
             if (final_cross > content_height.?) {
                 content_height = final_cross;
                 height.* = clampDimension(content_height.? + chrome_height, node.style.min_height, node.style.max_height, owner_height);
+                content_height = @max(0, height.* - chrome_height);
             }
             for (active_items) |item| {
                 if (item.node.style.height.unit != .percent) continue;
                 if (nodeOuterHeightFromStyle(item.node, content_width, content_height, direction)) |resolved_height| {
                     item.node.has_cached_layout = false;
-                    _ = layoutNode(item.node, item.node.layout.width, resolved_height, content_width, content_height, direction);
+                    const relayout_width: ?f32 = if (!hasStyleWidth(item.node) and subtreeHasMeasureFunc(item.node)) null else item.node.layout.width;
+                    _ = layoutNode(item.node, relayout_width, resolved_height, content_width, content_height, direction);
                     const available_cross = content_height.? - item.node.layout.height - item.margin.top - item.margin.bottom;
                     const alignment = childAlign(node, item.node);
                     const offset = if (alignment == .center)
@@ -1477,12 +1555,14 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
             if (final_cross > content_width.?) {
                 content_width = final_cross;
                 width.* = clampDimension(content_width.? + chrome_width, node.style.min_width, node.style.max_width, owner_width);
+                content_width = @max(0, width.* - chrome_width);
             }
             for (active_items) |item| {
                 if (item.node.style.width.unit != .percent) continue;
                 if (nodeOuterWidthFromStyle(item.node, content_width, content_height, direction)) |resolved_width| {
                     item.node.has_cached_layout = false;
-                    _ = layoutNode(item.node, resolved_width, item.node.layout.height, content_width, content_height, direction);
+                    const relayout_height: ?f32 = if (!hasStyleHeight(item.node) and subtreeHasMeasureFunc(item.node)) null else item.node.layout.height;
+                    _ = layoutNode(item.node, resolved_width, relayout_height, content_width, content_height, direction);
                     const available_cross = content_width.? - item.node.layout.width - item.margin.left - item.margin.right;
                     const alignment = childAlign(node, item.node);
                     const cross_reversed = direction == .rtl;
@@ -1534,10 +1614,12 @@ fn layoutNode(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_wi
         if (!child.style_dirty and child.has_cached_layout) {
             const old_child_width = child.layout.width;
             const old_child_height = child.layout.height;
+            const child_assigned_width = if (child.measure_callback != null and !hasStyleWidth(child)) null else optionalFromCached(child.cached_assigned_width);
+            const child_assigned_height = if (child.measure_callback != null and !hasStyleHeight(child)) null else optionalFromCached(child.cached_assigned_height);
             const child_size = layoutNode(
                 child,
-                optionalFromCached(child.cached_assigned_width),
-                optionalFromCached(child.cached_assigned_height),
+                child_assigned_width,
+                child_assigned_height,
                 optionalFromCached(child.cached_owner_width),
                 optionalFromCached(child.cached_owner_height),
                 child.cached_direction,
@@ -1732,6 +1814,7 @@ export fn yogaNodeReset(node: *Node) void {
     node.layout = .{};
     node.measure_callback = null;
     node.dirtied_callback = null;
+    node.has_measure_subtree = false;
     node.is_reference_baseline = false;
     node.always_forms_containing_block = false;
     node.has_new_layout = true;
@@ -1750,6 +1833,7 @@ export fn yogaNodeInsertChild(node: *Node, child: *Node, index: u32) void {
     const insert_index = @min(@as(usize, @intCast(index)), node.children.items.len);
     node.children.insert(allocator, insert_index, child) catch @panic("failed to insert Zig Yoga child");
     child.parent = node;
+    refreshMeasureSubtreeUpwards(node);
     markDirty(node);
 }
 
@@ -1758,6 +1842,7 @@ export fn yogaNodeRemoveChild(node: *Node, child: *Node) void {
         if (candidate == child) {
             _ = node.children.orderedRemove(index);
             child.parent = null;
+            refreshMeasureSubtreeUpwards(node);
             markDirty(node);
             return;
         }
@@ -1769,6 +1854,7 @@ export fn yogaNodeRemoveAllChildren(node: *Node) void {
         child.parent = null;
     }
     node.children.clearRetainingCapacity();
+    refreshMeasureSubtreeUpwards(node);
     markDirty(node);
 }
 
@@ -1972,11 +2058,13 @@ export fn yogaNodeStyleGetValue(node: *const Node, kind: u32, edge_or_gutter: u3
 
 export fn yogaNodeSetMeasureFunc(node: *Node, callback: ?*const anyopaque) void {
     node.measure_callback = callback;
+    refreshMeasureSubtreeUpwards(node);
     markDirtyWithoutCallback(node, true);
 }
 
 export fn yogaNodeUnsetMeasureFunc(node: *Node) void {
     node.measure_callback = null;
+    refreshMeasureSubtreeUpwards(node);
     markDirtyWithoutCallback(node, true);
 }
 

@@ -92,7 +92,7 @@ export class TextRenderable extends TextBufferRenderable {
       })
       this.textBuffer.setStyledText(new StyledText(chunks))
       this.refreshLocalSelection()
-      this.yogaNode.markDirty()
+      this.updateTextInfo()
     }
   }
 

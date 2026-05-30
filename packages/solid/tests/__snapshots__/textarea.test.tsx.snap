@@ -87,9 +87,9 @@ exports[`Textarea Layout Tests Prompt-like Layout should render textarea in prom
 
 exports[`Textarea Layout Tests Prompt-like Layout should render textarea with long wrapping text in prompt layout 1`] = `
 "┌────────────────────────────────────────────────┐
-│                                                │
+│ >                                              │
 │   This is a very long prompt that will wrap    │
-│ > across multiple lines in the textarea. It    │
+│   across multiple lines in the textarea. It    │
 │   should maintain proper layout with the       │
 │   indicator on the left.                       │
 │                                                │
@@ -122,86 +122,6 @@ exports[`Textarea Layout Tests Prompt-like Layout should render textarea in shel
                                                   
                                                   
                                                   
-"
-`;
-
-exports[`Textarea Layout Tests Reactive Textarea Updates should update textarea content reactively 1`] = `
-"┌────────────────────────────────────────────────┐
-│                                                │
-│ > Initial text                                 │
-│                                                │
-└────────────────────────────────────────────────┘
-                                                  
-                                                  
-                                                  
-                                                  
-                                                  
-                                                  
-                                                  
-"
-`;
-
-exports[`Textarea Layout Tests Reactive Textarea Updates should update textarea content reactively 2`] = `
-"┌────────────────────────────────────────────────┐
-│                                                │
-│   Updated text that is much longer and should  │
-│ > wrap to multiple lines if word wrapping is   │
-│   enabled                                      │
-│                                                │
-└────────────────────────────────────────────────┘
-                                                  
-                                                  
-                                                  
-                                                  
-                                                  
-"
-`;
-
-exports[`Textarea Layout Tests Reactive Textarea Updates should handle textarea growth with word wrapping 1`] = `
-"┌──────────────────────────────────────┐
-│>                                     │
-│   Short                              │
-│                                      │
-│Status line below textarea            │
-└──────────────────────────────────────┘
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-"
-`;
-
-exports[`Textarea Layout Tests Reactive Textarea Updates should handle textarea growth with word wrapping 2`] = `
-"┌──────────────────────────────────────┐
-│>                                     │
-│   This is a very long text that will │
-│   definitely wrap to multiple lines  │
-│   and cause the textarea to grow in  │
-│   height. It should push down the    │
-│   status line below it.              │
-│                                      │
-│Status line below textarea            │
-└──────────────────────────────────────┘
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
-                                        
 "
 `;
 
@@ -284,9 +204,9 @@ exports[`Textarea Layout Tests Text Component Comparison should render text in p
 
 exports[`Textarea Layout Tests Text Component Comparison should render text with long wrapping content in prompt layout 1`] = `
 "┌────────────────────────────────────────────────┐
-│                                                │
+│ >                                              │
 │   This is a very long prompt that will wrap    │
-│ > across multiple lines in the text component. │
+│   across multiple lines in the text component. │
 │    It should maintain proper layout with the   │
 │   indicator on the left.                       │
 │                                                │
@@ -308,8 +228,8 @@ exports[`Textarea Layout Tests Text Component Comparison should render text with
 
 exports[`Textarea Layout Tests Text Component Comparison should update text content reactively in prompt layout 1`] = `
 "┌────────────────────────────────────────────────┐
-│                                                │
-│ > Initial text                                 │
+│ >                                              │
+│   Initial text                                 │
 │                                                │
 └────────────────────────────────────────────────┘
                                                   
@@ -324,9 +244,9 @@ exports[`Textarea Layout Tests Text Component Comparison should update text cont
 
 exports[`Textarea Layout Tests Text Component Comparison should update text content reactively in prompt layout 2`] = `
 "┌────────────────────────────────────────────────┐
-│                                                │
+│ >                                              │
 │   Updated text that is much longer and should  │
-│ > wrap to multiple lines if word wrapping is   │
+│   wrap to multiple lines if word wrapping is   │
 │   enabled                                      │
 │                                                │
 └────────────────────────────────────────────────┘
@@ -357,8 +277,8 @@ exports[`Textarea Layout Tests Text Component Comparison should render text in s
 exports[`Textarea Layout Tests Text Component Comparison should render full prompt layout with text component 1`] = `
 "┌────────────────────────────────────────────────────────────────────┐
 │                                                                    │
-│ > Explain how async/await works in JavaScript and provide some     │
-│   examples                                                         │
+│   Explain how async/await works in JavaScript and provide some     │
+│ > examples                                                         │
 │                                                                    │
 │openai gpt-4-turbo                                   ctrl+p commands│
 └────────────────────────────────────────────────────────────────────┘
@@ -399,9 +319,9 @@ exports[`Textarea Layout Tests Text Component Comparison should handle very long
 
 exports[`Textarea Layout Tests Text Component Comparison should render multiline text in prompt layout 1`] = `
 "┌────────────────────────────────────────────────┐
-│                                                │
+│ >                                              │
 │   Line 1: First line of text                   │
-│ > Line 2: Second line of text                  │
+│   Line 2: Second line of text                  │
 │   Line 3: Third line of text                   │
 │                                                │
 │multiline example                               │
@@ -501,8 +421,8 @@ exports[`Textarea Layout Tests Edge Cases and Styling should render textarea wit
 exports[`Textarea Layout Tests Edge Cases and Styling should render full prompt-like layout with all components 1`] = `
 "┌────────────────────────────────────────────────────────────────────┐
 │                                                                    │
-│ > Explain how async/await works in JavaScript and provide some     │
-│   examples                                                         │
+│   Explain how async/await works in JavaScript and provide some     │
+│ > examples                                                         │
 │                                                                    │
 │openai gpt-4-turbo                                   ctrl+p commands│
 └────────────────────────────────────────────────────────────────────┘

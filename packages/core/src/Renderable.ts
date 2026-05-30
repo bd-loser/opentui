@@ -1144,6 +1144,13 @@ export abstract class Renderable extends BaseRenderable {
     }
   }
 
+  protected invalidateLayoutFrameCacheRecursive(): void {
+    this._lastLayoutFrame = -1
+    for (const child of this._childrenInLayoutOrder) {
+      child.invalidateLayoutFrameCacheRecursive?.()
+    }
+  }
+
   protected onLayoutResize(width: number, height: number): void {
     if (this._visible) {
       // TODO: Should probably .markDirty()
@@ -1395,10 +1402,12 @@ export abstract class Renderable extends BaseRenderable {
     return this._childrenInLayoutOrder.length
   }
 
-  public updateLayout(deltaTime: number, renderList: RenderCommand[] = []): void {
+  public updateLayout(deltaTime: number, renderList: RenderCommand[] = [], runOnUpdate: boolean = true): void {
     if (!this.visible) return
 
-    this.onUpdate(deltaTime)
+    if (runOnUpdate) {
+      this.onUpdate(deltaTime)
+    }
 
     // If destroyed during onUpdate, don't add to render list
     if (this._isDestroyed) return
@@ -1453,7 +1462,7 @@ export abstract class Renderable extends BaseRenderable {
     // unless a subclass actually performs viewport/style-based child filtering.
     if (!this._hasVisibleChildFilter()) {
       for (const child of this._childrenInZIndexOrder) {
-        child.updateLayout(deltaTime, renderList)
+        child.updateLayout(deltaTime, renderList, runOnUpdate)
       }
     } else {
       // Refresh every child's layout before culling reads their screen
@@ -1468,7 +1477,7 @@ export abstract class Renderable extends BaseRenderable {
       const visibleChildSet = new Set(visibleChildren)
       for (const child of this._childrenInZIndexOrder) {
         if (!visibleChildSet.has(child.num)) continue
-        child.updateLayout(deltaTime, renderList)
+        child.updateLayout(deltaTime, renderList, runOnUpdate)
       }
     }
 
@@ -1811,7 +1820,17 @@ export class RootRenderable extends Renderable {
     if (!canReuseRenderList) {
       this.renderList.length = 0
       super.updateLayout(deltaTime, this.renderList)
-      this.appliedLayoutGeneration = layoutGeneration
+
+      let settlePasses = 0
+      while (this.yogaNode.isDirty() && settlePasses < 3) {
+        this.calculateLayout()
+        this.invalidateLayoutFrameCacheRecursive()
+        this.renderList.length = 0
+        super.updateLayout(deltaTime, this.renderList, false)
+        settlePasses += 1
+      }
+
+      this.appliedLayoutGeneration = getLayoutGeneration(this._ctx)
       this.appliedRenderListRevision = getRenderListRevision(this._ctx)
       this.renderListReusable = this.canReuseCurrentRenderList()
     }

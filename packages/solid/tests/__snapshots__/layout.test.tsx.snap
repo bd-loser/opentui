@@ -65,6 +65,42 @@ exports[`SolidJS Renderer Integration Tests Box Layout Rendering should render a
 "
 `;
 
+exports[`SolidJS Renderer Integration Tests Box Layout Rendering should auto-enable border when borderStyle is set 1`] = `
+"┌──────────────────┐     
+│With Border       │     
+│                  │     
+│                  │     
+└──────────────────┘     
+                         
+                         
+                         
+"
+`;
+
+exports[`SolidJS Renderer Integration Tests Box Layout Rendering should auto-enable border when borderColor is set 1`] = `
+"┌──────────────────┐     
+│Colored Border    │     
+│                  │     
+│                  │     
+└──────────────────┘     
+                         
+                         
+                         
+"
+`;
+
+exports[`SolidJS Renderer Integration Tests Box Layout Rendering should auto-enable border when focusedBorderColor is set 1`] = `
+"┌──────────────────┐     
+│Focused Border    │     
+│                  │     
+│                  │     
+└──────────────────┘     
+                         
+                         
+                         
+"
+`;
+
 exports[`SolidJS Renderer Integration Tests Reactive Updates should handle reactive state changes 1`] = `
 "Counter: 0     
                
@@ -143,7 +179,6 @@ exports[`SolidJS Renderer Integration Tests Complex Layouts should render scroll
 ││                          ││
 │└──────────────────────────┘│
 │                            │
-│                            │
 └────────────────────────────┘
 ┌─spacer─────────────────────┐
 │spacer                      │
@@ -155,6 +190,7 @@ exports[`SolidJS Renderer Integration Tests Complex Layouts should render scroll
 │                            │
 │                            │
 └────────────────────────────┘
+                              
 "
 `;
 
@@ -183,42 +219,5 @@ exports[`SolidJS Renderer Integration Tests Empty and Edge Cases should handle v
 "Hi   
      
      
-"
-`;
-
-exports[`SolidJS Renderer Integration Tests Box Layout Rendering should auto-enable border when borderColor is set 1`] = `
-"┌──────────────────┐     
-│Colored Border    │     
-│                  │     
-│                  │     
-└──────────────────┘     
-                         
-                         
-                         
-"
-`;
-
-exports[`SolidJS Renderer Integration Tests Box Layout Rendering should auto-enable border when focusedBorderColor is set 1`] = `
-"┌──────────────────┐     
-│Focused Border    │     
-│                  │     
-│                  │     
-└──────────────────┘     
-                         
-                         
-                         
-"
-`;
-
-
-exports[`SolidJS Renderer Integration Tests Box Layout Rendering should auto-enable border when borderStyle is set 1`] = `
-"┌──────────────────┐     
-│With Border       │     
-│                  │     
-│                  │     
-└──────────────────┘     
-                         
-                         
-                         
 "
 `;

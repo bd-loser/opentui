@@ -279,6 +279,7 @@ const LineItem = struct {
     node: *Node,
     base_width: f32,
     base_height: f32,
+    flex_base_main: f32,
     target_width: f32,
     target_height: f32,
     margin: Rect,
@@ -293,6 +294,7 @@ const LineItem = struct {
     has_explicit_width: bool,
     has_explicit_height: bool,
     frozen: bool = false,
+    violation: f32 = 0,
 };
 
 const FlexLine = struct {
@@ -709,6 +711,7 @@ fn makeLineItem(node: *Node, container_width: ?f32, container_height: ?f32, is_r
             if (is_row) basis.width = outer_basis else basis.height = outer_basis;
         }
     }
+    const flex_base_main = if (is_row) basis.width else basis.height;
     basis = clampNodeSize(node, basis, container_width, container_height, direction);
     const margin = resolveSpacingRect(&node.style.margin, container_width, direction);
     const has_explicit_width = hasStyleWidth(node);
@@ -723,6 +726,7 @@ fn makeLineItem(node: *Node, container_width: ?f32, container_height: ?f32, is_r
         .node = node,
         .base_width = basis.width,
         .base_height = basis.height,
+        .flex_base_main = flex_base_main,
         .target_width = basis.width,
         .target_height = basis.height,
         .margin = margin,
@@ -828,7 +832,8 @@ fn applyFlexDistribution(items: []LineItem, line: FlexLine, is_row: bool, conten
     var occupied = total_gap;
 
     for (items[line.start..line.end]) |item| {
-        occupied += item.outer_main;
+        const margin_main = if (is_row) item.margin.left + item.margin.right else item.margin.top + item.margin.bottom;
+        occupied += item.flex_base_main + margin_main;
     }
 
     var free = content_main - occupied;
@@ -842,26 +847,37 @@ fn applyFlexDistribution(items: []LineItem, line: FlexLine, is_row: bool, conten
             var used = total_gap;
             for (items[line.start..line.end]) |item| {
                 const margin_main = if (is_row) item.margin.left + item.margin.right else item.margin.top + item.margin.bottom;
-                const main_base = if (is_row) item.base_width else item.base_height;
                 const current_target = if (is_row) item.target_width else item.target_height;
-                const main_size = if (item.frozen) current_target else @max(main_base, current_target);
+                const main_base = item.flex_base_main;
+                const main_size = if (item.frozen) current_target else main_base;
                 used += main_size + margin_main;
             }
 
             free = content_main - used;
             const distributable_free = if (remaining_grow < 1) free * remaining_grow else free;
             var froze_any = false;
+            var total_violation: f32 = 0;
 
             for (items[line.start..line.end]) |*item| {
                 if (item.frozen or item.flex_grow <= 0) continue;
-                const original_base = if (is_row) item.base_width else item.base_height;
-                const current_target = if (is_row) item.target_width else item.target_height;
-                const main_base = @max(original_base, current_target);
+                const main_base = item.flex_base_main;
                 var proposed = main_base + distributable_free * item.flex_grow / remaining_grow;
                 proposed = @max(0, proposed);
                 const clamped = clampFlexMainSize(item.node, proposed, is_row, content_main, direction);
                 if (is_row) item.target_width = clamped else item.target_height = clamped;
-                if (clamped < proposed) {
+                item.violation = clamped - proposed;
+                total_violation += item.violation;
+            }
+
+            for (items[line.start..line.end]) |*item| {
+                if (item.frozen or item.flex_grow <= 0) continue;
+                const should_freeze = if (total_violation > 0)
+                    item.violation > 0
+                else if (total_violation < 0)
+                    item.violation < 0
+                else
+                    false;
+                if (should_freeze) {
                     item.frozen = true;
                     remaining_grow -= item.flex_grow;
                     froze_any = true;
@@ -900,7 +916,7 @@ fn applyFlexDistribution(items: []LineItem, line: FlexLine, is_row: bool, conten
     }
 
     for (items[line.start..line.end]) |*item| {
-        const main_base = if (is_row) item.base_width else item.base_height;
+        const main_base = item.flex_base_main;
         var main = main_base;
         if (free < 0 and line.shrink > 0 and item.flex_shrink > 0) {
             const scaled = item.flex_shrink * @max(0, item.outer_main);
@@ -996,9 +1012,9 @@ fn setChildLayout(parent: *Node, child: *Node, x: f32, y: f32, width: f32, heigh
     _ = parent;
 }
 
-fn layoutAbsoluteChild(parent: *Node, child: *Node, content_width: f32, content_height: f32, origin_x: f32, origin_y: f32, direction: Direction) void {
-    const containing_width = if (parent.containing_width > 0) parent.containing_width else content_width;
-    const containing_height = if (parent.containing_height > 0) parent.containing_height else content_height;
+fn layoutAbsoluteChild(containing_node: *Node, parent: *Node, child: *Node, content_width: f32, content_height: f32, origin_x: f32, origin_y: f32, direction: Direction) void {
+    const containing_width = if (containing_node.containing_width > 0) containing_node.containing_width else content_width;
+    const containing_height = if (containing_node.containing_height > 0) containing_node.containing_height else content_height;
     var size = baseSize(child, containing_width, containing_height, direction);
     const margin = resolveSpacingRect(&child.style.margin, containing_width, direction);
     const position = resolveRect(&child.style.position, containing_width, containing_height, direction);
@@ -1047,29 +1063,34 @@ fn layoutAbsoluteChild(parent: *Node, child: *Node, content_width: f32, content_
         y = origin_y + containing_height - size.height - margin.bottom - bottom_value.?;
     }
 
-    if (parent.style.position_type == .static) {
-        var static_parent: ?*Node = parent;
-        while (static_parent) |current| {
-            if (current.style.position_type != .static) break;
-            x -= current.layout.left;
-            y -= current.layout.top;
-            static_parent = current.parent;
-        }
-    }
-
     _ = layoutNode(child, size.width, size.height, containing_width, containing_height, direction);
     setChildLayout(parent, child, x, y, child.layout.width, child.layout.height, containing_width, containing_height);
 }
 
-fn layoutAbsoluteChildren(node: *Node, content_width: f32, content_height: f32, origin_x: f32, origin_y: f32, direction: Direction) void {
-    for (node.children.items) |child| {
+fn hasHorizontalInsets(node: *const Node, direction: Direction) bool {
+    return isDefined(edgeValue(&node.style.position, .left, direction)) or isDefined(edgeValue(&node.style.position, .right, direction));
+}
+
+fn hasVerticalInsets(node: *const Node, direction: Direction) bool {
+    return isDefined(edgeValue(&node.style.position, .top, direction)) or isDefined(edgeValue(&node.style.position, .bottom, direction));
+}
+
+fn layoutAbsoluteDescendants(containing_node: *Node, current_node: *Node, offset_x: f32, offset_y: f32, content_width: f32, content_height: f32, direction: Direction) void {
+    const origin_x = containing_node.layout.border.left;
+    const origin_y = containing_node.layout.border.top;
+
+    for (current_node.children.items) |child| {
         if (child.style.display == .none) continue;
         if (child.style.display == .contents) {
             child.layout = .{};
             continue;
         }
         if (child.style.position_type == .absolute) {
-            layoutAbsoluteChild(node, child, content_width, content_height, origin_x, origin_y, direction);
+            layoutAbsoluteChild(containing_node, current_node, child, content_width, content_height, origin_x, origin_y, direction);
+            if (hasHorizontalInsets(child, direction)) child.layout.left -= offset_x;
+            if (hasVerticalInsets(child, direction)) child.layout.top -= offset_y;
+        } else if (child.style.position_type == .static and !child.always_forms_containing_block) {
+            layoutAbsoluteDescendants(containing_node, child, offset_x + child.layout.left, offset_y + child.layout.top, content_width, content_height, direction);
         }
     }
 }
@@ -1106,7 +1127,9 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
         width.* = clampDimension(content_width.? + chrome_width, node.style.min_width, node.style.max_width, owner_width);
         height.* = clampDimension(content_height.? + chrome_height, node.style.min_height, node.style.max_height, owner_height);
         updateContainingBlock(node, width.*, height.*);
-        layoutAbsoluteChildren(node, content_width.?, content_height.?, node.layout.border.left, node.layout.border.top, direction);
+        if (node.style.position_type != .static or node.parent == null) {
+            layoutAbsoluteDescendants(node, node, 0, 0, content_width.?, content_height.?, direction);
+        }
         return;
     }
 
@@ -1357,10 +1380,6 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
 
             applyRelativePosition(item.node, &x, &y, content_width.?, content_height.?, direction);
             setChildLayout(node, item.node, x, y, item.node.layout.width, item.node.layout.height, content_width.?, content_height.?);
-            const child_content_width = @max(0, item.node.layout.width - rectHorizontal(item.node.layout.padding) - rectHorizontal(item.node.layout.border));
-            const child_content_height = @max(0, item.node.layout.height - rectVertical(item.node.layout.padding) - rectVertical(item.node.layout.border));
-            layoutAbsoluteChildren(item.node, child_content_width, child_content_height, item.node.layout.border.left, item.node.layout.border.top, direction);
-
             const item_main = if (is_row) item.node.layout.width else item.node.layout.height;
             const margin_main = if (is_row) item.margin.left + item.margin.right else item.margin.top + item.margin.bottom;
             main_cursor += item_main + margin_main + justify.gap;
@@ -1369,7 +1388,9 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
         cross_cursor += line_cross + distributed_cross_gap;
     }
 
-    layoutAbsoluteChildren(node, content_width.?, content_height.?, node.layout.border.left, node.layout.border.top, direction);
+    if (node.style.position_type != .static or node.parent == null) {
+        layoutAbsoluteDescendants(node, node, 0, 0, content_width.?, content_height.?, direction);
+    }
 }
 
 fn layoutNode(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_width: ?f32, owner_height: ?f32, direction: Direction) Size {

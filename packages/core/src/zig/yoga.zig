@@ -4,7 +4,7 @@ const root_module = @import("root");
 const allocator = if (@hasDecl(root_module, "globalAllocator")) root_module.globalAllocator else std.testing.allocator;
 const nan = std.math.nan(f32);
 
-const YogaEnumKind = enum(u32) {
+pub const YogaEnumKind = enum(u32) {
     direction = 0,
     flex_direction = 1,
     justify_content = 2,
@@ -18,14 +18,14 @@ const YogaEnumKind = enum(u32) {
     box_sizing = 10,
 };
 
-const YogaFloatKind = enum(u32) {
+pub const YogaFloatKind = enum(u32) {
     flex = 0,
     flex_grow = 1,
     flex_shrink = 2,
     aspect_ratio = 3,
 };
 
-const YogaValueKind = enum(u32) {
+pub const YogaValueKind = enum(u32) {
     width = 0,
     height = 1,
     min_width = 2,
@@ -39,26 +39,26 @@ const YogaValueKind = enum(u32) {
     gap = 10,
 };
 
-const YogaEdgeLayoutKind = enum(u32) {
+pub const YogaEdgeLayoutKind = enum(u32) {
     margin = 0,
     padding = 1,
     border = 2,
 };
 
-const Direction = enum(u32) {
+pub const Direction = enum(u32) {
     inherit = 0,
     ltr = 1,
     rtl = 2,
 };
 
-const FlexDirection = enum(u32) {
+pub const FlexDirection = enum(u32) {
     column = 0,
     column_reverse = 1,
     row = 2,
     row_reverse = 3,
 };
 
-const Justify = enum(u32) {
+pub const Justify = enum(u32) {
     flex_start = 0,
     center = 1,
     flex_end = 2,
@@ -67,7 +67,7 @@ const Justify = enum(u32) {
     space_evenly = 5,
 };
 
-const Align = enum(u32) {
+pub const Align = enum(u32) {
     auto = 0,
     flex_start = 1,
     center = 2,
@@ -79,43 +79,43 @@ const Align = enum(u32) {
     space_evenly = 8,
 };
 
-const PositionType = enum(u32) {
+pub const PositionType = enum(u32) {
     static = 0,
     relative = 1,
     absolute = 2,
 };
 
-const Wrap = enum(u32) {
+pub const Wrap = enum(u32) {
     no_wrap = 0,
     wrap = 1,
     wrap_reverse = 2,
 };
 
-const Overflow = enum(u32) {
+pub const Overflow = enum(u32) {
     visible = 0,
     hidden = 1,
     scroll = 2,
 };
 
-const Display = enum(u32) {
+pub const Display = enum(u32) {
     flex = 0,
     none = 1,
     contents = 2,
 };
 
-const BoxSizing = enum(u32) {
+pub const BoxSizing = enum(u32) {
     border_box = 0,
     content_box = 1,
 };
 
-const Unit = enum(u32) {
+pub const Unit = enum(u32) {
     undefined = 0,
     point = 1,
     percent = 2,
     auto = 3,
 };
 
-const Edge = enum(u32) {
+pub const Edge = enum(u32) {
     left = 0,
     top = 1,
     right = 2,
@@ -127,13 +127,13 @@ const Edge = enum(u32) {
     all = 8,
 };
 
-const Gutter = enum(u32) {
+pub const Gutter = enum(u32) {
     column = 0,
     row = 1,
     all = 2,
 };
 
-const MeasureMode = enum(u32) {
+pub const MeasureMode = enum(u32) {
     undefined = 0,
     exactly = 1,
     at_most = 2,
@@ -829,7 +829,6 @@ fn baseSize(node: *Node, owner_width: ?f32, owner_height: ?f32, direction: Direc
 
     var width = nodeOuterWidthFromStyle(node, owner_width, owner_height, direction);
     var height = nodeOuterHeightFromStyle(node, owner_width, owner_height, direction);
-
 
     if (node.measure_callback != null) {
         if (nonNan(node.style.flex_grow, 0) > 0 and nonNan(node.style.flex_shrink, 0) > 0 and width == null and height == null) {
@@ -1599,17 +1598,17 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
                 stretch_line_extra = free_cross / @as(f32, @floatFromInt(lines.len));
             },
             .space_between => if (free_cross > 0 and lines.len > 1) {
-                    distributed_cross_gap += free_cross / @as(f32, @floatFromInt(lines.len - 1));
+                distributed_cross_gap += free_cross / @as(f32, @floatFromInt(lines.len - 1));
             },
             .space_around => if (free_cross > 0) {
-                    const space = free_cross / @as(f32, @floatFromInt(lines.len));
-                    cross_cursor = space / 2;
-                    distributed_cross_gap += space;
+                const space = free_cross / @as(f32, @floatFromInt(lines.len));
+                cross_cursor = space / 2;
+                distributed_cross_gap += space;
             },
             .space_evenly => if (free_cross > 0) {
-                    const space = free_cross / @as(f32, @floatFromInt(lines.len + 1));
-                    cross_cursor = space;
-                    distributed_cross_gap += space;
+                const space = free_cross / @as(f32, @floatFromInt(lines.len + 1));
+                cross_cursor = space;
+                distributed_cross_gap += space;
             },
         }
     }
@@ -1918,7 +1917,6 @@ fn layoutNode(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_wi
     var width = assigned_width orelse nodeOuterWidthFromStyle(node, owner_width, owner_height, direction) orelse nan;
     var height = assigned_height orelse nodeOuterHeightFromStyle(node, owner_width, owner_height, direction) orelse nan;
 
-
     if (std.math.isNan(width)) {
         const min_width = outerDimensionFromStyle(node, node.style.min_width, owner_width, owner_width, owner_height, direction, true);
         const max_width = outerDimensionFromStyle(node, node.style.max_width, owner_width, owner_width, owner_height, direction, true);
@@ -2071,13 +2069,13 @@ fn roundChangedLayoutRecursive(node: *Node, parent_abs_left: f32, parent_abs_top
     node.has_round_subtree = false;
 }
 
-export fn yogaConfigCreate() *Config {
+pub export fn yogaConfigCreate() *Config {
     const config = allocator.create(Config) catch @panic("failed to allocate Zig Yoga config");
     config.* = .{};
     return config;
 }
 
-export fn yogaConfigFree(config: *Config) void {
+pub export fn yogaConfigFree(config: *Config) void {
     allocator.destroy(config);
 }
 
@@ -2115,13 +2113,13 @@ export fn yogaConfigIsExperimentalFeatureEnabled(config: *const Config, feature:
     return (config.experimental_features & bit) != 0;
 }
 
-export fn yogaNodeCreate() *Node {
+pub export fn yogaNodeCreate() *Node {
     const node = allocator.create(Node) catch @panic("failed to allocate Zig Yoga node");
     node.* = .{};
     return node;
 }
 
-export fn yogaNodeCreateWithConfig(config: *const Config) *Node {
+pub export fn yogaNodeCreateWithConfig(config: *const Config) *Node {
     const node = yogaNodeCreate();
     node.config = config;
     if (config.use_web_defaults) {
@@ -2130,7 +2128,7 @@ export fn yogaNodeCreateWithConfig(config: *const Config) *Node {
     return node;
 }
 
-export fn yogaNodeFree(node: *Node) void {
+pub export fn yogaNodeFree(node: *Node) void {
     if (node.parent) |parent| {
         yogaNodeRemoveChild(parent, node);
     }
@@ -2138,7 +2136,7 @@ export fn yogaNodeFree(node: *Node) void {
     allocator.destroy(node);
 }
 
-export fn yogaNodeFreeRecursive(node: *Node) void {
+pub export fn yogaNodeFreeRecursive(node: *Node) void {
     if (node.parent) |parent| {
         yogaNodeRemoveChild(parent, node);
     }
@@ -2165,7 +2163,7 @@ export fn yogaNodeCopyStyle(dst_node: *Node, src_node: *const Node) void {
     markDirty(dst_node);
 }
 
-export fn yogaNodeInsertChild(node: *Node, child: *Node, index: u32) void {
+pub export fn yogaNodeInsertChild(node: *Node, child: *Node, index: u32) void {
     if (child.parent) |parent| {
         yogaNodeRemoveChild(parent, child);
     }
@@ -2214,7 +2212,7 @@ export fn yogaNodeGetParent(node: *Node) ?*Node {
     return node.parent;
 }
 
-export fn yogaNodeCalculateLayout(node: *Node, width: f32, height: f32, direction: u32) void {
+pub export fn yogaNodeCalculateLayout(node: *Node, width: f32, height: f32, direction: u32) void {
     current_layout_generation +%= 1;
     if (current_layout_generation == 0) current_layout_generation = 1;
 
@@ -2268,7 +2266,7 @@ export fn yogaNodeGetAlwaysFormsContainingBlock(node: *const Node) bool {
     return node.always_forms_containing_block;
 }
 
-export fn yogaNodeGetComputedLayout(node: *const Node, out_ptr: *ExternalYogaLayout) void {
+pub export fn yogaNodeGetComputedLayout(node: *const Node, out_ptr: *ExternalYogaLayout) void {
     out_ptr.* = .{
         .left = node.layout.left,
         .top = node.layout.top,
@@ -2297,7 +2295,7 @@ export fn yogaNodeLayoutGetEdge(node: *const Node, kind: u32, edge: u32) f32 {
     };
 }
 
-export fn yogaNodeStyleSetEnum(node: *Node, kind: u32, value: u32) void {
+pub export fn yogaNodeStyleSetEnum(node: *Node, kind: u32, value: u32) void {
     var changed = false;
     switch (@as(YogaEnumKind, @enumFromInt(kind))) {
         .direction => {
@@ -2376,7 +2374,7 @@ export fn yogaNodeStyleGetEnum(node: *const Node, kind: u32) u32 {
     };
 }
 
-export fn yogaNodeStyleSetFloat(node: *Node, kind: u32, value: f32) void {
+pub export fn yogaNodeStyleSetFloat(node: *Node, kind: u32, value: f32) void {
     var changed = false;
     switch (@as(YogaFloatKind, @enumFromInt(kind))) {
         .flex => {
@@ -2418,7 +2416,7 @@ export fn yogaNodeStyleGetBorder(node: *const Node, edge: u32) f32 {
     return node.style.border[edge];
 }
 
-export fn yogaNodeStyleSetValue(node: *Node, kind: u32, edge_or_gutter: u32, unit: u32, value: f32) void {
+pub export fn yogaNodeStyleSetValue(node: *Node, kind: u32, edge_or_gutter: u32, unit: u32, value: f32) void {
     const style_value = switch (@as(Unit, @enumFromInt(unit))) {
         .undefined => StyleValue.undef(),
         .point => StyleValue.point(value),
@@ -2446,7 +2444,7 @@ export fn yogaNodeStyleSetValue(node: *Node, kind: u32, edge_or_gutter: u32, uni
     markDirty(node);
 }
 
-export fn yogaNodeStyleGetValue(node: *const Node, kind: u32, edge_or_gutter: u32) u64 {
+pub export fn yogaNodeStyleGetValue(node: *const Node, kind: u32, edge_or_gutter: u32) u64 {
     const value = switch (@as(YogaValueKind, @enumFromInt(kind))) {
         .width => node.style.width,
         .height => node.style.height,
@@ -2463,7 +2461,7 @@ export fn yogaNodeStyleGetValue(node: *const Node, kind: u32, edge_or_gutter: u3
     return packValue(value);
 }
 
-export fn yogaNodeSetMeasureFunc(node: *Node, callback: ?*const anyopaque) void {
+pub export fn yogaNodeSetMeasureFunc(node: *Node, callback: ?*const anyopaque) void {
     node.measure_callback = callback;
     refreshMeasureSubtreeUpwards(node);
     markDirtyWithoutCallback(node, true);
@@ -2475,11 +2473,11 @@ export fn yogaNodeUnsetMeasureFunc(node: *Node) void {
     markDirtyWithoutCallback(node, true);
 }
 
-export fn yogaNodeHasMeasureFunc(node: *const Node) bool {
+pub export fn yogaNodeHasMeasureFunc(node: *const Node) bool {
     return node.measure_callback != null;
 }
 
-export fn yogaNodeSetDirtiedFunc(node: *Node, callback: ?*const anyopaque) void {
+pub export fn yogaNodeSetDirtiedFunc(node: *Node, callback: ?*const anyopaque) void {
     node.dirtied_callback = callback;
 }
 
@@ -2490,50 +2488,4 @@ export fn yogaNodeUnsetDirtiedFunc(node: *Node) void {
 export fn yogaStoreMeasureResult(width: f32, height: f32) void {
     tls_measure_width = width;
     tls_measure_height = height;
-}
-
-test "Zig Yoga computes basic flex layout" {
-    const config = yogaConfigCreate();
-    defer yogaConfigFree(config);
-
-    const root = yogaNodeCreateWithConfig(config);
-    defer yogaNodeFreeRecursive(root);
-
-    yogaNodeStyleSetEnum(root, @intFromEnum(YogaEnumKind.flex_direction), enumValue(FlexDirection.row));
-    yogaNodeStyleSetValue(root, @intFromEnum(YogaValueKind.width), 0, @intFromEnum(Unit.point), 100);
-    yogaNodeStyleSetValue(root, @intFromEnum(YogaValueKind.height), 0, @intFromEnum(Unit.point), 100);
-
-    const child = yogaNodeCreateWithConfig(config);
-    yogaNodeStyleSetFloat(child, @intFromEnum(YogaFloatKind.flex_grow), 1);
-    yogaNodeInsertChild(root, child, 0);
-
-    yogaNodeCalculateLayout(root, nan, nan, enumValue(Direction.ltr));
-
-    var layout: ExternalYogaLayout = undefined;
-    yogaNodeGetComputedLayout(child, &layout);
-    try std.testing.expectApproxEqAbs(@as(f32, 100), layout.width, 0.001);
-    try std.testing.expectApproxEqAbs(@as(f32, 100), layout.height, 0.001);
-}
-
-test "Zig Yoga packs style values" {
-    const node = yogaNodeCreate();
-    defer yogaNodeFree(node);
-
-    yogaNodeStyleSetValue(node, @intFromEnum(YogaValueKind.flex_basis), 0, @intFromEnum(Unit.point), 10);
-    const packed_value = yogaNodeStyleGetValue(node, @intFromEnum(YogaValueKind.flex_basis), 0);
-    const unit: u32 = @intCast(packed_value & 0xffffffff);
-    const value_bits: u32 = @intCast((packed_value >> 32) & 0xffffffff);
-    const value: f32 = @bitCast(value_bits);
-
-    try std.testing.expectEqual(@as(u32, @intFromEnum(Unit.point)), unit);
-    try std.testing.expectApproxEqAbs(@as(f32, 10), value, 0.001);
-}
-
-test "Zig Yoga stores dirtied callback alongside measure callback" {
-    const node = yogaNodeCreate();
-    defer yogaNodeFree(node);
-
-    yogaNodeSetMeasureFunc(node, null);
-    yogaNodeSetDirtiedFunc(node, null);
-    try std.testing.expect(!yogaNodeHasMeasureFunc(node));
 }

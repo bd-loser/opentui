@@ -1925,7 +1925,7 @@ test("justify_content_overflow_row_space_evenly", () => {
     config.free()
   }
 })
-test.skip("justify_content_overflow_row_reverse_space_around", () => {
+test("justify_content_overflow_row_reverse_space_around", () => {
   const config = Yoga.Config.create()
   let root
 
@@ -1999,7 +1999,7 @@ test.skip("justify_content_overflow_row_reverse_space_around", () => {
     config.free()
   }
 })
-test.skip("justify_content_overflow_row_reverse_space_evenly", () => {
+test("justify_content_overflow_row_reverse_space_evenly", () => {
   const config = Yoga.Config.create()
   let root
 

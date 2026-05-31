@@ -3193,7 +3193,7 @@ test("row_gap_percent_wrapping_with_mixed_flexible_content", () => {
     config.free()
   }
 })
-test.skip("row_gap_percent_wrapping_with_min_width", () => {
+test("row_gap_percent_wrapping_with_min_width", () => {
   const config = Yoga.Config.create()
   let root
 

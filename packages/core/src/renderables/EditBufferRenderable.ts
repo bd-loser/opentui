@@ -160,9 +160,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
     this.setupMeasureFunc()
     this.setupEventListeners(options)
-    this.onLifecyclePass = () => {
-      this.syncAutoHeightFromContent()
-    }
   }
 
   public get lineInfo(): LineInfo {
@@ -184,7 +181,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
     })
 
     this.editBuffer.on("content-changed", () => {
-      this.syncAutoHeightFromContent()
       this.yogaNode.markDirty()
       this.requestRender()
       this.emit("line-info-change")
@@ -451,21 +447,9 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
 
   protected onResize(width: number, height: number): void {
     this.editorView.setViewportSize(width, height)
-    this.syncAutoHeightFromContent()
-  }
-
-  private syncAutoHeightFromContent(): void {
-    if (this._height !== "auto") return
-    const lineCount = Math.max(
-      1,
-      this.editorView.getTotalVirtualLineCount(),
-      this.editBuffer.getLineCount(),
-      this.editBuffer.getText().split("\n").length,
-    )
-    if (lineCount !== this.height) {
-      this.yogaNode.setHeight(lineCount)
-      this.requestRender()
-    }
+    this.yogaNode.markDirty()
+    this.requestRender()
+    this.emit("line-info-change")
   }
 
   protected refreshLocalSelection(): boolean {
@@ -1131,7 +1115,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
    */
   public setText(text: string): void {
     this.editBuffer.setText(text)
-    this.syncAutoHeightFromContent()
     this.yogaNode.markDirty()
     this.requestRender()
   }
@@ -1142,7 +1125,6 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
    */
   public replaceText(text: string): void {
     this.editBuffer.replaceText(text)
-    this.syncAutoHeightFromContent()
     this.yogaNode.markDirty()
     this.requestRender()
   }
@@ -1150,14 +1132,12 @@ export abstract class EditBufferRenderable extends Renderable implements LineInf
   public clear(): void {
     this.editBuffer.clear()
     this.editBuffer.clearAllHighlights()
-    this.syncAutoHeightFromContent()
     this.yogaNode.markDirty()
     this.requestRender()
   }
 
   public deleteRange(startLine: number, startCol: number, endLine: number, endCol: number): void {
     this.editBuffer.deleteRange(startLine, startCol, endLine, endCol)
-    this.syncAutoHeightFromContent()
     this.yogaNode.markDirty()
     this.requestRender()
   }

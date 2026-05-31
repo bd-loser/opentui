@@ -948,8 +948,8 @@ export class Node {
   }
 
   private setFloat(kind: number, value: number | undefined): void {
-    if (this.freed || value === undefined) return
-    lib().yogaNodeStyleSetFloat(this.ptr, kind, value)
+    if (this.freed) return
+    lib().yogaNodeStyleSetFloat(this.ptr, kind, value ?? NaN)
   }
 
   private getFloat(kind: number): number {
@@ -960,7 +960,6 @@ export class Node {
   private setValue(kind: number, edgeOrGutter: number, valueInput: ValueInput): void {
     if (this.freed) return
     const value = parseValue(valueInput)
-    if (value.unit === Unit.Undefined) return
     lib().yogaNodeStyleSetValue(this.ptr, kind, edgeOrGutter, value.unit, value.value)
   }
 

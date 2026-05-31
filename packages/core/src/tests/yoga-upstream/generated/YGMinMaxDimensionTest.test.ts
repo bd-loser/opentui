@@ -119,7 +119,7 @@ test("max_height", () => {
     config.free()
   }
 })
-test.skip("min_height", () => {
+test("min_height", () => {
   const config = Yoga.Config.create()
   let root
 
@@ -178,7 +178,7 @@ test.skip("min_height", () => {
     config.free()
   }
 })
-test.skip("min_width", () => {
+test("min_width", () => {
   const config = Yoga.Config.create()
   let root
 

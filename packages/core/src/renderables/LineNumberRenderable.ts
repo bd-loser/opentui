@@ -363,7 +363,10 @@ export class LineNumberRenderable extends Renderable {
   private _isDestroying: boolean = false
   private handleLineInfoChange = (): void => {
     // When line info changes in the target, remeasure the gutter
-    this.gutter?.remeasure()
+    if (this.gutter && this.target) {
+      this.gutter.height = Math.min(this.target.height, this.target.virtualLineCount)
+      this.gutter.remeasure()
+    }
     this.requestRender()
   }
 
@@ -441,6 +444,7 @@ export class LineNumberRenderable extends Renderable {
     }
 
     this.target = target
+    this.target.flexGrow = 1
 
     // Listen for line info changes from target
     this.target.on("line-info-change", this.handleLineInfoChange)
@@ -462,6 +466,7 @@ export class LineNumberRenderable extends Renderable {
 
     super.add(this.gutter)
     super.add(this.target)
+    this.gutter.height = Math.min(this.target.height, this.target.virtualLineCount)
   }
 
   // Override add to intercept and set as target if it's a LineInfoProvider

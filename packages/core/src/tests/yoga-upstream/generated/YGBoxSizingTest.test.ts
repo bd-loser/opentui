@@ -2277,7 +2277,7 @@ test("box_sizing_border_box_nested_alternating", () => {
     config.free()
   }
 })
-test.skip("box_sizing_content_box_flex_basis_row", () => {
+test("box_sizing_content_box_flex_basis_row", () => {
   const config = Yoga.Config.create()
   let root
 
@@ -2386,7 +2386,7 @@ test("box_sizing_border_box_flex_basis_row", () => {
     config.free()
   }
 })
-test.skip("box_sizing_content_box_flex_basis_column", () => {
+test("box_sizing_content_box_flex_basis_column", () => {
   const config = Yoga.Config.create()
   let root
 

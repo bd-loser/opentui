@@ -1326,7 +1326,7 @@ test("align_baseline_multiline", () => {
     config.free()
   }
 })
-test.skip("align_baseline_multiline_column", () => {
+test("align_baseline_multiline_column", () => {
   const config = Yoga.Config.create()
   let root
 
@@ -1448,7 +1448,7 @@ test.skip("align_baseline_multiline_column", () => {
     config.free()
   }
 })
-test.skip("align_baseline_multiline_column2", () => {
+test("align_baseline_multiline_column2", () => {
   const config = Yoga.Config.create()
   let root
 

@@ -2692,7 +2692,7 @@ test("flex_direction_col_reverse_inner_pos_bottom", () => {
     config.free()
   }
 })
-test.skip("flex_direction_row_reverse_inner_pos_start", () => {
+test("flex_direction_row_reverse_inner_pos_start", () => {
   const config = Yoga.Config.create()
   let root
 
@@ -2783,7 +2783,7 @@ test.skip("flex_direction_row_reverse_inner_pos_start", () => {
     config.free()
   }
 })
-test.skip("flex_direction_row_reverse_inner_pos_end", () => {
+test("flex_direction_row_reverse_inner_pos_end", () => {
   const config = Yoga.Config.create()
   let root
 

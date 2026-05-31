@@ -341,14 +341,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   private syncAutoHeightFromContent(): void {
     if (this._height !== "auto") return
-    let lineCount = Math.max(1, this.textBufferView.getVirtualLineCount())
-    if (this._firstLineOffset > 0) {
-      const text = this.textBuffer.getPlainText()
-      const firstLineCapacity = Math.max(1, this._ctx.width - this._firstLineOffset)
-      if (text.length > firstLineCapacity) {
-        lineCount = Math.max(lineCount, 1 + Math.ceil((text.length - firstLineCapacity) / Math.max(1, this._ctx.width)))
-      }
-    }
+    const lineCount = Math.max(1, this.textBufferView.getVirtualLineCount())
     if (lineCount !== this.height) {
       this.yogaNode.setHeight(lineCount)
     }

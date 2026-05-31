@@ -213,3 +213,57 @@ test "Zig Yoga incremental column layout handles column reverse" {
     try std.testing.expectApproxEqAbs(@as(f32, 86), first_layout.top, 0.001);
     try std.testing.expectApproxEqAbs(@as(f32, 81), second_layout.top, 0.001);
 }
+
+test "Zig Yoga recomputes batched column style changes" {
+    const root = yoga.yogaNodeCreate();
+    defer yoga.yogaNodeFreeRecursive(root);
+
+    yoga.yogaNodeStyleSetValue(root, @intFromEnum(yoga.YogaValueKind.width), 0, @intFromEnum(yoga.Unit.point), 100);
+
+    const child = yoga.yogaNodeCreate();
+    yoga.yogaNodeStyleSetValue(child, @intFromEnum(yoga.YogaValueKind.width), 0, @intFromEnum(yoga.Unit.point), 20);
+    yoga.yogaNodeStyleSetValue(child, @intFromEnum(yoga.YogaValueKind.height), 0, @intFromEnum(yoga.Unit.point), 10);
+    yoga.yogaNodeInsertChild(root, child, 0);
+
+    yoga.yogaNodeCalculateLayout(root, nan, nan, @intFromEnum(yoga.Direction.ltr));
+    yoga.yogaNodeStyleSetValue(root, @intFromEnum(yoga.YogaValueKind.padding), @intFromEnum(yoga.Edge.top), @intFromEnum(yoga.Unit.point), 5);
+    yoga.yogaNodeStyleSetEnum(root, @intFromEnum(yoga.YogaEnumKind.align_items), @intFromEnum(yoga.Align.flex_end));
+    yoga.yogaNodeCalculateLayout(root, nan, nan, @intFromEnum(yoga.Direction.ltr));
+
+    var child_layout: yoga.ExternalYogaLayout = undefined;
+    yoga.yogaNodeGetComputedLayout(child, &child_layout);
+
+    try std.testing.expectApproxEqAbs(@as(f32, 80), child_layout.left, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 5), child_layout.top, 0.001);
+}
+
+test "Zig Yoga column incremental path preserves auto main-axis margins" {
+    const root = yoga.yogaNodeCreate();
+    defer yoga.yogaNodeFreeRecursive(root);
+
+    yoga.yogaNodeStyleSetValue(root, @intFromEnum(yoga.YogaValueKind.width), 0, @intFromEnum(yoga.Unit.point), 100);
+    yoga.yogaNodeStyleSetValue(root, @intFromEnum(yoga.YogaValueKind.height), 0, @intFromEnum(yoga.Unit.point), 100);
+
+    const first = yoga.yogaNodeCreate();
+    yoga.yogaNodeStyleSetValue(first, @intFromEnum(yoga.YogaValueKind.width), 0, @intFromEnum(yoga.Unit.point), 20);
+    yoga.yogaNodeStyleSetValue(first, @intFromEnum(yoga.YogaValueKind.height), 0, @intFromEnum(yoga.Unit.point), 10);
+    yoga.yogaNodeStyleSetValue(first, @intFromEnum(yoga.YogaValueKind.margin), @intFromEnum(yoga.Edge.top), @intFromEnum(yoga.Unit.auto), nan);
+    yoga.yogaNodeInsertChild(root, first, 0);
+
+    const second = yoga.yogaNodeCreate();
+    yoga.yogaNodeStyleSetValue(second, @intFromEnum(yoga.YogaValueKind.width), 0, @intFromEnum(yoga.Unit.point), 20);
+    yoga.yogaNodeStyleSetValue(second, @intFromEnum(yoga.YogaValueKind.height), 0, @intFromEnum(yoga.Unit.point), 10);
+    yoga.yogaNodeInsertChild(root, second, 1);
+
+    yoga.yogaNodeCalculateLayout(root, nan, nan, @intFromEnum(yoga.Direction.ltr));
+    yoga.yogaNodeStyleSetValue(first, @intFromEnum(yoga.YogaValueKind.height), 0, @intFromEnum(yoga.Unit.point), 20);
+    yoga.yogaNodeCalculateLayout(root, nan, nan, @intFromEnum(yoga.Direction.ltr));
+
+    var first_layout: yoga.ExternalYogaLayout = undefined;
+    var second_layout: yoga.ExternalYogaLayout = undefined;
+    yoga.yogaNodeGetComputedLayout(first, &first_layout);
+    yoga.yogaNodeGetComputedLayout(second, &second_layout);
+
+    try std.testing.expectApproxEqAbs(@as(f32, 70), first_layout.top, 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 90), second_layout.top, 0.001);
+}

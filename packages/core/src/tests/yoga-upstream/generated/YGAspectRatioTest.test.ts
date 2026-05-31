@@ -28,7 +28,7 @@ import {
   Wrap,
 } from "../../../yoga.js"
 
-test.skip("aspect_ratio_does_not_stretch_cross_axis_dim", () => {
+test("aspect_ratio_does_not_stretch_cross_axis_dim", () => {
   const config = Yoga.Config.create()
   let root
 

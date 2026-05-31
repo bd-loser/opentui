@@ -203,6 +203,8 @@ const Style = struct {
     flex: f32 = nan,
     flex_grow: f32 = 0,
     flex_shrink: f32 = 0,
+    flex_grow_defined: bool = false,
+    flex_shrink_defined: bool = false,
     aspect_ratio: f32 = nan,
 
     width: StyleValue = StyleValue.auto(),
@@ -253,6 +255,7 @@ threadlocal var current_root_direction: Direction = .ltr;
 
 const Node = struct {
     config: ?*const Config = null,
+    use_web_defaults: bool = false,
     parent: ?*Node = null,
     children: std.ArrayListUnmanaged(*Node) = .{},
     style: Style = .{},
@@ -280,6 +283,7 @@ const Node = struct {
     cached_owner_height: f32 = nan,
     cached_direction: Direction = .ltr,
     cached_generation: u64 = 0,
+    last_point_scale_factor: f32 = nan,
     cached_base_owner_width: f32 = nan,
     cached_base_owner_height: f32 = nan,
     cached_base_direction: Direction = .ltr,
@@ -344,6 +348,53 @@ fn enumValue(value: anytype) u32 {
 
 fn nonNan(value: f32, fallback: f32) f32 {
     return if (std.math.isNan(value)) fallback else value;
+}
+
+fn usesWebDefaults(node: *const Node) bool {
+    return node.use_web_defaults;
+}
+
+fn defaultFlexShrink(node: *const Node) f32 {
+    return if (usesWebDefaults(node)) 1 else 0;
+}
+
+fn resolvedFlexGrow(node: *const Node) f32 {
+    if (node.style.flex_grow_defined) return nonNan(node.style.flex_grow, 0);
+    if (!std.math.isNan(node.style.flex) and node.style.flex > 0) return node.style.flex;
+    return 0;
+}
+
+fn resolvedFlexShrink(node: *const Node) f32 {
+    if (node.style.flex_shrink_defined) return node.style.flex_shrink;
+    if (!usesWebDefaults(node) and !std.math.isNan(node.style.flex) and node.style.flex < 0) return -node.style.flex;
+    return node.style.flex_shrink;
+}
+
+fn flexUsesZeroBasis(node: *const Node) bool {
+    return !usesWebDefaults(node) and !std.math.isNan(node.style.flex) and node.style.flex > 0 and node.style.flex_basis.unit == .auto;
+}
+
+fn aspectRatio(node: *const Node) ?f32 {
+    if (std.math.isNan(node.style.aspect_ratio) or node.style.aspect_ratio <= 0) return null;
+    return node.style.aspect_ratio;
+}
+
+fn applyAspectRatioToOptionalSize(node: *const Node, width: *?f32, height: *?f32) void {
+    const ratio = aspectRatio(node) orelse return;
+    if (width.* != null and height.* == null) {
+        height.* = width.*.? / ratio;
+    } else if (height.* != null and width.* == null) {
+        width.* = height.*.? * ratio;
+    }
+}
+
+fn applyAspectRatioToSize(node: *const Node, width: *f32, height: *f32) void {
+    const ratio = aspectRatio(node) orelse return;
+    if (!std.math.isNan(width.*) and std.math.isNan(height.*)) {
+        height.* = width.* / ratio;
+    } else if (!std.math.isNan(height.*) and std.math.isNan(width.*)) {
+        width.* = height.* * ratio;
+    }
 }
 
 fn isDefined(value: StyleValue) bool {
@@ -578,10 +629,6 @@ fn rectHorizontal(rect: Rect) f32 {
 
 fn rectVertical(rect: Rect) f32 {
     return rect.top + rect.bottom;
-}
-
-fn rectEqual(left: Rect, right: Rect) bool {
-    return left.left == right.left and left.top == right.top and left.right == right.right and left.bottom == right.bottom;
 }
 
 fn updateContainingBlock(node: *Node, width: f32, height: f32) void {
@@ -893,9 +940,10 @@ fn baseSize(node: *Node, owner_width: ?f32, owner_height: ?f32, direction: Direc
 
     var width = nodeOuterWidthFromStyle(node, owner_width, owner_height, direction);
     var height = nodeOuterHeightFromStyle(node, owner_width, owner_height, direction);
+    applyAspectRatioToOptionalSize(node, &width, &height);
 
     if (node.measure_callback != null) {
-        if (nonNan(node.style.flex_grow, 0) > 0 and nonNan(node.style.flex_shrink, 0) > 0 and width == null and height == null) {
+        if (resolvedFlexGrow(node) > 0 and resolvedFlexShrink(node) > 0 and width == null and height == null) {
             return cacheBaseSize(node, owner_width_value, owner_height_value, direction, .{});
         }
         return cacheBaseSize(node, owner_width_value, owner_height_value, direction, measureLeaf(node, width, height, owner_width, owner_height));
@@ -922,9 +970,9 @@ fn baseSize(node: *Node, owner_width: ?f32, owner_height: ?f32, direction: Direc
 
 fn makeLineItem(node: *Node, container_width: ?f32, container_height: ?f32, is_row: bool, direction: Direction) LineItem {
     var basis = baseSize(node, container_width, container_height, direction);
-    if (isConcrete(node.style.flex_basis)) {
+    if (isConcrete(node.style.flex_basis) or flexUsesZeroBasis(node)) {
         const owner_main = if (is_row) container_width else container_height;
-        if (resolveValue(node.style.flex_basis, owner_main)) |resolved_basis| {
+        if (if (flexUsesZeroBasis(node)) @as(?f32, 0) else resolveValue(node.style.flex_basis, owner_main)) |resolved_basis| {
             const padding = if (node.style.has_padding_values) resolveSpacingRect(&node.style.padding, container_width, direction) else Rect{};
             const border = if (node.style.has_border_values) resolveBorderRect(&node.style.border, direction) else Rect{};
             const chrome_main = if (is_row) rectHorizontal(padding) + rectHorizontal(border) else rectVertical(padding) + rectVertical(border);
@@ -932,11 +980,28 @@ fn makeLineItem(node: *Node, container_width: ?f32, container_height: ?f32, is_r
             if (is_row) basis.width = outer_basis else basis.height = outer_basis;
         }
     }
-    const flex_base_main = if (is_row) basis.width else basis.height;
+    const flex_grow = resolvedFlexGrow(node);
+    const flex_shrink = resolvedFlexShrink(node);
+    var flex_base_main = if (is_row) basis.width else basis.height;
     basis = clampNodeSize(node, basis, container_width, container_height, direction);
     const margin = if (node.style.has_margin_values) resolveSpacingRect(&node.style.margin, container_width, direction) else Rect{};
-    const has_explicit_width = hasStyleWidth(node);
-    const has_explicit_height = hasStyleHeight(node);
+    const has_explicit_width = hasStyleWidth(node) and !(node.style.width.unit == .percent and container_width == null);
+    const has_explicit_height = hasStyleHeight(node) and !(node.style.height.unit == .percent and container_height == null);
+    const has_main_min_max = if (is_row)
+        isDefined(node.style.min_width) or isDefined(node.style.max_width)
+    else
+        isDefined(node.style.min_height) or isDefined(node.style.max_height);
+    const has_explicit_main = if (is_row) has_explicit_width else has_explicit_height;
+    if ((flex_grow != 0 or flex_shrink != 0) and
+        has_main_min_max and
+        !has_explicit_main and
+        !isConcrete(node.style.flex_basis) and
+        !flexUsesZeroBasis(node) and
+        node.measure_callback == null and
+        node.children.items.len == 0)
+    {
+        flex_base_main = 0;
+    }
 
     const base_main = if (is_row) basis.width else basis.height;
     const base_cross = if (is_row) basis.height else basis.width;
@@ -957,8 +1022,8 @@ fn makeLineItem(node: *Node, container_width: ?f32, container_height: ?f32, is_r
         .margin_bottom_auto = node.style.has_margin_values and edgeValue(&node.style.margin, .bottom, direction).unit == .auto,
         .outer_main = base_main + margin_main,
         .outer_cross = base_cross + margin_cross,
-        .flex_grow = nonNan(node.style.flex_grow, 0),
-        .flex_shrink = nonNan(node.style.flex_shrink, 0),
+        .flex_grow = flex_grow,
+        .flex_shrink = flex_shrink,
         .has_explicit_width = has_explicit_width,
         .has_explicit_height = has_explicit_height,
     };
@@ -1238,6 +1303,36 @@ fn justifyOffsetAndGap(justify: Justify, free: f32, item_count: usize, base_gap:
     };
 }
 
+fn reverseOverflowJustifyOffset(style: *const Style, free: f32) ?f32 {
+    if (free >= 0) return null;
+    if (style.flex_direction != .row_reverse and style.flex_direction != .column_reverse) return null;
+    return switch (style.justify_content) {
+        .space_around, .space_evenly => free,
+        else => null,
+    };
+}
+
+fn aspectCrossOuterSize(item: *const LineItem, is_row: bool, content_cross_was_auto: bool) ?f32 {
+    const ratio = aspectRatio(item.node) orelse return null;
+    if (is_row) {
+        if (item.has_explicit_height) return null;
+        if (!content_cross_was_auto and !item.has_explicit_width) return null;
+        return item.target_width / ratio + item.margin.top + item.margin.bottom;
+    }
+    if (item.has_explicit_width) return null;
+    if (!content_cross_was_auto and !item.has_explicit_height) return null;
+    return item.target_height * ratio + item.margin.left + item.margin.right;
+}
+
+fn itemMainSizeIsPercent(item: *const LineItem, is_row: bool) bool {
+    return nodeMainSizeIsPercent(item.node, is_row);
+}
+
+fn nodeMainSizeIsPercent(node: *const Node, is_row: bool) bool {
+    if (node.style.flex_basis.unit == .percent) return true;
+    return if (is_row) node.style.width.unit == .percent else node.style.height.unit == .percent;
+}
+
 fn justifyStaticOffset(justify: Justify, available: f32, reversed: bool) f32 {
     return switch (justify) {
         .center => available / 2,
@@ -1296,9 +1391,27 @@ fn applyRelativePosition(node: *const Node, x: *f32, y: *f32, owner_width: f32, 
     if (top) |value| y.* += value else if (bottom) |value| y.* -= value;
 }
 
-fn setChildLayout(parent: *Node, child: *Node, x: f32, y: f32, width: f32, height: f32, content_width: f32, content_height: f32) void {
-    const right = @max(0, content_width - x - width);
-    const bottom = @max(0, content_height - y - height);
+fn layoutHorizontalPositionOffset(node: *const Node, owner_width: f32, direction: Direction) f32 {
+    if (node.style.position_type == .static or !node.style.has_position_values) return 0;
+
+    const leading_edge = if (direction == .rtl) Edge.right else Edge.left;
+    const trailing_edge = if (direction == .rtl) Edge.left else Edge.right;
+    if (resolveValue(edgeValue(&node.style.position, leading_edge, direction), owner_width)) |value| return value;
+    if (resolveValue(edgeValue(&node.style.position, trailing_edge, direction), owner_width)) |value| return -value;
+    return 0;
+}
+
+fn layoutVerticalPositionOffset(node: *const Node, owner_height: f32, direction: Direction) f32 {
+    if (node.style.position_type == .static or !node.style.has_position_values) return 0;
+
+    if (resolveValue(edgeValue(&node.style.position, .top, direction), owner_height)) |value| return value;
+    if (resolveValue(edgeValue(&node.style.position, .bottom, direction), owner_height)) |value| return -value;
+    return 0;
+}
+
+fn setChildLayout(parent: *Node, child: *Node, x: f32, y: f32, width: f32, height: f32, content_width: f32, content_height: f32, direction: Direction) void {
+    const right = layoutHorizontalPositionOffset(child, content_width, direction);
+    const bottom = layoutVerticalPositionOffset(child, content_height, direction);
     if (layoutValuesChanged(child.layout, x, y, right, bottom, width, height)) markRoundDirty(child);
     child.layout.left = x;
     child.layout.top = y;
@@ -1383,8 +1496,10 @@ fn layoutAbsoluteChild(containing_node: *Node, parent: *Node, child: *Node, cont
         y = origin_y + containing_height - size.height - margin.bottom - bottom_value.?;
     }
 
-    _ = layoutNode(child, size.width, size.height, containing_width, containing_height, absolute_direction);
-    setChildLayout(parent, child, x, y, child.layout.width, child.layout.height, containing_width, containing_height);
+    const assigned_child_width: ?f32 = if (hasStyleWidth(child) or (left_value != null and right_value != null)) size.width else null;
+    const assigned_child_height: ?f32 = if (hasStyleHeight(child) or (top_value != null and bottom_value != null)) size.height else null;
+    _ = layoutNode(child, assigned_child_width, assigned_child_height, containing_width, containing_height, absolute_direction);
+    setChildLayout(parent, child, x, y, child.layout.width, child.layout.height, containing_width, containing_height, absolute_direction);
 }
 
 fn hasHorizontalInsets(node: *const Node, direction: Direction) bool {
@@ -1437,7 +1552,7 @@ fn canUseKnownSingleLineFastPath(node: *const Node, direction: Direction) bool {
         if (child.measure_callback != null or child.has_measure_subtree) return false;
         if (childAlign(node, child) == .baseline) return false;
         if (isConcrete(child.style.flex_basis)) return false;
-        if ((nonNan(child.style.flex_grow, 0) > 0 or nonNan(child.style.flex_shrink, 0) > 0) and
+        if ((resolvedFlexGrow(child) > 0 or resolvedFlexShrink(child) > 0) and
             (isDefined(child.style.min_width) or isDefined(child.style.min_height) or isDefined(child.style.max_width) or isDefined(child.style.max_height))) return false;
         if (child.style.has_margin_values) return false;
         if (child.style.has_position_values) return false;
@@ -1447,8 +1562,8 @@ fn canUseKnownSingleLineFastPath(node: *const Node, direction: Direction) bool {
 }
 
 fn canUseZeroGrowBase(parent: *const Node, child: *const Node, is_row: bool) bool {
-    if (nonNan(child.style.flex_grow, 0) <= 0) return false;
-    if (nonNan(child.style.flex_shrink, 0) <= 0) return false;
+    if (resolvedFlexGrow(child) <= 0) return false;
+    if (resolvedFlexShrink(child) <= 0) return false;
     if (isConcrete(child.style.flex_basis)) return false;
     const alignment = childAlign(parent, child);
     if (is_row) {
@@ -1485,7 +1600,7 @@ fn layoutKnownSingleLineFastPath(node: *Node, content_width: f32, content_height
     var grow_child_count: usize = 0;
 
     for (node.children.items) |child| {
-        if (nonNan(child.style.flex_grow, 0) > 0) grow_child_count += 1;
+        if (resolvedFlexGrow(child) > 0) grow_child_count += 1;
     }
 
     for (node.children.items, 0..) |child, index| {
@@ -1496,17 +1611,18 @@ fn layoutKnownSingleLineFastPath(node: *Node, content_width: f32, content_height
         base_sizes[index] = base;
         const base_main = if (is_row) base.width else base.height;
         occupied += base_main;
-        grow += nonNan(child.style.flex_grow, 0);
-        shrink += nonNan(child.style.flex_shrink, 0) * @max(0, base_main);
+        grow += resolvedFlexGrow(child);
+        shrink += resolvedFlexShrink(child) * @max(0, base_main);
     }
 
     const free = content_main - occupied;
     if (grow > 0 and grow < 1) return false;
     if (free < 0 and shrink > 0) return false;
-    const justify = if (free > 0 and grow > 0)
+    var justify = if (free > 0 and grow > 0)
         JustifyLayout{ .offset = 0, .gap = gap }
     else
         justifyOffsetAndGap(node.style.justify_content, free, child_count, gap);
+    if (reverseOverflowJustifyOffset(&node.style, free)) |offset| justify.offset = offset;
 
     var cursor = justify.offset;
     const origin_x = node.layout.border.left + node.layout.padding.left;
@@ -1516,8 +1632,8 @@ fn layoutKnownSingleLineFastPath(node: *Node, content_width: f32, content_height
         const base = base_sizes[index];
         const base_main = if (is_row) base.width else base.height;
         const base_cross = if (is_row) base.height else base.width;
-        const child_grow = nonNan(child.style.flex_grow, 0);
-        const child_shrink = nonNan(child.style.flex_shrink, 0);
+        const child_grow = resolvedFlexGrow(child);
+        const child_shrink = resolvedFlexShrink(child);
 
         var child_main = base_main;
         if (free > 0 and grow > 0 and child_grow > 0) {
@@ -1530,12 +1646,27 @@ fn layoutKnownSingleLineFastPath(node: *Node, content_width: f32, content_height
         const alignment = childAlign(node, child);
         const has_cross_style = if (is_row) hasStyleHeight(child) else hasStyleWidth(child);
         var child_cross = base_cross;
-        if (alignment == .stretch and !has_cross_style) {
-            child_cross = content_cross;
-        }
-
+        const child_aspect_ratio = aspectRatio(child);
+        var applied_aspect_ratio = false;
         var child_width = if (is_row) child_main else child_cross;
         var child_height = if (is_row) child_cross else child_main;
+        if (child_aspect_ratio) |ratio| {
+            if (is_row and !has_cross_style and hasStyleWidth(child)) {
+                child_height = child_width / ratio;
+                applied_aspect_ratio = true;
+            }
+            if (!is_row and !has_cross_style and hasStyleHeight(child)) {
+                child_width = child_height * ratio;
+                applied_aspect_ratio = true;
+            }
+        }
+        if (alignment == .stretch and !has_cross_style and !applied_aspect_ratio) {
+            child_cross = content_cross;
+            child_width = if (is_row) child_main else child_cross;
+            child_height = if (is_row) child_cross else child_main;
+        } else {
+            child_cross = if (is_row) child_height else child_width;
+        }
         const available_cross = content_cross - child_cross;
         var cross_offset: f32 = 0;
         if (alignment == .center) {
@@ -1559,7 +1690,7 @@ fn layoutKnownSingleLineFastPath(node: *Node, content_width: f32, content_height
 
         const x = if (is_row) origin_x + cursor else origin_x + cross_offset;
         const y = if (is_row) origin_y + cross_offset else origin_y + cursor;
-        setChildLayout(node, child, x, y, child_width, child_height, content_width, content_height);
+        setChildLayout(node, child, x, y, child_width, child_height, content_width, content_height, direction);
         cursor += (if (is_row) child_width else child_height) + justify.gap;
     }
 
@@ -1582,8 +1713,8 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
     const content_height_known = height.* > 0;
     var content_width: ?f32 = if (content_width_known) @max(0, known_content_width) else null;
     var content_height: ?f32 = if (content_height_known) @max(0, known_content_height) else null;
-    const content_width_was_auto = content_width == null;
-    const content_height_was_auto = content_height == null;
+    var content_width_from_min = false;
+    var content_height_from_min = false;
 
     if (node.style.flex_wrap != .no_wrap) {
         if (is_row and content_width == null) {
@@ -1592,6 +1723,21 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
             if (owner_height) |available_height| content_height = @max(0, available_height - chrome_height);
         }
     }
+
+    if (is_row and content_width == null) {
+        if (outerDimensionFromStyle(node, node.style.min_width, owner_width, owner_width, owner_height, direction, true)) |min_width| {
+            content_width = @max(0, min_width - chrome_width);
+            content_width_from_min = true;
+        }
+    } else if (!is_row and content_height == null) {
+        if (outerDimensionFromStyle(node, node.style.min_height, owner_height, owner_width, owner_height, direction, false)) |min_height| {
+            content_height = @max(0, min_height - chrome_height);
+            content_height_from_min = true;
+        }
+    }
+
+    const content_width_was_auto = content_width == null;
+    const content_height_was_auto = content_height == null;
 
     const child_count = flowChildCount(node);
     if (child_count == 0) {
@@ -1612,7 +1758,8 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
         content_width = @max(0, width.* - chrome_width);
         content_height = @max(0, height.* - chrome_height);
         updateContainingBlock(node, width.*, height.*);
-        if (layoutKnownSingleLineFastPath(node, content_width.?, content_height.?, direction)) {
+        const main_size_from_min = if (is_row) content_width_from_min else content_height_from_min;
+        if (!main_size_from_min and layoutKnownSingleLineFastPath(node, content_width.?, content_height.?, direction)) {
             return;
         }
     }
@@ -1649,6 +1796,15 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
 
     var natural_main: f32 = 0;
     var natural_cross: f32 = 0;
+    const needs_main_percent_scan = content_width_from_min or content_height_from_min;
+    var all_items_main_percent = needs_main_percent_scan and active_items.len > 0;
+    var has_aspect_items = false;
+    for (active_items) |*item| {
+        if (aspectRatio(item.node) != null) has_aspect_items = true;
+        if (needs_main_percent_scan and !itemMainSizeIsPercent(item, is_row)) {
+            all_items_main_percent = false;
+        }
+    }
     const cross_gap = resolveGap(&node.style, if (is_row) .row else .column, if (is_row) content_height else content_width);
     for (lines, 0..) |line, line_index| {
         natural_main = @max(natural_main, line.main);
@@ -1657,10 +1813,10 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
     }
 
     if (is_row) {
-        if (content_width == null) content_width = natural_main;
+        if (content_width == null) content_width = natural_main else if (content_width_from_min and !all_items_main_percent) content_width = @max(content_width.?, natural_main);
         if (content_height == null) content_height = natural_cross;
     } else {
-        if (content_height == null) content_height = natural_main;
+        if (content_height == null) content_height = natural_main else if (content_height_from_min and !all_items_main_percent) content_height = @max(content_height.?, natural_main);
         if (content_width == null) content_width = natural_cross;
     }
 
@@ -1739,9 +1895,18 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
             free = 0;
         }
 
-        const justify: JustifyLayout = if (auto_main_margins > 0) .{ .offset = 0, .gap = gap } else justifyOffsetAndGap(node.style.justify_content, free, item_count, gap);
+        var justify: JustifyLayout = if (auto_main_margins > 0) .{ .offset = 0, .gap = gap } else justifyOffsetAndGap(node.style.justify_content, free, item_count, gap);
+        if (auto_main_margins == 0) {
+            if (reverseOverflowJustifyOffset(&node.style, free)) |offset| justify.offset = offset;
+        }
         var main_cursor = justify.offset;
         var line_cross = if (node.style.flex_wrap == .no_wrap) content_cross else line.cross + stretch_line_extra;
+        const content_cross_was_auto = if (is_row) content_height_was_auto else content_width_was_auto;
+        if (has_aspect_items) {
+            for (active_items[line.start..line.end]) |*item| {
+                if (aspectCrossOuterSize(item, is_row, content_cross_was_auto)) |cross_size| line_cross = @max(line_cross, cross_size);
+            }
+        }
         var line_baseline: f32 = 0;
 
         if (is_row) {
@@ -1782,8 +1947,17 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
             const item_cross_margin = if (is_row) item.margin.top + item.margin.bottom else item.margin.left + item.margin.right;
             var cross_offset: f32 = 0;
             const cross_reversed = cross_axis_reversed;
+            const child_aspect_ratio = aspectRatio(item.node);
+            const can_apply_aspect_cross = if (is_row)
+                !item.has_explicit_height and (content_height_was_auto or item.has_explicit_width)
+            else
+                !item.has_explicit_width and (content_width_was_auto or item.has_explicit_height);
 
-            if (child_alignment == .stretch) {
+            if (child_aspect_ratio != null and can_apply_aspect_cross) {
+                const ratio = child_aspect_ratio.?;
+                if (is_row and !item.has_explicit_height) child_height = child_width / ratio;
+                if (!is_row and !item.has_explicit_width) child_width = child_height * ratio;
+            } else if (child_alignment == .stretch) {
                 const stretched = @max(0, line_cross - item_cross_margin);
                 if (is_row and !item.has_explicit_height) child_height = stretched;
                 if (!is_row and !item.has_explicit_width) child_width = stretched;
@@ -1802,7 +1976,10 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
                 item.node.layout.height == child_height)
             {
                 // Natural sizing already laid this subtree out with the final size.
-            } else if (item.node.measure_callback != null and item.node.children.items.len == 0) {
+            } else if (item.node.measure_callback != null and
+                item.node.children.items.len == 0 and
+                !(must_relayout_auto_cross_measure and (item.node.dirty or item.node.layout.width != child_width)))
+            {
                 item.node.layout.margin = item.margin;
                 item.node.layout.padding = if (item.node.style.has_padding_values) resolveSpacingRect(&item.node.style.padding, content_width, direction) else Rect{};
                 item.node.layout.border = if (item.node.style.has_border_values) resolveBorderRect(&item.node.style.border, direction) else Rect{};
@@ -1852,6 +2029,8 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
                 cross_offset = if (cross_reversed) 0 else available_cross;
             } else if (child_alignment == .baseline and is_row) {
                 cross_offset = line_baseline - item.margin.top - nodeBaseline(item.node);
+            } else if (child_alignment == .baseline and node.style.flex_wrap != .no_wrap) {
+                cross_offset = 0;
             } else if (cross_reversed) {
                 cross_offset = available_cross;
             }
@@ -1875,7 +2054,7 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
             }
 
             applyRelativePosition(item.node, &x, &y, content_width.?, content_height.?, direction);
-            setChildLayout(node, item.node, x, y, item.node.layout.width, item.node.layout.height, content_width.?, content_height.?);
+            setChildLayout(node, item.node, x, y, item.node.layout.width, item.node.layout.height, content_width.?, content_height.?, direction);
             const item_main = if (is_row) item.node.layout.width else item.node.layout.height;
             const margin_main = if (is_row) item.margin.left + item.margin.right else item.margin.top + item.margin.bottom;
             main_cursor += item_main + margin_main + justify.gap;
@@ -1915,7 +2094,23 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
                     else
                         @as(f32, 0);
                     const next_y = origin_y + item.margin.top + offset;
-                    setChildLayout(node, item.node, item.node.layout.left, next_y, item.node.layout.width, item.node.layout.height, content_width.?, content_height.?);
+                    setChildLayout(node, item.node, item.node.layout.left, next_y, item.node.layout.width, item.node.layout.height, content_width.?, content_height.?, direction);
+                }
+            }
+            if (content_width_was_auto) {
+                var final_main: f32 = 0;
+                for (lines) |line| {
+                    var line_main: f32 = 0;
+                    for (active_items[line.start..line.end], 0..) |item, index| {
+                        if (index > 0) line_main += gap;
+                        line_main += item.node.layout.width + item.margin.left + item.margin.right;
+                    }
+                    final_main = @max(final_main, line_main);
+                }
+                if (final_main > content_width.?) {
+                    content_width = final_main;
+                    width.* = clampDimension(content_width.? + chrome_width, node.style.min_width, node.style.max_width, owner_width);
+                    content_width = @max(0, width.* - chrome_width);
                 }
             }
         } else {
@@ -1942,7 +2137,35 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
                     else
                         @as(f32, 0);
                     const next_x = origin_x + item.margin.left + offset;
-                    setChildLayout(node, item.node, next_x, item.node.layout.top, item.node.layout.width, item.node.layout.height, content_width.?, content_height.?);
+                    setChildLayout(node, item.node, next_x, item.node.layout.top, item.node.layout.width, item.node.layout.height, content_width.?, content_height.?, direction);
+                }
+            }
+            if (content_height_was_auto) {
+                var final_main: f32 = 0;
+                for (lines) |line| {
+                    var line_main: f32 = 0;
+                    for (active_items[line.start..line.end], 0..) |item, index| {
+                        if (index > 0) line_main += gap;
+                        line_main += item.node.layout.height + item.margin.top + item.margin.bottom;
+                    }
+                    final_main = @max(final_main, line_main);
+                }
+                if (final_main > content_height.?) {
+                    content_height = final_main;
+                    height.* = clampDimension(content_height.? + chrome_height, node.style.min_height, node.style.max_height, owner_height);
+                    content_height = @max(0, height.* - chrome_height);
+                    if (node.style.flex_wrap == .no_wrap) {
+                        const justify_main = justifyOffsetAndGap(node.style.justify_content, content_height.? - final_main, active_items.len, gap);
+                        var main_cursor = justify_main.offset;
+                        for (active_items) |item| {
+                            const next_y = if (main_reversed)
+                                origin_y + content_height.? - main_cursor - item.margin.bottom - item.node.layout.height
+                            else
+                                origin_y + main_cursor + item.margin.top;
+                            setChildLayout(node, item.node, item.node.layout.left, next_y, item.node.layout.width, item.node.layout.height, content_width.?, content_height.?, direction);
+                            main_cursor += item.node.layout.height + item.margin.top + item.margin.bottom + justify_main.gap;
+                        }
+                    }
                 }
             }
         }
@@ -1962,21 +2185,23 @@ fn canUseIncrementalColumnFlow(node: *const Node) bool {
     return true;
 }
 
-fn canReuseChildForIncrementalColumn(parent: *const Node, child: *const Node) bool {
+fn canReuseChildForIncrementalColumn(parent: *const Node, child: *const Node, direction: Direction) bool {
     if (child.style.display != .flex) return false;
     if (child.style.position_type == .absolute) return false;
     if (child.style.has_position_values) return false;
     if (childAlign(parent, child) == .baseline) return false;
     if (!child.has_cached_layout) return false;
-    if (nonNan(child.style.flex_grow, 0) != 0) return false;
-    if (nonNan(child.style.flex_shrink, 0) != 0) return false;
+    if (resolvedFlexGrow(child) != 0) return false;
+    if (resolvedFlexShrink(child) != 0) return false;
     if (isConcrete(child.style.flex_basis)) return false;
     if (child.style.height.unit == .percent) return false;
+    if (child.style.has_margin_values and
+        (edgeValue(&child.style.margin, .top, direction).unit == .auto or
+            edgeValue(&child.style.margin, .bottom, direction).unit == .auto)) return false;
     return true;
 }
 
 fn repositionIncrementalColumnChildren(node: *Node, content_width: f32, content_height: f32, direction: Direction) void {
-    _ = direction;
     const child_count = node.children.items.len;
     const base_gap = resolveGap(&node.style, .row, content_height);
     const total_gap = if (child_count > 1) base_gap * @as(f32, @floatFromInt(child_count - 1)) else 0;
@@ -1996,18 +2221,18 @@ fn repositionIncrementalColumnChildren(node: *Node, content_width: f32, content_
             origin_y + content_height - main_cursor - child.layout.margin.bottom - child.layout.height
         else
             origin_y + main_cursor + child.layout.margin.top;
-        setChildLayout(node, child, child.layout.left, next_y, child.layout.width, child.layout.height, content_width, content_height);
+        setChildLayout(node, child, child.layout.left, next_y, child.layout.width, child.layout.height, content_width, content_height, direction);
         main_cursor += child.layout.height + child.layout.margin.top + child.layout.margin.bottom + justify.gap;
     }
 }
 
-fn tryLayoutSimpleColumnDirtyChild(node: *Node, child: *Node, assigned_height: ?f32, owner_width: ?f32, owner_height: ?f32, direction: Direction) ?Size {
+fn tryLayoutSimpleColumnDirtyChild(node: *Node, child: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_width: ?f32, owner_height: ?f32, direction: Direction) ?Size {
     if (!canUseIncrementalColumnFlow(node)) return null;
-    if (!canReuseChildForIncrementalColumn(node, child)) return null;
+    if (!canReuseChildForIncrementalColumn(node, child, direction)) return null;
 
     var child_index: ?usize = null;
     for (node.children.items, 0..) |candidate, index| {
-        if (!canReuseChildForIncrementalColumn(node, candidate)) return null;
+        if (!canReuseChildForIncrementalColumn(node, candidate, direction)) return null;
         if (candidate == child) child_index = index;
     }
     _ = child_index orelse return null;
@@ -2059,85 +2284,13 @@ fn tryLayoutSimpleColumnDirtyChild(node: *Node, child: *Node, assigned_height: ?
     const content_height = @max(0, node.layout.height - rectVertical(node.layout.padding) - rectVertical(node.layout.border));
     repositionIncrementalColumnChildren(node, content_width, content_height, direction);
 
-    node.cached_generation = current_layout_generation;
-    node.has_cached_layout = true;
-    return .{ .width = node.layout.width, .height = node.layout.height };
-}
-
-fn canReuseChildrenForSimpleColumn(node: *const Node, direction: Direction) bool {
-    _ = direction;
-    if (!canUseIncrementalColumnFlow(node)) return false;
-
-    for (node.children.items) |child| {
-        if (!canReuseChildForIncrementalColumn(node, child)) return false;
-        if (child.dirty and (child.self_dirty or child.dirty_child_count != 0)) return false;
-    }
-    return true;
-}
-
-fn tryLayoutSimpleVerticalPaddingChange(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_width: ?f32, owner_height: ?f32, direction: Direction) ?Size {
-    if (!node.self_dirty or !node.style_dirty) return null;
-    if (node.dirty_child_count != 0) return null;
-    if (isDefined(node.style.max_height)) return null;
-    if (!canReuseChildrenForSimpleColumn(node, direction)) return null;
-
-    const next_margin = if (node.style.has_margin_values) resolveSpacingRect(&node.style.margin, owner_width, direction) else Rect{};
-    const next_padding = if (node.style.has_padding_values) resolveSpacingRect(&node.style.padding, owner_width, direction) else Rect{};
-    const next_border = if (node.style.has_border_values) resolveBorderRect(&node.style.border, direction) else Rect{};
-
-    if (!rectEqual(node.layout.margin, next_margin)) return null;
-    if (!rectEqual(node.layout.border, next_border)) return null;
-    if (node.layout.padding.left != next_padding.left or node.layout.padding.right != next_padding.right) return null;
-
-    const bottom_delta = next_padding.bottom - node.layout.padding.bottom;
-    const height_delta = next_padding.top - node.layout.padding.top + bottom_delta;
-    if (height_delta == 0) return null;
-
-    const explicit_width = assigned_width orelse nodeOuterWidthFromStyle(node, owner_width, owner_height, direction);
-    if (explicit_width) |width| {
-        if (width != node.layout.width) return null;
-    }
-
-    const old_height = node.layout.height;
-    var next_height = old_height;
-    const explicit_height = assigned_height orelse nodeOuterHeightFromStyle(node, owner_width, owner_height, direction);
-    if (explicit_height) |height| {
-        if (height != old_height) return null;
-    } else {
-        next_height = old_height + height_delta;
-        if (isDefined(node.style.min_height)) {
-            const min_height = outerDimensionFromStyle(node, node.style.min_height, owner_height, owner_width, owner_height, direction, false) orelse 0;
-            if (old_height <= min_height or next_height <= min_height) return null;
-        }
-    }
-
-    const clamped = clampNodeSize(node, .{ .width = node.layout.width, .height = next_height }, owner_width, owner_height, direction);
-    if (clamped.width != node.layout.width or clamped.height != next_height) return null;
-    next_height = clamped.height;
-
-    node.layout.padding = next_padding;
-    if (node.layout.height != next_height) markRoundDirty(node);
-    node.layout.height = next_height;
-    updateContainingBlock(node, node.layout.width, node.layout.height);
-
-    const content_width = @max(0, node.layout.width - rectHorizontal(node.layout.padding) - rectHorizontal(node.layout.border));
-    const content_height = @max(0, node.layout.height - rectVertical(node.layout.padding) - rectVertical(node.layout.border));
-    repositionIncrementalColumnChildren(node, content_width, content_height, direction);
-
-    const assigned_width_value = optionalToFloat(assigned_width);
-    const assigned_height_value = optionalToFloat(assigned_height);
-    const owner_width_value = optionalToFloat(owner_width);
-    const owner_height_value = optionalToFloat(owner_height);
-    node.cached_assigned_width = assigned_width_value;
-    node.cached_assigned_height = assigned_height_value;
-    node.cached_owner_width = owner_width_value;
-    node.cached_owner_height = owner_height_value;
+    node.cached_assigned_width = optionalToFloat(assigned_width);
+    node.cached_assigned_height = optionalToFloat(assigned_height);
+    node.cached_owner_width = optionalToFloat(owner_width);
+    node.cached_owner_height = optionalToFloat(owner_height);
     node.cached_direction = direction;
     node.cached_generation = current_layout_generation;
     node.has_cached_layout = true;
-    if (assigned_height == null) {
-        _ = cacheBaseSize(node, owner_width_value, owner_height_value, direction, .{ .width = node.layout.width, .height = node.layout.height });
-    }
     return .{ .width = node.layout.width, .height = node.layout.height };
 }
 
@@ -2157,14 +2310,6 @@ fn layoutNode(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_wi
         return .{ .width = node.layout.width, .height = node.layout.height };
     }
 
-    const can_try_incremental_self_layout = cachedColumnFlowInputsMatch(node, assigned_width_value, owner_width_value, owner_height_value, direction) or
-        (assigned_height == null and cachedBaseSizeValuesMatch(node, owner_width_value, owner_height_value, direction));
-    if (node.dirty and can_try_incremental_self_layout) {
-        if (tryLayoutSimpleVerticalPaddingChange(node, assigned_width, assigned_height, owner_width, owner_height, direction)) |size| {
-            return size;
-        }
-    }
-
     if (node.dirty and
         !node.self_dirty and
         node.dirty_child_count == 1 and
@@ -2173,7 +2318,7 @@ fn layoutNode(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_wi
     {
         const child = node.dirty_child.?;
         if (cachedColumnFlowInputsMatch(node, assigned_width_value, owner_width_value, owner_height_value, direction)) {
-            if (tryLayoutSimpleColumnDirtyChild(node, child, assigned_height, owner_width, owner_height, direction)) |size| {
+            if (tryLayoutSimpleColumnDirtyChild(node, child, assigned_width, assigned_height, owner_width, owner_height, direction)) |size| {
                 return size;
             }
         }
@@ -2219,10 +2364,13 @@ fn layoutNode(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_wi
         if (min_height != null and max_height != null and min_height.? == max_height.?) height = min_height.?;
     }
 
+    applyAspectRatioToSize(node, &width, &height);
+
     if (node.measure_callback != null) {
         const measured = measureLeaf(node, optionalSize(width), optionalSize(height), owner_width, owner_height);
         if (std.math.isNan(width)) width = measured.width;
         if (std.math.isNan(height)) height = measured.height;
+        applyAspectRatioToSize(node, &width, &height);
     } else if (node.children.items.len > 0) {
         if (std.math.isNan(width)) width = 0;
         if (std.math.isNan(height)) height = 0;
@@ -2326,6 +2474,8 @@ fn roundLayoutRecursive(node: *Node, parent_abs_left: f32, parent_abs_top: f32, 
     for (node.children.items) |child| {
         roundLayoutRecursive(child, abs_left, abs_top, point_scale_factor);
     }
+    node.needs_round = false;
+    node.has_round_subtree = false;
 }
 
 fn roundChangedLayoutRecursive(node: *Node, parent_abs_left: f32, parent_abs_top: f32, point_scale_factor: f32, parent_changed: bool) void {
@@ -2414,6 +2564,7 @@ pub export fn yogaNodeCreateWithConfig(config: *const Config) *Node {
     const node = yogaNodeCreate();
     node.config = config;
     if (config.use_web_defaults) {
+        node.use_web_defaults = true;
         node.style.flex_shrink = 1;
     }
     return node;
@@ -2436,6 +2587,7 @@ pub export fn yogaNodeFreeRecursive(node: *Node) void {
 
 export fn yogaNodeReset(node: *Node) void {
     node.style = .{};
+    if (usesWebDefaults(node)) node.style.flex_shrink = 1;
     node.layout = .{};
     node.measure_callback = null;
     node.dirtied_callback = null;
@@ -2516,11 +2668,20 @@ pub export fn yogaNodeCalculateLayout(node: *Node, width: f32, height: f32, dire
     if (node.has_cached_layout and node.cached_direction != layout_direction) {
         markDirtyRecursiveNoCallback(node);
     }
+    const point_scale_factor = if (node.config) |config| config.point_scale_factor else 1;
+    const point_scale_changed = !cachedFloatEqual(node.last_point_scale_factor, point_scale_factor);
+    if (point_scale_changed) {
+        markDirtyRecursiveNoCallback(node);
+    }
     const resolved_width = nodeOuterWidthFromStyle(node, null, null, layout_direction) orelse optionalSize(width);
     const resolved_height = nodeOuterHeightFromStyle(node, null, null, layout_direction) orelse optionalSize(height);
     setRootLayout(node, resolved_width, resolved_height, layout_direction);
-    const point_scale_factor = if (node.config) |config| config.point_scale_factor else 1;
-    roundChangedLayoutRecursive(node, 0, 0, point_scale_factor, false);
+    if (!point_scale_changed) {
+        roundChangedLayoutRecursive(node, 0, 0, point_scale_factor, false);
+    } else {
+        roundLayoutRecursive(node, 0, 0, point_scale_factor);
+        node.last_point_scale_factor = point_scale_factor;
+    }
     markCleanDirtyRecursive(node);
     node.has_new_layout = true;
 }
@@ -2673,12 +2834,18 @@ pub export fn yogaNodeStyleSetFloat(node: *Node, kind: u32, value: f32) void {
             node.style.flex = value;
         },
         .flex_grow => {
-            changed = !styleFloatEqual(node.style.flex_grow, value);
-            node.style.flex_grow = value;
+            const defined = !std.math.isNan(value);
+            const next = if (defined) value else @as(f32, 0);
+            changed = node.style.flex_grow_defined != defined or !styleFloatEqual(node.style.flex_grow, next);
+            node.style.flex_grow_defined = defined;
+            node.style.flex_grow = next;
         },
         .flex_shrink => {
-            changed = !styleFloatEqual(node.style.flex_shrink, value);
-            node.style.flex_shrink = value;
+            const defined = !std.math.isNan(value);
+            const next = if (defined) value else defaultFlexShrink(node);
+            changed = node.style.flex_shrink_defined != defined or !styleFloatEqual(node.style.flex_shrink, next);
+            node.style.flex_shrink_defined = defined;
+            node.style.flex_shrink = next;
         },
         .aspect_ratio => {
             changed = !styleFloatEqual(node.style.aspect_ratio, value);

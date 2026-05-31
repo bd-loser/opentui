@@ -291,7 +291,7 @@ test("percentage_flex_basis_cross", () => {
     config.free()
   }
 })
-test.skip("percentage_flex_basis_cross_min_height", () => {
+test("percentage_flex_basis_cross_min_height", () => {
   const config = Yoga.Config.create()
   let root
 
@@ -1358,7 +1358,7 @@ test("percent_of_minmax_main", () => {
     config.free()
   }
 })
-test.skip("percent_of_min_main", () => {
+test("percent_of_min_main", () => {
   const config = Yoga.Config.create()
   let root
 
@@ -1404,7 +1404,7 @@ test.skip("percent_of_min_main", () => {
     config.free()
   }
 })
-test.skip("percent_of_min_main_multiple", () => {
+test("percent_of_min_main_multiple", () => {
   const config = Yoga.Config.create()
   let root
 
@@ -1480,7 +1480,7 @@ test.skip("percent_of_min_main_multiple", () => {
     config.free()
   }
 })
-test.skip("percent_of_max_main", () => {
+test("percent_of_max_main", () => {
   const config = Yoga.Config.create()
   let root
 
@@ -1666,7 +1666,7 @@ test("percent_of_minmax_cross_unstretched", () => {
     config.free()
   }
 })
-test.skip("percent_of_min_cross_unstretched", () => {
+test("percent_of_min_cross_unstretched", () => {
   const config = Yoga.Config.create()
   let root
 

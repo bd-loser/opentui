@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import Yoga, { Align, Direction, Edge, FlexDirection, MeasureMode, Unit } from "../yoga.js"
+import Yoga, { Align, Direction, Edge, FlexDirection, MeasureMode, PositionType, Unit } from "../yoga.js"
 
 describe("native Yoga FFI facade", () => {
   test("computes a basic flex layout", () => {
@@ -113,5 +113,109 @@ describe("native Yoga FFI facade", () => {
     expect(empty.getComputedHeight()).toBe(0)
 
     root.freeRecursive()
+  })
+
+  test("matches Yoga computed trailing position fields", () => {
+    const root = Yoga.Node.create()
+    root.setFlexDirection(FlexDirection.Row)
+    root.setWidth(100)
+    root.setHeight(10)
+
+    const child = Yoga.Node.create()
+    child.setWidth(10)
+    child.setHeight(10)
+    root.insertChild(child, 0)
+
+    root.calculateLayout(undefined, undefined, Direction.LTR)
+    expect(child.getComputedLayout()).toEqual({ left: 0, top: 0, right: 0, bottom: 0, width: 10, height: 10 })
+
+    child.setPosition(Edge.Right, 5)
+    root.calculateLayout(undefined, undefined, Direction.LTR)
+    expect(child.getComputedLayout()).toEqual({ left: -5, top: 0, right: -5, bottom: 0, width: 10, height: 10 })
+
+    child.setPositionType(PositionType.Absolute)
+    child.setPosition(Edge.Bottom, 7)
+    root.calculateLayout(undefined, undefined, Direction.LTR)
+    expect(child.getComputedLayout()).toEqual({ left: 85, top: -7, right: -5, bottom: -7, width: 10, height: 10 })
+
+    root.freeRecursive()
+  })
+
+  test("resolves flex shorthand like Yoga", () => {
+    const root = Yoga.Node.create()
+    root.setFlexDirection(FlexDirection.Row)
+    root.setWidth(100)
+    root.setHeight(10)
+
+    const child = Yoga.Node.create()
+    child.setFlex(1)
+    root.insertChild(child, 0)
+
+    root.calculateLayout(undefined, undefined, Direction.LTR)
+    expect(child.getComputedWidth()).toBe(100)
+
+    child.setFlexGrow(0)
+    root.calculateLayout(undefined, undefined, Direction.LTR)
+    expect(child.getComputedWidth()).toBe(0)
+
+    child.setFlexGrow(undefined)
+    root.calculateLayout(undefined, undefined, Direction.LTR)
+    expect(child.getComputedWidth()).toBe(100)
+
+    root.freeRecursive()
+  })
+
+  test("resets undefined style values", () => {
+    const node = Yoga.Node.create()
+
+    node.setWidth(10)
+    node.setWidth(undefined)
+    expect(node.getWidth().unit).toBe(Unit.Undefined)
+
+    node.setFlexGrow(2)
+    node.setFlexGrow(undefined)
+    expect(node.getFlexGrow()).toBe(0)
+
+    node.setAspectRatio(2)
+    node.setAspectRatio(undefined)
+    expect(Number.isNaN(node.getAspectRatio())).toBe(true)
+
+    node.freeRecursive()
+  })
+
+  test("applies aspect ratio when one axis is definite", () => {
+    const root = Yoga.Node.create()
+    root.setWidth(100)
+    root.setHeight(100)
+
+    const child = Yoga.Node.create()
+    child.setHeight(10)
+    child.setAspectRatio(2)
+    root.insertChild(child, 0)
+
+    root.calculateLayout(undefined, undefined, Direction.LTR)
+    expect(child.getComputedWidth()).toBe(20)
+    expect(child.getComputedHeight()).toBe(10)
+
+    root.freeRecursive()
+  })
+
+  test("rerounds cached layouts when point scale factor changes", () => {
+    const config = Yoga.Config.create()
+    config.setPointScaleFactor(1)
+
+    const root = Yoga.Node.create(config)
+    root.setWidth(10.25)
+    root.setHeight(10)
+
+    root.calculateLayout(undefined, undefined, Direction.LTR)
+    expect(root.getComputedWidth()).toBe(10)
+
+    config.setPointScaleFactor(2)
+    root.calculateLayout(undefined, undefined, Direction.LTR)
+    expect(root.getComputedWidth()).toBe(10.5)
+
+    root.freeRecursive()
+    config.free()
   })
 })

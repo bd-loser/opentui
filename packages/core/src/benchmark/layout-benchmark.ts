@@ -205,6 +205,7 @@ interface MarkdownScrollbackState {
   root: BoxRenderable
   scrollBox: ScrollBoxRenderable
   assistantCards: BoxRenderable[]
+  toolCards: BoxRenderable[]
   markdowns: MarkdownRenderable[]
   diffs: DiffRenderable[]
   syntaxStyle: SyntaxStyle
@@ -1617,19 +1618,20 @@ function createScenarios(): BenchmarkScenario[] {
         state.stats = collectRenderableTreeStats(state.root)
         const metrics = createMetricsTracker()
 
-        const cardVersions = new Array<number>(state.assistantCards.length).fill(0)
+        const cardVersions = new Array<number>(state.toolCards.length).fill(0)
         const mutate = (iteration: number): number => {
-          const cardWindow = Math.min(32, state.assistantCards.length)
-          const cardIndex = state.assistantCards.length - 1 - (iteration % cardWindow)
-          const card = state.assistantCards[cardIndex]!
+          const cardWindow = Math.min(16, state.toolCards.length)
+          const cardIndex = state.toolCards.length - 1 - (iteration % cardWindow)
+          const card = state.toolCards[cardIndex]!
           cardVersions[cardIndex] += 1
-          card.paddingTop = cardVersions[cardIndex] % 2 === 0 ? 0 : 1
-          card.paddingBottom = cardVersions[cardIndex] % 2 === 0 ? 0 : 1
+          card.paddingTop = cardVersions[cardIndex] % 2 === 0 ? 1 : 2
+          card.paddingBottom = cardVersions[cardIndex] % 2 === 0 ? 1 : 2
 
           state.scrollBox.scrollTo(state.scrollBox.scrollHeight)
           return card.paddingTop + card.paddingBottom + cardIndex
         }
         const readProbe = () =>
+          layoutChecksum(state.toolCards.slice(-16)) +
           layoutChecksum(state.assistantCards.slice(-16)) +
           layoutChecksum(state.markdowns.slice(-16)) +
           layoutChecksum(state.diffs.slice(0, 8)) +
@@ -1672,16 +1674,13 @@ function createScenarios(): BenchmarkScenario[] {
         state.stats = collectRenderableTreeStats(state.root)
         const metrics = createMetricsTracker()
 
-        const diffVersions = new Array<number>(state.diffs.length).fill(0)
+        const diffVersions = new Array<number>(state.patchNodes.length).fill(0)
         const mutate = (iteration: number): number => {
-          const targetIndex = iteration % state.diffs.length
-          const diff = state.diffs[targetIndex]!
+          const targetIndex = iteration % state.patchNodes.length
           diffVersions[targetIndex] += 1
-          diff.diff = createUnifiedDiffPatch(
-            targetIndex,
-            diffVersions[targetIndex],
-            24 + (targetIndex % 4) * 8 + (diffVersions[targetIndex] % 2) * 6,
-          )
+
+          const patchNode = state.patchNodes[targetIndex]!
+          patchNode.paddingBottom = diffVersions[targetIndex] % 2 === 0 ? 1 : 2
 
           const reviewedRow = state.fileRows[targetIndex]
           if (reviewedRow) {
@@ -1692,7 +1691,7 @@ function createScenarios(): BenchmarkScenario[] {
           state.patchScrollBox.scrollTo(
             Math.max(0, state.patchScrollBox.scrollHeight - state.patchScrollBox.viewport.height),
           )
-          return diff.diff.length + targetIndex + (reviewedRow?.paddingLeft ?? 0)
+          return patchNode.paddingBottom + targetIndex + (reviewedRow?.paddingLeft ?? 0)
         }
         const readProbe = () =>
           layoutChecksum(state.patchNodes.slice(0, 12)) +
@@ -2378,6 +2377,7 @@ async function buildMarkdownScrollbackState(
 
   const syntaxStyle = createBenchmarkSyntaxStyle()
   const assistantCards: BoxRenderable[] = []
+  const toolCards: BoxRenderable[] = []
   const markdowns: MarkdownRenderable[] = []
   const diffs: DiffRenderable[] = []
 
@@ -2534,7 +2534,9 @@ async function buildMarkdownScrollbackState(
       scrollBox.add(tool.card)
       diffs.push(tool.diff)
     } else if (index % 10 === 7) {
-      scrollBox.add(createOpencodeTodoToolCard(ctx, index))
+      const tool = createOpencodeTodoToolCard(ctx, index)
+      scrollBox.add(tool)
+      toolCards.push(tool)
     }
   }
 
@@ -2564,6 +2566,7 @@ async function buildMarkdownScrollbackState(
     root,
     scrollBox,
     assistantCards,
+    toolCards,
     markdowns,
     diffs,
     syntaxStyle,

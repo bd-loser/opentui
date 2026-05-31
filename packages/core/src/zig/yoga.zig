@@ -372,7 +372,11 @@ fn styleFloatEqual(left: f32, right: f32) bool {
 }
 
 fn cachedConstraintsMatch(node: *const Node, assigned_width: f32, assigned_height: f32, owner_width: f32, owner_height: f32, direction: Direction) bool {
-    return node.has_cached_layout and
+    return node.has_cached_layout and cachedConstraintValuesMatch(node, assigned_width, assigned_height, owner_width, owner_height, direction);
+}
+
+fn cachedConstraintValuesMatch(node: *const Node, assigned_width: f32, assigned_height: f32, owner_width: f32, owner_height: f32, direction: Direction) bool {
+    return node.cached_generation != 0 and
         cachedFloatEqual(node.cached_assigned_width, assigned_width) and
         cachedFloatEqual(node.cached_assigned_height, assigned_height) and
         cachedFloatEqual(node.cached_owner_width, owner_width) and
@@ -380,8 +384,20 @@ fn cachedConstraintsMatch(node: *const Node, assigned_width: f32, assigned_heigh
         node.cached_direction == direction;
 }
 
+fn cachedColumnFlowInputsMatch(node: *const Node, assigned_width: f32, owner_width: f32, _: f32, direction: Direction) bool {
+    const assigned_width_matches = std.math.isNan(assigned_width) or cachedFloatEqual(node.layout.width, assigned_width);
+    return node.cached_generation != 0 and
+        assigned_width_matches and
+        cachedFloatEqual(node.cached_owner_width, owner_width) and
+        node.cached_direction == direction;
+}
+
 fn cachedBaseSizeMatch(node: *const Node, owner_width: f32, owner_height: f32, direction: Direction) bool {
-    return node.has_cached_base_size and
+    return node.has_cached_base_size and cachedBaseSizeValuesMatch(node, owner_width, owner_height, direction);
+}
+
+fn cachedBaseSizeValuesMatch(node: *const Node, owner_width: f32, owner_height: f32, direction: Direction) bool {
+    return node.cached_generation != 0 and
         cachedFloatEqual(node.cached_base_owner_width, owner_width) and
         cachedFloatEqual(node.cached_base_owner_height, owner_height) and
         node.cached_base_direction == direction;
@@ -562,6 +578,10 @@ fn rectHorizontal(rect: Rect) f32 {
 
 fn rectVertical(rect: Rect) f32 {
     return rect.top + rect.bottom;
+}
+
+fn rectEqual(left: Rect, right: Rect) bool {
+    return left.left == right.left and left.top == right.top and left.right == right.right and left.bottom == right.bottom;
 }
 
 fn updateContainingBlock(node: *Node, width: f32, height: f32) void {
@@ -1927,6 +1947,176 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
     }
 }
 
+fn tryLayoutSimpleColumnDirtyChild(node: *Node, child: *Node, assigned_height: ?f32, owner_width: ?f32, owner_height: ?f32, direction: Direction) ?Size {
+    if (direction != .ltr) return null;
+    if (node.style.flex_direction != .column) return null;
+    if (node.style.flex_wrap != .no_wrap) return null;
+    if (node.style.justify_content != .flex_start) return null;
+    if (node.style.align_items != .stretch and node.style.align_items != .flex_start) return null;
+    if (node.style.has_gap_values) return null;
+    if (node.has_absolute_subtree) return null;
+    if (!child.has_cached_layout) return null;
+
+    var child_index: ?usize = null;
+    for (node.children.items, 0..) |candidate, index| {
+        if (candidate.style.display != .flex) return null;
+        if (candidate.style.position_type == .absolute) return null;
+        if (nonNan(candidate.style.flex_grow, 0) != 0) return null;
+        if (nonNan(candidate.style.flex_shrink, 0) != 0) return null;
+        if (isConcrete(candidate.style.flex_basis)) return null;
+        if (candidate == child) child_index = index;
+    }
+    const index = child_index orelse return null;
+
+    const old_width = node.layout.width;
+    const old_height = node.layout.height;
+    const old_child_left = child.layout.left;
+    const old_child_top = child.layout.top;
+    const old_child_width = child.layout.width;
+    const old_child_height = child.layout.height;
+    const old_child_margin = child.layout.margin;
+    const old_outer_height = old_child_height + old_child_margin.top + old_child_margin.bottom;
+
+    const child_assigned_width = if (child.measure_callback != null and !hasStyleWidth(child)) null else optionalFromCached(child.cached_assigned_width);
+    const child_assigned_height = if (child.measure_callback != null and !hasStyleHeight(child)) null else optionalFromCached(child.cached_assigned_height);
+    _ = layoutNode(
+        child,
+        child_assigned_width,
+        child_assigned_height,
+        optionalFromCached(child.cached_owner_width),
+        optionalFromCached(child.cached_owner_height),
+        child.cached_direction,
+    );
+
+    if (child.layout.width != old_child_width) return null;
+    if (child.layout.margin.left != old_child_margin.left or child.layout.margin.right != old_child_margin.right) return null;
+
+    const new_outer_height = child.layout.height + child.layout.margin.top + child.layout.margin.bottom;
+    const delta = new_outer_height - old_outer_height;
+    const child_top_delta = child.layout.margin.top - old_child_margin.top;
+
+    var next_height = old_height;
+    if (assigned_height) |height| {
+        next_height = height;
+    } else if (!hasStyleHeight(node)) {
+        if (isDefined(node.style.max_height)) return null;
+        next_height = old_height + delta;
+        if (isDefined(node.style.min_height)) {
+            const min_height = outerDimensionFromStyle(node, node.style.min_height, owner_height, owner_width, owner_height, direction, false) orelse 0;
+            if (old_height <= min_height or next_height <= min_height) return null;
+        }
+    }
+
+    if (old_width != node.layout.width) return null;
+    if (next_height != old_height) {
+        markRoundDirty(node);
+        node.layout.height = next_height;
+        updateContainingBlock(node, node.layout.width, node.layout.height);
+    }
+
+    const content_width = @max(0, node.layout.width - rectHorizontal(node.layout.padding) - rectHorizontal(node.layout.border));
+    const content_height = @max(0, node.layout.height - rectVertical(node.layout.padding) - rectVertical(node.layout.border));
+    for (node.children.items, 0..) |sibling, sibling_index| {
+        const y_delta = if (sibling == child)
+            child_top_delta
+        else if (sibling_index > index)
+            delta
+        else
+            @as(f32, 0);
+        if (y_delta == 0 and sibling != child) {
+            if (next_height == old_height) continue;
+        }
+        const next_y = if (sibling == child) old_child_top + child_top_delta else sibling.layout.top + y_delta;
+        const next_x = if (sibling == child) old_child_left else sibling.layout.left;
+        setChildLayout(node, sibling, next_x, next_y, sibling.layout.width, sibling.layout.height, content_width, content_height);
+    }
+
+    node.cached_generation = current_layout_generation;
+    node.has_cached_layout = true;
+    return .{ .width = node.layout.width, .height = node.layout.height };
+}
+
+fn canReuseChildrenForSimpleColumn(node: *const Node, direction: Direction) bool {
+    if (direction != .ltr) return false;
+    if (node.style.flex_direction != .column) return false;
+    if (node.style.flex_wrap != .no_wrap) return false;
+    if (node.style.justify_content != .flex_start) return false;
+    if (node.style.align_items != .stretch and node.style.align_items != .flex_start) return false;
+    if (node.style.has_gap_values) return false;
+    if (node.has_absolute_subtree) return false;
+
+    for (node.children.items) |child| {
+        if (child.style.display != .flex) return false;
+        if (child.style.position_type == .absolute) return false;
+        if (!child.has_cached_layout) return false;
+        if (child.dirty and (child.self_dirty or child.dirty_child_count != 0)) return false;
+        if (nonNan(child.style.flex_grow, 0) != 0) return false;
+        if (nonNan(child.style.flex_shrink, 0) != 0) return false;
+        if (isConcrete(child.style.flex_basis)) return false;
+        if (child.style.height.unit == .percent) return false;
+    }
+    return true;
+}
+
+fn tryLayoutSimpleVerticalPaddingChange(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_width: ?f32, owner_height: ?f32, direction: Direction) ?Size {
+    if (!node.self_dirty or !node.style_dirty) return null;
+    if (node.dirty_child_count != 0) return null;
+    if (assigned_height != null or hasStyleHeight(node)) return null;
+    if (isDefined(node.style.max_height)) return null;
+    if (!canReuseChildrenForSimpleColumn(node, direction)) return null;
+
+    const next_margin = if (node.style.has_margin_values) resolveSpacingRect(&node.style.margin, owner_width, direction) else Rect{};
+    const next_padding = if (node.style.has_padding_values) resolveSpacingRect(&node.style.padding, owner_width, direction) else Rect{};
+    const next_border = if (node.style.has_border_values) resolveBorderRect(&node.style.border, direction) else Rect{};
+
+    if (!rectEqual(node.layout.margin, next_margin)) return null;
+    if (!rectEqual(node.layout.border, next_border)) return null;
+    if (node.layout.padding.left != next_padding.left or node.layout.padding.right != next_padding.right) return null;
+
+    const top_delta = next_padding.top - node.layout.padding.top;
+    const bottom_delta = next_padding.bottom - node.layout.padding.bottom;
+    const height_delta = top_delta + bottom_delta;
+    if (height_delta == 0) return null;
+
+    const old_height = node.layout.height;
+    var next_height = old_height + height_delta;
+    if (isDefined(node.style.min_height)) {
+        const min_height = outerDimensionFromStyle(node, node.style.min_height, owner_height, owner_width, owner_height, direction, false) orelse 0;
+        if (old_height <= min_height or next_height <= min_height) return null;
+    }
+
+    const clamped = clampNodeSize(node, .{ .width = node.layout.width, .height = next_height }, owner_width, owner_height, direction);
+    if (clamped.width != node.layout.width or clamped.height != next_height) return null;
+    next_height = clamped.height;
+
+    node.layout.padding = next_padding;
+    if (node.layout.height != next_height) markRoundDirty(node);
+    node.layout.height = next_height;
+    updateContainingBlock(node, node.layout.width, node.layout.height);
+
+    const content_width = @max(0, node.layout.width - rectHorizontal(node.layout.padding) - rectHorizontal(node.layout.border));
+    const content_height = @max(0, node.layout.height - rectVertical(node.layout.padding) - rectVertical(node.layout.border));
+    for (node.children.items) |child| {
+        setChildLayout(node, child, child.layout.left, child.layout.top + top_delta, child.layout.width, child.layout.height, content_width, content_height);
+    }
+
+    const assigned_width_value = optionalToFloat(assigned_width);
+    const assigned_height_value = optionalToFloat(assigned_height);
+    const owner_width_value = optionalToFloat(owner_width);
+    const owner_height_value = optionalToFloat(owner_height);
+    node.cached_assigned_width = assigned_width_value;
+    node.cached_assigned_height = assigned_height_value;
+    node.cached_owner_width = owner_width_value;
+    node.cached_owner_height = owner_height_value;
+    node.cached_direction = direction;
+    node.cached_generation = current_layout_generation;
+    node.has_cached_layout = true;
+    if (assigned_height == null) {
+        _ = cacheBaseSize(node, owner_width_value, owner_height_value, direction, .{ .width = node.layout.width, .height = node.layout.height });
+    }
+    return .{ .width = node.layout.width, .height = node.layout.height };
+}
+
 fn layoutNode(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_width: ?f32, owner_height: ?f32, direction: Direction) Size {
     if (node.style.display == .none) {
         zeroLayoutRecursive(node);
@@ -1943,15 +2133,30 @@ fn layoutNode(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_wi
         return .{ .width = node.layout.width, .height = node.layout.height };
     }
 
+    const can_try_incremental_self_layout = cachedColumnFlowInputsMatch(node, assigned_width_value, owner_width_value, owner_height_value, direction) or
+        (assigned_height == null and cachedBaseSizeValuesMatch(node, owner_width_value, owner_height_value, direction));
+    if (node.dirty and can_try_incremental_self_layout) {
+        if (tryLayoutSimpleVerticalPaddingChange(node, assigned_width, assigned_height, owner_width, owner_height, direction)) |size| {
+            return size;
+        }
+    }
+
     if (node.dirty and
         !node.self_dirty and
         node.dirty_child_count == 1 and
         node.dirty_child != null and
-        node.style.flex_wrap == .no_wrap and
-        cachedConstraintsMatch(node, assigned_width_value, assigned_height_value, owner_width_value, owner_height_value, direction))
+        node.style.flex_wrap == .no_wrap)
     {
         const child = node.dirty_child.?;
-        if (!child.style_dirty and child.has_cached_layout) {
+        if (cachedColumnFlowInputsMatch(node, assigned_width_value, owner_width_value, owner_height_value, direction)) {
+            if (tryLayoutSimpleColumnDirtyChild(node, child, assigned_height, owner_width, owner_height, direction)) |size| {
+                return size;
+            }
+        }
+        if (!child.style_dirty and
+            child.has_cached_layout and
+            cachedConstraintValuesMatch(node, assigned_width_value, assigned_height_value, owner_width_value, owner_height_value, direction))
+        {
             const old_child_width = child.layout.width;
             const old_child_height = child.layout.height;
             const child_assigned_width = if (child.measure_callback != null and !hasStyleWidth(child)) null else optionalFromCached(child.cached_assigned_width);

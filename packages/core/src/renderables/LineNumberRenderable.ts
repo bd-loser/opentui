@@ -361,12 +361,14 @@ export class LineNumberRenderable extends Renderable {
   private _hideLineNumbers: Set<number>
   private _lineNumbers: Map<number, number>
   private _isDestroying: boolean = false
+  private _syncHeightToTarget: boolean
   private handleLineInfoChange = (): void => {
     // When line info changes in the target, remeasure the gutter
-    if (this.gutter && this.target) {
-      this.gutter.height = Math.min(this.target.height, this.target.virtualLineCount)
-      this.gutter.remeasure()
+    this.gutter?.remeasure()
+    if (this._syncHeightToTarget && this.target && this.height !== this.target.virtualLineCount) {
+      this.height = this.target.virtualLineCount
     }
+    this.yogaNode.markDirty()
     this.requestRender()
   }
 
@@ -407,6 +409,7 @@ export class LineNumberRenderable extends Renderable {
     this._lineNumberOffset = options.lineNumberOffset ?? 0
     this._hideLineNumbers = options.hideLineNumbers ?? new Set()
     this._lineNumbers = options.lineNumbers ?? new Map()
+    this._syncHeightToTarget = options.height === undefined || options.height === "auto"
 
     this._lineColorsGutter = new Map<number, RGBA>()
     this._lineColorsContent = new Map<number, RGBA>()
@@ -444,7 +447,6 @@ export class LineNumberRenderable extends Renderable {
     }
 
     this.target = target
-    this.target.flexGrow = 1
 
     // Listen for line info changes from target
     this.target.on("line-info-change", this.handleLineInfoChange)
@@ -466,7 +468,6 @@ export class LineNumberRenderable extends Renderable {
 
     super.add(this.gutter)
     super.add(this.target)
-    this.gutter.height = Math.min(this.target.height, this.target.virtualLineCount)
   }
 
   // Override add to intercept and set as target if it's a LineInfoProvider

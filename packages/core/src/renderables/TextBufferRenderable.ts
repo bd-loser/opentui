@@ -333,18 +333,9 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   protected onResize(width: number, height: number): void {
     this.textBufferView.setViewport(this._scrollX, this._scrollY, width, height)
-    this.syncAutoHeightFromContent()
     this.yogaNode.markDirty()
     this.requestRender()
     this.emit("line-info-change")
-  }
-
-  private syncAutoHeightFromContent(): void {
-    if (this._height !== "auto") return
-    const lineCount = Math.max(1, this.textBufferView.getVirtualLineCount())
-    if (lineCount !== this.height) {
-      this.yogaNode.setHeight(lineCount)
-    }
   }
 
   protected refreshLocalSelection(): boolean {
@@ -376,7 +367,6 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     }
 
     this.yogaNode.markDirty()
-    this.syncAutoHeightFromContent()
     this.requestRender()
     this.emit("line-info-change")
   }
@@ -505,6 +495,9 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this.textBuffer.ptr) {
+      if (this.width > 0 && this.height > 0) {
+        this.textBufferView.setViewport(this._scrollX, this._scrollY, this.width, this.height)
+      }
       buffer.drawTextBuffer(this.textBufferView, this._screenX, this._screenY)
     }
   }

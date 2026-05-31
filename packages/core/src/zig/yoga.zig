@@ -228,6 +228,11 @@ const Style = struct {
     has_gap_values: bool = false,
 };
 
+const STYLE_DIRTY_UNKNOWN: u32 = 1 << 0;
+const STYLE_DIRTY_PADDING_TOP: u32 = 1 << 1;
+const STYLE_DIRTY_PADDING_BOTTOM: u32 = 1 << 2;
+const STYLE_DIRTY_VERTICAL_PADDING = STYLE_DIRTY_PADDING_TOP | STYLE_DIRTY_PADDING_BOTTOM;
+
 const Layout = struct {
     left: f32 = 0,
     top: f32 = 0,
@@ -263,6 +268,7 @@ const Node = struct {
     dirty: bool = true,
     self_dirty: bool = true,
     style_dirty: bool = true,
+    style_dirty_flags: u32 = STYLE_DIRTY_UNKNOWN,
     dirty_child_count: u32 = 0,
     dirty_child: ?*Node = null,
     has_new_layout: bool = true,
@@ -631,6 +637,10 @@ fn rectVertical(rect: Rect) f32 {
     return rect.top + rect.bottom;
 }
 
+fn rectEqual(left: Rect, right: Rect) bool {
+    return left.left == right.left and left.top == right.top and left.right == right.right and left.bottom == right.bottom;
+}
+
 fn updateContainingBlock(node: *Node, width: f32, height: f32) void {
     if (node.style.position_type == .static) {
         if (node.parent) |parent| {
@@ -746,6 +756,11 @@ fn markDirty(node: *Node) void {
     markDirtyInternal(node, true);
 }
 
+fn markStyleDirty(node: *Node, flags: u32) void {
+    node.style_dirty_flags |= flags;
+    markDirtyInternal(node, true);
+}
+
 fn markMeasureDirty(node: *Node) void {
     markDirtyInternal(node, false);
 }
@@ -781,6 +796,7 @@ fn markCleanRecursive(node: *Node) void {
     node.dirty = false;
     node.self_dirty = false;
     node.style_dirty = false;
+    node.style_dirty_flags = 0;
     node.dirty_child_count = 0;
     node.dirty_child = null;
     node.dirtied_notified = false;
@@ -795,6 +811,7 @@ fn markCleanDirtyRecursive(node: *Node) void {
     node.dirty = false;
     node.self_dirty = false;
     node.style_dirty = false;
+    node.style_dirty_flags = 0;
     node.dirty_child_count = 0;
     node.dirty_child = null;
     node.dirtied_notified = false;
@@ -808,6 +825,7 @@ fn markDirtyRecursiveNoCallback(node: *Node) void {
     node.dirty = true;
     node.self_dirty = true;
     node.style_dirty = true;
+    node.style_dirty_flags = STYLE_DIRTY_UNKNOWN;
     node.dirty_child_count = 0;
     node.dirty_child = null;
     if (node.has_measure_subtree) node.has_cached_layout = false;
@@ -985,8 +1003,8 @@ fn makeLineItem(node: *Node, container_width: ?f32, container_height: ?f32, is_r
     var flex_base_main = if (is_row) basis.width else basis.height;
     basis = clampNodeSize(node, basis, container_width, container_height, direction);
     const margin = if (node.style.has_margin_values) resolveSpacingRect(&node.style.margin, container_width, direction) else Rect{};
-    const has_explicit_width = hasStyleWidth(node) and !(node.style.width.unit == .percent and container_width == null);
-    const has_explicit_height = hasStyleHeight(node) and !(node.style.height.unit == .percent and container_height == null);
+    const has_explicit_width = hasStyleWidth(node);
+    const has_explicit_height = hasStyleHeight(node);
     const has_main_min_max = if (is_row)
         isDefined(node.style.min_width) or isDefined(node.style.max_width)
     else
@@ -1976,10 +1994,7 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
                 item.node.layout.height == child_height)
             {
                 // Natural sizing already laid this subtree out with the final size.
-            } else if (item.node.measure_callback != null and
-                item.node.children.items.len == 0 and
-                !(must_relayout_auto_cross_measure and (item.node.dirty or item.node.layout.width != child_width)))
-            {
+            } else if (item.node.measure_callback != null and item.node.children.items.len == 0) {
                 item.node.layout.margin = item.margin;
                 item.node.layout.padding = if (item.node.style.has_padding_values) resolveSpacingRect(&item.node.style.padding, content_width, direction) else Rect{};
                 item.node.layout.border = if (item.node.style.has_border_values) resolveBorderRect(&item.node.style.border, direction) else Rect{};
@@ -2079,12 +2094,14 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
                 height.* = clampDimension(content_height.? + chrome_height, node.style.min_height, node.style.max_height, owner_height);
                 content_height = @max(0, height.* - chrome_height);
             }
+            var relaid_percent_cross = false;
             for (active_items) |item| {
                 if (item.node.style.height.unit != .percent) continue;
                 if (nodeOuterHeightFromStyle(item.node, content_width, content_height, direction)) |resolved_height| {
                     item.node.has_cached_layout = false;
                     const relayout_width: ?f32 = if (!hasStyleWidth(item.node) and subtreeHasMeasureFunc(item.node)) null else item.node.layout.width;
                     _ = layoutNode(item.node, relayout_width, resolved_height, content_width, content_height, direction);
+                    relaid_percent_cross = true;
                     const available_cross = content_height.? - item.node.layout.height - item.margin.top - item.margin.bottom;
                     const alignment = childAlign(node, item.node);
                     const offset = if (alignment == .center)
@@ -2097,7 +2114,7 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
                     setChildLayout(node, item.node, item.node.layout.left, next_y, item.node.layout.width, item.node.layout.height, content_width.?, content_height.?, direction);
                 }
             }
-            if (content_width_was_auto) {
+            if (content_width_was_auto and relaid_percent_cross) {
                 var final_main: f32 = 0;
                 for (lines) |line| {
                     var line_main: f32 = 0;
@@ -2119,12 +2136,14 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
                 width.* = clampDimension(content_width.? + chrome_width, node.style.min_width, node.style.max_width, owner_width);
                 content_width = @max(0, width.* - chrome_width);
             }
+            var relaid_percent_cross = false;
             for (active_items) |item| {
                 if (item.node.style.width.unit != .percent) continue;
                 if (nodeOuterWidthFromStyle(item.node, content_width, content_height, direction)) |resolved_width| {
                     item.node.has_cached_layout = false;
                     const relayout_height: ?f32 = if (!hasStyleHeight(item.node) and subtreeHasMeasureFunc(item.node)) null else item.node.layout.height;
                     _ = layoutNode(item.node, resolved_width, relayout_height, content_width, content_height, direction);
+                    relaid_percent_cross = true;
                     const available_cross = content_width.? - item.node.layout.width - item.margin.left - item.margin.right;
                     const alignment = childAlign(node, item.node);
                     const cross_reversed = direction == .rtl;
@@ -2140,7 +2159,7 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
                     setChildLayout(node, item.node, next_x, item.node.layout.top, item.node.layout.width, item.node.layout.height, content_width.?, content_height.?, direction);
                 }
             }
-            if (content_height_was_auto) {
+            if (content_height_was_auto and relaid_percent_cross) {
                 var final_main: f32 = 0;
                 for (lines) |line| {
                     var line_main: f32 = 0;
@@ -2294,6 +2313,80 @@ fn tryLayoutSimpleColumnDirtyChild(node: *Node, child: *Node, assigned_width: ?f
     return .{ .width = node.layout.width, .height = node.layout.height };
 }
 
+fn canReuseChildrenForSimpleColumn(node: *const Node, direction: Direction) bool {
+    if (!canUseIncrementalColumnFlow(node)) return false;
+
+    for (node.children.items) |child| {
+        if (!canReuseChildForIncrementalColumn(node, child, direction)) return false;
+        if (child.dirty and (child.self_dirty or child.dirty_child_count != 0)) return false;
+    }
+    return true;
+}
+
+fn tryLayoutSimpleVerticalPaddingChange(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_width: ?f32, owner_height: ?f32, direction: Direction) ?Size {
+    if (!node.self_dirty or !node.style_dirty) return null;
+    if (node.style_dirty_flags == 0 or (node.style_dirty_flags & ~STYLE_DIRTY_VERTICAL_PADDING) != 0) return null;
+    if (node.dirty_child_count != 0) return null;
+    if (isDefined(node.style.max_height)) return null;
+    if (!canReuseChildrenForSimpleColumn(node, direction)) return null;
+
+    const next_margin = if (node.style.has_margin_values) resolveSpacingRect(&node.style.margin, owner_width, direction) else Rect{};
+    const next_padding = if (node.style.has_padding_values) resolveSpacingRect(&node.style.padding, owner_width, direction) else Rect{};
+    const next_border = if (node.style.has_border_values) resolveBorderRect(&node.style.border, direction) else Rect{};
+
+    if (!rectEqual(node.layout.margin, next_margin)) return null;
+    if (!rectEqual(node.layout.border, next_border)) return null;
+    if (node.layout.padding.left != next_padding.left or node.layout.padding.right != next_padding.right) return null;
+
+    const height_delta = next_padding.top - node.layout.padding.top + next_padding.bottom - node.layout.padding.bottom;
+    if (height_delta == 0) return null;
+
+    const explicit_width = assigned_width orelse nodeOuterWidthFromStyle(node, owner_width, owner_height, direction);
+    if (explicit_width) |width| {
+        if (width != node.layout.width) return null;
+    }
+
+    const old_height = node.layout.height;
+    var next_height = old_height;
+    const explicit_height = assigned_height orelse nodeOuterHeightFromStyle(node, owner_width, owner_height, direction);
+    if (explicit_height) |height| {
+        if (height != old_height) return null;
+    } else {
+        next_height = old_height + height_delta;
+        if (isDefined(node.style.min_height)) {
+            const min_height = outerDimensionFromStyle(node, node.style.min_height, owner_height, owner_width, owner_height, direction, false) orelse 0;
+            if (old_height <= min_height or next_height <= min_height) return null;
+        }
+    }
+
+    const clamped = clampNodeSize(node, .{ .width = node.layout.width, .height = next_height }, owner_width, owner_height, direction);
+    if (clamped.width != node.layout.width or clamped.height != next_height) return null;
+    next_height = clamped.height;
+
+    node.layout.padding = next_padding;
+    if (node.layout.height != next_height) markRoundDirty(node);
+    node.layout.height = next_height;
+    updateContainingBlock(node, node.layout.width, node.layout.height);
+
+    const content_width = @max(0, node.layout.width - rectHorizontal(node.layout.padding) - rectHorizontal(node.layout.border));
+    const content_height = @max(0, node.layout.height - rectVertical(node.layout.padding) - rectVertical(node.layout.border));
+    repositionIncrementalColumnChildren(node, content_width, content_height, direction);
+
+    const owner_width_value = optionalToFloat(owner_width);
+    const owner_height_value = optionalToFloat(owner_height);
+    node.cached_assigned_width = optionalToFloat(assigned_width);
+    node.cached_assigned_height = optionalToFloat(assigned_height);
+    node.cached_owner_width = owner_width_value;
+    node.cached_owner_height = owner_height_value;
+    node.cached_direction = direction;
+    node.cached_generation = current_layout_generation;
+    node.has_cached_layout = true;
+    if (assigned_height == null) {
+        _ = cacheBaseSize(node, owner_width_value, owner_height_value, direction, .{ .width = node.layout.width, .height = node.layout.height });
+    }
+    return .{ .width = node.layout.width, .height = node.layout.height };
+}
+
 fn layoutNode(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_width: ?f32, owner_height: ?f32, direction: Direction) Size {
     if (node.style.display == .none) {
         zeroLayoutRecursive(node);
@@ -2308,6 +2401,14 @@ fn layoutNode(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_wi
         cachedConstraintsMatch(node, assigned_width_value, assigned_height_value, owner_width_value, owner_height_value, direction))
     {
         return .{ .width = node.layout.width, .height = node.layout.height };
+    }
+
+    const can_try_incremental_self_layout = cachedColumnFlowInputsMatch(node, assigned_width_value, owner_width_value, owner_height_value, direction) or
+        (assigned_height == null and cachedBaseSizeValuesMatch(node, owner_width_value, owner_height_value, direction));
+    if (node.dirty and can_try_incremental_self_layout) {
+        if (tryLayoutSimpleVerticalPaddingChange(node, assigned_width, assigned_height, owner_width, owner_height, direction)) |size| {
+            return size;
+        }
     }
 
     if (node.dirty and
@@ -2596,14 +2697,14 @@ export fn yogaNodeReset(node: *Node) void {
     node.always_forms_containing_block = false;
     node.has_new_layout = true;
     refreshAbsoluteSubtreeUpwards(node);
-    markDirty(node);
+    markStyleDirty(node, STYLE_DIRTY_UNKNOWN);
 }
 
 export fn yogaNodeCopyStyle(dst_node: *Node, src_node: *const Node) void {
     const old_position_type = dst_node.style.position_type;
     dst_node.style = src_node.style;
     if (old_position_type != dst_node.style.position_type) refreshAbsoluteFromNode(dst_node);
-    markDirty(dst_node);
+    markStyleDirty(dst_node, STYLE_DIRTY_UNKNOWN);
 }
 
 pub export fn yogaNodeInsertChild(node: *Node, child: *Node, index: u32) void {
@@ -2807,7 +2908,18 @@ pub export fn yogaNodeStyleSetEnum(node: *Node, kind: u32, value: u32) void {
             node.style.box_sizing = next;
         },
     }
-    if (changed) markDirty(node);
+    if (changed) markStyleDirty(node, STYLE_DIRTY_UNKNOWN);
+}
+
+fn styleValueDirtyFlags(value_kind: YogaValueKind, edge_or_gutter: u32) u32 {
+    if (value_kind != .padding) return STYLE_DIRTY_UNKNOWN;
+    const edge: Edge = @enumFromInt(edge_or_gutter);
+    return switch (edge) {
+        .top => STYLE_DIRTY_PADDING_TOP,
+        .bottom => STYLE_DIRTY_PADDING_BOTTOM,
+        .vertical => STYLE_DIRTY_VERTICAL_PADDING,
+        else => STYLE_DIRTY_UNKNOWN,
+    };
 }
 
 export fn yogaNodeStyleGetEnum(node: *const Node, kind: u32) u32 {
@@ -2852,7 +2964,7 @@ pub export fn yogaNodeStyleSetFloat(node: *Node, kind: u32, value: f32) void {
             node.style.aspect_ratio = value;
         },
     }
-    if (changed) markDirty(node);
+    if (changed) markStyleDirty(node, STYLE_DIRTY_UNKNOWN);
 }
 
 export fn yogaNodeStyleGetFloat(node: *const Node, kind: u32) f32 {
@@ -2868,7 +2980,7 @@ export fn yogaNodeStyleSetBorder(node: *Node, edge: u32, border: f32) void {
     if (styleFloatEqual(node.style.border[edge], border)) return;
     node.style.border[edge] = border;
     node.style.has_border_values = !borderValuesAllUndefined(&node.style.border);
-    markDirty(node);
+    markStyleDirty(node, STYLE_DIRTY_UNKNOWN);
 }
 
 export fn yogaNodeStyleGetBorder(node: *const Node, edge: u32) f32 {
@@ -2902,7 +3014,7 @@ pub export fn yogaNodeStyleSetValue(node: *Node, kind: u32, edge_or_gutter: u32,
     }
     current.* = style_value;
     refreshStyleValueFlags(&node.style, value_kind);
-    markDirty(node);
+    markStyleDirty(node, styleValueDirtyFlags(value_kind, edge_or_gutter));
 }
 
 pub export fn yogaNodeStyleGetValue(node: *const Node, kind: u32, edge_or_gutter: u32) u64 {

@@ -1588,7 +1588,6 @@ Then continue with prose immediately after the code block.
     Renderer Stress Cases
 
     Interleaved Code
-
     Start with a short conclusion before any code appears.
 
     export function parse(input: string) {
@@ -1854,8 +1853,7 @@ test("links with conceal=false", async () => {
 
   expect(await renderMarkdown(markdown, false)).toMatchInlineSnapshot(`
     "
-    Check out [OpenTUI](https://github.com/sst/opentui) for
-    more."
+    Check out [OpenTUI](https://github.com/sst/opentui) for"
   `)
 })
 

@@ -1,10 +1,60 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { BoxRenderable } from "../Box.js"
+import { TextRenderable } from "../Text.js"
+import { TextareaRenderable } from "../Textarea.js"
 import { createTestRenderer, type TestRenderer, type MockInput } from "../../testing/test-renderer.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
 let currentMockInput: MockInput
+
+type DeferredGraphemeMode = "ascii" | "unicode" | "unicode-sync"
+
+function removeReplacementChild(parent: BoxRenderable, child: TextRenderable | BoxRenderable, deferred: boolean) {
+  parent.remove(child.id)
+  if (!deferred) {
+    child.destroyRecursively()
+    return
+  }
+
+  process.nextTick(() => {
+    if (!child.parent) child.destroyRecursively()
+  })
+}
+
+async function runDeferredGraphemeReplacement(mode: DeferredGraphemeMode) {
+  const root = new BoxRenderable(currentRenderer, { width: "100%", height: "100%", flexDirection: "column" })
+  const hint = new TextRenderable(currentRenderer, { content: mode === "ascii" ? "up/down" : "up/down ↑↓" })
+  const deferred = mode !== "unicode-sync"
+  root.add(hint)
+  currentRenderer.root.add(root)
+  await renderOnce()
+
+  removeReplacementChild(root, hint, deferred)
+  const editorShell = new BoxRenderable(currentRenderer, { width: "100%" })
+  const editor = new TextareaRenderable(currentRenderer, {
+    width: "100%",
+    minHeight: 1,
+    maxHeight: 4,
+    keyBindings: [{ name: "return", action: "submit" }],
+    onSubmit() {
+      removeReplacementChild(root, editorShell, deferred)
+      root.add(new TextRenderable(currentRenderer, { content: mode === "ascii" ? "up/down" : "up/down ↑↓" }))
+    },
+  })
+  editorShell.add(editor)
+  root.add(editorShell)
+  editor.focus()
+  await renderOnce()
+  editor.insertText("typed")
+  await renderOnce()
+  editor.submit()
+  await renderOnce()
+  currentRenderer.destroy()
+  await new Promise<void>((resolve) => process.nextTick(resolve))
+  expect(editor.isDestroyed).toBe(true)
+}
 
 describe("Textarea - Destroyed Renderable Event Tests", () => {
   beforeEach(async () => {
@@ -670,6 +720,20 @@ describe("Textarea - Destroyed Renderable Event Tests", () => {
       // Operations after destroy should either throw or be ignored
       // The important thing is we should be able to detect destroyed state
       expect(editor.isDestroyed).toBe(true)
+    })
+  })
+
+  describe("Deferred destruction with graphemes", () => {
+    it("should destroy an ASCII textarea replacement after deferred removal", async () => {
+      await runDeferredGraphemeReplacement("ascii")
+    })
+
+    it("should destroy a synchronously removed Unicode textarea replacement", async () => {
+      await runDeferredGraphemeReplacement("unicode-sync")
+    })
+
+    it("should destroy a deferred Unicode textarea replacement", async () => {
+      await runDeferredGraphemeReplacement("unicode")
     })
   })
 })

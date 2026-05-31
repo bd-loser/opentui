@@ -1423,6 +1423,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public requestRender() {
+    if (this._isDestroyed) {
+      return
+    }
+
     if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
       return
     }
@@ -3514,6 +3518,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
   }
   public setMousePointer(style: MousePointerStyle): void {
+    if (this._isDestroyed) return
+
     this._currentMousePointerStyle = style
     this.lib.setCursorStyleOptions(this.rendererPtr, { cursor: style })
   }
@@ -3761,11 +3767,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public static setCursorPosition(renderer: CliRenderer, x: number, y: number, visible: boolean = true): void {
+    if (renderer._isDestroyed) return
+
     const lib = resolveRenderLib()
     lib.setCursorPosition(renderer.rendererPtr, x, y, visible)
   }
 
   public static setCursorStyle(renderer: CliRenderer, options: CursorStyleOptions): void {
+    if (renderer._isDestroyed) return
+
     const lib = resolveRenderLib()
     lib.setCursorStyleOptions(renderer.rendererPtr, options)
     if (options.cursor !== undefined) {
@@ -3774,15 +3784,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public static setCursorColor(renderer: CliRenderer, color: RGBA): void {
+    if (renderer._isDestroyed) return
+
     const lib = resolveRenderLib()
     lib.setCursorColor(renderer.rendererPtr, color)
   }
 
   public setCursorPosition(x: number, y: number, visible: boolean = true): void {
+    if (this._isDestroyed) return
+
     this.lib.setCursorPosition(this.rendererPtr, x, y, visible)
   }
 
   public setCursorStyle(options: CursorStyleOptions): void {
+    if (this._isDestroyed) return
+
     this.lib.setCursorStyleOptions(this.rendererPtr, options)
     if (options.cursor !== undefined) {
       this._currentMousePointerStyle = options.cursor
@@ -3790,6 +3806,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public setCursorColor(color: RGBA): void {
+    if (this._isDestroyed) return
+
     this.lib.setCursorColor(this.rendererPtr, color)
   }
 

@@ -1608,13 +1608,13 @@ function createScenarios(): BenchmarkScenario[] {
       },
     },
     {
-      name: "opencode_markdown_scrollback_full_render",
+      name: "opencode_markdown_scrollback_calculate_only",
       description:
         "Explicit real-world: large OpenCode-like sticky scrollback with MarkdownRenderable assistant blocks, tool cards, and diff output",
       defaultEnabled: false,
       setup: async (ctx) => {
         const state = await buildMarkdownScrollbackState(ctx, Math.max(36, ctx.height + 8))
-        calculateLayout(ctx, "opencode_markdown_scrollback_full_render")
+        calculateLayout(ctx, "opencode_markdown_scrollback_calculate_only")
         state.stats = collectRenderableTreeStats(state.root)
         const metrics = createMetricsTracker()
 
@@ -1648,12 +1648,12 @@ function createScenarios(): BenchmarkScenario[] {
             layoutMutationsPerIteration: 2,
             runIteration(iteration) {
               consume(mutate(iteration))
-              const passes = calculateLayout(ctx, "opencode_markdown_scrollback_full_render")
+              const passes = calculateLayout(ctx, "opencode_markdown_scrollback_calculate_only")
               metrics.recordSettlePasses(passes)
               return readProbe() + passes
             },
             validate: () =>
-              validateCalculateRecalculation(ctx, "opencode_markdown_scrollback_full_render", mutate, readProbe),
+              validateCalculateRecalculation(ctx, "opencode_markdown_scrollback_calculate_only", mutate, readProbe),
             cleanup: () => {
               state.root.destroyRecursively()
               state.syntaxStyle.destroy()
@@ -1664,13 +1664,13 @@ function createScenarios(): BenchmarkScenario[] {
       },
     },
     {
-      name: "opencode_diff_viewer_full_render",
+      name: "opencode_diff_viewer_calculate_only",
       description:
         "Explicit real-world: OpenCode diff viewer with file tree, patch scrollbox, split diff renderables, headers, and reviewed-state layout",
       defaultEnabled: false,
       setup: async (ctx) => {
         const state = await buildDiffViewerTreeState(ctx, Math.max(10, Math.floor(ctx.height * 0.35)))
-        await renderUntilLayoutClean(ctx, "opencode_diff_viewer_full_render")
+        await renderUntilLayoutClean(ctx, "opencode_diff_viewer_calculate_only")
         state.stats = collectRenderableTreeStats(state.root)
         const metrics = createMetricsTracker()
 
@@ -1711,12 +1711,12 @@ function createScenarios(): BenchmarkScenario[] {
             async runIteration(iteration) {
               consume(mutate(iteration))
               await Promise.resolve()
-              const passes = calculateLayout(ctx, "opencode_diff_viewer_full_render")
+              const passes = calculateLayout(ctx, "opencode_diff_viewer_calculate_only")
               metrics.recordSettlePasses(passes)
               return readProbe() + passes
             },
             validate: () =>
-              validateAsyncCalculateRecalculation(ctx, "opencode_diff_viewer_full_render", mutate, readProbe),
+              validateAsyncCalculateRecalculation(ctx, "opencode_diff_viewer_calculate_only", mutate, readProbe),
             cleanup: () => {
               state.root.destroyRecursively()
               state.syntaxStyle.destroy()

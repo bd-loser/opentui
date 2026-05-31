@@ -605,6 +605,13 @@ fn resolveGap(style: *const Style, gutter: Gutter, owner_size: ?f32) f32 {
     return resolveValueOrZero(all, owner_size);
 }
 
+fn gapIsOwnerIndependent(style: *const Style, gutter: Gutter) bool {
+    if (!style.has_gap_values) return true;
+    const specific = style.gap[gutterIndex(gutter)];
+    if (isDefined(specific)) return specific.unit != .percent;
+    return style.gap[gutterIndex(.all)].unit != .percent;
+}
+
 fn clampDimension(value: f32, min_value: StyleValue, max_value: StyleValue, owner_size: ?f32) f32 {
     var result = @max(0, nonNan(value, 0));
     if (resolveValue(min_value, owner_size)) |min_resolved| {
@@ -1948,12 +1955,10 @@ fn layoutFlexChildren(node: *Node, width: *f32, height: *f32, owner_width: ?f32,
 }
 
 fn tryLayoutSimpleColumnDirtyChild(node: *Node, child: *Node, assigned_height: ?f32, owner_width: ?f32, owner_height: ?f32, direction: Direction) ?Size {
-    if (direction != .ltr) return null;
     if (node.style.flex_direction != .column) return null;
     if (node.style.flex_wrap != .no_wrap) return null;
     if (node.style.justify_content != .flex_start) return null;
-    if (node.style.align_items != .stretch and node.style.align_items != .flex_start) return null;
-    if (node.style.has_gap_values) return null;
+    if (!gapIsOwnerIndependent(&node.style, .row)) return null;
     if (node.has_absolute_subtree) return null;
     if (!child.has_cached_layout) return null;
 
@@ -1964,6 +1969,7 @@ fn tryLayoutSimpleColumnDirtyChild(node: *Node, child: *Node, assigned_height: ?
         if (nonNan(candidate.style.flex_grow, 0) != 0) return null;
         if (nonNan(candidate.style.flex_shrink, 0) != 0) return null;
         if (isConcrete(candidate.style.flex_basis)) return null;
+        if (candidate.style.height.unit == .percent) return null;
         if (candidate == child) child_index = index;
     }
     const index = child_index orelse return null;
@@ -1977,8 +1983,8 @@ fn tryLayoutSimpleColumnDirtyChild(node: *Node, child: *Node, assigned_height: ?
     const old_child_margin = child.layout.margin;
     const old_outer_height = old_child_height + old_child_margin.top + old_child_margin.bottom;
 
-    const child_assigned_width = if (child.measure_callback != null and !hasStyleWidth(child)) null else optionalFromCached(child.cached_assigned_width);
-    const child_assigned_height = if (child.measure_callback != null and !hasStyleHeight(child)) null else optionalFromCached(child.cached_assigned_height);
+    const child_assigned_width = if ((child.measure_callback != null and !hasStyleWidth(child)) or (child.style_dirty and hasStyleWidth(child))) null else optionalFromCached(child.cached_assigned_width);
+    const child_assigned_height = if ((child.measure_callback != null and !hasStyleHeight(child)) or (child.style_dirty and hasStyleHeight(child))) null else optionalFromCached(child.cached_assigned_height);
     _ = layoutNode(
         child,
         child_assigned_width,
@@ -2037,12 +2043,11 @@ fn tryLayoutSimpleColumnDirtyChild(node: *Node, child: *Node, assigned_height: ?
 }
 
 fn canReuseChildrenForSimpleColumn(node: *const Node, direction: Direction) bool {
-    if (direction != .ltr) return false;
+    _ = direction;
     if (node.style.flex_direction != .column) return false;
     if (node.style.flex_wrap != .no_wrap) return false;
     if (node.style.justify_content != .flex_start) return false;
-    if (node.style.align_items != .stretch and node.style.align_items != .flex_start) return false;
-    if (node.style.has_gap_values) return false;
+    if (!gapIsOwnerIndependent(&node.style, .row)) return false;
     if (node.has_absolute_subtree) return false;
 
     for (node.children.items) |child| {
@@ -2061,7 +2066,6 @@ fn canReuseChildrenForSimpleColumn(node: *const Node, direction: Direction) bool
 fn tryLayoutSimpleVerticalPaddingChange(node: *Node, assigned_width: ?f32, assigned_height: ?f32, owner_width: ?f32, owner_height: ?f32, direction: Direction) ?Size {
     if (!node.self_dirty or !node.style_dirty) return null;
     if (node.dirty_child_count != 0) return null;
-    if (assigned_height != null or hasStyleHeight(node)) return null;
     if (isDefined(node.style.max_height)) return null;
     if (!canReuseChildrenForSimpleColumn(node, direction)) return null;
 
@@ -2078,11 +2082,22 @@ fn tryLayoutSimpleVerticalPaddingChange(node: *Node, assigned_width: ?f32, assig
     const height_delta = top_delta + bottom_delta;
     if (height_delta == 0) return null;
 
+    const explicit_width = assigned_width orelse nodeOuterWidthFromStyle(node, owner_width, owner_height, direction);
+    if (explicit_width) |width| {
+        if (width != node.layout.width) return null;
+    }
+
     const old_height = node.layout.height;
-    var next_height = old_height + height_delta;
-    if (isDefined(node.style.min_height)) {
-        const min_height = outerDimensionFromStyle(node, node.style.min_height, owner_height, owner_width, owner_height, direction, false) orelse 0;
-        if (old_height <= min_height or next_height <= min_height) return null;
+    var next_height = old_height;
+    const explicit_height = assigned_height orelse nodeOuterHeightFromStyle(node, owner_width, owner_height, direction);
+    if (explicit_height) |height| {
+        if (height != old_height) return null;
+    } else {
+        next_height = old_height + height_delta;
+        if (isDefined(node.style.min_height)) {
+            const min_height = outerDimensionFromStyle(node, node.style.min_height, owner_height, owner_width, owner_height, direction, false) orelse 0;
+            if (old_height <= min_height or next_height <= min_height) return null;
+        }
     }
 
     const clamped = clampNodeSize(node, .{ .width = node.layout.width, .height = next_height }, owner_width, owner_height, direction);

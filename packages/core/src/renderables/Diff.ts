@@ -16,6 +16,7 @@ interface LogicalLine {
   color?: string | RGBA
   sign?: LineSign
   type: "context" | "add" | "remove" | "empty"
+  hunkStart?: boolean
 }
 
 export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable> {
@@ -57,6 +58,7 @@ export class DiffRenderable extends Renderable {
   private _view: "unified" | "split"
   private _parsedDiff: StructuredPatch | null = null
   private _parseError: Error | null = null
+  private _hunkStartLines: number[] = []
 
   // CodeRenderable options
   private _fg?: RGBA
@@ -171,6 +173,8 @@ export class DiffRenderable extends Renderable {
   }
 
   private buildView(): void {
+    this._hunkStartLines = []
+
     if (this._parseError) {
       this.buildErrorView()
       return
@@ -486,6 +490,8 @@ export class DiffRenderable extends Renderable {
     let lineIndex = 0
 
     for (const hunk of this._parsedDiff.hunks) {
+      this._hunkStartLines.push(lineIndex)
+
       let oldLineNum = hunk.oldStart
       let newLineNum = hunk.newStart
 
@@ -580,8 +586,11 @@ export class DiffRenderable extends Renderable {
 
     const leftLogicalLines: LogicalLine[] = []
     const rightLogicalLines: LogicalLine[] = []
+    const hunkFirstLeftLine: number[] = []
 
     for (const hunk of this._parsedDiff.hunks) {
+      hunkFirstLeftLine.push(leftLogicalLines.length)
+
       let oldLineNum = hunk.oldStart
       let newLineNum = hunk.newStart
 
@@ -676,6 +685,11 @@ export class DiffRenderable extends Renderable {
           }
         }
       }
+    }
+
+    for (const startIndex of hunkFirstLeftLine) {
+      const firstLine = leftLogicalLines[startIndex]
+      if (firstLine) firstLine.hunkStart = true
     }
 
     const canDoWrapAlignment = this.width > 0 && (this._wrapMode === "word" || this._wrapMode === "char")
@@ -790,6 +804,9 @@ export class DiffRenderable extends Renderable {
     const rightLineNumbers = new Map<number, number>()
 
     finalLeftLines.forEach((line, index) => {
+      if (line.hunkStart) {
+        this._hunkStartLines.push(index)
+      }
       if (line.lineNum !== undefined) {
         leftLineNumbers.set(index, line.lineNum)
       }
@@ -1207,5 +1224,22 @@ export class DiffRenderable extends Renderable {
   public clearHighlightLines(startLine: number, endLine: number): void {
     this.leftSide?.clearHighlightLines(startLine, endLine)
     this.rightSide?.clearHighlightLines(startLine, endLine)
+  }
+
+  public getHunkRowOffsets(): number[] {
+    if (this._hunkStartLines.length === 0) return []
+
+    const sources = this.leftCodeRenderable?.lineInfo.lineSources
+    if (!sources || sources.length === 0) return [...this._hunkStartLines]
+
+    const firstRowByLogicalLine: number[] = []
+    for (let visualRow = 0; visualRow < sources.length; visualRow++) {
+      const logicalLine = sources[visualRow]
+      if (firstRowByLogicalLine[logicalLine] === undefined) {
+        firstRowByLogicalLine[logicalLine] = visualRow
+      }
+    }
+
+    return this._hunkStartLines.map((logicalLine) => firstRowByLogicalLine[logicalLine] ?? logicalLine)
   }
 }

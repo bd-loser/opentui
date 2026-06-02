@@ -1288,8 +1288,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     }
   })
 
-  // Regression test for issue #709: content size recalculation should not clear manual scroll state
-  test("does not reset _hasManualScroll during content size recalculation (issue #709)", async () => {
+  test("clears manual scroll state when content is no longer scrollable", async () => {
     const scrollBox = new ScrollBoxRenderable(testRenderer, {
       width: 40,
       height: 10,
@@ -1315,7 +1314,7 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
     expect((scrollBox as any)._hasManualScroll).toBe(true)
 
     // Force a size recalculation that programmatically clamps scrollTop to 0.
-    // This must not be treated as a user returning to sticky position.
+    // With no scrollable content, the user is no longer away from the sticky edge.
     for (let i = 0; i < 28; i++) {
       scrollBox.remove(`line-${i}`)
     }
@@ -1323,9 +1322,9 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
 
     expect(Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)).toBe(0)
     expect(scrollBox.scrollTop).toBe(0)
-    expect((scrollBox as any)._hasManualScroll).toBe(true)
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
 
-    // When content grows again, we should keep manual-scroll mode and stay away from sticky bottom.
+    // When content grows again, sticky bottom should be active again.
     for (let i = 30; i < 50; i++) {
       scrollBox.add(new TextRenderable(testRenderer, { id: `line-${i}`, content: `Line ${i}` }))
     }
@@ -1333,8 +1332,8 @@ console.log(processor.reduce((acc, val) => acc + val, 0))`
 
     const newMaxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
     expect(newMaxScroll).toBeGreaterThan(0)
-    expect((scrollBox as any)._hasManualScroll).toBe(true)
-    expect(scrollBox.scrollTop).toBe(0)
+    expect((scrollBox as any)._hasManualScroll).toBe(false)
+    expect(scrollBox.scrollTop).toBe(newMaxScroll)
   })
 
   // Regression test for issue #1087: recalculateBarProps else branch must not force scroll

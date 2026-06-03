@@ -79,7 +79,9 @@ function validateLinuxLibcOverride(): void {
 
 async function resolveNativePackage() {
   if (process.platform === "darwin") {
+    // @ts-ignore Optional native package may be absent when building on another platform.
     if (process.arch === "x64") return await import("@opentui/core-darwin-x64")
+    // @ts-ignore Optional native package may be absent when building on another platform.
     if (process.arch === "arm64") return await import("@opentui/core-darwin-arm64")
   }
 
@@ -88,23 +90,29 @@ async function resolveNativePackage() {
 
     if (process.arch === "x64") {
       if (process.env.OPENTUI_LIBC === "musl") {
+        // @ts-ignore Optional native package may be absent unless building a musl target.
         return await import("@opentui/core-linux-x64-musl")
       } else {
+        // @ts-ignore Optional native package may be absent when building on another platform.
         return await import("@opentui/core-linux-x64")
       }
     }
 
     if (process.arch === "arm64") {
       if (process.env.OPENTUI_LIBC === "musl") {
+        // @ts-ignore Optional native package may be absent unless building a musl target.
         return await import("@opentui/core-linux-arm64-musl")
       } else {
+        // @ts-ignore Optional native package may be absent when building on another platform.
         return await import("@opentui/core-linux-arm64")
       }
     }
   }
 
   if (process.platform === "win32") {
+    // @ts-ignore Optional native package may be absent when building on another platform.
     if (process.arch === "x64") return await import("@opentui/core-win32-x64")
+    // @ts-ignore Optional native package may be absent when building on another platform.
     if (process.arch === "arm64") return await import("@opentui/core-win32-arm64")
   }
 

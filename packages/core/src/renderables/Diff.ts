@@ -1229,8 +1229,17 @@ export class DiffRenderable extends Renderable {
   public getHunkRowOffsets(): number[] {
     if (this._hunkStartLines.length === 0) return []
 
-    return this._hunkStartLines.map(
-      (logicalLine) => this.leftCodeRenderable?.getVisualRowForSourceLine(logicalLine) ?? logicalLine,
-    )
+    const sources = this.leftCodeRenderable?.lineInfo.lineSources
+    if (!sources || sources.length === 0) return [...this._hunkStartLines]
+
+    const firstRowByLogicalLine: number[] = []
+    for (let visualRow = 0; visualRow < sources.length; visualRow++) {
+      const logicalLine = sources[visualRow]
+      if (firstRowByLogicalLine[logicalLine] === undefined) {
+        firstRowByLogicalLine[logicalLine] = visualRow
+      }
+    }
+
+    return this._hunkStartLines.map((logicalLine) => firstRowByLogicalLine[logicalLine] ?? logicalLine)
   }
 }

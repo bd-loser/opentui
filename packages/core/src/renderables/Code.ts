@@ -59,7 +59,6 @@ export class CodeRenderable extends TextBufferRenderable {
   private _onHighlight?: OnHighlightCallback
   private _onChunks?: OnChunksCallback
   private _highlightingPromise: Promise<void> = Promise.resolve()
-  private _renderedLineSources?: number[]
 
   protected _contentDefaultOptions = {
     content: "",
@@ -107,7 +106,6 @@ export class CodeRenderable extends TextBufferRenderable {
       }
 
       this.textBuffer.setText(value)
-      this._renderedLineSources = undefined
       this.updateTextInfo()
     }
   }
@@ -221,19 +219,6 @@ export class CodeRenderable extends TextBufferRenderable {
     return this._highlightingPromise
   }
 
-  public getVisualRowForSourceLine(sourceLine: number): number | undefined {
-    const lineSources = this.lineInfo.lineSources
-    let renderedLine = sourceLine
-
-    if (this._renderedLineSources) {
-      renderedLine = this._renderedLineSources.findIndex((line) => line >= sourceLine)
-      if (renderedLine === -1) return Math.max(0, lineSources.length - 1)
-    }
-
-    const visualRow = lineSources.indexOf(renderedLine)
-    return visualRow === -1 ? undefined : visualRow
-  }
-
   protected async transformChunks(chunks: TextChunk[], context: ChunkRenderContext): Promise<TextChunk[]> {
     if (!this._onChunks) return chunks
 
@@ -258,7 +243,6 @@ export class CodeRenderable extends TextBufferRenderable {
       this._shouldRenderTextBuffer = true
     } else if (shouldDrawUnstyledNow) {
       this.textBuffer.setText(content)
-      this._renderedLineSources = undefined
       this._shouldRenderTextBuffer = true
     } else {
       this._shouldRenderTextBuffer = false
@@ -324,11 +308,9 @@ export class CodeRenderable extends TextBufferRenderable {
           highlights,
         }
 
-        const renderedLineSources: number[] = []
         let chunks = treeSitterToTextChunks(content, highlights, this._syntaxStyle, {
           enabled: this._conceal,
           baseHighlight: this._baseHighlight,
-          sourceLineMap: renderedLineSources,
         })
 
         chunks = await this.transformChunks(chunks, context)
@@ -342,10 +324,8 @@ export class CodeRenderable extends TextBufferRenderable {
 
         const styledText = new StyledText(chunks)
         this.textBuffer.setStyledText(styledText)
-        this._renderedLineSources = this._onChunks ? undefined : renderedLineSources
       } else {
         this.textBuffer.setText(content)
-        this._renderedLineSources = undefined
       }
 
       this._shouldRenderTextBuffer = true
@@ -362,7 +342,6 @@ export class CodeRenderable extends TextBufferRenderable {
       console.warn("Code highlighting failed, falling back to plain text:", error)
       if (this.isDestroyed) return
       this.textBuffer.setText(content)
-      this._renderedLineSources = undefined
       this._shouldRenderTextBuffer = true
       this._isHighlighting = false
       this._highlightsDirty = false

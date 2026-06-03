@@ -11,7 +11,6 @@ registerEnvVar({ name: "OTUI_TS_STYLE_WARN", default: false, description: "Enabl
 interface TextChunkOptions {
   enabled?: boolean
   baseHighlight?: string
-  sourceLineMap?: number[]
 }
 
 interface Boundary {
@@ -47,39 +46,6 @@ export function treeSitterToTextChunks(
   const defaultStyle = syntaxStyle.getStyle("default")
   const concealEnabled = options?.enabled ?? true
   const baseStyle = options?.baseHighlight ? syntaxStyle.getStyle(options.baseHighlight) : undefined
-  const sourceLineMap = options?.sourceLineMap
-  let renderedLine = 0
-  let renderedLineStarted = false
-  let sourceOffsetCursor = 0
-  let sourceLineAtCursor = 0
-  let currentOffset = 0
-
-  const getSourceLine = (offset: number): number => {
-    while (sourceOffsetCursor < offset) {
-      if (content[sourceOffsetCursor] === "\n") sourceLineAtCursor++
-      sourceOffsetCursor++
-    }
-    return sourceLineAtCursor
-  }
-
-  const pushChunk = (chunk: TextChunk): void => {
-    chunks.push(chunk)
-    if (!sourceLineMap) return
-
-    let sourceLine = getSourceLine(currentOffset)
-    if (!renderedLineStarted) sourceLineMap[renderedLine] = sourceLine
-
-    for (const char of chunk.text) {
-      if (char === "\n") {
-        renderedLine++
-        sourceLine++
-        sourceLineMap[renderedLine] = sourceLine
-        renderedLineStarted = false
-      } else {
-        renderedLineStarted = true
-      }
-    }
-  }
 
   const injectionContainerRanges: Array<{ start: number; end: number }> = []
   const boundaries: Boundary[] = []
@@ -104,6 +70,7 @@ export function treeSitterToTextChunks(
   })
 
   const activeHighlights = new Set<number>()
+  let currentOffset = 0
 
   for (let i = 0; i < boundaries.length; i++) {
     const boundary = boundaries[i]
@@ -137,7 +104,7 @@ export function treeSitterToTextChunks(
         }
 
         if (replacementText) {
-          pushChunk({
+          chunks.push({
             __isChunk: true,
             text: replacementText,
             fg: defaultStyle?.fg,
@@ -217,7 +184,7 @@ export function treeSitterToTextChunks(
         // Use merged style, falling back to default if nothing was merged
         const finalStyle = Object.keys(mergedStyle).length > 0 ? mergedStyle : defaultStyle
 
-        pushChunk({
+        chunks.push({
           __isChunk: true,
           text: segmentText,
           fg: finalStyle?.fg,
@@ -235,7 +202,7 @@ export function treeSitterToTextChunks(
     } else if (currentOffset < boundary.offset) {
       const text = content.slice(currentOffset, boundary.offset)
       const style = baseStyle ?? defaultStyle
-      pushChunk({
+      chunks.push({
         __isChunk: true,
         text,
         fg: style?.fg,
@@ -293,7 +260,7 @@ export function treeSitterToTextChunks(
   if (currentOffset < content.length) {
     const text = content.slice(currentOffset)
     const style = baseStyle ?? defaultStyle
-    pushChunk({
+    chunks.push({
       __isChunk: true,
       text,
       fg: style?.fg,

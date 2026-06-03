@@ -64,7 +64,61 @@ import type {
 } from "./zig-structs.js"
 import { isBunfsPath } from "./lib/bunfs.js"
 
-const nativePackage = await import(`@opentui/core-${process.platform}-${process.arch}`)
+registerEnvVar({
+  name: "OPENTUI_LIBC",
+  description: "Select Linux native libc package. Supported values: glibc, musl.",
+  type: "string",
+  default: "",
+})
+
+function validateLinuxLibcOverride(): void {
+  const libc = process.env.OPENTUI_LIBC
+  if (libc === undefined || libc === "" || libc === "glibc" || libc === "musl") return
+  throw new Error(`OPENTUI_LIBC must be "glibc" or "musl", got "${libc}"`)
+}
+
+async function resolveNativePackage() {
+  if (process.platform === "darwin") {
+    // @ts-ignore Optional native package may be absent when building on another platform.
+    if (process.arch === "x64") return await import("@opentui/core-darwin-x64")
+    // @ts-ignore Optional native package may be absent when building on another platform.
+    if (process.arch === "arm64") return await import("@opentui/core-darwin-arm64")
+  }
+
+  if (process.platform === "linux") {
+    validateLinuxLibcOverride()
+
+    if (process.arch === "x64") {
+      if (process.env.OPENTUI_LIBC === "musl") {
+        // @ts-ignore Optional native package may be absent unless building a musl target.
+        return await import("@opentui/core-linux-x64-musl")
+      } else {
+        // @ts-ignore Optional native package may be absent when building on another platform.
+        return await import("@opentui/core-linux-x64")
+      }
+    }
+
+    if (process.arch === "arm64") {
+      if (process.env.OPENTUI_LIBC === "musl") {
+        // @ts-ignore Optional native package may be absent unless building a musl target.
+        return await import("@opentui/core-linux-arm64-musl")
+      } else {
+        // @ts-ignore Optional native package may be absent when building on another platform.
+        return await import("@opentui/core-linux-arm64")
+      }
+    }
+  }
+
+  if (process.platform === "win32") {
+    // @ts-ignore Optional native package may be absent when building on another platform.
+    if (process.arch === "x64") return await import("@opentui/core-win32-x64")
+    // @ts-ignore Optional native package may be absent when building on another platform.
+    if (process.arch === "arm64") return await import("@opentui/core-win32-arm64")
+  }
+
+  throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
+}
+const nativePackage = await resolveNativePackage()
 let targetLibPath = nativePackage.default
 
 if (isBunfsPath(targetLibPath)) {

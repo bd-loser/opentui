@@ -1252,31 +1252,16 @@ export class DiffRenderable extends Renderable {
     const sources = this.leftCodeRenderable?.lineInfo.lineSources
     if (!sources || sources.length === 0) return [...this._hunkStartLines]
 
-    const firstRowByLogicalLine: number[] = []
-    let maxLogicalLine = 0
+    const offsets: number[] = []
+    let visualRow = 0
 
-    for (const logicalLine of this._hunkStartLines) {
-      if (logicalLine > maxLogicalLine) maxLogicalLine = logicalLine
-    }
-
-    for (let visualRow = 0; visualRow < sources.length; visualRow++) {
-      const logicalLine = sources[visualRow]
-      if (logicalLine > maxLogicalLine) maxLogicalLine = logicalLine
-      if (firstRowByLogicalLine[logicalLine] === undefined) {
-        firstRowByLogicalLine[logicalLine] = visualRow
+    for (const hunkStartLine of this._hunkStartLines) {
+      while (visualRow < sources.length && sources[visualRow] < hunkStartLine) {
+        visualRow++
       }
+      offsets.push(visualRow < sources.length ? visualRow : hunkStartLine)
     }
 
-    let nextVisibleRow: number | undefined
-    for (let logicalLine = maxLogicalLine; logicalLine >= 0; logicalLine--) {
-      const firstRow = firstRowByLogicalLine[logicalLine]
-      if (firstRow !== undefined) {
-        nextVisibleRow = firstRow
-      } else if (nextVisibleRow !== undefined) {
-        firstRowByLogicalLine[logicalLine] = nextVisibleRow
-      }
-    }
-
-    return this._hunkStartLines.map((logicalLine) => firstRowByLogicalLine[logicalLine] ?? logicalLine)
+    return offsets
   }
 }

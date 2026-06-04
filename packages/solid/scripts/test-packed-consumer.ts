@@ -2,8 +2,9 @@
  * Smoke-tests the packed npm consumer contract for `@opentui/solid`.
  *
  * This verifies the built tarballs install in a fresh project, the published
- * `exports` map resolves correctly in Node, the real JSX runtime files load,
- * and Bun-only subpaths fail with the intended error instead of ESM export errors.
+ * `exports` map resolves correctly in Node, a consumer TSX file typechecks, the
+ * real JSX runtime files load, and Bun-only subpaths fail with the intended error
+ * instead of ESM export errors.
  */
 
 import { spawnSync, type SpawnSyncReturns } from "node:child_process"
@@ -144,11 +145,57 @@ function writeConsumerPackage(
           [corePackageJson.name]: coreDependency,
           [nativePackageName]: nativeDependency,
           "solid-js": solidJsVersion,
+          typescript: "^5",
         },
       },
       null,
       2,
     ),
+  )
+}
+
+function writeTypecheckFixture(consumerDir: string): void {
+  writeFileSync(
+    join(consumerDir, "tsconfig.json"),
+    JSON.stringify(
+      {
+        compilerOptions: {
+          jsx: "preserve",
+          jsxImportSource: packageJson.name,
+          module: "NodeNext",
+          moduleResolution: "NodeNext",
+          noEmit: true,
+          skipLibCheck: true,
+          strict: true,
+        },
+      },
+      null,
+      2,
+    ),
+  )
+  writeFileSync(
+    join(consumerDir, "fixture.tsx"),
+    `import { For, Match, Show, Switch } from "solid-js"
+import { Portal, testRender } from ${JSON.stringify(packageJson.name)}
+
+export function render() {
+  return testRender(() => (
+    <box>
+      <For each={["one"]}>{(item) => <text>{item}</text>}</For>
+      <Show when={true}>
+        <text>Shown</text>
+      </Show>
+      <Switch fallback={<text>Fallback</text>}>
+        <Match when={true}>
+          <Portal>
+            <text>Portal</text>
+          </Portal>
+        </Match>
+      </Switch>
+    </box>
+  ))
+}
+`,
   )
 }
 
@@ -301,6 +348,7 @@ function assertNodeStaticImportFailure(
 
 function installAndTest(nodeDir: string): void {
   runCommand("npm", ["install", "--ignore-scripts", "--no-package-lock"], nodeDir, "Node dist test install failed")
+  runCommand("npm", ["exec", "--", "tsc", "--noEmit"], nodeDir, "Node dist consumer typecheck failed")
 
   const nodePath = ensureNode26()
   const nodeRealDir = realpathSync(nodeDir)
@@ -359,6 +407,7 @@ try {
   const solidTarball = packArtifact(distDir, packDir)
 
   writeConsumerPackage(nodeDir, solidTarball, coreTarball, nativeTarball)
+  writeTypecheckFixture(nodeDir)
   writeNodeTest(nodeDir)
 
   installAndTest(nodeDir)

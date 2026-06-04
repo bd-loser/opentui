@@ -14,7 +14,7 @@ import type {
   TextareaProps,
   TextProps,
 } from "./src/types/elements.js"
-import type { DomNode } from "./src/reconciler.js"
+import type { JSX as SolidJSX } from "solid-js"
 
 type JsxComponent = (props: Record<string, unknown>) => unknown
 
@@ -24,10 +24,7 @@ export declare function jsxDEV(type: string | JsxComponent, props?: Record<strin
 export declare function Fragment(props: { children?: JSX.Element }): JSX.Element
 
 export declare namespace JSX {
-  // Replace Node with Renderable
-  type Element = DomNode | ArrayElement | string | number | boolean | null | undefined
-
-  type ArrayElement = Array<Element>
+  type Element = SolidJSX.Element
 
   interface IntrinsicElements extends ExtendedIntrinsicElements<OpenTUIComponents> {
     box: BoxProps

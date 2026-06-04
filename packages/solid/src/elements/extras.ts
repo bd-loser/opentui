@@ -11,7 +11,7 @@ import { useRenderer } from "./hooks.js"
  *
  * @description https://docs.solidjs.com/reference/components/portal
  */
-export function Portal(props: { mount?: DomNode; ref?: (el: {}) => void; children: JSX.Element }): DomNode {
+export function Portal(props: { mount?: DomNode; ref?: (el: {}) => void; children: JSX.Element }): JSX.Element {
   const renderer = useRenderer()
 
   const marker = createSlotNode(),
@@ -41,7 +41,8 @@ export function Portal(props: { mount?: DomNode; ref?: (el: {}) => void; childre
     undefined,
     { render: true },
   )
-  return marker
+  // The reconciler consumes this marker as the runtime representation of the portal JSX node.
+  return marker as unknown as JSX.Element
 }
 
 export type DynamicProps<T extends ValidComponent, P = ComponentProps<T>> = {

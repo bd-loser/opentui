@@ -124,8 +124,8 @@ interface BunFfiBackend {
 }
 
 interface NodeFFIFunction {
-  readonly parameters: readonly string[]
-  readonly result: string
+  readonly arguments: readonly string[]
+  readonly return: string
 }
 
 interface NodeDynamicLibrary {
@@ -547,8 +547,8 @@ function normalizeNodeDefinition(definition: FFIFunction): NodeFFIFunction {
   }
 
   return {
-    parameters: (definition.args ?? []).map((type) => toNodeFFIType(type, "parameter")),
-    result: toNodeFFIType(definition.returns ?? FFIType.void, "result"),
+    arguments: (definition.args ?? []).map((type) => toNodeFFIType(type, "parameter")),
+    return: toNodeFFIType(definition.returns ?? FFIType.void, "result"),
   }
 }
 

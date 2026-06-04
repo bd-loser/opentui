@@ -9,13 +9,15 @@ const scriptDir = dirname(fileURLToPath(import.meta.url))
 const packageRoot = resolve(scriptDir, "..")
 const repoRoot = resolve(packageRoot, "../..")
 const coreRoot = resolve(repoRoot, "packages/core")
+const coreDistDir = resolve(coreRoot, "dist")
 const nodePath = ensureNode26()
 const bundleDir = resolve(packageRoot, ".node")
 const bundleEntry = resolve(bundleDir, "index.js")
 const workerEntry = resolve(bundleDir, "parser.worker.js")
 
-ensureNativePackage()
+prepareCorePackage()
 buildNodeExamples()
+copyCoreDistPackage()
 
 const result = spawnSync(nodePath, ["--experimental-ffi", "--no-warnings", bundleEntry], {
   cwd: packageRoot,
@@ -50,21 +52,30 @@ function buildNodeExamples() {
       "[name].[ext]",
       "--define",
       "OPENTUI_BUN_ONLY_EXAMPLES=false",
+      "--external",
+      "@opentui/core",
     ],
     packageRoot,
   )
 }
 
-function ensureNativePackage() {
+function prepareCorePackage() {
   const nativePackageName = `core-${process.platform === "win32" ? "win32" : process.platform}-${process.arch}`
   const sourceNativeDir = resolve(coreRoot, "node_modules", "@opentui", nativePackageName)
   const targetNativeDir = resolve(packageRoot, "node_modules", "@opentui", nativePackageName)
 
-  run("bun", ["run", "build:native"], coreRoot)
+  run("bun", ["run", "build"], coreRoot)
 
   mkdirSync(resolve(packageRoot, "node_modules", "@opentui"), { recursive: true })
   rmSync(targetNativeDir, { recursive: true, force: true })
   cpSync(sourceNativeDir, targetNativeDir, { recursive: true, dereference: true })
+}
+
+function copyCoreDistPackage() {
+  const targetCoreDir = resolve(bundleDir, "node_modules", "@opentui", "core")
+
+  mkdirSync(resolve(targetCoreDir, ".."), { recursive: true })
+  cpSync(coreDistDir, targetCoreDir, { recursive: true })
 }
 
 function run(command, args, cwd) {

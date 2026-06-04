@@ -100,7 +100,7 @@ function createMockNodeBackend(options: MockNodeBackendOptions = {}) {
   const backend = createNodeBackend({
     dlopen(
       path: string | null,
-      symbols: Record<string, { readonly parameters: readonly string[]; readonly result: string }>,
+      symbols: Record<string, { readonly arguments: readonly string[]; readonly return: string }>,
     ) {
       paths.push(path)
       symbolDefinitions.push(symbols)
@@ -114,7 +114,7 @@ function createMockNodeBackend(options: MockNodeBackendOptions = {}) {
             }
           },
           registerCallback(
-            signature: { readonly parameters: readonly string[]; readonly result: string },
+            signature: { readonly arguments: readonly string[]; readonly return: string },
             _callback: (...args: any[]) => any,
           ) {
             const pointer = nextCallbackPtr++
@@ -294,7 +294,7 @@ describe("platform/ffi", () => {
     expect(symbolDefinitions).toEqual([
       {
         primitives: {
-          parameters: [
+          arguments: [
             "char",
             "i8",
             "i8",
@@ -315,7 +315,7 @@ describe("platform/ffi", () => {
             "u64",
             "bool",
           ],
-          result: "void",
+          return: "void",
         },
       },
     ])
@@ -334,8 +334,8 @@ describe("platform/ffi", () => {
     expect(symbolDefinitions).toEqual([
       {
         floats: {
-          parameters: ["f32", "f32", "f64", "f64"],
-          result: "void",
+          arguments: ["f32", "f32", "f64", "f64"],
+          return: "void",
         },
       },
     ])
@@ -354,8 +354,8 @@ describe("platform/ffi", () => {
     expect(symbolDefinitions).toEqual([
       {
         pointers: {
-          parameters: ["pointer", "pointer", "pointer", "pointer", "buffer", "string"],
-          result: "void",
+          arguments: ["pointer", "pointer", "pointer", "pointer", "buffer", "string"],
+          return: "void",
         },
       },
     ])
@@ -447,7 +447,7 @@ describe("platform/ffi", () => {
 
     expect(callback.ptr).toBe(9000n as Pointer)
     expect(callback.threadsafe).toBe(false)
-    expect(callbackDefinitions).toEqual([{ parameters: ["i32"], result: "i32" }])
+    expect(callbackDefinitions).toEqual([{ arguments: ["i32"], return: "i32" }])
 
     callback.close()
     callback.close()

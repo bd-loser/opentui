@@ -3,7 +3,7 @@ import { existsSync, mkdirSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
-export const NODE26_VERSION = "v26.1.0"
+export const NODE26_VERSION = "v26.3.0"
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(scriptDir, "..")

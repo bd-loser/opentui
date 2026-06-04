@@ -1588,6 +1588,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (useMouse) {
       this.enableMouse()
+      this.requestRender()
     } else {
       this.disableMouse()
     }

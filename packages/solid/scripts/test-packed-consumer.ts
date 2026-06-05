@@ -14,7 +14,7 @@ import { dirname, join, relative, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
-import { ensureNode26 } from "../../../scripts/node26.mjs"
+import { requireNode26 } from "../../../scripts/node26.mjs"
 
 interface PackageJson {
   name: string
@@ -31,6 +31,7 @@ const coreDistDir = join(coreRootDir, "dist")
 const args = new Set(process.argv.slice(2))
 const keepTemp = args.has("--keep-temp")
 const skipBuild = args.has("--skip-build")
+const nodePath = requireNode26()
 
 const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8")) as PackageJson
 const corePackageJson = JSON.parse(readFileSync(join(coreRootDir, "package.json"), "utf8")) as PackageJson
@@ -357,7 +358,7 @@ function assertNodeStaticImportFailure(
   expectedMessage: string,
 ): void {
   const result = runCommandExpectFailure(
-    ensureNode26(),
+    nodePath,
     ["--input-type=module", "-e", `import { ${importedName} } from ${JSON.stringify(specifier)}`],
     nodeDir,
     `Expected static Node import of ${specifier} to fail`,
@@ -379,7 +380,6 @@ function installAndTest(nodeDir: string): void {
   runCommand("npm", ["exec", "--", "tsc", "--noEmit"], nodeDir, "Node dist consumer typecheck failed")
   runCommand("bun", ["index.bun.mjs"], nodeDir, "Bun solid dist smoke tests failed")
 
-  const nodePath = ensureNode26()
   const nodeRealDir = realpathSync(nodeDir)
   const nodePermissionDirs = [...new Set([nodeDir, nodeRealDir])]
   runCommand(nodePath, ["-e", `import(${JSON.stringify(packageJson.name)})`], nodeDir, "Node import smoke check failed")

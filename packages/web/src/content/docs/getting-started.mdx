@@ -26,7 +26,7 @@ bun add @opentui/core
 
 Import-only package use does not require native FFI. For example, `await import("@opentui/keymap")` and `await import("@opentui/core")` can load in Node without `--experimental-ffi`.
 
-Renderer support is different. Calling `createCliRenderer()` or APIs that load and call OpenTUI's native Zig renderer needs native FFI. Under Node, that path currently requires Node 26.x with `--experimental-ffi` and, when using Node permissions, `--allow-ffi` plus the filesystem permissions your app needs.
+Renderer support is different. Calling `createCliRenderer()` or APIs that load and call OpenTUI's native Zig renderer needs native FFI. Under Node, that path currently requires Node 26.3.0 with `--experimental-ffi` and, when using Node permissions, `--allow-ffi` plus the filesystem permissions your app needs. OpenTUI does not install Node; select the required version before running Node-specific examples or scripts.
 
 ## Hello world
 

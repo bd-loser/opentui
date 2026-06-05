@@ -9,6 +9,9 @@ permissions:
   contents: write
   pull-requests: write
 
+env:
+  NODE_VERSION: 26.3.0
+
 jobs:
   # Extract version and check if it's a dry run
   prepare:
@@ -60,6 +63,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Check version matches package.json files
         run: |

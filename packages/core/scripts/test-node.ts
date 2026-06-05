@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { ensureNode26 } from "../../../scripts/node26.mjs"
+import { requireNode26 } from "../../../scripts/node26.mjs"
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const packageRoot = resolve(scriptDir, "..")
@@ -34,6 +34,7 @@ const treeSitterCacheTestAddress = "127.0.0.1:55231"
 const treeSitterAssetsDir = "src/lib/tree-sitter/assets"
 const nodeTestTimeoutMs = 30_000
 const nodeProcessTimeoutMs = 10 * 60_000
+const nodePath = requireNode26()
 const emittedAllowlist = [
   ".node-test/src/platform/ffi.test.js",
   ".node-test/src/platform/runtime.test.js",
@@ -165,8 +166,6 @@ try {
     for (const dataPath of treeSitterTestDataPaths) {
       mkdirSync(dataPath, { recursive: true })
     }
-
-    const nodePath = ensureNode26()
 
     exitCode = run(
       nodePath,

@@ -16,7 +16,6 @@
     "dev": "bun src/index.ts",
     "build": "bun scripts/build.ts",
     "build:host": "bun scripts/build.ts --host",
-    "download:node26": "node scripts/download-node26.mjs",
     "dev:node": "node scripts/run-node26.mjs"
   },
   "dependencies": {

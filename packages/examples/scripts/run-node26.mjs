@@ -3,14 +3,14 @@ import { cpSync, mkdirSync, rmSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
-import { ensureNode26 } from "../../../scripts/node26.mjs"
+import { requireNode26 } from "../../../scripts/node26.mjs"
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const packageRoot = resolve(scriptDir, "..")
 const repoRoot = resolve(packageRoot, "../..")
 const coreRoot = resolve(repoRoot, "packages/core")
 const coreDistDir = resolve(coreRoot, "dist")
-const nodePath = ensureNode26()
+const nodePath = requireNode26()
 const bundleDir = resolve(packageRoot, ".node")
 const bundleEntry = resolve(bundleDir, "index.js")
 const workerEntry = resolve(bundleDir, "parser.worker.js")

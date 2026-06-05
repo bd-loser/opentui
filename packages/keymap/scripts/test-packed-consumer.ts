@@ -12,6 +12,8 @@ import { dirname, join, relative, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
+import { requireNode26 } from "../../../scripts/node26.mjs"
+
 interface PackageJson {
   name: string
   version: string
@@ -26,6 +28,7 @@ const coreDistDir = join(coreRootDir, "dist")
 const args = new Set(process.argv.slice(2))
 const keepTemp = args.has("--keep-temp")
 const skipBuild = args.has("--skip-build")
+const nodePath = requireNode26()
 
 const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8")) as PackageJson
 const corePackageJson = JSON.parse(readFileSync(join(coreRootDir, "package.json"), "utf8")) as PackageJson
@@ -193,8 +196,8 @@ console.log("Node keymap dist smoke test passed")
 
 function installAndTest(nodeDir: string): void {
   runCommand("npm", ["install", "--ignore-scripts", "--no-package-lock"], nodeDir, "Node dist test install failed")
-  runCommand("node", ["-e", `import(${JSON.stringify(packageJson.name)})`], nodeDir, "Node import smoke check failed")
-  runCommand("node", ["index.mjs"], nodeDir, "Node keymap dist smoke tests failed")
+  runCommand(nodePath, ["-e", `import(${JSON.stringify(packageJson.name)})`], nodeDir, "Node import smoke check failed")
+  runCommand(nodePath, ["index.mjs"], nodeDir, "Node keymap dist smoke tests failed")
 }
 
 let tempRoot: string | undefined

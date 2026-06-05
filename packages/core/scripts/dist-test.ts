@@ -5,6 +5,8 @@ import { dirname, join, relative, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
+import { requireNode26 } from "../../../scripts/node26.mjs"
+
 interface PackageJson {
   name: string
   version: string
@@ -17,6 +19,7 @@ const distDir = join(rootDir, "dist")
 const args = new Set(process.argv.slice(2))
 const keepTemp = args.has("--keep-temp")
 const skipBuild = args.has("--skip-build")
+const nodePath = requireNode26()
 
 const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8")) as PackageJson
 const nativePackageName = `${packageJson.name}-${process.platform}-${process.arch}`
@@ -204,7 +207,7 @@ function assertNodeStaticImportFailure(
   expectedMessage: string,
 ): void {
   const result = runCommandExpectFailure(
-    "node",
+    nodePath,
     ["--input-type=module", "-e", `import { ${importedName} } from ${JSON.stringify(specifier)}`],
     nodeDir,
     `Expected static Node import of ${specifier} to fail`,
@@ -223,8 +226,8 @@ function assertNodeStaticImportFailure(
 
 function installAndTest(nodeDir: string, bunDir: string): void {
   runCommand("npm", ["install", "--ignore-scripts", "--no-package-lock"], nodeDir, "Node dist test install failed")
-  runCommand("node", ["-e", `import(${JSON.stringify(packageJson.name)})`], nodeDir, "Node import smoke check failed")
-  runCommand("node", ["index.mjs"], nodeDir, "Node dist smoke tests failed")
+  runCommand(nodePath, ["-e", `import(${JSON.stringify(packageJson.name)})`], nodeDir, "Node import smoke check failed")
+  runCommand(nodePath, ["index.mjs"], nodeDir, "Node dist smoke tests failed")
 
   assertNodeStaticImportFailure(
     nodeDir,

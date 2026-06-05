@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { ensureNode26 } from "../../../scripts/node26.mjs"
+import { requireNode26 } from "../../../scripts/node26.mjs"
 import { createSolidTransformPlugin } from "./solid-plugin.js"
 import { resolveNodeSolidRuntimeImport } from "./solid-transform.js"
 
@@ -15,6 +15,7 @@ const coreDistRoot = resolve(corePackageRoot, "dist")
 const outDir = resolve(packageRoot, ".node-test")
 const nodeTestTimeoutMs = 30_000
 const nodeProcessTimeoutMs = 5 * 60_000
+const nodePath = requireNode26()
 const emittedAllowlist = [".node-test/tests/box.test.js", ".node-test/tests/control-flow-updates.test.js"]
 const testEntries = [
   { source: "tests/box.test.tsx", output: "tests/box.test.js" },
@@ -35,7 +36,6 @@ try {
     await buildEntryPoint(entry.source, entry.output)
   }
 
-  const nodePath = ensureNode26()
   exitCode = run(
     nodePath,
     [

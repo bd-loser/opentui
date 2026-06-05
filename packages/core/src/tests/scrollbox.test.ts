@@ -4,6 +4,7 @@ import { ScrollBoxRenderable } from "../renderables/ScrollBox.js"
 import { BoxRenderable } from "../renderables/Box.js"
 import { TextRenderable } from "../renderables/Text.js"
 import { CodeRenderable } from "../renderables/Code.js"
+import { MarkdownRenderable } from "../renderables/Markdown.js"
 import { LinearScrollAccel, MacOSScrollAccel, type ScrollAcceleration } from "../lib/scroll-acceleration.js"
 import { SyntaxStyle } from "../syntax-style.js"
 
@@ -447,6 +448,40 @@ describe("ScrollBoxRenderable - Mouse interaction", () => {
 })
 
 describe("ScrollBoxRenderable - Content Visibility", () => {
+  test("renders markdown prose in scrollbox before highlighting completes", async () => {
+    const syntaxStyle = SyntaxStyle.fromTheme([])
+    const scrollBox = new ScrollBoxRenderable(testRenderer, {
+      width: 100,
+      height: 20,
+      viewportCulling: true,
+    })
+
+    testRenderer.root.add(scrollBox)
+
+    for (let i = 0; i < 20; i++) {
+      const wrapper = new BoxRenderable(testRenderer, {
+        id: `text-${i}`,
+        paddingLeft: 3,
+        marginTop: 1,
+        flexShrink: 0,
+      })
+      const markdown = new MarkdownRenderable(testRenderer, {
+        syntaxStyle,
+        streaming: true,
+        internalBlockMode: "top-level",
+        content: `PARAGRAPH_${i}\n\n\`\`\`ts\nconst CODE_${i} = ${i}\n\`\`\``,
+        treeSitterClient: mockTreeSitterClient,
+      })
+      wrapper.add(markdown)
+      scrollBox.add(wrapper)
+    }
+
+    await renderOnce()
+
+    const frame = captureCharFrame()
+    expect(frame).toContain("PARAGRAPH_0")
+  })
+
   test("maintains visibility when scrolling with many Code elements", async () => {
     const syntaxStyle = SyntaxStyle.fromTheme([])
 

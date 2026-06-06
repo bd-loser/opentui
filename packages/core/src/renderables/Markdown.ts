@@ -466,6 +466,8 @@ export class MarkdownRenderable extends Renderable {
   }
 
   private createInitialStyledText(token: MarkedToken): StyledText | undefined {
+    if (!this._streaming) return undefined
+
     const chunks: TextChunk[] = []
     if ("tokens" in token && Array.isArray(token.tokens)) {
       this.renderInlineContent(token.tokens, chunks)
@@ -641,7 +643,7 @@ export class MarkdownRenderable extends Renderable {
       fg: this._fg,
       bg: this._bg,
       conceal: this._conceal,
-      drawUnstyledText: true,
+      drawUnstyledText: initialStyledText !== undefined,
       streaming: true,
       initialStyledText,
       baseHighlight,
@@ -979,7 +981,7 @@ export class MarkdownRenderable extends Renderable {
     renderable.fg = this._fg
     renderable.bg = this._bg
     renderable.conceal = this._conceal
-    renderable.drawUnstyledText = true
+    renderable.drawUnstyledText = initialStyledText !== undefined
     renderable.streaming = true
     renderable.baseHighlight = baseHighlight
     renderable.content = content

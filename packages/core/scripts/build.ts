@@ -457,6 +457,10 @@ if (buildLib) {
       node: "./runtime-plugin-support-configure.node.js",
       default: "./runtime-plugin-support-configure.node.js",
     },
+    // Conditional exports select the first matching key in declaration order. Bun
+    // matches `bun` for both import and require, while Node ESM falls through to
+    // `import`. There is deliberately no `require` or `default`: this module uses
+    // top-level await, so directing Node CommonJS to it would fail during evaluation.
     "./tree-sitter/update-assets": {
       types: "./lib/tree-sitter/update-assets.d.ts",
       bun: "./lib/tree-sitter/update-assets.js",

@@ -124,6 +124,11 @@ jobs:
         working-directory: packages/core
         run: bun run test:js:node
 
+      - name: Test packed distribution
+        if: runner.os == 'Linux'
+        working-directory: packages/core
+        run: bun run test:dist --skip-build
+
   # Gate job for branch protection
   build-complete:
     name: Core - Build and Test

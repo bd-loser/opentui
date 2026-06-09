@@ -458,12 +458,13 @@ if (buildLib) {
       default: "./runtime-plugin-support-configure.node.js",
     },
     "./tree-sitter/update-assets": {
-      import: "./lib/tree-sitter/update-assets.js",
-      require: "./lib/tree-sitter/update-assets.js",
       types: "./lib/tree-sitter/update-assets.d.ts",
+      bun: "./lib/tree-sitter/update-assets.js",
+      import: "./lib/tree-sitter/update-assets.js",
     },
     "./parser.worker": {
       import: "./parser.worker.js",
+      require: "./parser.worker.js",
       types: "./lib/tree-sitter/parser.worker.d.ts",
     },
   }

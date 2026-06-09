@@ -170,6 +170,7 @@ function createNodeWorkerConstructor(node: NodeWorkerThreadsModule): PlatformWor
     private readonly errorListeners = new Set<WorkerErrorHandler>()
     private readonly messageListeners = new Set<WorkerMessageHandler>()
     private readonly worker: NodeWorkerThread
+    private terminationPromise: Promise<number> | undefined
 
     constructor(specifier: string | URL, options: PlatformWorkerOptions = {}) {
       const resolvedSpecifier = resolveWorkerImportSpecifier(specifier)
@@ -189,9 +190,20 @@ function createNodeWorkerConstructor(node: NodeWorkerThreadsModule): PlatformWor
     }
 
     terminate(): Promise<number> {
+      if (this.terminationPromise) {
+        return this.terminationPromise
+      }
+
       this.worker.off("message", this.handleMessage)
       this.worker.off("error", this.handleError)
-      return this.worker.terminate()
+      const termination = this.worker.terminate().catch((error: unknown) => {
+        this.terminationPromise = undefined
+        this.worker.on("message", this.handleMessage)
+        this.worker.on("error", this.handleError)
+        throw error
+      })
+      this.terminationPromise = termination
+      return termination
     }
 
     addEventListener(type: "message" | "error", listener: WorkerMessageHandler | WorkerErrorHandler): void {

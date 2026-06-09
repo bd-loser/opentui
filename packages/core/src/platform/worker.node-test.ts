@@ -95,3 +95,59 @@ test("Node worker does not restore a disposed message handler", async () => {
     await worker.terminate()
   }
 })
+
+test("Node worker restores transport listeners when termination fails", async () => {
+  const worker = new Worker(new URL("./worker-startup.fixture.js", import.meta.url))
+  const nativeWorker = (
+    worker as unknown as {
+      worker: {
+        listenerCount: (event: "message" | "error") => number
+        terminate: () => Promise<number>
+      }
+    }
+  ).worker
+  const originalTerminate = nativeWorker.terminate.bind(nativeWorker)
+  nativeWorker.terminate = async () => {
+    throw new Error("synthetic termination failure")
+  }
+
+  try {
+    await expect(worker.terminate()).rejects.toThrow("synthetic termination failure")
+    expect(nativeWorker.listenerCount("message")).toBe(1)
+    expect(nativeWorker.listenerCount("error")).toBe(1)
+  } finally {
+    nativeWorker.terminate = originalTerminate
+    await worker.terminate()
+  }
+})
+
+test("Node worker shares concurrent termination attempts", async () => {
+  const worker = new Worker(new URL("./worker-startup.fixture.js", import.meta.url))
+  const nativeWorker = (
+    worker as unknown as {
+      worker: {
+        listenerCount: (event: "message" | "error") => number
+        terminate: () => Promise<number>
+      }
+    }
+  ).worker
+  const originalTerminate = nativeWorker.terminate.bind(nativeWorker)
+  let terminationCount = 0
+  nativeWorker.terminate = async () => {
+    terminationCount++
+    throw new Error("synthetic concurrent termination failure")
+  }
+
+  try {
+    const first = worker.terminate()
+    const second = worker.terminate()
+    expect(first).toBe(second)
+    await expect(first).rejects.toThrow("synthetic concurrent termination failure")
+    expect(terminationCount).toBe(1)
+    expect(nativeWorker.listenerCount("message")).toBe(1)
+    expect(nativeWorker.listenerCount("error")).toBe(1)
+  } finally {
+    nativeWorker.terminate = originalTerminate
+    await worker.terminate()
+  }
+})

@@ -511,6 +511,7 @@ const DEFAULT_FORWARDED_ENV_KEYS = [
   "ZELLIJ_PANE_ID",
   "TERM",
   "OPENTUI_GRAPHICS",
+  "OPENTUI_IMAGE_PROTOCOL",
   "TERM_PROGRAM",
   "TERM_PROGRAM_VERSION",
   "TERM_FEATURES",
@@ -3369,6 +3370,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         const resolution = parsePixelResolution(sequence)
         if (resolution) {
           this._resolution = resolution
+          this.requestRender()
         }
         this.waitingForPixelResolution = false
         this.updateStdinParserProtocolContext({ pixelResolutionQueryActive: false }, true)

@@ -781,6 +781,7 @@ pub const ExternalCapabilities = extern struct {
     term_version_ptr: [*]const u8,
     term_version_len: usize,
     term_from_xtversion: bool,
+    osc52_support: u8,
 };
 
 export fn getTerminalCapabilities(renderer_handle: NativeHandle, capsPtr: *ExternalCapabilities) void {
@@ -809,6 +810,7 @@ export fn getTerminalCapabilities(renderer_handle: NativeHandle, capsPtr: *Exter
         .bracketed_paste = caps.bracketed_paste,
         .hyperlinks = caps.hyperlinks,
         .osc52 = caps.osc52,
+        .osc52_support = @intFromEnum(term.osc52_support),
         .notifications = caps.notifications,
         .explicit_cursor_positioning = caps.explicit_cursor_positioning,
         .remote = caps.remote,

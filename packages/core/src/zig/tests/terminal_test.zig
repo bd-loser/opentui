@@ -503,6 +503,7 @@ test "queryTerminalSend - sends unwrapped queries when not in tmux" {
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?1016$p") != null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?2027$p") != null);
     try testing.expect(std.mem.indexOf(u8, output, "\x1b[?u") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bP+q4d73\x1b\\") != null);
 
     // Should NOT contain tmux DCS wrapper
     try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;") == null);
@@ -538,7 +539,8 @@ test "queryTerminalSend - sends DCS wrapped queries when in tmux" {
 
     // Should contain tmux DCS wrapper start and doubled ESC for queries
     // wrapForTmux wraps all queries together with one DCS envelope
-    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b[?1016$p") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1bP+q4d73\x1b\x1b\\") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b\x1b[?1016$p") != null);
 
     // Should NOT mark capability queries as pending (already sent wrapped)
     try testing.expect(!term.capability_queries_pending);
@@ -585,7 +587,8 @@ test "sendPendingQueries - sends wrapped queries after tmux detected via xtversi
     const output = writer.getWritten();
 
     // Should send DCS wrapped capability queries (wrapForTmux wraps all queries together)
-    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b[?1016$p") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1bP+q4d73\x1b\x1b\\") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "\x1b\x1b[?1016$p") != null);
 
     // Should send DCS wrapped graphics query
     try testing.expect(std.mem.indexOf(u8, output, "\x1bPtmux;\x1b\x1b_G") != null);
@@ -769,6 +772,31 @@ test "processCapabilityResponse - foot applies osc52 heuristic without explicit 
     try testing.expect(!term.caps.explicit_cursor_positioning);
 }
 
+test "processCapabilityResponse - XTGETTCAP Ms only establishes positive support" {
+    var supported: Terminal = .{};
+    supported.processCapabilityResponse("\x1bP1+r4d73=2570312573\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.supported, supported.osc52_support);
+    try testing.expect(supported.caps.osc52);
+
+    var bare_negative: Terminal = .{};
+    bare_negative.processCapabilityResponse("\x1bP>|iTerm2 3.5.0\x1b\\");
+    bare_negative.processCapabilityResponse("\x1bP0+r\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, bare_negative.osc52_support);
+    try testing.expect(bare_negative.caps.osc52);
+
+    var named_negative: Terminal = .{};
+    named_negative.processCapabilityResponse("\x1bP>|kitty(0.40.1)\x1b\\");
+    named_negative.processCapabilityResponse("\x1bP0+r4D73\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, named_negative.osc52_support);
+    try testing.expect(named_negative.caps.osc52);
+
+    var unknown: Terminal = .{};
+    unknown.processCapabilityResponse("\x1bP1+r4d73=abc\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
+    unknown.processCapabilityResponse("\x1bP1+r544e=787465726d\x1b\\");
+    try testing.expectEqual(Terminal.Osc52Support.unknown, unknown.osc52_support);
+}
+
 // ============================================================================
 // CLIPBOARD (OSC 52) TESTS
 // ============================================================================
@@ -939,13 +967,99 @@ test "writeClipboard - returns error when OSC52 not supported" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     var term = Terminal.init(.{});
-    term.caps.osc52 = false;
+    term.osc52_support = .unsupported;
 
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
 
     const result = term.writeClipboard(&writer, .clipboard, "test");
     try testing.expectError(error.NotSupported, result);
+}
+
+test "writeClipboard - emits optimistically when XTGETTCAP state is unknown" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+    try testing.expectEqual(Terminal.Osc52Support.unknown, term.osc52_support);
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, "dGVzdA==");
+
+    try testing.expectEqualStrings("\x1b]52;c;dGVzdA==\x1b\\", writer.getWritten());
+}
+
+test "writeClipboard - writes large payload without a fixed buffer limit" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+
+    const payload = try testing.allocator.alloc(u8, 16 * 1024);
+    defer testing.allocator.free(payload);
+    @memset(payload, 'A');
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, payload);
+
+    try testing.expectEqual(@as(usize, payload.len + 9), writer.getWritten().len);
+    try testing.expect(std.mem.startsWith(u8, writer.getWritten(), "\x1b]52;c;"));
+    try testing.expect(std.mem.endsWith(u8, writer.getWritten(), "\x1b\\"));
+}
+
+test "writeClipboard - writes large payload through tmux passthrough" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+    var term = Terminal.init(.{ .env_map = &env });
+
+    const payload = try testing.allocator.alloc(u8, 16 * 1024);
+    defer testing.allocator.free(payload);
+    @memset(payload, 'A');
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, payload);
+
+    const output = writer.getWritten();
+    try testing.expectEqual(@as(usize, payload.len + 20), output.len);
+    try testing.expect(std.mem.startsWith(u8, output, "\x1bPtmux;\x1b\x1b]52;c;"));
+    try testing.expect(std.mem.endsWith(u8, output, "\x1b\x1b\\\x1b\\"));
+}
+
+test "writeClipboard - chunks large payload through GNU Screen passthrough" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("STY", "12345.pts-0.hostname");
+    var term = Terminal.init(.{ .env_map = &env });
+
+    const payload = try testing.allocator.alloc(u8, 16 * 1024);
+    defer testing.allocator.free(payload);
+    @memset(payload, 'A');
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, payload);
+
+    const output = writer.getWritten();
+    try testing.expect(countSubstring(output, ansi.ANSI.screenDcsStart) > 1);
+    try testing.expect(std.mem.endsWith(u8, output, ansi.ANSI.screenDcsEnd));
+
+    var frame_start: usize = 0;
+    while (std.mem.indexOfPos(u8, output, frame_start, ansi.ANSI.screenDcsStart)) |start| {
+        const content_start = start + ansi.ANSI.screenDcsStart.len;
+        const next_start = std.mem.indexOfPos(u8, output, content_start, ansi.ANSI.screenDcsStart) orelse output.len;
+        try testing.expect(next_start - content_start <= Terminal.SCREEN_PASSTHROUGH_CHUNK_SIZE + ansi.ANSI.screenDcsEnd.len);
+        frame_start = next_start;
+    }
 }
 
 test "writeClipboard - wraps in DCS passthrough for tmux" {

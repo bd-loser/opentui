@@ -1954,16 +1954,18 @@ pub const CliRenderer = struct {
     }
 
     pub fn copyToClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget, payload: []const u8) bool {
-        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.writeClipboard(stream.writer(), target, payload) catch return false;
-        self.writeOut(stream.getWritten());
+        var stream: std.ArrayListUnmanaged(u8) = .{};
+        defer stream.deinit(self.allocator);
+        self.terminal.writeClipboard(stream.writer(self.allocator), target, payload) catch return false;
+        self.writeOut(stream.items);
         return true;
     }
 
     pub fn clearClipboardOSC52(self: *CliRenderer, target: Terminal.ClipboardTarget) bool {
-        var stream = std.io.fixedBufferStream(&self.writeOutBuf);
-        self.terminal.writeClipboard(stream.writer(), target, "") catch return false;
-        self.writeOut(stream.getWritten());
+        var stream: std.ArrayListUnmanaged(u8) = .{};
+        defer stream.deinit(self.allocator);
+        self.terminal.writeClipboard(stream.writer(self.allocator), target, "") catch return false;
+        self.writeOut(stream.items);
         return true;
     }
 

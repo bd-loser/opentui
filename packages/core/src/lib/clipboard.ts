@@ -41,6 +41,6 @@ export class Clipboard {
 
   public isOsc52Supported(): boolean {
     const caps = this.lib.getTerminalCapabilities(this.rendererPtr)
-    return Boolean(caps?.osc52)
+    return caps?.osc52_support !== "unsupported"
   }
 }

@@ -6,9 +6,9 @@ import type { RenderLib } from "../zig.js"
 describe("clipboard", () => {
   let renderer: TestRenderer | null = null
 
-  const enableOsc52 = (testRenderer: TestRenderer) => {
+  const respondToOsc52Query = (testRenderer: TestRenderer, response: string) => {
     const lib = (testRenderer as unknown as { lib: RenderLib }).lib
-    lib.processCapabilityResponse(testRenderer.rendererPtr, "\x1bP>|kitty(0.40.1)\x1b\\")
+    lib.processCapabilityResponse(testRenderer.rendererPtr, response)
   }
 
   afterEach(() => {
@@ -22,16 +22,21 @@ describe("clipboard", () => {
     expect(decoded).toBe(Buffer.from("hello").toString("base64"))
   })
 
-  it("gates clipboard writes on OSC 52 support", async () => {
+  it("treats negative XTGETTCAP Ms replies as inconclusive", async () => {
     ;({ renderer } = await createTestRenderer({ remote: true }))
 
-    expect(renderer.isOsc52Supported()).toBe(false)
-    expect(renderer.copyToClipboardOSC52("test")).toBe(false)
-    expect(renderer.clearClipboardOSC52()).toBe(false)
-
-    enableOsc52(renderer)
-
     expect(renderer.isOsc52Supported()).toBe(true)
+    expect(renderer.copyToClipboardOSC52("test")).toBe(true)
+
+    respondToOsc52Query(renderer, "\x1bP0+r\x1b\\")
+    expect(renderer.copyToClipboardOSC52("test")).toBe(true)
+    expect(renderer.clearClipboardOSC52()).toBe(true)
+
+    respondToOsc52Query(renderer, "\x1bP0+r4d73\x1b\\")
+    expect(renderer.copyToClipboardOSC52("test")).toBe(true)
+
+    respondToOsc52Query(renderer, "\x1bP1+r4d73=2570312573\x1b\\")
+
     expect(renderer.copyToClipboardOSC52("test")).toBe(true)
     expect(renderer.copyToClipboardOSC52("test", ClipboardTarget.Primary)).toBe(true)
     expect(renderer.copyToClipboardOSC52("test", ClipboardTarget.Secondary)).toBe(true)

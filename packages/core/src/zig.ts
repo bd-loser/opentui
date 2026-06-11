@@ -4719,6 +4719,7 @@ class FFIRenderLib implements RenderLib {
       bracketed_paste: caps.bracketed_paste,
       hyperlinks: caps.hyperlinks,
       osc52: caps.osc52,
+      osc52_support: caps.osc52_support,
       notifications: caps.notifications,
       explicit_cursor_positioning: caps.explicit_cursor_positioning,
       remote: caps.remote,

@@ -224,6 +224,10 @@ function bumpRenderListRevision(ctx: RenderContext): void {
   generationContext.__otuiRenderListRevision = getRenderListRevision(ctx) + 1
 }
 
+interface RenderListTraversalState {
+  reusable: boolean
+}
+
 export abstract class Renderable extends BaseRenderable {
   static renderablesByNumber: Map<number, Renderable> = new Map()
 
@@ -1392,7 +1396,11 @@ export abstract class Renderable extends BaseRenderable {
     return this._childrenInLayoutOrder.length
   }
 
-  public updateLayout(deltaTime: number, renderList: RenderCommand[] = []): void {
+  public updateLayout(
+    deltaTime: number,
+    renderList: RenderCommand[] = [],
+    traversalState?: RenderListTraversalState,
+  ): void {
     if (!this.visible) return
 
     this.onUpdate(deltaTime)
@@ -1450,7 +1458,10 @@ export abstract class Renderable extends BaseRenderable {
     // unless a subclass actually performs viewport/style-based child filtering.
     if (!this._hasVisibleChildFilter()) {
       for (const child of this._childrenInZIndexOrder) {
-        child.updateLayout(deltaTime, renderList)
+        if (child.updateLayout !== Renderable.prototype.updateLayout) {
+          if (traversalState) traversalState.reusable = false
+        }
+        child.updateLayout(deltaTime, renderList, traversalState)
       }
     } else {
       // Refresh every child's layout before culling reads their screen
@@ -1465,7 +1476,10 @@ export abstract class Renderable extends BaseRenderable {
       const visibleChildSet = new Set(visibleChildren)
       for (const child of this._childrenInZIndexOrder) {
         if (!visibleChildSet.has(child.num)) continue
-        child.updateLayout(deltaTime, renderList)
+        if (child.updateLayout !== Renderable.prototype.updateLayout) {
+          if (traversalState) traversalState.reusable = false
+        }
+        child.updateLayout(deltaTime, renderList, traversalState)
       }
     }
 
@@ -1751,6 +1765,7 @@ export type RenderCommand =
 
 export class RootRenderable extends Renderable {
   private renderList: RenderCommand[] = []
+  private renderListTraversalState: RenderListTraversalState = { reusable: false }
   private appliedLayoutGeneration: number = -1
   private appliedRenderListRevision: number = -1
   private renderListReusable: boolean = false
@@ -1809,7 +1824,8 @@ export class RootRenderable extends Renderable {
 
     if (!canReuseRenderList) {
       this.renderList.length = 0
-      super.updateLayout(deltaTime, this.renderList)
+      this.renderListTraversalState.reusable = true
+      super.updateLayout(deltaTime, this.renderList, this.renderListTraversalState)
       this.appliedLayoutGeneration = layoutGeneration
       this.appliedRenderListRevision = getRenderListRevision(this._ctx)
       this.renderListReusable = this.canReuseCurrentRenderList()
@@ -1870,6 +1886,7 @@ export class RootRenderable extends Renderable {
 
   private canReuseCurrentRenderList(): boolean {
     if (this._liveCount > 0) return false
+    if (!this.renderListTraversalState.reusable) return false
 
     for (const command of this.renderList) {
       if (command.action !== "render") continue

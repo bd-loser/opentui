@@ -3,6 +3,7 @@ import { TextBuffer } from "./text-buffer.js"
 import { TextBufferView } from "./text-buffer-view.js"
 import { StyledText, stringToStyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
+import { resolveRenderLib } from "./zig.js"
 
 describe("TextBufferView", () => {
   let buffer: TextBuffer
@@ -719,4 +720,31 @@ describe("TextBufferView", () => {
       expect(result!.widthColsMax).toBe(11) // "Hello World" = 11 chars
     })
   })
+})
+
+describe("stateless text measurement", () => {
+  for (const widthMethod of ["wcwidth", "unicode"] as const) {
+    for (const wrapMode of ["none", "char", "word"] as const) {
+      it(`matches TextBufferView for ${widthMethod}/${wrapMode}`, () => {
+        const text = "ASCII words and punctuation / wrap-here\n中文 mixed🙂 text\n\ttabbed content"
+        const buffer = TextBuffer.create(widthMethod)
+        const view = TextBufferView.create(buffer)
+        try {
+          buffer.setTabWidth(4)
+          buffer.setText(text)
+          view.setWrapMode(wrapMode)
+          view.setFirstLineOffset(3)
+
+          for (const width of [0, 5, 12, 30]) {
+            const expected = view.measureForDimensions(width, 100)
+            const actual = resolveRenderLib().measureTextForDimensions(text, width, 100, wrapMode, widthMethod, 3, 4)
+            expect(actual).toEqual(expected)
+          }
+        } finally {
+          view.destroy()
+          buffer.destroy()
+        }
+      })
+    }
+  }
 })

@@ -8,6 +8,7 @@ import { TreeSitterClient } from "../lib/tree-sitter/index.js"
 import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
 import { BoxRenderable } from "./Box.js"
 import { TextAttributes, type CapturedFrame } from "../types.js"
+import { resolveRenderLib } from "../zig.js"
 
 let currentRenderer: TestRenderer
 let renderOnce: () => Promise<void>
@@ -1191,6 +1192,49 @@ test("CodeRenderable - streaming mode with drawUnstyledText=false waits for new 
   await renderOnce()
 
   expect(codeRenderable.plainText).toBe("const updated = 'world';")
+})
+
+test("CodeRenderable - pending hidden source measurement is cached without replacing displayed text", async () => {
+  const treeSitterClient = new MockTreeSitterClient()
+  const codeRenderable = new CodeRenderable(currentRenderer, {
+    content: "old highlighted snapshot",
+    filetype: "markdown",
+    syntaxStyle: SyntaxStyle.fromTheme([]),
+    drawUnstyledText: false,
+    streaming: true,
+    treeSitterClient,
+  })
+  currentRenderer.root.add(codeRenderable)
+  await renderOnce()
+  treeSitterClient.resolveAllHighlightOnce()
+  await flushAsync()
+  await renderOnce()
+
+  const displayed = codeRenderable.plainText
+  const previousHeight = codeRenderable.height
+  codeRenderable.content = "new source line one\nnew source line two\nnew source line three"
+
+  const lib = resolveRenderLib()
+  const originalMeasure = lib.measureTextForDimensions.bind(lib)
+  let calls = 0
+  lib.measureTextForDimensions = (...args) => {
+    calls++
+    return originalMeasure(...args)
+  }
+  try {
+    const first = (codeRenderable as any).measureContent(12, 100)
+    const second = (codeRenderable as any).measureContent(12, 100)
+    expect(first).toEqual(second)
+    expect(calls).toBe(1)
+    expect(codeRenderable.plainText).toBe(displayed)
+
+    await renderOnce()
+    expect(codeRenderable.height).toBeGreaterThan(previousHeight)
+    expect(codeRenderable.plainText).toBe(displayed)
+  } finally {
+    lib.measureTextForDimensions = originalMeasure
+    treeSitterClient.resolveAllHighlightOnce()
+  }
 })
 
 test("CodeRenderable - onChunks callback can transform chunks when highlights are empty", async () => {

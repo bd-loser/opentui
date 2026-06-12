@@ -3,6 +3,7 @@ import { StyledText } from "../lib/styled-text.js"
 import { SyntaxStyle } from "../syntax-style.js"
 import { getTreeSitterClient, TreeSitterClient } from "../lib/tree-sitter/index.js"
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable.js"
+import { resolveRenderLib } from "../zig.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
 import type { TextChunk } from "../text-buffer.js"
@@ -66,6 +67,12 @@ export class CodeRenderable extends TextBufferRenderable {
   // Temporary rendered-line -> source-line map for concealment; native extmarks should replace this.
   private _renderedLineSources?: number[]
   private _mappedLineInfo?: LineInfo
+  private _contentRevision: number = 0
+  private _bufferContentRevision: number = 0
+  private _sourceMeasureCache?: {
+    key: string
+    result: { lineCount: number; widthColsMax: number }
+  }
 
   protected _contentDefaultOptions = {
     content: "",
@@ -78,6 +85,7 @@ export class CodeRenderable extends TextBufferRenderable {
     super(ctx, options)
 
     this._content = options.content ?? this._contentDefaultOptions.content
+    this._contentRevision = this._content.length > 0 ? 1 : 0
     this._filetype = options.filetype
     this._syntaxStyle = options.syntaxStyle
     this._treeSitterClient = options.treeSitterClient ?? getTreeSitterClient()
@@ -96,6 +104,7 @@ export class CodeRenderable extends TextBufferRenderable {
         this.textBuffer.setText(this._content)
       }
       this.updateTextInfo()
+      this._bufferContentRevision = this._contentRevision
       this._shouldRenderTextBuffer = this._drawUnstyledText || !this._filetype
     }
 
@@ -109,10 +118,13 @@ export class CodeRenderable extends TextBufferRenderable {
   set content(value: string) {
     if (this._content !== value) {
       this._content = value
+      this._contentRevision++
+      this._sourceMeasureCache = undefined
       this._highlightsDirty = true
       this._highlightSnapshotId++
 
       if (this._streaming && this._filetype && !this._drawUnstyledText) {
+        this.yogaNode.markDirty()
         this.requestRender()
         return
       }
@@ -122,6 +134,7 @@ export class CodeRenderable extends TextBufferRenderable {
       } else {
         this.textBuffer.setText(value)
       }
+      this._bufferContentRevision = this._contentRevision
       this.setRenderedLineSources(undefined)
       this.updateTextInfo()
     }
@@ -161,6 +174,24 @@ export class CodeRenderable extends TextBufferRenderable {
   protected override updateTextInfo(): void {
     this._mappedLineInfo = undefined
     super.updateTextInfo()
+  }
+
+  protected override measureContent(width: number, height: number): { lineCount: number; widthColsMax: number } | null {
+    if (this._bufferContentRevision === this._contentRevision) return super.measureContent(width, height)
+
+    const key = `${this._contentRevision}:${width}:${height}:${this._wrapMode}:${this._firstLineOffset}:${this._ctx.widthMethod}`
+    if (this._sourceMeasureCache?.key === key) return this._sourceMeasureCache.result
+
+    const measured = resolveRenderLib().measureTextForDimensions(
+      this._content,
+      width,
+      height,
+      this._wrapMode,
+      this._ctx.widthMethod,
+      this._firstLineOffset,
+    )
+    if (measured) this._sourceMeasureCache = { key, result: measured }
+    return measured
   }
 
   get filetype(): string | undefined {
@@ -307,6 +338,7 @@ export class CodeRenderable extends TextBufferRenderable {
       } else {
         this.textBuffer.setText(content)
       }
+      this._bufferContentRevision = this._contentRevision
       this.setRenderedLineSources(undefined)
       this._shouldRenderTextBuffer = true
     } else {
@@ -391,9 +423,11 @@ export class CodeRenderable extends TextBufferRenderable {
 
         const styledText = new StyledText(chunks)
         this.textBuffer.setStyledText(styledText)
+        this._bufferContentRevision = this._contentRevision
         this.setRenderedLineSources(renderedLineSources)
       } else {
         this.textBuffer.setText(content)
+        this._bufferContentRevision = this._contentRevision
         this.setRenderedLineSources(undefined)
       }
 
@@ -411,6 +445,7 @@ export class CodeRenderable extends TextBufferRenderable {
       console.warn("Code highlighting failed, falling back to plain text:", error)
       if (this.isDestroyed) return
       this.textBuffer.setText(content)
+      this._bufferContentRevision = this._contentRevision
       this.setRenderedLineSources(undefined)
       this._shouldRenderTextBuffer = true
       this._isHighlighting = false

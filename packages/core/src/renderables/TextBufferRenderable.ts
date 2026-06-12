@@ -373,6 +373,10 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     this.emit("line-info-change")
   }
 
+  protected measureContent(width: number, height: number): { lineCount: number; widthColsMax: number } | null {
+    return this.textBufferView.measureForDimensions(width, height)
+  }
+
   // Undefined = 0,
   // Exactly = 1,
   // AtMost = 2
@@ -396,10 +400,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
       const effectiveHeight = isNaN(height) ? 1 : height
 
-      const measureResult = this.textBufferView.measureForDimensions(
-        Math.floor(effectiveWidth),
-        Math.floor(effectiveHeight),
-      )
+      const measureResult = this.measureContent(Math.floor(effectiveWidth), Math.floor(effectiveHeight))
 
       const measuredWidth = measureResult ? Math.max(1, measureResult.widthColsMax) : 1
       const measuredHeight = measureResult ? Math.max(1, measureResult.lineCount) : 1

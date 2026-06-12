@@ -874,6 +874,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "u32", "u32", "ptr"],
       returns: "bool",
     },
+    measureTextForDimensions: {
+      args: ["ptr", "u32", "u32", "u32", "u8", "u8", "u32", "u8", "ptr"],
+      returns: "bool",
+    },
     bufferDrawTextBufferView: {
       args: ["u32", "u32", "i32", "i32"],
       returns: "void",
@@ -2287,6 +2291,15 @@ export interface RenderLib extends AudioEngineLib {
     view: TextBufferViewHandle,
     width: number,
     height: number,
+  ) => { lineCount: number; widthColsMax: number } | null
+  measureTextForDimensions: (
+    text: string,
+    width: number,
+    height: number,
+    wrapMode: "none" | "char" | "word",
+    widthMethod: WidthMethod,
+    firstLineOffset?: number,
+    tabWidth?: number,
   ) => { lineCount: number; widthColsMax: number } | null
   textBufferViewGetVirtualLineCount: (view: TextBufferViewHandle) => number
 
@@ -4067,6 +4080,31 @@ class FFIRenderLib implements RenderLib {
     }
     const result = MeasureResultStruct.unpack(resultBuffer)
     return result
+  }
+
+  public measureTextForDimensions(
+    text: string,
+    width: number,
+    height: number,
+    wrapMode: "none" | "char" | "word",
+    widthMethod: WidthMethod,
+    firstLineOffset: number = 0,
+    tabWidth: number = 2,
+  ): { lineCount: number; widthColsMax: number } | null {
+    const bytes = this.encoder.encode(text)
+    const resultBuffer = new ArrayBuffer(MeasureResultStruct.size)
+    const success = this.opentui.symbols.measureTextForDimensions(
+      ptrOrNull(bytes),
+      bytes.length,
+      width,
+      height,
+      wrapMode === "none" ? 0 : wrapMode === "char" ? 1 : 2,
+      widthMethod === "wcwidth" ? 0 : 1,
+      firstLineOffset,
+      tabWidth,
+      ptr(new Uint8Array(resultBuffer)),
+    )
+    return success ? MeasureResultStruct.unpack(resultBuffer) : null
   }
 
   public textBufferAddHighlightByCharRange(buffer: Pointer, highlight: Highlight): void {

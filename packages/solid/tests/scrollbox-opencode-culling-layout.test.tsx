@@ -11,6 +11,12 @@ async function createSession(viewportCulling: boolean) {
   const syntaxStyle = SyntaxStyle.fromTheme([])
   const treeSitterClient = new MockTreeSitterClient()
   treeSitterClient.setMockResult({ highlights: [] })
+  let highlightCalls = 0
+  const highlightOnce = treeSitterClient.highlightOnce.bind(treeSitterClient)
+  treeSitterClient.highlightOnce = async (...args) => {
+    highlightCalls++
+    return highlightOnce(...args)
+  }
   let scroll: ScrollBoxRenderable | undefined
   const turns = Array.from({ length: 80 }, (_, turn) => turn)
   const setup = await testRender(
@@ -55,7 +61,7 @@ async function createSession(viewportCulling: boolean) {
   treeSitterClient.resolveAllHighlightOnce()
   await Promise.resolve()
   await setup.renderOnce()
-  return { setup, scroll: scroll! }
+  return { setup, scroll: scroll!, highlightCalls: () => highlightCalls }
 }
 
 const toolPattern = /(?:BLOCK|OUTPUT)_\d+/g
@@ -63,6 +69,8 @@ const toolPattern = /(?:BLOCK|OUTPUT)_\d+/g
 test("culling keeps OpenCode tool blocks aligned with initialized scrollback layout", async () => {
   const culled = await createSession(true)
   const unculled = await createSession(false)
+  expect(culled.highlightCalls()).toBeLessThan(10)
+  expect(culled.highlightCalls()).toBeLessThan(unculled.highlightCalls())
   const max = Math.min(culled.scroll.scrollHeight, unculled.scroll.scrollHeight) - culled.scroll.viewport.height
 
   for (let top = 0; top <= max; top += 20) {

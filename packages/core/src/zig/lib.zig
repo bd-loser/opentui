@@ -1716,6 +1716,41 @@ export fn textBufferViewMeasureForDimensions(view_handle: NativeHandle, width: u
     return true;
 }
 
+export fn measureTextForDimensions(
+    text_ptr: ?[*]const u8,
+    text_len: u32,
+    width: u32,
+    height: u32,
+    wrap_mode: u8,
+    width_method: u8,
+    first_line_offset: u32,
+    tab_width: u8,
+    out_ptr: *ExternalMeasureResult,
+) bool {
+    out_ptr.* = std.mem.zeroes(ExternalMeasureResult);
+    const text = if (text_len == 0) "" else (text_ptr orelse return false)[0..text_len];
+    const pool = gp.initGlobalPool(globalArena);
+    const link_pool = link.initGlobalLinkPool(globalArena);
+    const method: utf8.WidthMethod = if (width_method == 0) .wcwidth else .unicode;
+    const buffer_ptr = text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, link_pool, method) catch return false;
+    defer buffer_ptr.deinit();
+    buffer_ptr.setTabWidth(tab_width);
+    buffer_ptr.setText(text) catch return false;
+
+    const view = text_buffer_view.UnifiedTextBufferView.init(globalAllocator, buffer_ptr) catch return false;
+    defer view.deinit();
+    view.setWrapMode(switch (wrap_mode) {
+        0 => .none,
+        1 => .char,
+        2 => .word,
+        else => .none,
+    });
+    view.setFirstLineOffset(first_line_offset);
+    const result = view.measureForDimensions(width, height) catch return false;
+    out_ptr.* = .{ .line_count = result.line_count, .width_cols_max = result.width_cols_max };
+    return true;
+}
+
 // ===== EditBuffer Exports =====
 
 fn destroyEditorViewHandle(view_handle: NativeHandle) void {

@@ -23,6 +23,7 @@ export interface VideoRenderableOptions extends RenderableOptions<VideoRenderabl
   protocol?: ImageRenderProtocol
   autoplay?: boolean
   loop?: boolean
+  muted?: boolean
   maxFps?: number
   ffmpegPath?: string
   ffprobePath?: string
@@ -106,6 +107,7 @@ export function buildFfmpegArgs(
   fps: number,
   metadata: Pick<VideoMetadata, "hasAudio" | "videoStreamIndex">,
   loop: boolean = false,
+  muted: boolean = false,
 ): string[] {
   const args = ["-nostdin", "-hide_banner", "-loglevel", "error", "-re"]
   if (loop) args.push("-stream_loop", "-1")
@@ -123,7 +125,7 @@ export function buildFfmpegArgs(
     "rawvideo",
     "pipe:3",
   )
-  if (metadata.hasAudio) {
+  if (metadata.hasAudio && !muted) {
     args.push(
       "-map",
       "0:a:0",
@@ -208,6 +210,7 @@ export class VideoRenderable extends Renderable {
   private readonly spawnProcess: SpawnProcess
   private fitMode: ImageFit
   private renderProtocol: ImageRenderProtocol
+  private mutedPlayback: boolean
   private metadata: VideoMetadata | null = null
   private probeProcess: ChildProcess | null = null
   private process: ChildProcess | null = null
@@ -240,6 +243,7 @@ export class VideoRenderable extends Renderable {
     this.fitMode = options.fit ?? "fit"
     this.renderProtocol = options.protocol ?? "auto"
     this.loopPlayback = options.loop ?? false
+    this.mutedPlayback = options.muted ?? false
     const maxFps = options.maxFps ?? 30
     if (!Number.isFinite(maxFps) || maxFps <= 0) throw new RangeError("maxFps must be a positive finite number")
     this.maxFps = maxFps
@@ -275,6 +279,17 @@ export class VideoRenderable extends Renderable {
 
   public get playing(): boolean {
     return this.wantsPlayback && this.process !== null && !this.ended
+  }
+
+  public get muted(): boolean {
+    return this.mutedPlayback
+  }
+
+  public set muted(value: boolean) {
+    if (this.mutedPlayback === value) return
+    this.mutedPlayback = value
+    this.configurationKey = ""
+    this.requestRender()
   }
 
   public play(): void {
@@ -343,7 +358,7 @@ export class VideoRenderable extends Renderable {
       }
       const geometry = this.calculateGeometry(metadata)
       const fps = Math.min(metadata.fps, this.maxFps)
-      const key = `${geometry.pixelWidth}x${geometry.pixelHeight}:${this.fitMode}:${fps}`
+      const key = `${geometry.pixelWidth}x${geometry.pixelHeight}:${this.fitMode}:${fps}:${this.mutedPlayback}`
       if (this.process && key === this.configurationKey) return
       this.stopPlayback(false)
       if (!this.wantsPlayback || this.isDestroyed) return
@@ -362,9 +377,10 @@ export class VideoRenderable extends Renderable {
 
   private startProcess(metadata: VideoMetadata, geometry: VideoOutputGeometry, fps: number): void {
     const generation = this.generation
+    const outputAudio = metadata.hasAudio && !this.mutedPlayback
     const child = this.spawnProcess(
       this.ffmpegPath,
-      buildFfmpegArgs(this.source, geometry, fps, metadata, this.loopPlayback),
+      buildFfmpegArgs(this.source, geometry, fps, metadata, this.loopPlayback, this.mutedPlayback),
       {
         shell: false,
         stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"],
@@ -372,9 +388,9 @@ export class VideoRenderable extends Renderable {
     )
     this.process = child
     this.ended = false
-    this.wallClock = !metadata.hasAudio
+    this.wallClock = !outputAudio
     this.wallClockOffsetSeconds = 0
-    this.audioOutputEnded = !metadata.hasAudio
+    this.audioOutputEnded = !outputAudio
     this.playbackStartedAt = performance.now()
     this.startTicker(fps)
 
@@ -406,8 +422,8 @@ export class VideoRenderable extends Renderable {
       this.ended = true
     })
 
-    if (metadata.hasAudio && audio) this.startAudio(audio, generation)
-    else if (metadata.hasAudio) {
+    if (outputAudio && audio) this.startAudio(audio, generation)
+    else if (outputAudio) {
       this.wallClock = true
       this.playbackStartedAt = performance.now()
     }

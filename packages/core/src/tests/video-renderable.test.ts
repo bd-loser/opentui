@@ -57,6 +57,21 @@ describe("VideoRenderable FFmpeg contract", () => {
     expect(args).not.toContain("0:a:0")
   })
 
+  test("omits audio decoding and output when muted", () => {
+    const args = buildFfmpegArgs(
+      "muted.mp4",
+      { filter: "scale=320:480" },
+      24,
+      { hasAudio: true, videoStreamIndex: 0 },
+      false,
+      true,
+    )
+    expect(args).toContain("pipe:3")
+    expect(args).not.toContain("pipe:4")
+    expect(args).not.toContain("0:a:0")
+    expect(args).not.toContain("f32le")
+  })
+
   test("loops through one FFmpeg input timeline without respawning", () => {
     const args = buildFfmpegArgs(
       "loop.mp4",

@@ -4372,6 +4372,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private async loop(): Promise<void> {
     if (this.rendering || this._isDestroyed) return
+    const startedWhileRunning = this._isRunning
     this.renderTimeout = null
 
     this.rendering = true
@@ -4486,7 +4487,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
             this.renderTimeout = null
           }
         } else if (nativeStatus === "backpressured") {
-          this.scheduleRenderAfterBackpressure()
+          if (!startedWhileRunning || this._isRunning || this.immediateRerenderRequested) {
+            this.scheduleRenderAfterBackpressure()
+          }
         } else if (nativeStatus === "retryable-skip") {
           this.immediateRerenderRequested = false
           this.renderTimeout = null

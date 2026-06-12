@@ -30,6 +30,10 @@ export interface VideoRenderableOptions extends RenderableOptions<VideoRenderabl
   onReady?: (metadata: VideoMetadata) => void
   onError?: (error: Error) => void
   onEnd?: () => void
+  onPlay?: () => void
+  onPause?: () => void
+  onSeek?: (time: number) => void
+  onTimeUpdate?: (time: number) => void
 }
 
 type SpawnProcess = typeof spawn
@@ -169,9 +173,13 @@ export function buildFfmpegArgs(
   metadata: Pick<VideoMetadata, "hasAudio" | "videoStreamIndex">,
   loop: boolean = false,
   muted: boolean = false,
+  startTime: number = 0,
+  preview: boolean = false,
 ): string[] {
-  const args = ["-nostdin", "-hide_banner", "-loglevel", "error", "-re"]
-  if (loop) args.push("-stream_loop", "-1")
+  const args = ["-nostdin", "-hide_banner", "-loglevel", "error"]
+  if (!preview) args.push("-re")
+  if (loop && !preview) args.push("-stream_loop", "-1")
+  if (startTime > 0) args.push("-ss", String(startTime))
   args.push(
     "-i",
     source,
@@ -186,11 +194,12 @@ export function buildFfmpegArgs(
     "1",
     "-pred",
     "none",
+    ...(preview ? ["-frames:v", "1"] : []),
     "-f",
     "image2pipe",
     "pipe:3",
   )
-  if (metadata.hasAudio && !muted) {
+  if (metadata.hasAudio && !muted && !preview) {
     args.push(
       "-map",
       "0:a:0",
@@ -207,6 +216,14 @@ export function buildFfmpegArgs(
     )
   }
   return args
+}
+
+export function normalizeVideoTime(value: number, duration: number, loop: boolean): number {
+  if (!Number.isFinite(value)) throw new RangeError("Video time must be finite")
+  const nonNegative = Math.max(0, value)
+  if (!(duration > 0) || !Number.isFinite(duration)) return nonNegative
+  if (!loop) return Math.min(nonNegative, duration)
+  return ((nonNegative % duration) + duration) % duration
 }
 
 export function calculateVideoGeometry(options: VideoGeometryOptions): VideoOutputGeometry {
@@ -272,6 +289,10 @@ export class VideoRenderable extends Renderable {
   private readonly onReady?: (metadata: VideoMetadata) => void
   private readonly onError?: (error: Error) => void
   private readonly onEnd?: () => void
+  private readonly onPlay?: () => void
+  private readonly onPause?: () => void
+  private readonly onSeek?: (time: number) => void
+  private readonly onTimeUpdate?: (time: number) => void
   private readonly spawnProcess: SpawnProcess
   private fitMode: ImageFit
   private renderProtocol: ImageRenderProtocol
@@ -297,8 +318,12 @@ export class VideoRenderable extends Renderable {
   private ticker: ReturnType<typeof setInterval> | null = null
   private wantsPlayback: boolean
   private starting = false
-  private ended = false
+  private decoderEnded = false
   private diagnostics = ""
+  private positionSeconds = 0
+  private processOriginSeconds = 0
+  private playbackEnded = false
+  private previewRequested = false
 
   constructor(ctx: RenderContext, options: VideoRenderableOptions) {
     super(ctx, options)
@@ -315,6 +340,10 @@ export class VideoRenderable extends Renderable {
     this.onReady = options.onReady
     this.onError = options.onError
     this.onEnd = options.onEnd
+    this.onPlay = options.onPlay
+    this.onPause = options.onPause
+    this.onSeek = options.onSeek
+    this.onTimeUpdate = options.onTimeUpdate
     this.spawnProcess = spawn
     this.wantsPlayback = options.autoplay ?? false
   }
@@ -341,7 +370,44 @@ export class VideoRenderable extends Renderable {
   }
 
   public get playing(): boolean {
-    return this.wantsPlayback && this.process !== null && !this.ended
+    return this.wantsPlayback && !this.playbackEnded
+  }
+
+  public get paused(): boolean {
+    return !this.wantsPlayback
+  }
+
+  public get ended(): boolean {
+    return this.playbackEnded
+  }
+
+  public get duration(): number {
+    return this.metadata?.duration ?? 0
+  }
+
+  public get ready(): boolean {
+    return this.metadata !== null
+  }
+
+  public get videoMetadata(): Readonly<VideoMetadata> | null {
+    return this.metadata ? { ...this.metadata } : null
+  }
+
+  public get durationMs(): number {
+    return this.duration * 1000
+  }
+
+  public get currentTime(): number {
+    if (!this.wantsPlayback || (!this.audioClock && !this.wallClock)) return this.positionSeconds
+    return normalizeVideoTime(this.processOriginSeconds + this.processElapsedTime(), this.duration, this.loopPlayback)
+  }
+
+  public set currentTime(value: number) {
+    this.seek(value)
+  }
+
+  public get currentTimeMs(): number {
+    return this.currentTime * 1000
   }
 
   public get muted(): boolean {
@@ -356,20 +422,72 @@ export class VideoRenderable extends Renderable {
   }
 
   public play(): void {
-    if (this.wantsPlayback && !this.ended) return
+    if (this.wantsPlayback && !this.playbackEnded) return
+    if (this.previewRequested) {
+      this.previewRequested = false
+      this.stopPlayback(false)
+    }
+    if (this.playbackEnded && this.duration > 0 && this.positionSeconds >= this.duration) this.positionSeconds = 0
     this.wantsPlayback = true
-    this.ended = false
+    this.previewRequested = false
+    this.playbackEnded = false
+    this.decoderEnded = false
     this.requestRender()
+    this.onPlay?.()
   }
 
   public pause(): void {
+    if (!this.wantsPlayback && !this.previewRequested) return
+    const wasPlaying = this.wantsPlayback
+    if (wasPlaying) this.positionSeconds = this.currentTime
     this.wantsPlayback = false
+    this.previewRequested = false
     this.stopPlayback(false)
+    if (wasPlaying) {
+      this.onPause?.()
+      this.onTimeUpdate?.(this.positionSeconds)
+    }
+  }
+
+  public resume(): void {
+    this.play()
+  }
+
+  public toggle(): void {
+    if (this.wantsPlayback) this.pause()
+    else this.play()
+  }
+
+  public seek(time: number): void {
+    const target = normalizeVideoTime(time, this.duration, this.loopPlayback)
+    const resume = this.wantsPlayback
+    this.positionSeconds = target
+    this.playbackEnded = false
+    this.stopPlayback(false)
+    if (!this.loopPlayback && this.duration > 0 && target >= this.duration) {
+      this.wantsPlayback = false
+    } else {
+      this.wantsPlayback = resume
+      this.previewRequested = !resume
+      this.requestRender()
+    }
+    this.onSeek?.(target)
+    this.onTimeUpdate?.(target)
+  }
+
+  public seekBy(delta: number): void {
+    if (!Number.isFinite(delta)) throw new RangeError("Video seek delta must be finite")
+    this.seek(this.currentTime + delta)
+  }
+
+  public seekToMs(milliseconds: number): void {
+    if (!Number.isFinite(milliseconds)) throw new RangeError("Video time must be finite")
+    this.seek(milliseconds / 1000)
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this.width <= 0 || this.height <= 0) return
-    if (this.wantsPlayback) void this.ensurePlayback()
+    if (this.wantsPlayback || this.previewRequested) void this.ensurePlayback()
     if (!this.currentImage || !this.geometry) return
 
     const x = (this.buffered ? 0 : this._screenX) + Math.floor((this.width - this.geometry.cellWidth) / 2)
@@ -404,9 +522,9 @@ export class VideoRenderable extends Renderable {
   }
 
   private async ensurePlayback(): Promise<void> {
-    if (this.starting || this.isDestroyed || !this.wantsPlayback) return
+    if (this.starting || this.isDestroyed || (!this.wantsPlayback && !this.previewRequested)) return
     this.starting = true
-    const generation = this.generation
+    let generation = this.generation
     try {
       const metadata =
         this.metadata ??
@@ -414,23 +532,30 @@ export class VideoRenderable extends Renderable {
           if (generation === this.generation) this.probeProcess = child
         }))
       this.probeProcess = null
-      if (this.isDestroyed || !this.wantsPlayback || generation !== this.generation) return
+      if (this.isDestroyed || (!this.wantsPlayback && !this.previewRequested) || generation !== this.generation) return
       if (!this.metadata) {
         this.metadata = metadata
+        this.positionSeconds = normalizeVideoTime(this.positionSeconds, metadata.duration, this.loopPlayback)
         this.onReady?.(metadata)
+        if (generation !== this.generation || this.isDestroyed || (!this.wantsPlayback && !this.previewRequested))
+          return
       }
       const geometry = this.calculateGeometry(metadata)
       const fps = Math.min(metadata.fps, this.maxFps)
       const key = `${geometry.pixelWidth}x${geometry.pixelHeight}:${this.fitMode}:${fps}:${this.mutedPlayback}`
       if (this.process && key === this.configurationKey) return
+      const restartPosition = this.currentTime
       this.stopPlayback(false)
-      if (!this.wantsPlayback || this.isDestroyed) return
+      if ((!this.wantsPlayback && !this.previewRequested) || this.isDestroyed) return
+      generation = this.generation
+      this.positionSeconds = restartPosition
       this.configurationKey = key
       this.geometry = geometry
-      this.startProcess(metadata, geometry, fps)
+      this.startProcess(metadata, geometry, fps, this.positionSeconds, this.previewRequested)
     } catch (error) {
-      if (generation !== this.generation || this.isDestroyed || !this.wantsPlayback) return
+      if (generation !== this.generation || this.isDestroyed || (!this.wantsPlayback && !this.previewRequested)) return
       this.stopPlayback(false)
+      this.previewRequested = false
       this.reportError(error)
       this.wantsPlayback = false
     } finally {
@@ -438,19 +563,35 @@ export class VideoRenderable extends Renderable {
     }
   }
 
-  private startProcess(metadata: VideoMetadata, geometry: VideoOutputGeometry, fps: number): void {
+  private startProcess(
+    metadata: VideoMetadata,
+    geometry: VideoOutputGeometry,
+    fps: number,
+    startTime: number,
+    preview: boolean,
+  ): void {
     const generation = this.generation
-    const outputAudio = metadata.hasAudio && !this.mutedPlayback
+    const outputAudio = metadata.hasAudio && !this.mutedPlayback && !preview
     const child = this.spawnProcess(
       this.ffmpegPath,
-      buildFfmpegArgs(this.source, geometry, fps, metadata, this.loopPlayback, this.mutedPlayback),
+      buildFfmpegArgs(
+        this.source,
+        geometry,
+        fps,
+        metadata,
+        this.loopPlayback,
+        this.mutedPlayback || preview,
+        startTime,
+        preview,
+      ),
       {
         shell: false,
         stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"],
       },
     )
     this.process = child
-    this.ended = false
+    this.decoderEnded = false
+    this.processOriginSeconds = startTime
     this.wallClock = !outputAudio
     this.wallClockOffsetSeconds = 0
     this.audioOutputEnded = !outputAudio
@@ -468,6 +609,7 @@ export class VideoRenderable extends Renderable {
         try {
           parser.push(chunk)
         } catch (error) {
+          this.positionSeconds = this.currentTime
           this.reportError(error)
           this.wantsPlayback = false
           this.stopPlayback(false)
@@ -495,11 +637,12 @@ export class VideoRenderable extends Renderable {
       if (generation !== this.generation || child !== this.process) return
       this.process = null
       if (code !== 0) {
+        this.positionSeconds = this.currentTime
         this.reportError(new Error(`ffmpeg failed (${code ?? signal ?? "signal"}): ${this.diagnostics.trim()}`))
         this.wantsPlayback = false
         return
       }
-      this.ended = true
+      this.decoderEnded = true
     })
 
     if (outputAudio && audio) this.startAudio(audio, generation)
@@ -606,13 +749,17 @@ export class VideoRenderable extends Renderable {
           this.wallClock = true
           this.playbackStartedAt = performance.now()
         }
-        if (!this.ended) return
+        if (!this.decoderEnded) return
         const drained = this.audioClock
           ? (this.audio?.getPcmQueuedFrames() ?? 0) === 0 && this.audioPending.byteLength < AUDIO_CHANNELS * 4
           : this.frames.length === 0
         if (!drained) return
+        const finalPosition = this.duration > 0 ? this.duration : this.currentTime
         this.wantsPlayback = false
+        this.playbackEnded = true
+        this.positionSeconds = finalPosition
         this.stopTicker()
+        this.onTimeUpdate?.(this.positionSeconds)
         this.onEnd?.()
       },
       Math.max(4, Math.floor(1000 / fps / 2)),
@@ -621,13 +768,14 @@ export class VideoRenderable extends Renderable {
 
   private desiredFrameIndex(): number {
     const fps = Math.min(this.metadata?.fps ?? this.maxFps, this.maxFps)
-    const seconds =
-      this.audioClock && this.audio
-        ? Number(this.audio.getPcmConsumedFrames()) / AUDIO_SAMPLE_RATE
-        : this.wallClock
-          ? this.wallClockOffsetSeconds + Math.max(0, performance.now() - this.playbackStartedAt) / 1000
-          : 0
-    return Math.floor(seconds * fps)
+    return Math.floor(this.processElapsedTime() * fps)
+  }
+
+  private processElapsedTime(): number {
+    if (this.audioClock && this.audio) return Number(this.audio.getPcmConsumedFrames()) / AUDIO_SAMPLE_RATE
+    if (this.wallClock)
+      return this.wallClockOffsetSeconds + Math.max(0, performance.now() - this.playbackStartedAt) / 1000
+    return 0
   }
 
   private presentDueFrame(): void {
@@ -642,6 +790,12 @@ export class VideoRenderable extends Renderable {
     this.currentImage = selected.image
     previous?.dispose()
     this.requestRender()
+    this.positionSeconds = this.currentTime
+    this.onTimeUpdate?.(this.positionSeconds)
+    if (this.previewRequested && !this.wantsPlayback) {
+      this.previewRequested = false
+      this.stopPlayback(false)
+    }
   }
 
   private stopTicker(): void {
@@ -684,6 +838,7 @@ export class VideoRenderable extends Renderable {
 
   protected destroySelf(): void {
     this.wantsPlayback = false
+    this.previewRequested = false
     this.stopPlayback(true)
     super.destroySelf()
   }

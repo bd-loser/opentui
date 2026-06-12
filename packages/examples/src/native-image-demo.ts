@@ -16,6 +16,7 @@ import {
   type ImageSource,
   type ImageRenderProtocol,
   type KeyEvent,
+  type VideoMetadata,
 } from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
@@ -63,6 +64,7 @@ let galleryView: BoxRenderable | null = null
 let videoView: BoxRenderable | null = null
 let video: VideoRenderable | null = null
 let videoStatus: TextRenderable | null = null
+let videoMetadata: VideoMetadata | null = null
 let showingVideo = false
 let fitMode: FitMode = "fit"
 let protocol: ImageRenderProtocol = "auto"
@@ -72,7 +74,19 @@ const protocols: ImageRenderProtocol[] = ["auto", "kitty", "sixel", "blocks"]
 function updateControls(): void {
   if (!controlsText) return
   const effective = previews[0]?.effectiveProtocol ?? "blocks"
-  controlsText.content = `V  ${showingVideo ? "GALLERY" : "VIDEO"}     F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}     ESC  MENU`
+  controlsText.content = showingVideo
+    ? `V  GALLERY     SPACE  ${video?.playing ? "PAUSE" : "PLAY"}     ←/→  0.25S     F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}`
+    : `V  VIDEO     F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}     ESC  MENU`
+}
+
+function formatTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60)
+  return `${minutes}:${(seconds - minutes * 60).toFixed(3).padStart(6, "0")}`
+}
+
+function updateVideoStatus(): void {
+  if (!videoStatus || !videoMetadata || !video) return
+  videoStatus.content = `FFMPEG  ${videoMetadata.width}×${videoMetadata.height}  ${videoMetadata.fps.toFixed(0)} FPS  ${formatTime(video.currentTime)} / ${formatTime(video.duration)}  ${video.playing ? "PLAYING" : "PAUSED"}`
 }
 
 function createCard(renderer: CliRenderer, item: GalleryItem, index: number): BoxRenderable {
@@ -273,9 +287,19 @@ export async function run(renderer: CliRenderer): Promise<void> {
     flexGrow: 1,
     flexShrink: 1,
     onReady: (metadata) => {
-      if (videoStatus)
-        videoStatus.content = `FFMPEG  ${metadata.width}×${metadata.height}  ${metadata.fps.toFixed(0)} FPS  ${metadata.hasAudio ? "AUDIO" : "SILENT"}  LOOP`
+      videoMetadata = metadata
+      updateVideoStatus()
     },
+    onPlay: () => {
+      updateVideoStatus()
+      updateControls()
+    },
+    onPause: () => {
+      updateVideoStatus()
+      updateControls()
+    },
+    onSeek: updateVideoStatus,
+    onTimeUpdate: updateVideoStatus,
     onError: (error) => {
       if (!videoStatus) return
       videoStatus.content = `VIDEO FAILED  ${error.message}`
@@ -323,6 +347,12 @@ export async function run(renderer: CliRenderer): Promise<void> {
       if (videoView) videoView.visible = showingVideo
       if (showingVideo) video?.play()
       else video?.pause()
+    } else if (showingVideo && key.name === "space") {
+      video?.toggle()
+    } else if (showingVideo && key.name === "left") {
+      video?.seekBy(key.shift ? -5 : -0.25)
+    } else if (showingVideo && key.name === "right") {
+      video?.seekBy(key.shift ? 5 : 0.25)
     } else if (key.name === "f") fitMode = fitMode === "fit" ? "cover" : "fit"
     else if (key.name === "p") protocol = protocols[(protocols.indexOf(protocol) + 1) % protocols.length]
     else return
@@ -354,6 +384,7 @@ export function destroy(renderer: CliRenderer): void {
   videoView = null
   video = null
   videoStatus = null
+  videoMetadata = null
   showingVideo = false
   controlsText = null
   fitMode = "fit"

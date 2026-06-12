@@ -5,10 +5,13 @@ import { describe, expect, test } from "bun:test"
 import {
   buildFfmpegArgs,
   calculateVideoGeometry,
+  normalizeVideoTime,
   parseVideoMetadata,
   PngStreamParser,
   releaseVideoProcess,
+  VideoRenderable,
 } from "../renderables/Video.js"
+import { createTestRenderer } from "../testing.js"
 
 const PNG_FIXTURE = new URL("./fixtures/images/rgba.png", import.meta.url)
 
@@ -98,6 +101,41 @@ describe("VideoRenderable FFmpeg contract", () => {
     expect(loopIndex).toBeGreaterThan(-1)
     expect(args[loopIndex + 1]).toBe("-1")
     expect(loopIndex).toBeLessThan(args.indexOf("-i"))
+  })
+
+  test("places fractional seek before the input without rounding", () => {
+    const args = buildFfmpegArgs(
+      "seek.mp4",
+      { filter: "scale=320:480" },
+      24,
+      { hasAudio: true, videoStreamIndex: 0 },
+      true,
+      false,
+      1.375,
+    )
+    const seekIndex = args.indexOf("-ss")
+    expect(seekIndex).toBeGreaterThan(-1)
+    expect(args[seekIndex + 1]).toBe("1.375")
+    expect(seekIndex).toBeLessThan(args.indexOf("-i"))
+    expect(args.indexOf("-re")).toBeLessThan(args.indexOf("-i"))
+  })
+
+  test("builds paused seek previews without realtime throttling or audio", () => {
+    const args = buildFfmpegArgs(
+      "preview.mp4",
+      { filter: "scale=320:480" },
+      24,
+      { hasAudio: true, videoStreamIndex: 0 },
+      true,
+      false,
+      2.125,
+      true,
+    )
+    expect(args).not.toContain("-re")
+    expect(args).not.toContain("-stream_loop")
+    expect(args).not.toContain("0:a:0")
+    expect(args.slice(args.indexOf("-frames:v"), args.indexOf("-frames:v") + 2)).toEqual(["-frames:v", "1"])
+    expect(args[args.indexOf("-ss") + 1]).toBe("2.125")
   })
 
   test("rejects metadata without a usable frame rate", () => {
@@ -211,4 +249,67 @@ test("PNG stream parser handles split and consecutive frames", async () => {
   parser.finish()
 
   expect(frames).toEqual([png, png])
+})
+
+describe("VideoRenderable timeline", () => {
+  test("normalizes clamped and looped subsecond positions", () => {
+    expect(normalizeVideoTime(1.375, 6.04, false)).toBe(1.375)
+    expect(normalizeVideoTime(9, 6.04, false)).toBe(6.04)
+    expect(normalizeVideoTime(-0.25, 6.04, false)).toBe(0)
+    expect(normalizeVideoTime(7.29, 6.04, true)).toBeCloseTo(1.25, 12)
+    expect(normalizeVideoTime(6.04, 6.04, true)).toBeCloseTo(0, 12)
+    expect(normalizeVideoTime(3.125, 0, false)).toBe(3.125)
+    expect(() => normalizeVideoTime(Number.NaN, 1, false)).toThrow("finite")
+    expect(() => normalizeVideoTime(Number.POSITIVE_INFINITY, 1, false)).toThrow("finite")
+  })
+
+  test("exposes precise paused position and play intent", async () => {
+    const setup = await createTestRenderer({ width: 20, height: 10 })
+    const seeks: number[] = []
+    const updates: number[] = []
+    const video = new VideoRenderable(setup.renderer, {
+      source: "unused.mp4",
+      autoplay: false,
+      onSeek: (time) => seeks.push(time),
+      onTimeUpdate: (time) => updates.push(time),
+    })
+    setup.renderer.root.add(video)
+
+    try {
+      expect(video.duration).toBe(0)
+      expect(video.durationMs).toBe(0)
+      expect(video.ready).toBe(false)
+      expect(video.videoMetadata).toBeNull()
+      expect(video.currentTime).toBe(0)
+      expect(video.paused).toBe(true)
+      expect(video.playing).toBe(false)
+      expect(video.ended).toBe(false)
+
+      video.seek(1.375)
+      expect(video.currentTime).toBe(1.375)
+      expect(video.currentTimeMs).toBe(1375)
+      video.seekBy(0.125)
+      expect(video.currentTime).toBe(1.5)
+      video.seekToMs(1625.5)
+      expect(video.currentTime).toBe(1.6255)
+      expect(seeks).toEqual([1.375, 1.5, 1.6255])
+      expect(updates).toEqual(seeks)
+
+      video.play()
+      expect(video.playing).toBe(true)
+      expect(video.paused).toBe(false)
+      video.pause()
+      expect(video.currentTime).toBe(1.6255)
+      expect(video.playing).toBe(false)
+      expect(video.paused).toBe(true)
+      video.resume()
+      expect(video.playing).toBe(true)
+      video.pause()
+      expect(() => video.seek(Number.NaN)).toThrow("finite")
+      expect(() => video.seekBy(Number.POSITIVE_INFINITY)).toThrow("finite")
+    } finally {
+      video.destroyRecursively()
+      setup.renderer.destroy()
+    }
+  })
 })

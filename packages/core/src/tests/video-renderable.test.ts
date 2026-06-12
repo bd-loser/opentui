@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildFfmpegArgs, calculateVideoGeometry, parseVideoMetadata } from "../renderables/Video.js"
+import {
+  buildFfmpegArgs,
+  calculateVideoGeometry,
+  parseVideoMetadata,
+  releaseVideoProcess,
+} from "../renderables/Video.js"
 
 describe("VideoRenderable FFmpeg contract", () => {
   test("selects the playable video stream instead of attached cover art", () => {
@@ -157,5 +162,29 @@ describe("VideoRenderable FFmpeg contract", () => {
       pixelHeight: 200,
       filter: "scale=400:200:flags=lanczos",
     })
+  })
+
+  test("terminates and unreferences decoder processes and every pipe", () => {
+    const destroyed: boolean[] = []
+    let killedWith: NodeJS.Signals | number | undefined
+    let unreferenced = false
+    const child = {
+      exitCode: null,
+      signalCode: null,
+      stdio: Array.from({ length: 5 }, () => ({ destroy: () => destroyed.push(true) })),
+      kill: (signal?: NodeJS.Signals | number) => {
+        killedWith = signal
+        return true
+      },
+      unref: () => {
+        unreferenced = true
+      },
+    }
+
+    releaseVideoProcess(child as never)
+
+    expect(killedWith).toBe("SIGTERM")
+    expect(destroyed).toHaveLength(5)
+    expect(unreferenced).toBe(true)
   })
 })

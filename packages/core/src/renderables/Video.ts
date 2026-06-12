@@ -71,6 +71,13 @@ function parseRate(value: unknown): number {
   return Number.isFinite(result) && result > 0 ? result : 0
 }
 
+export function releaseVideoProcess(child: ChildProcess | null): void {
+  if (!child) return
+  if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM")
+  for (const stream of child.stdio) stream?.destroy()
+  child.unref()
+}
+
 export function parseVideoMetadata(value: string): VideoMetadata {
   const parsed = JSON.parse(value) as {
     streams?: Array<{
@@ -579,9 +586,9 @@ export class VideoRenderable extends Renderable {
 
   private stopPlayback(clearImage: boolean): void {
     this.generation++
-    this.probeProcess?.kill("SIGTERM")
+    releaseVideoProcess(this.probeProcess)
     this.probeProcess = null
-    this.process?.kill("SIGTERM")
+    releaseVideoProcess(this.process)
     this.process = null
     this.stopTicker()
     if (this.audioPumpTimer) clearInterval(this.audioPumpTimer)

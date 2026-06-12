@@ -66,14 +66,6 @@ export class CodeRenderable extends TextBufferRenderable {
   // Temporary rendered-line -> source-line map for concealment; native extmarks should replace this.
   private _renderedLineSources?: number[]
   private _mappedLineInfo?: LineInfo
-  private _prepareHighlightBeforeLayout: boolean = false
-
-  public onLifecyclePass = (): void => {
-    if (!this._prepareHighlightBeforeLayout) return
-    this._prepareHighlightBeforeLayout = false
-    if (!this._streaming || !this._filetype || this._drawUnstyledText) return
-    this.prepareHighlight()
-  }
 
   protected _contentDefaultOptions = {
     content: "",
@@ -108,7 +100,6 @@ export class CodeRenderable extends TextBufferRenderable {
     }
 
     this._highlightsDirty = this._content.length > 0
-    this._prepareHighlightBeforeLayout = this._highlightsDirty
   }
 
   get content(): string {
@@ -119,7 +110,6 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._content !== value) {
       this._content = value
       this._highlightsDirty = true
-      this._prepareHighlightBeforeLayout = true
       this._highlightSnapshotId++
 
       if (this._streaming && this._filetype && !this._drawUnstyledText) {
@@ -181,7 +171,6 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._filetype !== value) {
       this._filetype = value
       this._highlightsDirty = true
-      this._prepareHighlightBeforeLayout = true
     }
   }
 
@@ -215,7 +204,6 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._drawUnstyledText !== value) {
       this._drawUnstyledText = value
       this._highlightsDirty = true
-      this._prepareHighlightBeforeLayout = true
     }
   }
 
@@ -236,7 +224,6 @@ export class CodeRenderable extends TextBufferRenderable {
       this._hadInitialContent = false
       this._lastHighlights = []
       this._highlightsDirty = true
-      this._prepareHighlightBeforeLayout = true
     }
   }
 
@@ -248,7 +235,6 @@ export class CodeRenderable extends TextBufferRenderable {
     if (this._treeSitterClient !== value) {
       this._treeSitterClient = value
       this._highlightsDirty = true
-      this._prepareHighlightBeforeLayout = true
     }
   }
 
@@ -546,7 +532,7 @@ export class CodeRenderable extends TextBufferRenderable {
     return this.textBuffer.getLineHighlights(lineIdx)
   }
 
-  private prepareHighlight(): void {
+  protected renderSelf(buffer: OptimizedBuffer): void {
     if (this._highlightsDirty) {
       if (this.isDestroyed) return
 
@@ -562,10 +548,7 @@ export class CodeRenderable extends TextBufferRenderable {
         this._highlightingPromise = this.startHighlight()
       }
     }
-  }
 
-  protected renderSelf(buffer: OptimizedBuffer): void {
-    this.prepareHighlight()
     if (!this._shouldRenderTextBuffer) return
     super.renderSelf(buffer)
   }

@@ -1,7 +1,7 @@
 import { describe, expect, it, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
-import { ClipboardTarget, encodeOsc52Payload } from "./clipboard.js"
-import type { RenderLib } from "../zig.js"
+import { Clipboard, ClipboardTarget } from "./clipboard.js"
+import type { RendererHandle, RenderLib } from "../zig.js"
 
 describe("clipboard", () => {
   let renderer: TestRenderer | null = null
@@ -16,10 +16,20 @@ describe("clipboard", () => {
     renderer = null
   })
 
-  it("encodes payload as base64", () => {
-    const payload = encodeOsc52Payload("hello")
-    const decoded = new TextDecoder().decode(payload)
-    expect(decoded).toBe(Buffer.from("hello").toString("base64"))
+  it("passes raw UTF-8 bytes to the native encoder", () => {
+    let received: Uint8Array | undefined
+    const lib = {
+      encoder: new TextEncoder(),
+      getTerminalCapabilities: () => ({ osc52_support: "unknown" }),
+      copyToClipboardOSC52: (_renderer: RendererHandle, _target: number, textUtf8: Uint8Array) => {
+        received = textUtf8
+        return true
+      },
+    } as unknown as RenderLib
+    const clipboard = new Clipboard(lib, 0 as unknown as RendererHandle)
+
+    expect(clipboard.copyToClipboardOSC52("世界")).toBe(true)
+    expect(received).toEqual(new TextEncoder().encode("世界"))
   })
 
   it("treats negative XTGETTCAP Ms replies as inconclusive", async () => {

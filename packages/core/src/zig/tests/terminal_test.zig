@@ -813,7 +813,7 @@ test "writeClipboard - generates basic OSC52 sequence" {
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
 
-    try term.writeClipboard(&writer, .clipboard, "aGVsbG8=");
+    try term.writeClipboard(&writer, .clipboard, "hello");
 
     const output = writer.getWritten();
     // Should be: ESC]52;c;aGVsbG8=ESC\
@@ -986,7 +986,7 @@ test "writeClipboard - emits optimistically when XTGETTCAP state is unknown" {
 
     var writer = TestWriter.init(testing.allocator);
     defer writer.deinit();
-    try term.writeClipboard(&writer, .clipboard, "dGVzdA==");
+    try term.writeClipboard(&writer, .clipboard, "test");
 
     try testing.expectEqualStrings("\x1b]52;c;dGVzdA==\x1b\\", writer.getWritten());
 }
@@ -1006,7 +1006,8 @@ test "writeClipboard - writes large payload without a fixed buffer limit" {
     defer writer.deinit();
     try term.writeClipboard(&writer, .clipboard, payload);
 
-    try testing.expectEqual(@as(usize, payload.len + 9), writer.getWritten().len);
+    const encoded_len = std.base64.standard.Encoder.calcSize(payload.len);
+    try testing.expectEqual(encoded_len + 9, writer.getWritten().len);
     try testing.expect(std.mem.startsWith(u8, writer.getWritten(), "\x1b]52;c;"));
     try testing.expect(std.mem.endsWith(u8, writer.getWritten(), "\x1b\\"));
 }
@@ -1028,7 +1029,8 @@ test "writeClipboard - writes large payload through tmux passthrough" {
     try term.writeClipboard(&writer, .clipboard, payload);
 
     const output = writer.getWritten();
-    try testing.expectEqual(@as(usize, payload.len + 20), output.len);
+    const encoded_len = std.base64.standard.Encoder.calcSize(payload.len);
+    try testing.expectEqual(encoded_len + 20, output.len);
     try testing.expect(std.mem.startsWith(u8, output, "\x1bPtmux;\x1b\x1b]52;c;"));
     try testing.expect(std.mem.endsWith(u8, output, "\x1b\x1b\\\x1b\\"));
 }
@@ -1060,6 +1062,110 @@ test "writeClipboard - chunks large payload through GNU Screen passthrough" {
         try testing.expect(next_start - content_start <= Terminal.SCREEN_PASSTHROUGH_CHUNK_SIZE + ansi.ANSI.screenDcsEnd.len);
         frame_start = next_start;
     }
+}
+
+test "writeClipboard - base64 encodes raw UTF-8 bytes" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, "世界 café 🚀");
+
+    try testing.expectEqualStrings("\x1b]52;c;5LiW55WMIGNhZsOpIPCfmoA=\x1b\\", writer.getWritten());
+}
+
+test "writeClipboard - handles base64 padding and encoding chunk boundaries" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    var term = Terminal.init(.{ .env_map = &env });
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+
+    const cases = [_]struct { raw: []const u8, encoded: []const u8 }{
+        .{ .raw = "", .encoded = "" },
+        .{ .raw = "a", .encoded = "YQ==" },
+        .{ .raw = "ab", .encoded = "YWI=" },
+        .{ .raw = "abc", .encoded = "YWJj" },
+    };
+    for (cases) |case| {
+        writer.reset();
+        try term.writeClipboard(&writer, .clipboard, case.raw);
+        try testing.expectEqualStrings("\x1b]52;c;", writer.getWritten()[0..7]);
+        try testing.expectEqualStrings(case.encoded, writer.getWritten()[7 .. writer.getWritten().len - 2]);
+        try testing.expect(std.mem.endsWith(u8, writer.getWritten(), "\x1b\\"));
+    }
+
+    const payload = [_]u8{'A'} ** (3 * 1024 + 1);
+    const encoded_len = std.base64.standard.Encoder.calcSize(payload.len);
+    const expected = try testing.allocator.alloc(u8, encoded_len);
+    defer testing.allocator.free(expected);
+    _ = std.base64.standard.Encoder.encode(expected, &payload);
+
+    writer.reset();
+    try term.writeClipboard(&writer, .clipboard, &payload);
+    try testing.expectEqualSlices(u8, expected, writer.getWritten()[7 .. writer.getWritten().len - 2]);
+}
+
+test "clipboardSequenceSize - matches plain, tmux, and Screen output" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    const payload = "size me 世界";
+    const environments = [_]struct { key: ?[]const u8, value: []const u8 }{
+        .{ .key = null, .value = "" },
+        .{ .key = "TMUX", .value = "/tmp/tmux-1000/default,12345,0" },
+        .{ .key = "STY", .value = "12345.pts-0.hostname" },
+    };
+
+    for (environments) |environment| {
+        var env = std.process.EnvMap.init(testing.allocator);
+        defer env.deinit();
+        if (environment.key) |key| try env.put(key, environment.value);
+        var term = Terminal.init(.{ .env_map = &env });
+
+        var writer = TestWriter.init(testing.allocator);
+        defer writer.deinit();
+        try term.writeClipboard(&writer, .clipboard, payload);
+
+        try testing.expectEqual(try term.clipboardSequenceSize(payload.len), writer.getWritten().len);
+    }
+}
+
+test "clipboardSequenceSize - rejects payloads beyond the FFI limit" {
+    if (std.math.maxInt(usize) == std.math.maxInt(u32)) return error.SkipZigTest;
+
+    var term: Terminal = .{};
+    try testing.expectError(
+        error.ClipboardPayloadTooLarge,
+        term.clipboardSequenceSize(@as(usize, Terminal.CLIPBOARD_PAYLOAD_SIZE_MAX) + 1),
+    );
+}
+
+test "writeClipboard - Screen framing crosses the 252-byte boundary" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("STY", "12345.pts-0.hostname");
+    var term = Terminal.init(.{ .env_map = &env });
+
+    const payload_one_chunk = [_]u8{'A'} ** 180;
+    var writer = TestWriter.init(testing.allocator);
+    defer writer.deinit();
+    try term.writeClipboard(&writer, .clipboard, &payload_one_chunk);
+    try testing.expectEqual(@as(usize, 1), countSubstring(writer.getWritten(), ansi.ANSI.screenDcsStart));
+    try testing.expectEqual(try term.clipboardSequenceSize(payload_one_chunk.len), writer.getWritten().len);
+
+    writer.reset();
+    const payload_two_chunks = [_]u8{'A'} ** 181;
+    try term.writeClipboard(&writer, .clipboard, &payload_two_chunks);
+    try testing.expectEqual(@as(usize, 2), countSubstring(writer.getWritten(), ansi.ANSI.screenDcsStart));
+    try testing.expectEqual(try term.clipboardSequenceSize(payload_two_chunks.len), writer.getWritten().len);
 }
 
 test "writeClipboard - wraps in DCS passthrough for tmux" {

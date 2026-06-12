@@ -69,6 +69,9 @@ pub const Osc52Support = enum(u8) {
 
 const NOTIFICATION_QUERY_ID = "opentui-notifications";
 pub const SCREEN_PASSTHROUGH_CHUNK_SIZE = 252;
+pub const CLIPBOARD_PAYLOAD_SIZE_MAX = std.math.maxInt(u32);
+const OSC52_FRAMING_SIZE = "\x1b]52;c;".len + "\x1b\\".len;
+const PASSTHROUGH_ESCAPED_OSC52_SIZE = OSC52_FRAMING_SIZE + 2;
 
 pub const MouseLevel = enum {
     none,
@@ -1439,28 +1442,51 @@ pub fn writeNotification(self: *Terminal, allocator: std.mem.Allocator, tty: any
     return true;
 }
 
-/// Write OSC 52 clipboard sequence to the terminal
+/// Return the exact number of bytes emitted by writeClipboard.
+pub fn clipboardSequenceSize(self: *Terminal, payload_len: usize) !usize {
+    if (payload_len > CLIPBOARD_PAYLOAD_SIZE_MAX) return error.ClipboardPayloadTooLarge;
+    const padded_len = try std.math.add(usize, payload_len, 2);
+    const encoded_len = try std.math.mul(usize, @divFloor(padded_len, 3), 4);
+    const sequence_len = try std.math.add(usize, encoded_len, OSC52_FRAMING_SIZE);
+
+    if (self.isInTmux()) {
+        const wrapped_len = try std.math.add(usize, sequence_len, 2);
+        return std.math.add(usize, wrapped_len, ansi.ANSI.tmuxDcsStart.len + ansi.ANSI.tmuxDcsEnd.len);
+    }
+
+    if (self.isInScreen()) {
+        const escaped_len = try std.math.add(usize, encoded_len, PASSTHROUGH_ESCAPED_OSC52_SIZE);
+        const chunk_count = @divFloor(escaped_len - 1, SCREEN_PASSTHROUGH_CHUNK_SIZE) + 1;
+        const envelopes_len = try std.math.mul(usize, chunk_count, ansi.ANSI.screenDcsStart.len + ansi.ANSI.screenDcsEnd.len);
+        return std.math.add(usize, escaped_len, envelopes_len);
+    }
+
+    return sequence_len;
+}
+
+/// Write OSC 52 clipboard sequence to the terminal from raw clipboard bytes.
 /// Supports tmux/screen passthrough, including nested tmux sessions
-pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, payload: []const u8) !void {
+pub fn writeClipboard(self: *Terminal, tty: anytype, target: ClipboardTarget, text_utf8: []const u8) !void {
     if (!self.canWriteClipboard()) {
         return error.NotSupported;
     }
+    _ = try self.clipboardSequenceSize(text_utf8.len);
 
     if (self.isInTmux()) {
         try tty.writeAll(ansi.ANSI.tmuxDcsStart);
-        try writeClipboardSequence(tty, target, payload, true);
+        try writeClipboardSequence(tty, target, text_utf8, true);
         try tty.writeAll(ansi.ANSI.tmuxDcsEnd);
         return;
     }
 
     if (self.isInScreen()) {
         var screen_writer = ScreenPassthroughWriter(@TypeOf(tty)).init(tty);
-        try writeClipboardSequence(&screen_writer, target, payload, false);
+        try writeClipboardSequence(&screen_writer, target, text_utf8, false);
         try screen_writer.finish();
         return;
     }
 
-    try writeClipboardSequence(tty, target, payload, false);
+    try writeClipboardSequence(tty, target, text_utf8, false);
 }
 
 fn ScreenPassthroughWriter(comptime Writer: type) type {
@@ -1505,12 +1531,26 @@ fn ScreenPassthroughWriter(comptime Writer: type) type {
     };
 }
 
-fn writeClipboardSequence(writer: anytype, target: ClipboardTarget, payload: []const u8, escape: bool) !void {
+fn writeClipboardSequence(writer: anytype, target: ClipboardTarget, text_utf8: []const u8, escape: bool) !void {
     try writeClipboardBytes(writer, "\x1b]52;", escape);
     try writer.writeByte(target.toChar());
     try writer.writeByte(';');
-    try writeClipboardBytes(writer, payload, escape);
+    try writeClipboardBase64(writer, text_utf8);
     try writeClipboardBytes(writer, "\x1b\\", escape);
+}
+
+fn writeClipboardBase64(writer: anytype, source: []const u8) !void {
+    const source_chunk_size = 3 * 1024;
+    var encoded_buffer: [4 * 1024]u8 = undefined;
+    var offset: usize = 0;
+
+    while (offset < source.len) {
+        const chunk_len = @min(source.len - offset, source_chunk_size);
+        const chunk = source[offset .. offset + chunk_len];
+        const encoded = std.base64.standard.Encoder.encode(&encoded_buffer, chunk);
+        try writer.writeAll(encoded);
+        offset += chunk_len;
+    }
 }
 
 fn writeClipboardBytes(writer: anytype, bytes: []const u8, escape: bool) !void {

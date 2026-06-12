@@ -944,11 +944,11 @@ export fn setTerminalTitle(renderer_handle: NativeHandle, titlePtr: ?[*]const u8
     object_ptr.setTerminalTitle(title);
 }
 
-export fn copyToClipboardOSC52(renderer_handle: NativeHandle, target: u8, payloadPtr: ?[*]const u8, payloadLen: u32) bool {
+export fn copyToClipboardOSC52(renderer_handle: NativeHandle, target: u8, text_ptr: ?[*]const u8, text_len: u32) bool {
     const object_ptr = acquireRenderer(renderer_handle) orelse return false;
     const targetEnum = std.meta.intToEnum(terminal.ClipboardTarget, target) catch .clipboard;
-    const payload = sliceFromPtrLen(payloadPtr, payloadLen);
-    return object_ptr.copyToClipboardOSC52(targetEnum, payload);
+    const text_utf8 = sliceFromPtrLen(text_ptr, text_len);
+    return object_ptr.copyToClipboardOSC52(targetEnum, text_utf8);
 }
 
 export fn clearClipboardOSC52(renderer_handle: NativeHandle, target: u8) bool {

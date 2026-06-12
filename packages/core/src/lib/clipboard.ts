@@ -10,11 +10,6 @@ export enum ClipboardTarget {
   Query = 3,
 }
 
-export function encodeOsc52Payload(text: string, encoder: TextEncoder = new TextEncoder()): Uint8Array {
-  const base64 = Buffer.from(text).toString("base64")
-  return encoder.encode(base64)
-}
-
 export class Clipboard {
   private lib: RenderLib
   private rendererPtr: RendererHandle
@@ -28,8 +23,8 @@ export class Clipboard {
     if (!this.isOsc52Supported()) {
       return false
     }
-    const payload = encodeOsc52Payload(text, this.lib.encoder)
-    return this.lib.copyToClipboardOSC52(this.rendererPtr, target, payload)
+    const textUtf8 = this.lib.encoder.encode(text)
+    return this.lib.copyToClipboardOSC52(this.rendererPtr, target, textUtf8)
   }
 
   public clearClipboardOSC52(target: ClipboardTarget = ClipboardTarget.Clipboard): boolean {

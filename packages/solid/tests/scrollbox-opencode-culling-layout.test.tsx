@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test"
 import { MockTreeSitterClient } from "@opentui/core/testing"
-import { SyntaxStyle, type CodeRenderable, type ScrollBoxRenderable } from "@opentui/core"
+import { SyntaxStyle, type ScrollBoxRenderable } from "@opentui/core"
 import { For, Show } from "solid-js"
 import { testRender } from "../index.js"
 
@@ -18,7 +18,6 @@ async function createSession(viewportCulling: boolean) {
     return highlightOnce(...args)
   }
   let scroll: ScrollBoxRenderable | undefined
-  const codes: CodeRenderable[] = []
   const turns = Array.from({ length: 80 }, (_, turn) => turn)
   const setup = await testRender(
     () => (
@@ -32,13 +31,15 @@ async function createSession(viewportCulling: boolean) {
                   <Show when={turn % 2 === 0}>
                     <box paddingLeft={2} marginTop={1}>
                       <code
-                        ref={(value) => codes.push(value)}
                         syntaxStyle={syntaxStyle}
                         treeSitterClient={treeSitterClient}
                         filetype="markdown"
                         drawUnstyledText={false}
                         streaming={true}
-                        content={`INITIAL_${turn}`}
+                        content={Array.from(
+                          { length: 8 },
+                          (_, line) => `REASONING_${turn}_${line} ${"wrapped reasoning content ".repeat(18)}`,
+                        ).join("\n\n")}
                       />
                     </box>
                   </Show>
@@ -60,21 +61,12 @@ async function createSession(viewportCulling: boolean) {
   treeSitterClient.resolveAllHighlightOnce()
   await Promise.resolve()
   await setup.renderOnce()
-  highlightCalls = 0
-  for (let code = 0; code < codes.length; code++) {
-    const turn = code * 2
-    codes[code].content = Array.from(
-      { length: 8 },
-      (_, line) => `REASONING_${turn}_${line} ${"wrapped reasoning content ".repeat(18)}`,
-    ).join("\n\n")
-  }
-  await setup.renderOnce()
   return { setup, scroll: scroll!, highlightCalls: () => highlightCalls }
 }
 
 const toolPattern = /(?:BLOCK|OUTPUT)_\d+/g
 
-test("culling keeps OpenCode tool blocks aligned after hidden streaming updates", async () => {
+test("culling keeps OpenCode tool blocks aligned with initialized scrollback layout", async () => {
   const culled = await createSession(true)
   const unculled = await createSession(false)
   expect(culled.highlightCalls()).toBeLessThan(10)

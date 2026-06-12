@@ -8,7 +8,7 @@ import type { OptimizedBuffer } from "../buffer.js"
 import type { SimpleHighlight } from "../lib/tree-sitter/types.js"
 import type { TextChunk } from "../text-buffer.js"
 import { treeSitterToTextChunks } from "../lib/tree-sitter-styled-text.js"
-import { cullingDebug, isCullingDebugEnabled } from "../lib/culling-debug.js"
+import { cullingDebug, isCullingDebugBaseline, isCullingDebugEnabled } from "../lib/culling-debug.js"
 
 export interface HighlightContext {
   content: string
@@ -136,7 +136,7 @@ export class CodeRenderable extends TextBufferRenderable {
       }
 
       if (this._streaming && this._filetype && !this._drawUnstyledText) {
-        this.yogaNode.markDirty()
+        if (!isCullingDebugBaseline()) this.yogaNode.markDirty()
         this.requestRender()
         return
       }
@@ -189,6 +189,7 @@ export class CodeRenderable extends TextBufferRenderable {
   }
 
   protected override measureContent(width: number, height: number): { lineCount: number; widthColsMax: number } | null {
+    if (isCullingDebugBaseline()) return super.measureContent(width, height)
     if (this._bufferContentRevision === this._contentRevision) return super.measureContent(width, height)
 
     const key = `${this._contentRevision}:${width}:${height}:${this._wrapMode}:${this._firstLineOffset}:${this._ctx.widthMethod}`

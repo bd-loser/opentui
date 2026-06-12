@@ -105,13 +105,11 @@ export function buildFfmpegArgs(
   geometry: Pick<VideoOutputGeometry, "filter">,
   fps: number,
   metadata: Pick<VideoMetadata, "hasAudio" | "videoStreamIndex">,
+  loop: boolean = false,
 ): string[] {
-  const args = [
-    "-nostdin",
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-re",
+  const args = ["-nostdin", "-hide_banner", "-loglevel", "error", "-re"]
+  if (loop) args.push("-stream_loop", "-1")
+  args.push(
     "-i",
     source,
     "-map",
@@ -124,7 +122,7 @@ export function buildFfmpegArgs(
     "-f",
     "rawvideo",
     "pipe:3",
-  ]
+  )
   if (metadata.hasAudio) {
     args.push(
       "-map",
@@ -364,10 +362,14 @@ export class VideoRenderable extends Renderable {
 
   private startProcess(metadata: VideoMetadata, geometry: VideoOutputGeometry, fps: number): void {
     const generation = this.generation
-    const child = this.spawnProcess(this.ffmpegPath, buildFfmpegArgs(this.source, geometry, fps, metadata), {
-      shell: false,
-      stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"],
-    })
+    const child = this.spawnProcess(
+      this.ffmpegPath,
+      buildFfmpegArgs(this.source, geometry, fps, metadata, this.loopPlayback),
+      {
+        shell: false,
+        stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"],
+      },
+    )
     this.process = child
     this.ended = false
     this.wallClock = !metadata.hasAudio
@@ -523,15 +525,9 @@ export class VideoRenderable extends Renderable {
           ? (this.audio?.getPcmQueuedFrames() ?? 0) === 0 && this.audioPending.byteLength < AUDIO_CHANNELS * 4
           : this.frames.length === 0
         if (!drained) return
-        if (this.loopPlayback && this.wantsPlayback) {
-          this.configurationKey = ""
-          this.stopPlayback(false)
-          this.requestRender()
-        } else {
-          this.wantsPlayback = false
-          this.stopTicker()
-          this.onEnd?.()
-        }
+        this.wantsPlayback = false
+        this.stopTicker()
+        this.onEnd?.()
       },
       Math.max(4, Math.floor(1000 / fps / 2)),
     )

@@ -57,6 +57,20 @@ describe("VideoRenderable FFmpeg contract", () => {
     expect(args).not.toContain("0:a:0")
   })
 
+  test("loops through one FFmpeg input timeline without respawning", () => {
+    const args = buildFfmpegArgs(
+      "loop.mp4",
+      { filter: "scale=320:480" },
+      24,
+      { hasAudio: true, videoStreamIndex: 0 },
+      true,
+    )
+    const loopIndex = args.indexOf("-stream_loop")
+    expect(loopIndex).toBeGreaterThan(-1)
+    expect(args[loopIndex + 1]).toBe("-1")
+    expect(loopIndex).toBeLessThan(args.indexOf("-i"))
+  })
+
   test("rejects metadata without a usable frame rate", () => {
     expect(() =>
       parseVideoMetadata(

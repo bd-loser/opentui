@@ -274,7 +274,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     flexShrink: 1,
     onReady: (metadata) => {
       if (videoStatus)
-        videoStatus.content = `FFMPEG  ${metadata.width}×${metadata.height}  ${metadata.fps.toFixed(0)} FPS  ${metadata.hasAudio ? "AUDIO" : "SILENT"}`
+        videoStatus.content = `FFMPEG  ${metadata.width}×${metadata.height}  ${metadata.fps.toFixed(0)} FPS  ${metadata.hasAudio ? "AUDIO" : "SILENT"}  LOOP`
     },
     onError: (error) => {
       if (!videoStatus) return

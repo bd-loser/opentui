@@ -48,13 +48,13 @@ describe("native image demo", () => {
 
     setup.mockInput.pressKey("v")
     const videoFrame = await setup.waitForFrame(
-      (value) => value.includes("FFMPEG  768×1168  24 FPS  AUDIO") && countImageCells(value) > 200,
+      (value) => value.includes("FFMPEG  768×1168  24 FPS  AUDIO  LOOP") && countImageCells(value) > 200,
       { maxPasses: 120 },
     )
     expect(videoFrame).toContain("V  GALLERY")
     const fitCells = countImageCells(videoFrame)
     const advancedFrame = await setup.waitForFrame(
-      (value) => value.includes("FFMPEG  768×1168  24 FPS  AUDIO") && value !== videoFrame,
+      (value) => value.includes("FFMPEG  768×1168  24 FPS  AUDIO  LOOP") && value !== videoFrame,
       { maxPasses: 120 },
     )
     expect(advancedFrame).not.toBe(videoFrame)
@@ -70,4 +70,22 @@ describe("native image demo", () => {
     const galleryFrame = await setup.waitForFrame((value) => value.includes("LOCAL PNG"), { maxPasses: 40 })
     expect(galleryFrame).toContain("V  VIDEO")
   }, 15_000)
+
+  test("loops through the complete video without reporting an FFmpeg failure", async () => {
+    setup = await createTestRenderer({ width: 60, height: 18 })
+    await run(setup.renderer)
+    await setup.waitForFrame((value) => value.includes("LOCAL PNG"), { maxPasses: 40 })
+
+    setup.mockInput.pressKey("v")
+    const first = await setup.waitForFrame(
+      (value) => value.includes("FFMPEG  768×1168  24 FPS  AUDIO  LOOP") && countImageCells(value) > 100,
+      { maxPasses: 120 },
+    )
+    await Bun.sleep(7_000)
+    await setup.flush()
+    const looped = setup.captureCharFrame()
+    expect(looped).not.toContain("VIDEO FAILED")
+    expect(countImageCells(looped)).toBeGreaterThan(100)
+    expect(looped).not.toBe(first)
+  }, 12_000)
 })

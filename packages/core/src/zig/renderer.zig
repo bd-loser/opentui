@@ -36,6 +36,27 @@ const CLEAR_CHAR = '\u{0a00}';
 const MAX_STAT_SAMPLES = 30;
 const STAT_SAMPLE_CAPACITY = 30;
 
+fn hashBufferRow(buffer: *const OptimizedBuffer, y: u32, width: u32) u64 {
+    const start = @as(usize, y) * @as(usize, buffer.width);
+    const end = start + width;
+    var hasher = std.hash.Wyhash.init(0);
+    hasher.update(std.mem.sliceAsBytes(buffer.buffer.char[start..end]));
+    hasher.update(std.mem.sliceAsBytes(buffer.buffer.fg[start..end]));
+    hasher.update(std.mem.sliceAsBytes(buffer.buffer.bg[start..end]));
+    hasher.update(std.mem.sliceAsBytes(buffer.buffer.attributes[start..end]));
+    return hasher.final();
+}
+
+fn countNonblankRow(buffer: *const OptimizedBuffer, y: u32, width: u32) u32 {
+    const start = @as(usize, y) * @as(usize, buffer.width);
+    const end = start + width;
+    var count: u32 = 0;
+    for (buffer.buffer.char[start..end]) |char| {
+        if (char != 0 and char != buf.DEFAULT_SPACE_CHAR and char != CLEAR_CHAR and !gp.isContinuationChar(char)) count += 1;
+    }
+    return count;
+}
+
 pub const RendererError = error{
     OutOfMemory,
     InvalidDimensions,
@@ -210,6 +231,7 @@ pub const CliRenderer = struct {
     palette_epoch: u32,
     last_rendered_palette_epoch: ?u32 = null,
     force_full_repaint: bool = false,
+    debug_frame_id: u64 = 0,
     palette_index_cache: std.AutoHashMapUnmanaged(u64, u8) = .{},
 
     pub const OutputTarget = union(enum) {
@@ -746,6 +768,8 @@ pub const CliRenderer = struct {
 
     // One code path; backend selects writer type at compile time.
     pub fn render(self: *CliRenderer, force: bool) RenderStatus {
+        self.debug_frame_id += 1;
+        self.backend.setDebugFrameId(self.debug_frame_id);
         // Backpressure: skipping must NOT update lastRenderTime so the next
         // successful render sees the full accumulated delta (catch-up).
         if (self.backend.prepareFrame() != .ok) {
@@ -1320,6 +1344,31 @@ pub const CliRenderer = struct {
         var cellsUpdated: u32 = 0;
         const palette_force = self.last_rendered_palette_epoch == null or self.last_rendered_palette_epoch.? != self.palette_epoch;
         const should_force = force or self.force_full_repaint or palette_force;
+        const debug_enabled = logger.isCullingDebugEnabled();
+        const debug_current_hashes = if (debug_enabled) self.allocator.alloc(u64, self.height) catch null else null;
+        defer if (debug_current_hashes) |values| self.allocator.free(values);
+        const debug_next_hashes = if (debug_enabled) self.allocator.alloc(u64, self.height) catch null else null;
+        defer if (debug_next_hashes) |values| self.allocator.free(values);
+        const debug_nonblank = if (debug_enabled) self.allocator.alloc(u32, self.height) catch null else null;
+        defer if (debug_nonblank) |values| self.allocator.free(values);
+        const debug_changed = if (debug_enabled) self.allocator.alloc(u32, self.height) catch null else null;
+        defer if (debug_changed) |values| self.allocator.free(values);
+        const debug_row_bytes = if (debug_enabled) self.allocator.alloc(usize, self.height) catch null else null;
+        defer if (debug_row_bytes) |values| self.allocator.free(values);
+        var debug_current_frame_hash = std.hash.Wyhash.init(0);
+        var debug_next_frame_hash = std.hash.Wyhash.init(0);
+
+        logger.culling("frame-start frame={d} width={d} height={d} force_arg={} recovery_force={} palette_force={} should_force={} render_offset={d} sync_started={}", .{
+            self.debug_frame_id,
+            self.width,
+            self.height,
+            force,
+            self.force_full_repaint,
+            palette_force,
+            should_force,
+            self.renderOffset,
+            sync_started,
+        });
 
         // Lazy frame start is the core no-op suppression mechanism. If diffing,
         // cursor state, and pointer state are unchanged, frame_started stays false
@@ -1337,6 +1386,17 @@ pub const CliRenderer = struct {
 
         for (0..self.height) |uy| {
             const y = @as(u32, @intCast(uy));
+            const debug_row_bytes_start = if (debug_enabled) writer.context.backend.debugByteCount() else 0;
+            if (debug_current_hashes) |values| {
+                values[uy] = hashBufferRow(self.currentRenderBuffer, y, self.width);
+                debug_current_frame_hash.update(std.mem.asBytes(&values[uy]));
+            }
+            if (debug_next_hashes) |values| {
+                values[uy] = hashBufferRow(self.nextRenderBuffer, y, self.width);
+                debug_next_frame_hash.update(std.mem.asBytes(&values[uy]));
+            }
+            if (debug_nonblank) |values| values[uy] = countNonblankRow(self.nextRenderBuffer, y, self.width);
+            if (debug_changed) |values| values[uy] = 0;
 
             var runStart: i64 = -1;
             var runLength: u32 = 0;
@@ -1455,7 +1515,9 @@ pub const CliRenderer = struct {
                 self.currentRenderBuffer.syncCell(x, y, nextCell.?);
 
                 cellsUpdated += 1;
+                if (debug_changed) |values| values[uy] += 1;
             }
+            if (debug_row_bytes) |values| values[uy] = writer.context.backend.debugByteCount() - debug_row_bytes_start;
         }
 
         if (hyperlinksEnabled and currentLinkId != 0) {
@@ -1578,6 +1640,37 @@ pub const CliRenderer = struct {
         self.renderStats.renderTime = renderTime;
         self.last_rendered_palette_epoch = self.palette_epoch;
         self.force_full_repaint = false;
+
+        if (debug_enabled) {
+            logger.culling("frame-summary frame={d} current_hash={x} next_hash={x} cells_updated={d} frame_started={} render_us={d}", .{
+                self.debug_frame_id,
+                debug_current_frame_hash.final(),
+                debug_next_frame_hash.final(),
+                cellsUpdated,
+                frame_started,
+                renderEndTime - renderStartTime,
+            });
+            if (debug_current_hashes != null and debug_next_hashes != null and debug_nonblank != null and debug_changed != null and debug_row_bytes != null) {
+                var row_start: usize = 0;
+                while (row_start < self.height) : (row_start += 24) {
+                    var row_buf: [3800]u8 = undefined;
+                    var stream = std.io.fixedBufferStream(&row_buf);
+                    const row_writer = stream.writer();
+                    const row_end = @min(row_start + 24, self.height);
+                    for (row_start..row_end) |row| {
+                        row_writer.print("{d}:{x}:{x}:{d}:{d}:{d};", .{
+                            row,
+                            debug_current_hashes.?[row],
+                            debug_next_hashes.?[row],
+                            debug_nonblank.?[row],
+                            debug_changed.?[row],
+                            debug_row_bytes.?[row],
+                        }) catch break;
+                    }
+                    logger.culling("frame-rows frame={d} rows={d}-{d} data={s}", .{ self.debug_frame_id, row_start, row_end, stream.getWritten() });
+                }
+            }
+        }
 
         self.nextRenderBuffer.clear(self.backgroundColor, null);
 

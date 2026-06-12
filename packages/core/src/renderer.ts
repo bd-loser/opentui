@@ -1075,7 +1075,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
           // Renderer-owned frame bytes must bypass any later stdout.write
           // interception (e.g. split-footer capture) and go straight to the
           // caller's actual sink.
-          this.realStdoutWrite.call(this.stdout, bytes, () => resolve())
+          const startedAt = isCullingDebugEnabled() ? performance.now() : 0
+          if (isCullingDebugEnabled()) cullingDebug("feed-submit-start", { bytes: bytes.byteLength })
+          this.realStdoutWrite.call(this.stdout, bytes, () => {
+            if (isCullingDebugEnabled()) {
+              cullingDebug("feed-submit-done", {
+                bytes: bytes.byteLength,
+                durationMs: Number((performance.now() - startedAt).toFixed(3)),
+              })
+            }
+            resolve()
+          })
         })
       })
       this._detachFeedError = feed.onError((code) => {

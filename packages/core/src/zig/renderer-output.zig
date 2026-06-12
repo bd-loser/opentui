@@ -18,6 +18,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const NativeSpanFeed = @import("native-span-feed.zig");
+const logger = @import("logger.zig");
 
 pub const OUTPUT_BUFFER_SIZE = 1024 * 1024 * 2; // 2 MiB, double-buffered per BufferedBackend for thread handoff
 
@@ -41,6 +42,12 @@ pub const BufferedOutput = struct {
 
 pub const StdoutOutput = struct {
     stdoutBuffer: [4096]u8 = undefined,
+    debugFrameId: u64 = 0,
+    debugLastSubmitFrameId: u64 = 0,
+    debugLastSubmitBytes: usize = 0,
+    debugLastWriteFailed: bool = false,
+    debugLastFlushFailed: bool = false,
+    debugLastDurationUs: i64 = 0,
 
     pub fn bufferedOutput(self: *StdoutOutput) BufferedOutput {
         return .{
@@ -56,8 +63,20 @@ pub const StdoutOutput = struct {
         const self: *StdoutOutput = @ptrCast(@alignCast(ctx));
         var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
         const w = &stdoutWriter.interface;
-        w.writeAll(data) catch {};
-        w.flush() catch {};
+        const started = std.time.microTimestamp();
+        var write_failed = false;
+        var flush_failed = false;
+        w.writeAll(data) catch {
+            write_failed = true;
+        };
+        w.flush() catch {
+            flush_failed = true;
+        };
+        self.debugLastSubmitFrameId = self.debugFrameId;
+        self.debugLastSubmitBytes = data.len;
+        self.debugLastWriteFailed = write_failed;
+        self.debugLastFlushFailed = flush_failed;
+        self.debugLastDurationUs = std.time.microTimestamp() - started;
     }
 };
 
@@ -137,6 +156,12 @@ pub const OutputBackend = union(enum) {
         }
     }
 
+    pub fn setDebugFrameId(self: *OutputBackend, frame_id: u64) void {
+        switch (self.*) {
+            inline else => |*b| b.setDebugFrameId(frame_id),
+        }
+    }
+
     /// Microseconds spent on the last write (populated after endFrame).
     pub fn getLastWriteTimeUs(self: *OutputBackend) ?f64 {
         switch (self.*) {
@@ -192,8 +217,14 @@ pub const BufferedBackend = struct {
     // Handoff buffer for the render thread
     currentOutputBuffer: []u8 = &[_]u8{},
     currentOutputLen: usize = 0,
+    currentOutputDebugFrameId: u64 = 0,
 
     lastWriteTimeUs: ?f64 = null,
+    debugFrameId: u64 = 0,
+    debugFrameWriteFailed: bool = false,
+    debugFrameGrew: bool = false,
+    debugOldCapacity: usize = 0,
+    debugNewCapacity: usize = 0,
 
     pub fn create(allocator: Allocator, output: BufferedOutput) !BufferedBackend {
         const a_buf = try allocator.alloc(u8, OUTPUT_BUFFER_SIZE);
@@ -245,6 +276,15 @@ pub const BufferedBackend = struct {
             self.renderMutex.unlock();
             thread.join();
             self.renderThread = null;
+            if (self.ownedStdoutOutput) |stdout_output| {
+                logger.culling("stdout-submit frame={d} bytes={d} write_failed={} flush_failed={} duration_us={d} observed_by_frame=shutdown", .{
+                    stdout_output.debugLastSubmitFrameId,
+                    stdout_output.debugLastSubmitBytes,
+                    stdout_output.debugLastWriteFailed,
+                    stdout_output.debugLastFlushFailed,
+                    stdout_output.debugLastDurationUs,
+                });
+            }
         }
 
         allocator.free(self.outputA);
@@ -262,6 +302,10 @@ pub const BufferedBackend = struct {
 
     pub fn shouldSkipFrame(_: *BufferedBackend) bool {
         return false;
+    }
+
+    pub fn setDebugFrameId(self: *BufferedBackend, frame_id: u64) void {
+        self.debugFrameId = frame_id;
     }
 
     pub fn prepareFrame(_: *BufferedBackend) WriteStatus {
@@ -332,13 +376,29 @@ pub const BufferedBackend = struct {
         if (self.activeBuffer == .A) {
             if (required > self.outputA.len) {
                 const capacity = @max(required, self.outputA.len * 2);
-                self.outputA = self.allocator.realloc(self.outputA, capacity) catch return error.BufferFull;
+                const old_capacity = self.outputA.len;
+                self.outputA = self.allocator.realloc(self.outputA, capacity) catch {
+                    self.debugFrameWriteFailed = true;
+                    logger.culling("output-grow-failed frame={d} backend=buffered buffer=A required={d} capacity={d}", .{ self.debugFrameId, required, old_capacity });
+                    return error.BufferFull;
+                };
+                self.debugFrameGrew = true;
+                self.debugOldCapacity = old_capacity;
+                self.debugNewCapacity = self.outputA.len;
             }
             @memcpy(self.outputA[bufferLen.*..][0..data.len], data);
         } else {
             if (required > self.outputB.len) {
                 const capacity = @max(required, self.outputB.len * 2);
-                self.outputB = self.allocator.realloc(self.outputB, capacity) catch return error.BufferFull;
+                const old_capacity = self.outputB.len;
+                self.outputB = self.allocator.realloc(self.outputB, capacity) catch {
+                    self.debugFrameWriteFailed = true;
+                    logger.culling("output-grow-failed frame={d} backend=buffered buffer=B required={d} capacity={d}", .{ self.debugFrameId, required, old_capacity });
+                    return error.BufferFull;
+                };
+                self.debugFrameGrew = true;
+                self.debugOldCapacity = old_capacity;
+                self.debugNewCapacity = self.outputB.len;
             }
             @memcpy(self.outputB[bufferLen.*..][0..data.len], data);
         }
@@ -354,6 +414,10 @@ pub const BufferedBackend = struct {
     }
 
     pub fn beginFrame(self: *BufferedBackend) void {
+        self.debugFrameWriteFailed = false;
+        self.debugFrameGrew = false;
+        self.debugOldCapacity = 0;
+        self.debugNewCapacity = 0;
         if (self.activeBuffer == .A) {
             self.outputLenA = 0;
         } else {
@@ -361,14 +425,32 @@ pub const BufferedBackend = struct {
         }
     }
 
+    pub fn debugByteCount(self: *const BufferedBackend) usize {
+        return if (self.activeBuffer == .A) self.outputLenA else self.outputLenB;
+    }
+
     pub fn endFrame(self: *BufferedBackend) WriteStatus {
         const writeStart = std.time.microTimestamp();
         const committed_buffer = self.activeBuffer;
+        const committed_len = if (committed_buffer == .A) self.outputLenA else self.outputLenB;
+        const committed_capacity = if (committed_buffer == .A) self.outputA.len else self.outputB.len;
+        const committed_slice = if (committed_buffer == .A) self.outputA[0..self.outputLenA] else self.outputB[0..self.outputLenB];
+        const committed_hash = std.hash.Wyhash.hash(0, committed_slice);
 
         if (self.useThread) {
             self.renderMutex.lock();
             while (self.renderInProgress) {
                 self.renderCondition.wait(&self.renderMutex);
+            }
+            if (self.ownedStdoutOutput) |stdout_output| {
+                logger.culling("stdout-submit frame={d} bytes={d} write_failed={} flush_failed={} duration_us={d} observed_by_frame={d}", .{
+                    stdout_output.debugLastSubmitFrameId,
+                    stdout_output.debugLastSubmitBytes,
+                    stdout_output.debugLastWriteFailed,
+                    stdout_output.debugLastFlushFailed,
+                    stdout_output.debugLastDurationUs,
+                    self.debugFrameId,
+                });
             }
 
             // Hand off the just-written buffer to the render thread and flip
@@ -382,6 +464,7 @@ pub const BufferedBackend = struct {
                 self.currentOutputBuffer = self.outputB;
                 self.currentOutputLen = self.outputLenB;
             }
+            self.currentOutputDebugFrameId = self.debugFrameId;
 
             self.renderRequested = true;
             self.renderInProgress = true;
@@ -392,12 +475,36 @@ pub const BufferedBackend = struct {
                 self.outputA[0..self.outputLenA]
             else
                 self.outputB[0..self.outputLenB];
+            if (self.ownedStdoutOutput) |stdout_output| stdout_output.debugFrameId = self.debugFrameId;
             self.output.write(to_write);
             self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
+            if (self.ownedStdoutOutput) |stdout_output| {
+                logger.culling("stdout-submit frame={d} bytes={d} write_failed={} flush_failed={} duration_us={d} observed_by_frame={d}", .{
+                    stdout_output.debugLastSubmitFrameId,
+                    stdout_output.debugLastSubmitBytes,
+                    stdout_output.debugLastWriteFailed,
+                    stdout_output.debugLastFlushFailed,
+                    stdout_output.debugLastDurationUs,
+                    self.debugFrameId,
+                });
+            }
         }
 
         self.lastCommittedBuffer = committed_buffer;
         self.hasCommittedFrame = true;
+        logger.culling("output-frame frame={d} backend=buffered bytes={d} hash={x} capacity={d} buffer={s} threaded={} write_failed={} grew={} old_capacity={d} new_capacity={d} write_us={?d}", .{
+            self.debugFrameId,
+            committed_len,
+            committed_hash,
+            committed_capacity,
+            if (committed_buffer == .A) "A" else "B",
+            self.useThread,
+            self.debugFrameWriteFailed,
+            self.debugFrameGrew,
+            self.debugOldCapacity,
+            self.debugNewCapacity,
+            self.lastWriteTimeUs,
+        });
         return .ok;
     }
 
@@ -420,9 +527,11 @@ pub const BufferedBackend = struct {
 
             const outputData = self.currentOutputBuffer;
             const outputLen = self.currentOutputLen;
+            const outputFrameId = self.currentOutputDebugFrameId;
 
             const writeStart = std.time.microTimestamp();
 
+            if (self.ownedStdoutOutput) |stdout_output| stdout_output.debugFrameId = outputFrameId;
             self.output.write(outputData[0..outputLen]);
 
             self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
@@ -443,6 +552,7 @@ pub const BufferedBackend = struct {
             self.renderMutex.unlock();
         }
 
+        logger.culling("output-control backend=buffered bytes={d} hash={x}", .{ data.len, std.hash.Wyhash.hash(0, data) });
         self.output.write(data);
     }
 
@@ -460,6 +570,10 @@ pub const BufferedBackend = struct {
             totalLen += slice.len;
         }
         if (totalLen == 0) return;
+
+        var control_hasher = std.hash.Wyhash.init(0);
+        for (data_slices) |slice| control_hasher.update(slice);
+        logger.culling("output-control backend=buffered bytes={d} hash={x} slices={d}", .{ totalLen, control_hasher.final(), data_slices.len });
 
         for (data_slices) |slice| {
             self.output.write(slice);
@@ -511,6 +625,9 @@ pub const FeedBackend = struct {
     frameWriteFailed: bool = false,
 
     lastWriteTimeUs: ?f64 = null,
+    debugFrameId: u64 = 0,
+    debugFrameBytes: usize = 0,
+    debugFragmentCount: u32 = 0,
 
     pub fn create(feed: *NativeSpanFeed.Stream) FeedBackend {
         return FeedBackend{ .feed = feed };
@@ -524,6 +641,10 @@ pub const FeedBackend = struct {
         const stats = self.feed.getStats();
         const cap = self.feed.options.span_queue_capacity;
         return cap > 0 and stats.pending_spans >= cap;
+    }
+
+    pub fn setDebugFrameId(self: *FeedBackend, frame_id: u64) void {
+        self.debugFrameId = frame_id;
     }
 
     pub fn prepareFrame(self: *FeedBackend) WriteStatus {
@@ -560,10 +681,13 @@ pub const FeedBackend = struct {
 
     fn frameWrite(ctx: WriterCtx, data: []const u8) error{BufferFull}!usize {
         const self = ctx.backend;
-        self.feed.write(data) catch {
+        self.feed.write(data) catch |err| {
             self.frameWriteFailed = true;
+            logger.culling("output-write-failed frame={d} backend=feed bytes={d} error={}", .{ self.debugFrameId, data.len, err });
             return error.BufferFull;
         };
+        self.debugFrameBytes += data.len;
+        self.debugFragmentCount += 1;
         return data.len;
     }
 
@@ -573,6 +697,12 @@ pub const FeedBackend = struct {
 
     pub fn beginFrame(self: *FeedBackend) void {
         self.frameWriteFailed = false;
+        self.debugFrameBytes = 0;
+        self.debugFragmentCount = 0;
+    }
+
+    pub fn debugByteCount(self: *const FeedBackend) usize {
+        return self.debugFrameBytes;
     }
 
     pub fn endFrame(self: *FeedBackend) WriteStatus {
@@ -591,11 +721,24 @@ pub const FeedBackend = struct {
         }
 
         self.lastWriteTimeUs = @as(f64, @floatFromInt(std.time.microTimestamp() - writeStart));
+        const stats = self.feed.getStats();
+        logger.culling("output-frame frame={d} backend=feed bytes={d} fragments={d} status={s} write_failed={} spans={d} pending_spans={d} chunks={d} write_us={?d}", .{
+            self.debugFrameId,
+            self.debugFrameBytes,
+            self.debugFragmentCount,
+            @tagName(status),
+            self.frameWriteFailed,
+            stats.spans_committed,
+            stats.pending_spans,
+            stats.chunks,
+            self.lastWriteTimeUs,
+        });
         return status;
     }
 
     pub fn writeOut(self: *FeedBackend, data: []const u8) void {
         if (data.len == 0) return;
+        logger.culling("output-control backend=feed bytes={d} hash={x}", .{ data.len, std.hash.Wyhash.hash(0, data) });
         self.feed.write(data) catch return;
         self.feed.commit() catch {};
     }
@@ -604,6 +747,10 @@ pub const FeedBackend = struct {
         var totalLen: usize = 0;
         for (data_slices) |slice| totalLen += slice.len;
         if (totalLen == 0) return;
+
+        var control_hasher = std.hash.Wyhash.init(0);
+        for (data_slices) |slice| control_hasher.update(slice);
+        logger.culling("output-control backend=feed bytes={d} hash={x} slices={d}", .{ totalLen, control_hasher.final(), data_slices.len });
 
         var wrote_any = false;
         for (data_slices) |slice| {

@@ -124,6 +124,10 @@ export fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, m
     logger.setLogCallback(callback);
 }
 
+export fn setCullingDebug(enabled: bool) void {
+    logger.setCullingDebug(enabled);
+}
+
 export fn createEventSink(callback: ?event_bus.EventCallback) NativeHandle {
     const sink = event_bus.createEventSink(globalAllocator, callback orelse return INVALID_HANDLE) catch return INVALID_HANDLE;
     return handles.insert(.event_sink, erasePtr(sink)) catch {

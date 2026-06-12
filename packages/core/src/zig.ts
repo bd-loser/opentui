@@ -236,6 +236,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+    setCullingDebug: {
+      args: ["bool"],
+      returns: "void",
+    },
     // Event bus
     createEventSink: {
       args: ["ptr"],
@@ -2555,6 +2559,11 @@ class FFIRenderLib implements RenderLib {
           const msgBytes = new Uint8Array(msgBuffer)
           const message = this.decoder.decode(msgBytes)
 
+          if (message.startsWith("[opentui-native-culling] ")) {
+            cullingDebug("native", { message: message.slice("[opentui-native-culling] ".length) })
+            return
+          }
+
           switch (level) {
             case LogLevel.Error:
               console.error(message)
@@ -2588,6 +2597,7 @@ class FFIRenderLib implements RenderLib {
     }
 
     this.setLogCallback(logCallback.ptr)
+    this.opentui.symbols.setCullingDebug(ffiBool(isCullingDebugEnabled()))
   }
 
   private setLogCallback(callbackPtr: Pointer | null) {

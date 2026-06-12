@@ -500,6 +500,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected renderSelf(buffer: OptimizedBuffer): void {
     const debugEnabled =
       isCullingDebugEnabled() &&
+      this.constructor.name === "CodeRenderable" &&
       this._screenX + this.width > 0 &&
       this._screenX < this._ctx.width &&
       this._screenY + this.height > 0 &&

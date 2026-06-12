@@ -8,9 +8,23 @@ pub const LogLevel = enum(u8) {
 };
 
 var global_log_callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: u32) callconv(.c) void = null;
+var culling_debug_enabled: bool = false;
 
 pub fn setLogCallback(callback: ?*const fn (level: u8, msgPtr: [*]const u8, msgLen: u32) callconv(.c) void) void {
     global_log_callback = callback;
+}
+
+pub fn setCullingDebug(enabled: bool) void {
+    culling_debug_enabled = enabled;
+}
+
+pub fn isCullingDebugEnabled() bool {
+    return culling_debug_enabled;
+}
+
+pub fn culling(comptime format: []const u8, args: anytype) void {
+    if (!culling_debug_enabled) return;
+    logMessage(.debug, "[opentui-native-culling] " ++ format, args);
 }
 
 // Helper function to log messages - can be used directly throughout the codebase

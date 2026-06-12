@@ -36,7 +36,7 @@ type SpawnProcess = typeof spawn
 
 interface QueuedFrame {
   index: number
-  pixels: Uint8Array
+  image: NativeImage
 }
 
 export interface VideoOutputGeometry {
@@ -63,6 +63,60 @@ const AUDIO_CHANNELS = 2
 const AUDIO_CAPACITY_FRAMES = 24_000
 const AUDIO_PREBUFFER_FRAMES = 12_000
 const MAX_VIDEO_QUEUE = 12
+const PNG_SIGNATURE = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10)
+const MAX_PNG_FRAME_BYTES = 64 * 1024 * 1024
+
+export class PngStreamParser {
+  private buffer = new Uint8Array(0)
+
+  constructor(
+    private readonly onFrame: (png: Uint8Array) => void,
+    private readonly maxFrameBytes = MAX_PNG_FRAME_BYTES,
+  ) {}
+
+  public push(input: Uint8Array): void {
+    const combined = new Uint8Array(this.buffer.byteLength + input.byteLength)
+    combined.set(this.buffer)
+    combined.set(input, this.buffer.byteLength)
+    this.buffer = combined
+
+    while (this.buffer.byteLength >= PNG_SIGNATURE.byteLength) {
+      if (!PNG_SIGNATURE.every((byte, index) => this.buffer[index] === byte)) {
+        this.reset()
+        throw new Error("Invalid PNG signature in FFmpeg output")
+      }
+      let offset = PNG_SIGNATURE.byteLength
+      let complete = false
+      while (this.buffer.byteLength >= offset + 8) {
+        const length = new DataView(this.buffer.buffer, this.buffer.byteOffset + offset, 4).getUint32(0, false)
+        const chunkBytes = length + 12
+        if (chunkBytes > this.maxFrameBytes - offset) {
+          this.reset()
+          throw new Error(`PNG frame exceeds ${this.maxFrameBytes} bytes`)
+        }
+        if (this.buffer.byteLength < offset + chunkBytes) break
+        const isIend = String.fromCharCode(...this.buffer.subarray(offset + 4, offset + 8)) === "IEND"
+        offset += chunkBytes
+        if (isIend) {
+          const frame = this.buffer.slice(0, offset)
+          this.buffer = this.buffer.slice(offset)
+          this.onFrame(frame)
+          complete = true
+          break
+        }
+      }
+      if (!complete) return
+    }
+  }
+
+  public finish(): void {
+    if (this.buffer.byteLength !== 0) throw new Error("Truncated PNG in FFmpeg output")
+  }
+
+  public reset(): void {
+    this.buffer = new Uint8Array(0)
+  }
+}
 
 function parseRate(value: unknown): number {
   if (typeof value !== "string") return 0
@@ -125,11 +179,15 @@ export function buildFfmpegArgs(
     `0:${metadata.videoStreamIndex}`,
     "-an",
     "-vf",
-    `fps=${fps}:start_time=0,${geometry.filter}`,
-    "-pix_fmt",
-    "rgba",
+    `fps=${fps}:start_time=0,${geometry.filter},format=pal8`,
+    "-c:v",
+    "png",
+    "-compression_level",
+    "1",
+    "-pred",
+    "none",
     "-f",
-    "rawvideo",
+    "image2pipe",
     "pipe:3",
   )
   if (metadata.hasAudio && !muted) {
@@ -230,8 +288,6 @@ export class VideoRenderable extends Renderable {
   private wallClock = false
   private wallClockOffsetSeconds = 0
   private playbackStartedAt = 0
-  private videoChunks: Uint8Array[] = []
-  private videoChunkBytes = 0
   private frames: QueuedFrame[] = []
   private decodedFrameIndex = 0
   private currentImage: NativeImage | null = null
@@ -404,9 +460,26 @@ export class VideoRenderable extends Renderable {
     const video = child.stdio[3] as Readable | null
     const audio = child.stdio[4] as Readable | null
     if (!video) throw new Error("FFmpeg video pipe was not created")
+    const parser = new PngStreamParser((png) => {
+      if (generation === this.generation && child === this.process) this.acceptVideoFrame(png, geometry)
+    })
     video.on("data", (chunk: Buffer) => {
       if (generation === this.generation && child === this.process) {
-        this.acceptVideoBytes(chunk, geometry.pixelWidth * geometry.pixelHeight * 4)
+        try {
+          parser.push(chunk)
+        } catch (error) {
+          this.reportError(error)
+          this.wantsPlayback = false
+          this.stopPlayback(false)
+        }
+      }
+    })
+    video.once("end", () => {
+      if (generation !== this.generation || child !== this.process) return
+      try {
+        parser.finish()
+      } catch (error) {
+        this.reportError(error)
       }
     })
     video.on("error", (error) => {
@@ -436,30 +509,20 @@ export class VideoRenderable extends Renderable {
     }
   }
 
-  private acceptVideoBytes(chunk: Uint8Array, frameBytes: number): void {
-    this.videoChunks.push(chunk)
-    this.videoChunkBytes += chunk.byteLength
-    while (this.videoChunkBytes >= frameBytes) {
-      const pixels = new Uint8Array(frameBytes)
-      let offset = 0
-      while (offset < frameBytes) {
-        const first = this.videoChunks[0]
-        const count = Math.min(first.byteLength, frameBytes - offset)
-        pixels.set(first.subarray(0, count), offset)
-        offset += count
-        this.videoChunkBytes -= count
-        if (count === first.byteLength) this.videoChunks.shift()
-        else this.videoChunks[0] = first.subarray(count)
-      }
-      const frame = { index: this.decodedFrameIndex++, pixels }
-      const desired = this.desiredFrameIndex()
-      if (this.frames.length < MAX_VIDEO_QUEUE) this.frames.push(frame)
-      else if (this.frames[0].index <= desired) {
-        this.frames.shift()
-        this.frames.push(frame)
-      }
-      if (frame.index === 0) this.presentDueFrame()
+  private acceptVideoFrame(png: Uint8Array, geometry: VideoOutputGeometry): void {
+    const image = NativeImage.decode(png)
+    if (image.width !== geometry.pixelWidth || image.height !== geometry.pixelHeight) {
+      image.dispose()
+      throw new Error("Unexpected FFmpeg PNG dimensions")
     }
+    const frame = { index: this.decodedFrameIndex++, image }
+    const desired = this.desiredFrameIndex()
+    if (this.frames.length < MAX_VIDEO_QUEUE) this.frames.push(frame)
+    else if (this.frames[0].index <= desired) {
+      this.frames.shift()?.image.dispose()
+      this.frames.push(frame)
+    } else image.dispose()
+    if (frame.index === 0) this.presentDueFrame()
   }
 
   private startAudio(stream: Readable, generation: number): void {
@@ -570,11 +633,13 @@ export class VideoRenderable extends Renderable {
   private presentDueFrame(): void {
     const desired = this.desiredFrameIndex()
     let selected: QueuedFrame | undefined
-    while (this.frames.length > 0 && this.frames[0].index <= desired) selected = this.frames.shift()
-    if (!selected || !this.geometry) return
-    const next = NativeImage.fromRgba(selected.pixels, this.geometry.pixelWidth, this.geometry.pixelHeight)
+    while (this.frames.length > 0 && this.frames[0].index <= desired) {
+      selected?.image.dispose()
+      selected = this.frames.shift()
+    }
+    if (!selected) return
     const previous = this.currentImage
-    this.currentImage = next
+    this.currentImage = selected.image
     previous?.dispose()
     this.requestRender()
   }
@@ -601,8 +666,7 @@ export class VideoRenderable extends Renderable {
     this.wallClock = false
     this.wallClockOffsetSeconds = 0
     this.audioPending = new Uint8Array(0)
-    this.videoChunks = []
-    this.videoChunkBytes = 0
+    for (const frame of this.frames) frame.image.dispose()
     this.frames = []
     this.decodedFrameIndex = 0
     this.diagnostics = ""

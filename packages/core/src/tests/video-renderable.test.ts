@@ -1,11 +1,16 @@
+import { readFile } from "node:fs/promises"
+
 import { describe, expect, test } from "bun:test"
 
 import {
   buildFfmpegArgs,
   calculateVideoGeometry,
   parseVideoMetadata,
+  PngStreamParser,
   releaseVideoProcess,
 } from "../renderables/Video.js"
+
+const PNG_FIXTURE = new URL("./fixtures/images/rgba.png", import.meta.url)
 
 describe("VideoRenderable FFmpeg contract", () => {
   test("selects the playable video stream instead of attached cover art", () => {
@@ -48,6 +53,10 @@ describe("VideoRenderable FFmpeg contract", () => {
     expect(args).toContain("0:2")
     expect(args).toContain("0:a:0")
     expect(args).toContain("f32le")
+    expect(args).toContain("image2pipe")
+    expect(args).toContain("png")
+    expect(args[args.indexOf("-vf") + 1]).toContain("format=pal8")
+    expect(args).not.toContain("rawvideo")
     expect(args).toContain("input with spaces.mp4")
     expect(args).not.toContain("input")
   })
@@ -187,4 +196,19 @@ describe("VideoRenderable FFmpeg contract", () => {
     expect(destroyed).toHaveLength(5)
     expect(unreferenced).toBe(true)
   })
+})
+
+test("PNG stream parser handles split and consecutive frames", async () => {
+  const png = new Uint8Array(await readFile(PNG_FIXTURE))
+  const input = new Uint8Array(png.byteLength * 2)
+  input.set(png)
+  input.set(png, png.byteLength)
+  const frames: Uint8Array[] = []
+  const parser = new PngStreamParser((frame) => frames.push(frame))
+
+  parser.push(input.subarray(0, png.byteLength + 7))
+  parser.push(input.subarray(png.byteLength + 7))
+  parser.finish()
+
+  expect(frames).toEqual([png, png])
 })

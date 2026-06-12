@@ -62,6 +62,8 @@ export type AudioAction =
   | "mixFrames"
   | "enableTap"
   | "readTapFrames"
+  | "enablePcmStream"
+  | "writePcm"
   | "listPlaybackDevices"
   | "selectPlaybackDevice"
   | "clearPlaybackDeviceSelection"
@@ -99,6 +101,7 @@ export class Audio extends EventEmitter<AudioEvents> {
   private readonly groups = new Map<string, number>()
   private playbackStarted = false
   private mixerStarted = false
+  private pcmChannels = 0
 
   private constructor(lib: RenderLib, options: AudioSetupOptions) {
     super()
@@ -386,6 +389,70 @@ export class Audio extends EventEmitter<AudioEvents> {
       return null
     }
     return { frames: output, framesRead: result.framesRead }
+  }
+
+  enablePcmStream(capacityFrames: number = 24_000, channels: number = 2): boolean {
+    const engine = this.engine
+    if (!engine) {
+      this.emitError("enablePcmStream", undefined, "Audio engine unavailable during enablePcmStream")
+      return false
+    }
+    if (!Number.isInteger(capacityFrames) || capacityFrames <= 0 || capacityFrames > 0xffffffff) {
+      throw new RangeError("capacityFrames must be a positive u32")
+    }
+    if (!Number.isInteger(channels) || channels < 1 || channels > 2) {
+      throw new RangeError("channels must be 1 or 2")
+    }
+    const status = this.lib.audioEnablePcmStream(engine, true, capacityFrames, channels)
+    if (status !== 0) {
+      this.emitError("enablePcmStream", status)
+      return false
+    }
+    this.pcmChannels = channels
+    return true
+  }
+
+  disablePcmStream(): boolean {
+    const engine = this.engine
+    if (!engine) {
+      this.emitError("enablePcmStream", undefined, "Audio engine unavailable during disablePcmStream")
+      return false
+    }
+    const status = this.lib.audioEnablePcmStream(engine, false, 0, 0)
+    if (status !== 0) {
+      this.emitError("enablePcmStream", status)
+      return false
+    }
+    this.pcmChannels = 0
+    return true
+  }
+
+  writePcm(samples: Float32Array): number | null {
+    if (!(samples instanceof Float32Array)) throw new TypeError("samples must be a Float32Array")
+    if (this.pcmChannels === 0) throw new Error("PCM stream is not enabled")
+    if (samples.length % this.pcmChannels !== 0) throw new RangeError("samples must contain complete PCM frames")
+    if (samples.length === 0) return 0
+    const engine = this.engine
+    if (!engine) {
+      this.emitError("writePcm", undefined, "Audio engine unavailable during writePcm")
+      return null
+    }
+    const frameCount = samples.length / this.pcmChannels
+    if (frameCount > 0xffffffff) throw new RangeError("PCM frame count exceeds native u32 limit")
+    const result = this.lib.audioWritePcm(engine, samples, frameCount)
+    if (result.status !== 0) {
+      this.emitError("writePcm", result.status)
+      return null
+    }
+    return result.framesWritten
+  }
+
+  getPcmQueuedFrames(): number {
+    return this.engine ? this.lib.audioGetPcmQueuedFrames(this.engine) : 0
+  }
+
+  getPcmConsumedFrames(): bigint {
+    return this.engine ? this.lib.audioGetPcmConsumedFrames(this.engine) : 0n
   }
 
   listPlaybackDevices(): AudioPlaybackDevice[] | null {

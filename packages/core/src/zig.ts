@@ -1587,6 +1587,22 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "ptr", "u32", "u8", "ptr"],
       returns: "i32",
     },
+    audioEnablePcmStream: {
+      args: ["u32", "bool", "u32", "u8"],
+      returns: "i32",
+    },
+    audioWritePcm: {
+      args: ["u32", "ptr", "u32", "ptr"],
+      returns: "i32",
+    },
+    audioGetPcmQueuedFrames: {
+      args: ["u32"],
+      returns: "u32",
+    },
+    audioGetPcmConsumedFrames: {
+      args: ["u32"],
+      returns: "u64",
+    },
     audioGetStats: {
       args: ["u32", "ptr"],
       returns: "i32",
@@ -1962,6 +1978,19 @@ export interface AudioEngineLib {
     frameCount: number,
     channels: number,
   ) => { status: number; framesRead: number }
+  audioEnablePcmStream: (
+    engine: AudioEngineHandle,
+    enabled: boolean,
+    capacityFrames: number,
+    channels: number,
+  ) => number
+  audioWritePcm: (
+    engine: AudioEngineHandle,
+    samples: Float32Array,
+    frameCount: number,
+  ) => { status: number; framesWritten: number }
+  audioGetPcmQueuedFrames: (engine: AudioEngineHandle) => number
+  audioGetPcmConsumedFrames: (engine: AudioEngineHandle) => bigint
   audioGetStats: (engine: AudioEngineHandle) => AudioStats | null
 }
 
@@ -5139,6 +5168,30 @@ class FFIRenderLib implements RenderLib {
     }
     const view = new Uint32Array(outFramesReadBuffer)
     return { status, framesRead: view[0] ?? 0 }
+  }
+
+  public audioEnablePcmStream(engine: Pointer, enabled: boolean, capacityFrames: number, channels: number): number {
+    return this.opentui.symbols.audioEnablePcmStream(engine, ffiBool(enabled), capacityFrames, channels)
+  }
+
+  public audioWritePcm(
+    engine: Pointer,
+    samples: Float32Array,
+    frameCount: number,
+  ): { status: number; framesWritten: number } {
+    const outFramesWrittenBuffer = new ArrayBuffer(4)
+    const status = this.opentui.symbols.audioWritePcm(engine, ptr(samples), frameCount, ptr(outFramesWrittenBuffer))
+    if (status !== 0) return { status, framesWritten: 0 }
+    return { status, framesWritten: new Uint32Array(outFramesWrittenBuffer)[0] ?? 0 }
+  }
+
+  public audioGetPcmQueuedFrames(engine: Pointer): number {
+    return this.opentui.symbols.audioGetPcmQueuedFrames(engine)
+  }
+
+  public audioGetPcmConsumedFrames(engine: Pointer): bigint {
+    const value = this.opentui.symbols.audioGetPcmConsumedFrames(engine)
+    return typeof value === "bigint" ? value : BigInt(value)
   }
 
   public audioGetStats(engine: Pointer): AudioStats | null {

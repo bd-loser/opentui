@@ -465,6 +465,26 @@ export fn audioReadTap(engine_handle: NativeHandle, out_ptr: ?[*]f32, frame_coun
     return native_audio.readTap(object_ptr, out_ptr, frame_count, channels, out_frames_read);
 }
 
+export fn audioEnablePcmStream(engine_handle: NativeHandle, enabled: bool, capacity_frames: u32, channels: u8) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.enablePcmStream(object_ptr, enabled, capacity_frames, channels);
+}
+
+export fn audioWritePcm(engine_handle: NativeHandle, samples_ptr: ?[*]const f32, frame_count: u32, out_frames_written: ?*u32) i32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
+    return native_audio.writePcm(object_ptr, samples_ptr, frame_count, out_frames_written);
+}
+
+export fn audioGetPcmQueuedFrames(engine_handle: NativeHandle) u32 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return 0;
+    return native_audio.getPcmQueuedFrames(object_ptr);
+}
+
+export fn audioGetPcmConsumedFrames(engine_handle: NativeHandle) u64 {
+    const object_ptr = acquireAudioEngine(engine_handle) orelse return 0;
+    return native_audio.getPcmConsumedFrames(object_ptr);
+}
+
 export fn audioGetStats(engine_handle: NativeHandle, out_stats: ?*native_audio.Stats) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
     return native_audio.getStats(object_ptr, out_stats);

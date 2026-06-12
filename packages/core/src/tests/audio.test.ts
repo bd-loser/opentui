@@ -237,6 +237,51 @@ test("Audio tap mirrors mixed frames without consuming stream", () => {
   expect(audio.disableTap()).toBe(true)
 })
 
+test("Audio streams bounded Float32 PCM and reports consumed frames", () => {
+  const audio = Audio.create({ autoStart: false, sampleRate: SAMPLE_RATE })
+  instances.push(audio)
+
+  expect(audio.enablePcmStream(8, 2)).toBe(true)
+  expect(audio.startMixer()).toBe(true)
+
+  const samples = Float32Array.of(0.25, -0.25, 0.5, -0.5, 0.75, -0.75, 1, -1)
+  expect(audio.writePcm(samples)).toBe(4)
+  expect(audio.getPcmQueuedFrames()).toBe(4)
+  expect(audio.getPcmConsumedFrames()).toBe(0n)
+
+  const output = audio.mixFrames(4, 2)
+  expect(output).not.toBeNull()
+  expect(Array.from(output ?? [])).toEqual(Array.from(samples))
+  expect(audio.getPcmQueuedFrames()).toBe(0)
+  expect(audio.getPcmConsumedFrames()).toBe(4n)
+})
+
+test("Audio PCM stream returns partial writes and rejects incomplete frames", () => {
+  const audio = Audio.create({ autoStart: false })
+  instances.push(audio)
+
+  expect(audio.enablePcmStream(4, 2)).toBe(true)
+  expect(audio.writePcm(new Float32Array(12).fill(0.5))).toBe(4)
+  expect(audio.writePcm(Float32Array.of(0.5, 0.5))).toBe(0)
+  expect(() => audio.writePcm(Float32Array.of(0.5, 0.5, 0.5))).toThrow("complete PCM frames")
+})
+
+test("Audio PCM stream resumes after underflow", () => {
+  const audio = Audio.create({ autoStart: false })
+  instances.push(audio)
+
+  expect(audio.enablePcmStream(8, 2)).toBe(true)
+  expect(audio.startMixer()).toBe(true)
+  expect(audio.mixFrames(4, 2)).toEqual(new Float32Array(8))
+  expect(audio.getPcmConsumedFrames()).toBe(0n)
+
+  expect(audio.writePcm(Float32Array.of(0.4, -0.4, 0.8, -0.8))).toBe(2)
+  const output = audio.mixFrames(2, 2)
+  expect(output?.some((sample) => Math.abs(sample) > 0.001)).toBe(true)
+  expect(audio.getPcmConsumedFrames()).toBe(2n)
+  expect(audio.disablePcmStream()).toBe(true)
+})
+
 test("Audio supports immutable custom sample rate", () => {
   const audio = Audio.create({ autoStart: false, sampleRate: 44_100, playbackChannels: 1 })
   instances.push(audio)

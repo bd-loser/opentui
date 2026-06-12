@@ -386,6 +386,67 @@ test "audio - enableTap and readTap return captured frames" {
     try expectStatusOk(audio.enableTap(engine, false, 0));
 }
 
+test "audio - pcm stream preserves frames and reports consumption" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+
+    try expectStatusOk(audio.enablePcmStream(engine, true, 8, 2));
+    try expectStatusOk(audio.startMixer(engine));
+
+    const samples = [_]f32{ 0.25, -0.25, 0.5, -0.5, 0.75, -0.75, 1, -1 };
+    var frames_written: u32 = 0;
+    try expectStatusOk(audio.writePcm(engine, &samples, 4, &frames_written));
+    try testing.expectEqual(@as(u32, 4), frames_written);
+    try testing.expectEqual(@as(u32, 4), audio.getPcmQueuedFrames(engine));
+    try testing.expectEqual(@as(u64, 0), audio.getPcmConsumedFrames(engine));
+
+    var output: [8]f32 = undefined;
+    try expectStatusOk(audio.mixToBuffer(engine, &output, 4, 2));
+    for (samples, output) |expected, actual| {
+        try testing.expectApproxEqAbs(expected, actual, 0.0001);
+    }
+    try testing.expectEqual(@as(u32, 0), audio.getPcmQueuedFrames(engine));
+    try testing.expectEqual(@as(u64, 4), audio.getPcmConsumedFrames(engine));
+}
+
+test "audio - pcm stream applies bounded writes without overwriting" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+
+    try expectStatusOk(audio.enablePcmStream(engine, true, 4, 1));
+    const samples = [_]f32{ 0.1, 0.2, 0.3, 0.4, 0.5, 0.6 };
+    var frames_written: u32 = 0;
+    try expectStatusOk(audio.writePcm(engine, &samples, samples.len, &frames_written));
+    try testing.expectEqual(@as(u32, 4), frames_written);
+    try testing.expectEqual(@as(u32, 4), audio.getPcmQueuedFrames(engine));
+
+    try expectStatusOk(audio.writePcm(engine, &samples, 2, &frames_written));
+    try testing.expectEqual(@as(u32, 0), frames_written);
+}
+
+test "audio - pcm stream recovers after underflow" {
+    const engine = try createEngine(null);
+    defer audio.destroy(engine);
+
+    try expectStatusOk(audio.enablePcmStream(engine, true, 8, 2));
+    try expectStatusOk(audio.startMixer(engine));
+
+    var silence: [8]f32 = undefined;
+    try expectStatusOk(audio.mixToBuffer(engine, &silence, 4, 2));
+    try testing.expect(!hasSignal(&silence));
+    try testing.expectEqual(@as(u64, 0), audio.getPcmConsumedFrames(engine));
+
+    const samples = [_]f32{ 0.4, -0.4, 0.8, -0.8 };
+    var frames_written: u32 = 0;
+    try expectStatusOk(audio.writePcm(engine, &samples, 2, &frames_written));
+    try testing.expectEqual(@as(u32, 2), frames_written);
+
+    var output: [4]f32 = undefined;
+    try expectStatusOk(audio.mixToBuffer(engine, &output, 2, 2));
+    try testing.expect(hasSignal(&output));
+    try testing.expectEqual(@as(u64, 2), audio.getPcmConsumedFrames(engine));
+}
+
 test "audio - refresh and playback device selection APIs" {
     const engine = try createEngine(null);
     defer audio.destroy(engine);

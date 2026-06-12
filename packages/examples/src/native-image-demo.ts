@@ -11,6 +11,7 @@ import {
   NativeImage,
   TextAttributes,
   TextRenderable,
+  VideoRenderable,
   createCliRenderer,
   type ImageSource,
   type ImageRenderProtocol,
@@ -26,6 +27,8 @@ import pngPath from "./assets/image-demo.png" with { type: "image/png" }
 import jpegPath from "./assets/dragon.jpg" with { type: "image/jpeg" }
 // @ts-ignore Bun embeds imported assets and returns their runtime paths.
 import webpPath from "./assets/image-demo.webp" with { type: "image/webp" }
+// @ts-ignore Bun embeds imported assets and returns their runtime paths.
+import videoPath from "./assets/dragon.mp4" with { type: "video/mp4" }
 
 const P = {
   page: "#090d18",
@@ -56,6 +59,11 @@ let keyListener: ((key: KeyEvent) => void) | null = null
 let capabilityListener: (() => void) | null = null
 let controlsText: TextRenderable | null = null
 let previews: ImageRenderable[] = []
+let galleryView: BoxRenderable | null = null
+let videoView: BoxRenderable | null = null
+let video: VideoRenderable | null = null
+let videoStatus: TextRenderable | null = null
+let showingVideo = false
 let fitMode: FitMode = "fit"
 let protocol: ImageRenderProtocol = "auto"
 
@@ -64,7 +72,7 @@ const protocols: ImageRenderProtocol[] = ["auto", "kitty", "sixel", "blocks"]
 function updateControls(): void {
   if (!controlsText) return
   const effective = previews[0]?.effectiveProtocol ?? "blocks"
-  controlsText.content = `F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}     ESC  MENU`
+  controlsText.content = `V  ${showingVideo ? "GALLERY" : "VIDEO"}     F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}     ESC  MENU`
 }
 
 function createCard(renderer: CliRenderer, item: GalleryItem, index: number): BoxRenderable {
@@ -226,6 +234,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     alignItems: "stretch",
     backgroundColor: P.page,
   })
+  galleryView = gallery
   root.add(gallery)
 
   const items: GalleryItem[] = [
@@ -241,6 +250,51 @@ export async function run(renderer: CliRenderer): Promise<void> {
     { name: "GIF FETCH", sourceType: "HTTP response", source: gifUrl, accent: P.lime, card: P.cards[3] },
   ]
   for (const [index, item] of items.entries()) gallery.add(createCard(renderer, item, index))
+
+  videoView = new BoxRenderable(renderer, {
+    id: "native-video-view",
+    width: "100%",
+    height: "auto",
+    flexGrow: 1,
+    flexShrink: 1,
+    flexDirection: "column",
+    backgroundColor: P.page,
+    visible: false,
+  })
+  video = new VideoRenderable(renderer, {
+    id: "native-video-preview",
+    source: videoPath,
+    fit: fitMode,
+    protocol,
+    autoplay: false,
+    loop: true,
+    width: "100%",
+    height: "auto",
+    flexGrow: 1,
+    flexShrink: 1,
+    onReady: (metadata) => {
+      if (videoStatus)
+        videoStatus.content = `FFMPEG  ${metadata.width}×${metadata.height}  ${metadata.fps.toFixed(0)} FPS  ${metadata.hasAudio ? "AUDIO" : "SILENT"}`
+    },
+    onError: (error) => {
+      if (!videoStatus) return
+      videoStatus.content = `VIDEO FAILED  ${error.message}`
+      videoStatus.fg = P.coral
+    },
+  })
+  videoStatus = new TextRenderable(renderer, {
+    id: "native-video-status",
+    content: "FFMPEG  READY ON V",
+    width: "100%",
+    height: 2,
+    flexGrow: 0,
+    flexShrink: 0,
+    fg: P.cyan,
+    bg: P.footer,
+  })
+  videoView.add(video)
+  videoView.add(videoStatus)
+  root.add(videoView)
 
   const footer = new BoxRenderable(renderer, {
     id: "native-image-footer",
@@ -263,13 +317,23 @@ export async function run(renderer: CliRenderer): Promise<void> {
   updateControls()
 
   keyListener = (key: KeyEvent) => {
-    if (key.name === "f") fitMode = fitMode === "fit" ? "cover" : "fit"
+    if (key.name === "v" && !key.ctrl && !key.meta) {
+      showingVideo = !showingVideo
+      if (galleryView) galleryView.visible = !showingVideo
+      if (videoView) videoView.visible = showingVideo
+      if (showingVideo) video?.play()
+      else video?.pause()
+    } else if (key.name === "f") fitMode = fitMode === "fit" ? "cover" : "fit"
     else if (key.name === "p") protocol = protocols[(protocols.indexOf(protocol) + 1) % protocols.length]
     else return
 
     for (const preview of previews) {
       preview.fit = fitMode
       preview.protocol = protocol
+    }
+    if (video) {
+      video.fit = fitMode
+      video.protocol = protocol
     }
     updateControls()
   }
@@ -283,9 +347,14 @@ export function destroy(renderer: CliRenderer): void {
   if (capabilityListener) renderer.off("capabilities", capabilityListener)
   keyListener = null
   capabilityListener = null
-  root?.destroy()
+  root?.destroyRecursively()
   root = null
   previews = []
+  galleryView = null
+  videoView = null
+  video = null
+  videoStatus = null
+  showingVideo = false
   controlsText = null
   fitMode = "fit"
   protocol = "auto"

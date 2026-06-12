@@ -108,6 +108,10 @@ pub const Engine = struct {
     tap_write_frame: u32 = 0,
     tap_frame_count: u32 = 0,
     tap_buffer: ?[]f32 = null,
+    pcm_ring: c.ma_pcm_rb = undefined,
+    pcm_ring_initialized: bool = false,
+    pcm_channels: u8 = 0,
+    pcm_frames_written: u64 = 0,
 
     pub fn init(allocator: std.mem.Allocator, sample_rate: u32, output_channels: u8) Engine {
         const normalized_sample_rate = if (sample_rate == 0) default_sample_rate else sample_rate;
@@ -143,6 +147,10 @@ pub const Engine = struct {
             .tap_write_frame = 0,
             .tap_frame_count = 0,
             .tap_buffer = null,
+            .pcm_ring = undefined,
+            .pcm_ring_initialized = false,
+            .pcm_channels = 0,
+            .pcm_frames_written = 0,
         };
     }
 
@@ -154,6 +162,11 @@ pub const Engine = struct {
             _ = c.ma_device_stop(&self.device);
             c.ma_device_uninit(&self.device);
             self.has_device = false;
+        }
+
+        if (self.pcm_ring_initialized) {
+            c.ma_pcm_rb_uninit(&self.pcm_ring);
+            self.pcm_ring_initialized = false;
         }
 
         for (&self.voices) |*voice| {
@@ -519,6 +532,27 @@ fn readEngineStereo(engine: *Engine, out_stereo: []f32, frame_count: u32) i32 {
         const zero_start = frames_read_usize * 2;
         const zero_end = requested * 2;
         @memset(out_stereo[zero_start..zero_end], 0);
+    }
+
+    if (engine.pcm_ring_initialized) {
+        var frame_offset: usize = 0;
+        while (frame_offset < requested) {
+            var readable: u32 = @intCast(@min(requested - frame_offset, std.math.maxInt(u32)));
+            var source: ?*anyopaque = null;
+            if (c.ma_pcm_rb_acquire_read(&engine.pcm_ring, &readable, &source) != c.MA_SUCCESS) return Status.err_device;
+            if (readable == 0 or source == null) break;
+
+            const input = @as([*]const f32, @ptrCast(@alignCast(source.?)));
+            for (0..readable) |index| {
+                const output_index = (frame_offset + index) * 2;
+                const left = input[index * engine.pcm_channels] * engine.master_volume;
+                const right = if (engine.pcm_channels == 1) left else input[index * engine.pcm_channels + 1] * engine.master_volume;
+                out_stereo[output_index] = clamp(out_stereo[output_index] + left, -1, 1);
+                out_stereo[output_index + 1] = clamp(out_stereo[output_index + 1] + right, -1, 1);
+            }
+            if (c.ma_pcm_rb_commit_read(&engine.pcm_ring, readable) != c.MA_SUCCESS) return Status.err_device;
+            frame_offset += readable;
+        }
     }
 
     return Status.ok;
@@ -1051,6 +1085,65 @@ pub fn readTap(engine: *Engine, out_ptr: ?[*]f32, frame_count: u32, channels: u8
 
     out_frames_read.?.* = available;
     return Status.ok;
+}
+
+pub fn enablePcmStream(engine: *Engine, enabled: bool, capacity_frames: u32, channels: u8) i32 {
+    if (enabled and (capacity_frames == 0 or channels == 0 or channels > 2)) return Status.err_invalid;
+
+    engine.lock.lock();
+    defer engine.lock.unlock();
+
+    if (engine.pcm_ring_initialized) {
+        c.ma_pcm_rb_uninit(&engine.pcm_ring);
+        engine.pcm_ring_initialized = false;
+    }
+    engine.pcm_channels = 0;
+    engine.pcm_frames_written = 0;
+    if (!enabled) return Status.ok;
+
+    if (c.ma_pcm_rb_init(c.ma_format_f32, channels, capacity_frames, null, null, &engine.pcm_ring) != c.MA_SUCCESS) {
+        return Status.err_device;
+    }
+    engine.pcm_ring_initialized = true;
+    c.ma_pcm_rb_set_sample_rate(&engine.pcm_ring, engine.sample_rate);
+    engine.pcm_channels = channels;
+    return Status.ok;
+}
+
+pub fn writePcm(engine: *Engine, samples_ptr: ?[*]const f32, frame_count: u32, out_frames_written: ?*u32) i32 {
+    if (samples_ptr == null or out_frames_written == null) return Status.err_invalid;
+    out_frames_written.?.* = 0;
+    if (!engine.pcm_ring_initialized or engine.pcm_channels == 0) return Status.err_invalid;
+
+    var total_written: u32 = 0;
+    while (total_written < frame_count) {
+        var writable = frame_count - total_written;
+        var destination: ?*anyopaque = null;
+        if (c.ma_pcm_rb_acquire_write(&engine.pcm_ring, &writable, &destination) != c.MA_SUCCESS) return Status.err_device;
+        if (writable == 0 or destination == null) break;
+
+        const channels: usize = engine.pcm_channels;
+        const source_offset = @as(usize, total_written) * channels;
+        const sample_count = @as(usize, writable) * channels;
+        const target = @as([*]f32, @ptrCast(@alignCast(destination.?)))[0..sample_count];
+        @memcpy(target, samples_ptr.?[source_offset .. source_offset + sample_count]);
+        if (c.ma_pcm_rb_commit_write(&engine.pcm_ring, writable) != c.MA_SUCCESS) return Status.err_device;
+        total_written += writable;
+    }
+
+    engine.pcm_frames_written += total_written;
+    out_frames_written.?.* = total_written;
+    return Status.ok;
+}
+
+pub fn getPcmQueuedFrames(engine: *Engine) u32 {
+    if (!engine.pcm_ring_initialized) return 0;
+    return c.ma_pcm_rb_available_read(&engine.pcm_ring);
+}
+
+pub fn getPcmConsumedFrames(engine: *Engine) u64 {
+    if (!engine.pcm_ring_initialized) return 0;
+    return engine.pcm_frames_written -| c.ma_pcm_rb_available_read(&engine.pcm_ring);
 }
 
 fn audioCallback(device_ptr: ?*c.ma_device, output_ptr: ?*anyopaque, input_ptr: ?*const anyopaque, frame_count: c.ma_uint32) callconv(.c) void {

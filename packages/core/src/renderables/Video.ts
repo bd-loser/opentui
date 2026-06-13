@@ -65,6 +65,7 @@ export interface AdaptiveVideoQualitySample {
   updateTimeMs: number
   frameBudgetMs: number
   frameSerial: bigint
+  expectedFrameStep: bigint
   backpressureCount: number
 }
 
@@ -93,7 +94,8 @@ export function updateAdaptiveVideoQuality(
 ): AdaptiveVideoQualityState {
   const updateTimeMs =
     state.updateTimeMs === 0 ? sample.updateTimeMs : state.updateTimeMs * 0.9 + sample.updateTimeMs * 0.1
-  const skippedFrames = state.lastFrameSerial !== null && sample.frameSerial > state.lastFrameSerial + 1n
+  const skippedFrames =
+    state.lastFrameSerial !== null && sample.frameSerial > state.lastFrameSerial + sample.expectedFrameStep
   const backpressured = sample.backpressureCount > state.lastBackpressureCount
   const cpuOverloaded = updateTimeMs > sample.frameBudgetMs * 0.55
   const overloaded = cpuOverloaded || skippedFrames || backpressured
@@ -130,6 +132,11 @@ const AUDIO_CHANNELS = 2
 const AUDIO_CAPACITY_FRAMES = 24_000
 const AUDIO_PREBUFFER_FRAMES = 12_000
 const AUDIO_READ_FRAMES = 4096
+const MAX_VIDEO_FPS = 30
+
+export function calculateVideoPlaybackFps(sourceFps: number, requestedMaxFps: number): number {
+  return Math.min(sourceFps > 0 ? sourceFps : requestedMaxFps, requestedMaxFps, MAX_VIDEO_FPS)
+}
 
 export function normalizeVideoTime(value: number, duration: number, loop: boolean): number {
   if (!Number.isFinite(value)) throw new RangeError("Video time must be finite")
@@ -491,7 +498,7 @@ export class VideoRenderable extends Renderable {
 
   private startTicker(): void {
     if (this.ticker) return
-    const fps = Math.min(this.metadata?.fps || this.maxFps, this.maxFps)
+    const fps = calculateVideoPlaybackFps(this.metadata?.fps ?? 0, this.maxFps)
     const frameTime = 1000 / fps
     const schedule = (): void => {
       if (!this.wantsPlayback || this.isDestroyed) {
@@ -556,7 +563,7 @@ export class VideoRenderable extends Renderable {
         this.updateAdaptiveQuality(
           performance.now() - updateStarted,
           state,
-          1000 / Math.min(this.metadata?.fps || this.maxFps, this.maxFps),
+          1000 / calculateVideoPlaybackFps(this.metadata?.fps ?? 0, this.maxFps),
         )
       if (state?.ended) {
         if (this.loopPlayback) {
@@ -607,6 +614,14 @@ export class VideoRenderable extends Renderable {
       updateTimeMs,
       frameBudgetMs,
       frameSerial: state.frameSerial,
+      expectedFrameStep: BigInt(
+        Math.max(
+          1,
+          Math.ceil(
+            (this.metadata?.fps ?? this.maxFps) / calculateVideoPlaybackFps(this.metadata?.fps ?? 0, this.maxFps),
+          ),
+        ),
+      ),
       backpressureCount: this._ctx.renderBackpressureCount ?? 0,
     })
     if (next.tier !== this.adaptiveQuality.tier) {

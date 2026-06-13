@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   calculateVideoGeometry,
+  calculateVideoPlaybackFps,
   createAdaptiveVideoQualityState,
   normalizeVideoTime,
   updateAdaptiveVideoQuality,
@@ -82,6 +83,13 @@ describe("VideoRenderable timeline", () => {
     expect(normalizeVideoTime(6.04, 6.04, true)).toBeCloseTo(0, 12)
     expect(() => normalizeVideoTime(Number.NaN, 1, false)).toThrow("finite")
   })
+
+  test("caps presentation at 30 FPS without raising slower source rates", () => {
+    expect(calculateVideoPlaybackFps(60, 60)).toBe(30)
+    expect(calculateVideoPlaybackFps(30, 60)).toBe(30)
+    expect(calculateVideoPlaybackFps(24, 60)).toBe(24)
+    expect(calculateVideoPlaybackFps(0, 20)).toBe(20)
+  })
 })
 
 describe("VideoRenderable adaptive quality", () => {
@@ -92,6 +100,7 @@ describe("VideoRenderable adaptive quality", () => {
         updateTimeMs: 30,
         frameBudgetMs: 40,
         frameSerial: serial,
+        expectedFrameStep: 1n,
         backpressureCount: 0,
       })
     }
@@ -105,6 +114,7 @@ describe("VideoRenderable adaptive quality", () => {
         updateTimeMs: 10,
         frameBudgetMs: 40,
         frameSerial: serial,
+        expectedFrameStep: 1n,
         backpressureCount: Number(serial),
       })
     }
@@ -118,6 +128,7 @@ describe("VideoRenderable adaptive quality", () => {
         updateTimeMs: 5,
         frameBudgetMs: 40,
         frameSerial: serial,
+        expectedFrameStep: 1n,
         backpressureCount: 0,
       })
     }
@@ -126,8 +137,24 @@ describe("VideoRenderable adaptive quality", () => {
       updateTimeMs: 5,
       frameBudgetMs: 40,
       frameSerial: 120n,
+      expectedFrameStep: 1n,
       backpressureCount: 0,
     })
     expect(state.tier).toBe(0)
+  })
+
+  test("treats two source frames per update as expected for a 60 to 30 FPS cap", () => {
+    let state = createAdaptiveVideoQualityState()
+    for (const serial of [2n, 4n, 6n]) {
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 5,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 2n,
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBe(0)
+    expect(state.overloadSamples).toBe(0)
   })
 })

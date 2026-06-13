@@ -45,6 +45,7 @@ struct ot_video_decoder {
     uint8_t *scaled_rgba;
     size_t scaled_rgba_size;
     AVFrame *video_lookahead;
+    AVFrame *video_selected;
     AVCodecContext *png_encoder;
     AVFrame *png_frame;
     AVPacket *png_packet;
@@ -210,7 +211,8 @@ int ot_video_open(const char *path, ot_video_decoder **out_decoder, ot_video_inf
     decoder->output_width = decoder->source_width;
     decoder->output_height = decoder->source_height;
     decoder->video_lookahead = av_frame_alloc();
-    if (!decoder->video_lookahead) {
+    decoder->video_selected = av_frame_alloc();
+    if (!decoder->video_lookahead || !decoder->video_selected) {
         ot_video_close(&decoder);
         return OT_VIDEO_ERROR;
     }
@@ -232,6 +234,7 @@ void ot_video_close(ot_video_decoder **decoder_ptr) {
     if (!decoder_ptr || !*decoder_ptr) return;
     ot_video_decoder *decoder = *decoder_ptr;
     free(decoder->audio_pending);
+    av_frame_free(&decoder->video_selected);
     av_frame_free(&decoder->video_lookahead);
     av_packet_free(&decoder->png_packet);
     av_frame_free(&decoder->png_frame);
@@ -258,6 +261,7 @@ int ot_video_set_output_size(ot_video_decoder *decoder, uint32_t width, uint32_t
     decoder->rgba_size = 0;
     decoder->frame_pts_us = AV_NOPTS_VALUE;
     av_frame_unref(decoder->video_lookahead);
+    av_frame_unref(decoder->video_selected);
     return OT_VIDEO_OK;
 }
 
@@ -305,6 +309,7 @@ int ot_video_seek(ot_video_decoder *decoder, int64_t target_us) {
     decoder->audio_pending_frames = 0;
     decoder->audio_pending_offset = 0;
     av_frame_unref(decoder->video_lookahead);
+    av_frame_unref(decoder->video_selected);
     swr_free(&decoder->swr);
     return OT_VIDEO_OK;
 }
@@ -357,7 +362,6 @@ static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, 
                    output_row);
     }
     decoder->frame_pts_us = pts;
-    decoder->frame_serial++;
     return OT_VIDEO_OK;
 }
 
@@ -463,6 +467,8 @@ int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const ui
     if (!decoder || !out_rgba || !out_width || !out_height || !out_stride || !out_pts_us || !out_serial || !out_png || !out_png_len)
         return OT_VIDEO_ERROR;
     int reached_eof = 0;
+    int64_t selected_pts = AV_NOPTS_VALUE;
+    av_frame_unref(decoder->video_selected);
     for (;;) {
         AVFrame *candidate = decoder->video_lookahead;
         if (!candidate->buf[0]) {
@@ -476,7 +482,7 @@ int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const ui
         }
         int64_t pts = stream_pts_us(decoder, &decoder->video, candidate);
         if (pts == AV_NOPTS_VALUE) pts = decoder->frame_pts_us == AV_NOPTS_VALUE ? 0 : decoder->frame_pts_us;
-        if (decoder->rgba && pts > target_us) {
+        if ((decoder->rgba || decoder->video_selected->buf[0]) && pts > target_us) {
             if (candidate != decoder->video_lookahead) {
                 av_frame_unref(decoder->video_lookahead);
                 if (av_frame_ref(decoder->video_lookahead, candidate) < 0)
@@ -484,11 +490,17 @@ int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const ui
             }
             break;
         }
-        if (convert_video_frame(decoder, candidate, pts) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
+        av_frame_unref(decoder->video_selected);
+        if (av_frame_ref(decoder->video_selected, candidate) < 0)
+            return fail(decoder, AVERROR(ENOMEM), "av_frame_ref selected");
+        selected_pts = pts;
+        decoder->frame_serial++;
         if (candidate == decoder->video_lookahead) av_frame_unref(decoder->video_lookahead);
         if (pts >= target_us) break;
     }
     if (reached_eof && decoder->duration_us > 0 && target_us >= decoder->duration_us) return OT_VIDEO_EOF;
+    if (decoder->video_selected->buf[0] &&
+        convert_video_frame(decoder, decoder->video_selected, selected_pts) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
     if (!decoder->rgba) return OT_VIDEO_EOF;
     *out_rgba = decoder->rgba;
     *out_width = decoder->output_width;

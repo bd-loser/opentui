@@ -293,6 +293,10 @@ export class NativeImage {
     return NativeImage.fromHandle(lib, result.handle)
   }
 
+  public static fromRetainedHandle(handle: ImageHandle): NativeImage {
+    return NativeImage.fromHandle(resolveRenderLib(), handle)
+  }
+
   private static fromHandle(lib: RenderLib, handle: ImageHandle): NativeImage {
     const result = lib.imageGetInfo(handle)
     if (result.status !== 0) {

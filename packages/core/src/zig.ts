@@ -52,6 +52,8 @@ import {
   NativeRenderStatsStruct,
   NativeImageInfoStruct,
   ImageDrawOptionsStruct,
+  NativeVideoInfoStruct,
+  NativeVideoStateStruct,
 } from "./zig-structs.js"
 import type {
   NativeSpanFeedOptions,
@@ -65,6 +67,8 @@ import type {
   AllocatorStats,
   NativeRenderStats,
   NativeImageInfo,
+  NativeVideoInfo,
+  NativeVideoState,
 } from "./zig-structs.js"
 import { isBunfsPath } from "./lib/bunfs.js"
 
@@ -136,6 +140,7 @@ export type EventSinkHandle = NativeHandle<"event_sink">
 export type AudioEngineHandle = NativeHandle<"audio_engine">
 export type NativeRenderableHandle = NativeHandle<"native_renderable">
 export type ImageHandle = NativeHandle<"image">
+export type VideoHandle = NativeHandle<"video">
 let targetLibPath = nativePackage.default
 
 if (isBunfsPath(targetLibPath)) {
@@ -1271,6 +1276,16 @@ function getOpenTUILib(libPath?: string) {
     imageExtend: { args: ["u32", "u32", "u32", "u32", "u32", "ptr", "ptr"], returns: "u32" },
     imageTransform: { args: ["u32", "u32", "ptr"], returns: "u32" },
     imageComposite: { args: ["u32", "u32", "i32", "i32", "u32", "u8", "ptr"], returns: "u32" },
+    videoOpen: { args: ["ptr", "u32", "ptr"], returns: "u32" },
+    videoDestroy: { args: ["u32"], returns: "void" },
+    videoGetInfo: { args: ["u32", "ptr"], returns: "u32" },
+    videoGetState: { args: ["u32", "ptr"], returns: "u32" },
+    videoConfigureOutput: { args: ["u32", "u32", "u32", "u32"], returns: "u32" },
+    videoSeek: { args: ["u32", "i64", "ptr"], returns: "u32" },
+    videoUpdate: { args: ["u32", "i64", "ptr"], returns: "u32" },
+    videoGetCurrentFrame: { args: ["u32", "u64", "ptr", "ptr"], returns: "u32" },
+    videoReadAudio: { args: ["u32", "ptr", "u32", "u32", "ptr"], returns: "u32" },
+    videoGetError: { args: ["u32", "ptr", "u32"], returns: "u32" },
 
     // Terminal capability functions
     getTerminalCapabilities: {
@@ -2616,6 +2631,23 @@ export interface RenderLib extends AudioEngineLib {
     blend: number,
     opacity: number,
   ) => { status: number; handle: ImageHandle | null }
+  videoOpen: (path: string) => { status: number; handle: VideoHandle | null }
+  videoDestroy: (video: VideoHandle) => void
+  videoGetInfo: (video: VideoHandle) => { status: number; info: NativeVideoInfo }
+  videoGetState: (video: VideoHandle) => { status: number; state: NativeVideoState }
+  videoConfigureOutput: (video: VideoHandle, width: number, height: number, cover: boolean) => number
+  videoSeek: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
+  videoUpdate: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
+  videoGetCurrentFrame: (
+    video: VideoHandle,
+    knownSerial: bigint,
+  ) => { status: number; handle: ImageHandle | null; serial: bigint }
+  videoReadAudio: (
+    video: VideoHandle,
+    output: Float32Array,
+    capacityFrames: number,
+  ) => { status: number; frames: number }
+  videoGetError: (video: VideoHandle) => string
 
   getTerminalCapabilities: (renderer: RendererHandle) => TerminalCapabilities
   processCapabilityResponse: (renderer: RendererHandle, response: string) => void
@@ -5450,6 +5482,102 @@ class FFIRenderLib implements RenderLib {
       this.opentui.symbols.imageComposite(base, overlay, left, top, blend, opacity, ptr(output)),
       output,
     )
+  }
+
+  public videoOpen(path: string): { status: number; handle: VideoHandle | null } {
+    const bytes = this.encoder.encode(path)
+    const output = new Uint32Array(1)
+    const status = this.opentui.symbols.videoOpen(
+      ptrOrNull(bytes),
+      toSafeFFIU32Length(bytes.byteLength, "video path"),
+      ptr(output),
+    )
+    return { status, handle: status === 0 && output[0] !== 0 ? (output[0] as VideoHandle) : null }
+  }
+
+  public videoDestroy(video: VideoHandle): void {
+    this.opentui.symbols.videoDestroy(video)
+  }
+
+  public videoGetInfo(video: VideoHandle): { status: number; info: NativeVideoInfo } {
+    const output = new ArrayBuffer(NativeVideoInfoStruct.size)
+    const status = this.opentui.symbols.videoGetInfo(video, ptr(output))
+    const info = NativeVideoInfoStruct.unpack(output)
+    return {
+      ...{ status },
+      info: { ...info, durationUs: typeof info.durationUs === "bigint" ? info.durationUs : BigInt(info.durationUs) },
+    }
+  }
+
+  public videoGetState(video: VideoHandle): { status: number; state: NativeVideoState } {
+    const output = new ArrayBuffer(NativeVideoStateStruct.size)
+    const status = this.opentui.symbols.videoGetState(video, ptr(output))
+    const state = NativeVideoStateStruct.unpack(output)
+    return {
+      status,
+      state: {
+        ...state,
+        currentTimeUs: typeof state.currentTimeUs === "bigint" ? state.currentTimeUs : BigInt(state.currentTimeUs),
+        framePtsUs: typeof state.framePtsUs === "bigint" ? state.framePtsUs : BigInt(state.framePtsUs),
+        frameSerial: typeof state.frameSerial === "bigint" ? state.frameSerial : BigInt(state.frameSerial),
+      },
+    }
+  }
+
+  public videoConfigureOutput(video: VideoHandle, width: number, height: number, cover: boolean): number {
+    return this.opentui.symbols.videoConfigureOutput(video, width, height, cover ? 1 : 0)
+  }
+
+  private videoStateCall(symbol: "videoSeek" | "videoUpdate", video: VideoHandle, targetUs: bigint) {
+    const output = new ArrayBuffer(NativeVideoStateStruct.size)
+    const status = this.opentui.symbols[symbol](video, targetUs, ptr(output))
+    const state = NativeVideoStateStruct.unpack(output)
+    return {
+      status,
+      state: {
+        ...state,
+        currentTimeUs: typeof state.currentTimeUs === "bigint" ? state.currentTimeUs : BigInt(state.currentTimeUs),
+        framePtsUs: typeof state.framePtsUs === "bigint" ? state.framePtsUs : BigInt(state.framePtsUs),
+        frameSerial: typeof state.frameSerial === "bigint" ? state.frameSerial : BigInt(state.frameSerial),
+      },
+    }
+  }
+
+  public videoSeek(video: VideoHandle, targetUs: bigint) {
+    return this.videoStateCall("videoSeek", video, targetUs)
+  }
+
+  public videoUpdate(video: VideoHandle, targetUs: bigint) {
+    return this.videoStateCall("videoUpdate", video, targetUs)
+  }
+
+  public videoGetCurrentFrame(video: VideoHandle, knownSerial: bigint) {
+    const imageOutput = new Uint32Array(1)
+    const serialOutput = new BigUint64Array(1)
+    const status = this.opentui.symbols.videoGetCurrentFrame(video, knownSerial, ptr(imageOutput), ptr(serialOutput))
+    return {
+      status,
+      handle: status === 0 && imageOutput[0] !== 0 ? (imageOutput[0] as ImageHandle) : null,
+      serial: serialOutput[0],
+    }
+  }
+
+  public videoReadAudio(video: VideoHandle, output: Float32Array, capacityFrames: number) {
+    const framesOutput = new Uint32Array(1)
+    const status = this.opentui.symbols.videoReadAudio(
+      video,
+      ptrOrNull(output),
+      output.length,
+      capacityFrames,
+      ptr(framesOutput),
+    )
+    return { status, frames: framesOutput[0] }
+  }
+
+  public videoGetError(video: VideoHandle): string {
+    const output = new Uint8Array(512)
+    const length = this.opentui.symbols.videoGetError(video, ptr(output), output.byteLength)
+    return this.decoder.decode(output.subarray(0, length))
   }
 
   public editorViewSetPlaceholderStyledText(

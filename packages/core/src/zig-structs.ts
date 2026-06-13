@@ -417,3 +417,41 @@ export const AudioStatsStruct = defineStruct([
   ["lastPeak", "f32"],
   ["lastRms", "f32"],
 ])
+
+export type NativeVideoInfo = {
+  durationUs: bigint
+  width: number
+  height: number
+  fpsNum: number
+  fpsDen: number
+  hasAudio: number
+  audioSampleRate: number
+  audioChannels: number
+}
+
+export type NativeVideoState = {
+  currentTimeUs: bigint
+  framePtsUs: bigint
+  frameSerial: bigint
+  hasFrame: number
+  ended: number
+}
+
+export const NativeVideoInfoStruct = defineStruct([
+  ["durationUs", "i64"],
+  ["width", "u32"],
+  ["height", "u32"],
+  ["fpsNum", "u32"],
+  ["fpsDen", "u32"],
+  ["hasAudio", "u32"],
+  ["audioSampleRate", "u32"],
+  ["audioChannels", "u32"],
+])
+
+export const NativeVideoStateStruct = defineStruct([
+  ["currentTimeUs", "i64"],
+  ["framePtsUs", "i64"],
+  ["frameSerial", "u64"],
+  ["hasFrame", "u32"],
+  ["ended", "u32"],
+])

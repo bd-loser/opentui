@@ -59,6 +59,13 @@ jobs:
           path: packages/core/node_modules/@opentui/
           retention-days: 1
 
+      - name: Upload FFmpeg link artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ffmpeg-prefixes
+          path: packages/core/.cache/ffmpeg/prefix/
+          retention-days: 1
+
   test:
     name: Test (${{ matrix.os }})
     needs: build
@@ -113,6 +120,12 @@ jobs:
           name: native-libraries
           path: packages/core/node_modules/@opentui/
 
+      - name: Download FFmpeg link artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: ffmpeg-prefixes
+          path: packages/core/.cache/ffmpeg/prefix/
+
       - name: Verify native library
         run: |
           echo "Checking for ${{ matrix.platform }} native library..."
@@ -121,8 +134,8 @@ jobs:
 
       - name: Run native tests
         run: |
-          cd packages/core/src/zig
-          zig build test --summary all
+          cd packages/core
+          bun run test:native
 
       - name: Build TypeScript library
         run: |

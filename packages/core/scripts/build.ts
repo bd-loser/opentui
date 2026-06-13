@@ -152,6 +152,8 @@ const transpileEntryPoint = (entryPoint: string, outputPath: string): void => {
 if (buildNative) {
   console.log(`Building native ${isDev ? "dev" : "prod"} binaries${buildAll ? " for all platforms" : ""}...`)
 
+  runCommand("bun", ["scripts/build-ffmpeg.ts", ...(buildAll ? ["--all"] : [])], rootDir, "Error: FFmpeg build failed")
+
   const zigArgs = ["build", `-Doptimize=${isDev ? "Debug" : "ReleaseFast"}`]
   if (buildAll) {
     zigArgs.push("-Dall")
@@ -220,7 +222,7 @@ export default module.default
           main: "index.js",
           module: "index.js",
           types: "index.d.ts",
-          license: packageJson.license,
+          license: "MIT AND LGPL-2.1-or-later",
           author: packageJson.author,
           homepage: packageJson.homepage,
           repository: packageJson.repository,
@@ -255,6 +257,8 @@ export default module.default
       [join(rootDir, "src", "zig", "vendor", "stb", "LICENSE"), "LICENSE-STB"],
       [join(rootDir, "src", "zig", "vendor", "libwebp", "COPYING"), "LICENSE-LIBWEBP"],
       [join(rootDir, "src", "zig", "vendor", "libwebp", "PATENTS"), "PATENTS-LIBWEBP"],
+      [join(rootDir, ".cache", "ffmpeg", "sources", "ffmpeg-8.1.1", "COPYING.LGPLv2.1"), "LICENSE-FFMPEG"],
+      [join(rootDir, "src", "zig", "vendor", "ffmpeg", "README.md"), "FFMPEG-SOURCE.md"],
     ] as const) {
       if (existsSync(source)) copyFileSync(source, join(nativeDir, destination))
     }

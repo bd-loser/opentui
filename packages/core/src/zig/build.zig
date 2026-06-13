@@ -240,6 +240,32 @@ fn addImageShim(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Bu
     });
 }
 
+fn addVideoDependencies(b: *std.Build, artifact: *std.Build.Step.Compile, target: std.Build.ResolvedTarget, macos_sdk_path: ?[]const u8) void {
+    const arch = switch (target.result.cpu.arch) {
+        .x86_64 => "x86_64",
+        .aarch64 => "aarch64",
+        else => @panic("unsupported FFmpeg architecture"),
+    };
+    const platform = switch (target.result.os.tag) {
+        .macos => "macos",
+        .windows => "windows",
+        .linux => if (target.result.abi == .musl) "linux-musl" else "linux",
+        else => @panic("unsupported FFmpeg platform"),
+    };
+    const target_name = b.fmt("{s}-{s}", .{ arch, platform });
+    const prefix = b.pathFromRoot(b.fmt("../../.cache/ffmpeg/prefix/{s}", .{target_name}));
+    artifact.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ prefix, "include" }) });
+    const flags: []const []const u8 = switch (target.result.os.tag) {
+        .macos => &.{ "-std=c11", "-fvisibility=hidden", "-isysroot", macos_sdk_path.? },
+        else => &.{ "-std=c11", "-fvisibility=hidden" },
+    };
+    artifact.addCSourceFile(.{ .file = b.path("video-shim.c"), .flags = flags });
+    inline for (.{ "libavformat.a", "libavcodec.a", "libswscale.a", "libswresample.a", "libavutil.a" }) |name| {
+        artifact.addObjectFile(.{ .cwd_relative = b.pathJoin(&.{ prefix, "lib", name }) });
+    }
+    if (target.result.os.tag == .windows) artifact.linkSystemLibrary("bcrypt");
+}
+
 fn addMacOSSDKSearchPaths(b: *std.Build, artifact: *std.Build.Step.Compile, sdk_path: []const u8) void {
     const include_path = b.pathJoin(&.{ sdk_path, "usr", "include" });
     const framework_path = b.pathJoin(&.{ sdk_path, "System", "Library", "Frameworks" });
@@ -267,6 +293,7 @@ fn addNativeAudioDependencies(
 ) void {
     addMiniaudioShim(b, artifact, target, macos_sdk_path);
     addImageShim(b, artifact, target, macos_sdk_path);
+    addVideoDependencies(b, artifact, target, macos_sdk_path);
 
     switch (target.result.os.tag) {
         .macos => addMacOSSystemLibraries(b, artifact, macos_sdk_path.?),

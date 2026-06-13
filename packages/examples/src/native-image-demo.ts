@@ -86,7 +86,7 @@ function formatTime(seconds: number): string {
 
 function updateVideoStatus(): void {
   if (!videoStatus || !videoMetadata || !video) return
-  videoStatus.content = `FFMPEG  ${videoMetadata.width}×${videoMetadata.height}  ${videoMetadata.fps.toFixed(0)} FPS  ${formatTime(video.currentTime)} / ${formatTime(video.duration)}  ${video.playing ? "PLAYING" : "PAUSED"}`
+  videoStatus.content = `NATIVE H264  ${videoMetadata.width}×${videoMetadata.height}  ${videoMetadata.fps.toFixed(0)} FPS  ${formatTime(video.currentTime)} / ${formatTime(video.duration)}  ${video.playing ? "PLAYING" : "PAUSED"}`
 }
 
 function createCard(renderer: CliRenderer, item: GalleryItem, index: number): BoxRenderable {
@@ -308,7 +308,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
   })
   videoStatus = new TextRenderable(renderer, {
     id: "native-video-status",
-    content: "FFMPEG  READY ON V",
+    content: "NATIVE H264  READY ON V",
     width: "100%",
     height: 2,
     flexGrow: 0,

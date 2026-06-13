@@ -24,6 +24,7 @@ const buffer_effects = @import("buffer-methods.zig");
 const handles = @import("handles.zig");
 const native_yoga = @import("yoga.zig");
 const native_image = @import("image.zig");
+const native_video = @import("video.zig");
 
 pub const OptimizedBuffer = buffer.OptimizedBuffer;
 pub const CliRenderer = renderer.CliRenderer;
@@ -93,6 +94,10 @@ fn acquireNativeRenderable(handle: NativeHandle) ?*native_renderable.NativeRende
 
 fn acquireImage(handle: NativeHandle) ?*native_image.Image {
     return handles.acquire(handle, .image, native_image.Image);
+}
+
+fn acquireVideo(handle: NativeHandle) ?*native_video.Video {
+    return handles.acquire(handle, .video, native_video.Video);
 }
 
 fn emptyLineInfo(outPtr: *ExternalLineInfo) void {
@@ -488,6 +493,94 @@ export fn audioGetPcmConsumedFrames(engine_handle: NativeHandle) u64 {
 export fn audioGetStats(engine_handle: NativeHandle, out_stats: ?*native_audio.Stats) i32 {
     const object_ptr = acquireAudioEngine(engine_handle) orelse return native_audio.Status.err_invalid;
     return native_audio.getStats(object_ptr, out_stats);
+}
+
+export fn videoOpen(path_ptr: ?[*]const u8, path_len: u32, out_handle: ?*NativeHandle) u32 {
+    const output = out_handle orelse return @intFromEnum(native_video.Status.invalid_argument);
+    output.* = INVALID_HANDLE;
+    if (path_len > 0 and path_ptr == null) return @intFromEnum(native_video.Status.invalid_argument);
+    const value = native_video.Video.open(globalAllocator, if (path_len == 0) "" else path_ptr.?[0..path_len]) catch |err| {
+        return @intFromEnum(native_video.statusFromError(err));
+    };
+    output.* = handles.insert(.video, erasePtr(value)) catch {
+        value.deinit();
+        return @intFromEnum(native_video.Status.out_of_memory);
+    };
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoDestroy(video_handle: NativeHandle) void {
+    const token = handles.beginDestroy(video_handle, .video, native_video.Video) orelse return;
+    token.ptr.deinit();
+    handles.finishDestroy(token.handle);
+}
+
+export fn videoGetInfo(video_handle: NativeHandle, out_info: ?*native_video.Info) u32 {
+    const output = out_info orelse return @intFromEnum(native_video.Status.invalid_argument);
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    output.* = value.info;
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoGetState(video_handle: NativeHandle, out_state: ?*native_video.State) u32 {
+    const output = out_state orelse return @intFromEnum(native_video.Status.invalid_argument);
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    output.* = value.state;
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoConfigureOutput(video_handle: NativeHandle, width: u32, height: u32, cover: u32) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    value.configureOutput(width, height, cover != 0) catch |err| return @intFromEnum(native_video.statusFromError(err));
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoSeek(video_handle: NativeHandle, target_us: i64, out_state: ?*native_video.State) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    value.seek(target_us) catch |err| return @intFromEnum(native_video.statusFromError(err));
+    if (out_state) |output| output.* = value.state;
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoUpdate(video_handle: NativeHandle, target_us: i64, out_state: ?*native_video.State) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    _ = value.update(target_us) catch |err| return @intFromEnum(native_video.statusFromError(err));
+    if (out_state) |output| output.* = value.state;
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoGetCurrentFrame(video_handle: NativeHandle, known_serial: u64, out_image: ?*NativeHandle, out_serial: ?*u64) u32 {
+    const image_output = out_image orelse return @intFromEnum(native_video.Status.invalid_argument);
+    const serial_output = out_serial orelse return @intFromEnum(native_video.Status.invalid_argument);
+    image_output.* = INVALID_HANDLE;
+    serial_output.* = 0;
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    serial_output.* = value.state.frame_serial;
+    if (known_serial == value.state.frame_serial) return @intFromEnum(native_video.Status.ok);
+    const frame = value.getFrame() orelse return @intFromEnum(native_video.Status.no_frame);
+    const image_status = insertImage(frame, image_output);
+    return if (image_status == .ok) @intFromEnum(native_video.Status.ok) else @intFromEnum(native_video.Status.out_of_memory);
+}
+
+export fn videoReadAudio(video_handle: NativeHandle, out_samples: ?[*]f32, sample_capacity: u32, capacity_frames: u32, out_frames: ?*u32) u32 {
+    const frames_output = out_frames orelse return @intFromEnum(native_video.Status.invalid_argument);
+    frames_output.* = 0;
+    if (capacity_frames > 0 and out_samples == null) return @intFromEnum(native_video.Status.invalid_argument);
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    const required = std.math.mul(u32, capacity_frames, value.info.audio_channels) catch return @intFromEnum(native_video.Status.invalid_argument);
+    if (required > sample_capacity) return @intFromEnum(native_video.Status.invalid_argument);
+    const samples = if (capacity_frames == 0) &[_]f32{} else out_samples.?[0 .. @as(usize, capacity_frames) * value.info.audio_channels];
+    frames_output.* = value.readAudio(@constCast(samples), capacity_frames) catch |err| return @intFromEnum(native_video.statusFromError(err));
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoGetError(video_handle: NativeHandle, out_ptr: ?[*]u8, max_len: u32) u32 {
+    if (out_ptr == null or max_len == 0) return 0;
+    const value = acquireVideo(video_handle) orelse return 0;
+    const message = value.lastError();
+    const length: u32 = @intCast(@min(message.len, max_len));
+    @memcpy(out_ptr.?[0..length], message[0..length]);
+    return length;
 }
 
 export fn getArenaAllocatedBytes() u64 {

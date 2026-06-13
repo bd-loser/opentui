@@ -353,24 +353,17 @@ static int configure_png_encoder(ot_video_decoder *decoder) {
         return fail(decoder, AVERROR(ENOMEM), "allocate PNG encoder");
     decoder->png_encoder->width = decoder->output_width;
     decoder->png_encoder->height = decoder->output_height;
-    decoder->png_encoder->pix_fmt = AV_PIX_FMT_PAL8;
+    decoder->png_encoder->pix_fmt = AV_PIX_FMT_RGB24;
     decoder->png_encoder->time_base = (AVRational){1, 1000000};
     decoder->png_encoder->compression_level = 1;
     av_opt_set(decoder->png_encoder->priv_data, "pred", "none", 0);
     int result = avcodec_open2(decoder->png_encoder, codec, NULL);
     if (result < 0) return fail(decoder, result, "avcodec_open2 PNG");
-    decoder->png_frame->format = AV_PIX_FMT_PAL8;
+    decoder->png_frame->format = AV_PIX_FMT_RGB24;
     decoder->png_frame->width = decoder->output_width;
     decoder->png_frame->height = decoder->output_height;
     result = av_frame_get_buffer(decoder->png_frame, 32);
     if (result < 0) return fail(decoder, result, "av_frame_get_buffer PNG");
-    uint32_t *palette = (uint32_t *)decoder->png_frame->data[1];
-    for (unsigned i = 0; i < 256; i++) {
-        const unsigned r = ((i >> 5) * 255u + 3u) / 7u;
-        const unsigned g = (((i >> 2) & 7u) * 255u + 3u) / 7u;
-        const unsigned b = ((i & 3u) * 255u + 1u) / 3u;
-        palette[i] = 0xFF000000u | (r << 16) | (g << 8) | b;
-    }
     decoder->png_width = decoder->output_width;
     decoder->png_height = decoder->output_height;
     return OT_VIDEO_OK;
@@ -383,13 +376,15 @@ static int encode_png(ot_video_decoder *decoder, const uint8_t **out_png, uint64
     int result = av_frame_make_writable(decoder->png_frame);
     if (result < 0) return fail(decoder, result, "av_frame_make_writable PNG");
     for (uint32_t y = 0; y < decoder->output_height; y++) {
-        uint8_t *indices = decoder->png_frame->data[0] + (size_t)y * decoder->png_frame->linesize[0];
+        uint8_t *rgb = decoder->png_frame->data[0] + (size_t)y * decoder->png_frame->linesize[0];
         const uint8_t *rgba = decoder->rgba + (size_t)y * decoder->output_width * 4;
         for (uint32_t x = 0; x < decoder->output_width; x++) {
-            const uint8_t r = rgba[x * 4];
-            const uint8_t g = rgba[x * 4 + 1];
-            const uint8_t b = rgba[x * 4 + 2];
-            indices[x] = (uint8_t)((r & 0xE0u) | ((g >> 3) & 0x1Cu) | (b >> 6));
+            const uint8_t r = rgba[x * 4] >> 5;
+            const uint8_t g = rgba[x * 4 + 1] >> 4;
+            const uint8_t b = rgba[x * 4 + 2] >> 5;
+            rgb[x * 3] = (uint8_t)((r * 255u + 3u) / 7u);
+            rgb[x * 3 + 1] = (uint8_t)(g * 17u);
+            rgb[x * 3 + 2] = (uint8_t)((b * 255u + 3u) / 7u);
         }
     }
     decoder->png_frame->pts = decoder->frame_pts_us;

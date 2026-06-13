@@ -2,6 +2,8 @@
 
 OpenTUI statically links a minimal decode-only FFmpeg 8.1.1 build containing only MOV/MP4 demuxing, H.264 video decoding, AAC audio decoding, file I/O, libswscale, and libswresample.
 
+The build also enables FFmpeg's PNG encoder. Native video frames are quantized to RGB343 (1,024 colors) and encoded by one persistent encoder per video instance for Kitty graphics transport.
+
 - Source: https://ffmpeg.org/releases/ffmpeg-8.1.1.tar.xz
 - SHA-256: `b6863adde98898f42602017462871b5f6333e65aec803fdd7a6308639c52edf3`
 - License: LGPL-2.1-or-later

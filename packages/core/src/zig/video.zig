@@ -109,6 +109,8 @@ pub const Video = struct {
     pub fn configurePng(self: *Video, compression_level: u32, predictor: u32, color_mode: u32) !void {
         if (ot_video_set_png_options(self.decoder, compression_level, predictor, color_mode) != 0) return error.InvalidArgument;
         self.state.frame_serial = 0;
+        self.state.frame_pts_us = -1;
+        self.state.has_frame = 0;
         if (self.current_image) |value| value.deinit();
         self.current_image = null;
     }

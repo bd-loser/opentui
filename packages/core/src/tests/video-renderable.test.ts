@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test"
 
-import { calculateVideoGeometry, normalizeVideoTime } from "../renderables/Video.js"
+import {
+  calculateVideoGeometry,
+  createAdaptiveVideoQualityState,
+  normalizeVideoTime,
+  updateAdaptiveVideoQuality,
+} from "../renderables/Video.js"
 
 describe("VideoRenderable geometry", () => {
   test("fits portrait video using physical cell aspect", () => {
@@ -76,5 +81,53 @@ describe("VideoRenderable timeline", () => {
     expect(normalizeVideoTime(7.29, 6.04, true)).toBeCloseTo(1.25, 12)
     expect(normalizeVideoTime(6.04, 6.04, true)).toBeCloseTo(0, 12)
     expect(() => normalizeVideoTime(Number.NaN, 1, false)).toThrow("finite")
+  })
+})
+
+describe("VideoRenderable adaptive quality", () => {
+  test("downgrades CPU quality after sustained frame-budget pressure", () => {
+    let state = createAdaptiveVideoQualityState()
+    for (let serial = 1n; serial <= 3n; serial++) {
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 30,
+        frameBudgetMs: 40,
+        frameSerial: serial,
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBe(1)
+  })
+
+  test("skips the byte-heavy CPU tier under output backpressure", () => {
+    let state = createAdaptiveVideoQualityState()
+    for (let serial = 1n; serial <= 3n; serial++) {
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 10,
+        frameBudgetMs: 40,
+        frameSerial: serial,
+        backpressureCount: Number(serial),
+      })
+    }
+    expect(state.tier).toBe(2)
+  })
+
+  test("upgrades only after prolonged stable headroom", () => {
+    let state = { ...createAdaptiveVideoQualityState(), tier: 1 }
+    for (let serial = 1n; serial <= 119n; serial++) {
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 5,
+        frameBudgetMs: 40,
+        frameSerial: serial,
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBe(1)
+    state = updateAdaptiveVideoQuality(state, {
+      updateTimeMs: 5,
+      frameBudgetMs: 40,
+      frameSerial: 120n,
+      backpressureCount: 0,
+    })
+    expect(state.tier).toBe(0)
   })
 })

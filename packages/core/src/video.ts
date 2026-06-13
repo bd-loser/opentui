@@ -85,6 +85,21 @@ export class NativeVideo {
     this.frameSerial = 0n
   }
 
+  public configurePng(compressionLevel: number, predictor: number, colorMode: number): void {
+    for (const [value, name, maximum] of [
+      [compressionLevel, "compression level", 9],
+      [predictor, "predictor", 5],
+      [colorMode, "color mode", 4],
+    ] as const) {
+      if (!Number.isInteger(value) || value < 0 || value > maximum) {
+        throw new RangeError(`video PNG ${name} must be an integer between 0 and ${maximum}`)
+      }
+    }
+    const status = this.lib.videoConfigurePng(this.guard(), compressionLevel, predictor, colorMode)
+    if (status !== 0) throw videoError(this.lib, this.handle, status)
+    this.frameSerial = 0n
+  }
+
   public seek(time: number): NativeVideoState {
     if (!Number.isFinite(time) || time < 0) throw new RangeError("video seek time must be finite and non-negative")
     const result = this.lib.videoSeek(this.guard(), BigInt(Math.round(time * 1_000_000)))

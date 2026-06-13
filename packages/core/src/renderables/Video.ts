@@ -3,7 +3,7 @@ import type { OptimizedBuffer } from "../buffer.js"
 import { NativeImage } from "../image.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import type { ImageRenderProtocol, RenderContext } from "../types.js"
-import { NativeVideo } from "../video.js"
+import { NativeVideo, type NativeVideoState } from "../video.js"
 import type { ImageFit } from "./Image.js"
 
 export interface VideoMetadata {
@@ -49,6 +49,80 @@ export interface VideoGeometryOptions {
   terminalWidth: number
   terminalHeight: number
   resolution: { width: number; height: number } | null
+}
+
+export interface AdaptiveVideoQualityState {
+  tier: number
+  updateTimeMs: number
+  overloadSamples: number
+  headroomSamples: number
+  cooldownSamples: number
+  lastFrameSerial: bigint | null
+  lastBackpressureCount: number
+}
+
+export interface AdaptiveVideoQualitySample {
+  updateTimeMs: number
+  frameBudgetMs: number
+  frameSerial: bigint
+  backpressureCount: number
+}
+
+const VIDEO_PNG_QUALITY_TIERS = [
+  { compressionLevel: 2, predictor: 2, colorMode: 2 },
+  { compressionLevel: 1, predictor: 2, colorMode: 2 },
+  { compressionLevel: 2, predictor: 0, colorMode: 0 },
+  { compressionLevel: 1, predictor: 4, colorMode: 4 },
+] as const
+
+export function createAdaptiveVideoQualityState(backpressureCount = 0): AdaptiveVideoQualityState {
+  return {
+    tier: 0,
+    updateTimeMs: 0,
+    overloadSamples: 0,
+    headroomSamples: 0,
+    cooldownSamples: 0,
+    lastFrameSerial: null,
+    lastBackpressureCount: backpressureCount,
+  }
+}
+
+export function updateAdaptiveVideoQuality(
+  state: AdaptiveVideoQualityState,
+  sample: AdaptiveVideoQualitySample,
+): AdaptiveVideoQualityState {
+  const updateTimeMs =
+    state.updateTimeMs === 0 ? sample.updateTimeMs : state.updateTimeMs * 0.9 + sample.updateTimeMs * 0.1
+  const skippedFrames = state.lastFrameSerial !== null && sample.frameSerial > state.lastFrameSerial + 1n
+  const backpressured = sample.backpressureCount > state.lastBackpressureCount
+  const cpuOverloaded = updateTimeMs > sample.frameBudgetMs * 0.55
+  const overloaded = cpuOverloaded || skippedFrames || backpressured
+  let overloadSamples = overloaded ? state.overloadSamples + 1 : Math.max(0, state.overloadSamples - 1)
+  let headroomSamples = !overloaded && updateTimeMs < sample.frameBudgetMs * 0.35 ? state.headroomSamples + 1 : 0
+  let cooldownSamples = Math.max(0, state.cooldownSamples - 1)
+  let tier = state.tier
+
+  if (cooldownSamples === 0 && overloadSamples >= 3 && tier < VIDEO_PNG_QUALITY_TIERS.length - 1) {
+    tier = backpressured && tier === 0 ? 2 : tier + 1
+    overloadSamples = 0
+    headroomSamples = 0
+    cooldownSamples = 30
+  } else if (cooldownSamples === 0 && headroomSamples >= 120 && tier > 0) {
+    tier--
+    overloadSamples = 0
+    headroomSamples = 0
+    cooldownSamples = 120
+  }
+
+  return {
+    tier,
+    updateTimeMs,
+    overloadSamples,
+    headroomSamples,
+    cooldownSamples,
+    lastFrameSerial: sample.frameSerial,
+    lastBackpressureCount: sample.backpressureCount,
+  }
 }
 
 const AUDIO_SAMPLE_RATE = 48_000
@@ -124,6 +198,7 @@ export class VideoRenderable extends Renderable {
   private playbackEnded = false
   private ticker: ReturnType<typeof setTimeout> | null = null
   private updating = false
+  private adaptiveQuality: AdaptiveVideoQualityState
 
   constructor(ctx: RenderContext, options: VideoRenderableOptions) {
     super(ctx, options)
@@ -143,6 +218,7 @@ export class VideoRenderable extends Renderable {
     this.onSeek = options.onSeek
     this.onTimeUpdate = options.onTimeUpdate
     this.wantsPlayback = options.autoplay ?? false
+    this.adaptiveQuality = createAdaptiveVideoQualityState(ctx.renderBackpressureCount ?? 0)
   }
 
   public get fit(): ImageFit {
@@ -177,6 +253,7 @@ export class VideoRenderable extends Renderable {
     this.resetAudio()
     if (this.native) {
       this.native.seek(this.positionSeconds)
+      this.resetAdaptiveQualitySamples()
       this.updateFrame(this.positionSeconds)
     }
     if (this.wantsPlayback) this.startClock()
@@ -262,6 +339,7 @@ export class VideoRenderable extends Renderable {
     if (!this.ensureNative()) return
     try {
       this.native!.seek(target)
+      this.resetAdaptiveQualitySamples()
       this.resetAudio()
       this.updateFrame(target)
       if (this.wantsPlayback) this.startClock()
@@ -361,6 +439,7 @@ export class VideoRenderable extends Renderable {
     this.geometry = next
     this.native.configureOutput(next.decodeWidth, next.decodeHeight, this.fitMode === "cover")
     this.native.seek(position)
+    this.resetAdaptiveQualitySamples()
     this.updateFrame(position)
     if (wasPlaying) this.startClock()
   }
@@ -453,6 +532,7 @@ export class VideoRenderable extends Renderable {
       if (this.loopPlayback && this.duration > 0 && unwrappedTime >= this.duration) {
         this.positionSeconds = time
         this.native.seek(time)
+        this.resetAdaptiveQualitySamples()
         this.resetAudio()
         this.startClock()
         this.updateFrame(time)
@@ -470,11 +550,19 @@ export class VideoRenderable extends Renderable {
         this.onEnd?.()
         return
       }
+      const updateStarted = performance.now()
       const state = this.updateFrame(time)
+      if (state)
+        this.updateAdaptiveQuality(
+          performance.now() - updateStarted,
+          state,
+          1000 / Math.min(this.metadata?.fps || this.maxFps, this.maxFps),
+        )
       if (state?.ended) {
         if (this.loopPlayback) {
           this.positionSeconds = 0
           this.native.seek(0)
+          this.resetAdaptiveQualitySamples()
           this.resetAudio()
           this.startClock()
           this.updateFrame(0)
@@ -511,6 +599,29 @@ export class VideoRenderable extends Renderable {
     previous?.dispose()
     this.requestRender()
     return state
+  }
+
+  private updateAdaptiveQuality(updateTimeMs: number, state: NativeVideoState, frameBudgetMs: number): void {
+    if (!this.native) return
+    const next = updateAdaptiveVideoQuality(this.adaptiveQuality, {
+      updateTimeMs,
+      frameBudgetMs,
+      frameSerial: state.frameSerial,
+      backpressureCount: this._ctx.renderBackpressureCount ?? 0,
+    })
+    if (next.tier !== this.adaptiveQuality.tier) {
+      const quality = VIDEO_PNG_QUALITY_TIERS[next.tier]
+      this.native.configurePng(quality.compressionLevel, quality.predictor, quality.colorMode)
+    }
+    this.adaptiveQuality = next
+  }
+
+  private resetAdaptiveQualitySamples(): void {
+    this.adaptiveQuality = {
+      ...createAdaptiveVideoQualityState(this._ctx.renderBackpressureCount ?? 0),
+      tier: this.adaptiveQuality.tier,
+      cooldownSamples: 30,
+    }
   }
 
   private clockElapsed(): number {

@@ -1281,6 +1281,7 @@ function getOpenTUILib(libPath?: string) {
     videoGetInfo: { args: ["u32", "ptr"], returns: "u32" },
     videoGetState: { args: ["u32", "ptr"], returns: "u32" },
     videoConfigureOutput: { args: ["u32", "u32", "u32", "u32"], returns: "u32" },
+    videoConfigurePng: { args: ["u32", "u32", "u32", "u32"], returns: "u32" },
     videoSeek: { args: ["u32", "i64", "ptr"], returns: "u32" },
     videoUpdate: { args: ["u32", "i64", "ptr"], returns: "u32" },
     videoGetCurrentFrame: { args: ["u32", "u64", "ptr", "ptr"], returns: "u32" },
@@ -2636,6 +2637,7 @@ export interface RenderLib extends AudioEngineLib {
   videoGetInfo: (video: VideoHandle) => { status: number; info: NativeVideoInfo }
   videoGetState: (video: VideoHandle) => { status: number; state: NativeVideoState }
   videoConfigureOutput: (video: VideoHandle, width: number, height: number, cover: boolean) => number
+  videoConfigurePng: (video: VideoHandle, compressionLevel: number, predictor: number, colorMode: number) => number
   videoSeek: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
   videoUpdate: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
   videoGetCurrentFrame: (
@@ -5526,6 +5528,10 @@ class FFIRenderLib implements RenderLib {
 
   public videoConfigureOutput(video: VideoHandle, width: number, height: number, cover: boolean): number {
     return this.opentui.symbols.videoConfigureOutput(video, width, height, cover ? 1 : 0)
+  }
+
+  public videoConfigurePng(video: VideoHandle, compressionLevel: number, predictor: number, colorMode: number): number {
+    return this.opentui.symbols.videoConfigurePng(video, compressionLevel, predictor, colorMode)
   }
 
   private videoStateCall(symbol: "videoSeek" | "videoUpdate", video: VideoHandle, targetUs: bigint) {

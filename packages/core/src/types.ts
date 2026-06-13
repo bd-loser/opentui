@@ -115,6 +115,8 @@ export interface RenderContext extends EventEmitter {
   resolution: { width: number; height: number } | null
   /** Monotonic, bumped once per `loop()` iteration. Lets renderables dedupe per-frame work. */
   frameId: number
+  /** Monotonic count of native frames rejected by output backpressure. */
+  renderBackpressureCount?: number
   requestRender: () => void
   setCursorPosition: (x: number, y: number, visible: boolean) => void
   setCursorStyle: (options: CursorStyleOptions) => void

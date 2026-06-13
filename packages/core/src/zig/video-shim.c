@@ -50,6 +50,7 @@ struct ot_video_decoder {
     AVPacket *png_packet;
     uint32_t png_width;
     uint32_t png_height;
+    uint64_t png_serial;
     int64_t frame_pts_us;
     uint64_t frame_serial;
     float *audio_pending;
@@ -366,6 +367,7 @@ static int configure_png_encoder(ot_video_decoder *decoder) {
     if (result < 0) return fail(decoder, result, "av_frame_get_buffer PNG");
     decoder->png_width = decoder->output_width;
     decoder->png_height = decoder->output_height;
+    decoder->png_serial = 0;
     return OT_VIDEO_OK;
 }
 
@@ -438,7 +440,16 @@ int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const ui
     *out_stride = decoder->output_width * 4;
     *out_pts_us = decoder->frame_pts_us;
     *out_serial = decoder->frame_serial;
-    if (encode_png(decoder, out_png, out_png_len) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
+    if (decoder->png_serial != decoder->frame_serial) {
+        if (encode_png(decoder, out_png, out_png_len) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
+        decoder->png_serial = decoder->frame_serial;
+    } else if (decoder->png_packet && decoder->png_packet->data) {
+        *out_png = decoder->png_packet->data;
+        *out_png_len = decoder->png_packet->size;
+    } else {
+        *out_png = NULL;
+        *out_png_len = 0;
+    }
     return OT_VIDEO_OK;
 }
 

@@ -122,7 +122,7 @@ export class VideoRenderable extends Renderable {
   private playbackStartedAt = 0
   private wantsPlayback: boolean
   private playbackEnded = false
-  private ticker: ReturnType<typeof setInterval> | null = null
+  private ticker: ReturnType<typeof setTimeout> | null = null
   private updating = false
 
   constructor(ctx: RenderContext, options: VideoRenderableOptions) {
@@ -286,8 +286,7 @@ export class VideoRenderable extends Renderable {
     if (this.width <= 0 || this.height <= 0) return
     if (!this.ensureNative()) return
     this.ensureGeometry()
-    if (this.wantsPlayback) this.tick()
-    else if (!this.currentImage) this.updateFrame(this.positionSeconds)
+    if (!this.currentImage) this.updateFrame(this.positionSeconds)
     if (!this.currentImage || !this.geometry) return
 
     const x = (this.buffered ? 0 : this._screenX) + Math.floor((this.width - this.geometry.cellWidth) / 2)
@@ -414,11 +413,25 @@ export class VideoRenderable extends Renderable {
   private startTicker(): void {
     if (this.ticker) return
     const fps = Math.min(this.metadata?.fps || this.maxFps, this.maxFps)
-    this.ticker = setInterval(() => this.tick(), Math.max(4, Math.floor(1000 / fps / 2)))
+    const frameTime = 1000 / fps
+    const schedule = (): void => {
+      if (!this.wantsPlayback || this.isDestroyed) {
+        this.ticker = null
+        return
+      }
+      const started = performance.now()
+      this.tick()
+      if (!this.wantsPlayback || this.isDestroyed) {
+        this.ticker = null
+        return
+      }
+      this.ticker = setTimeout(schedule, Math.max(1, frameTime - (performance.now() - started)))
+    }
+    this.ticker = setTimeout(schedule, frameTime)
   }
 
   private stopTicker(): void {
-    if (this.ticker) clearInterval(this.ticker)
+    if (this.ticker) clearTimeout(this.ticker)
     this.ticker = null
   }
 

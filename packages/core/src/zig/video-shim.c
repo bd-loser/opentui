@@ -45,6 +45,11 @@ struct ot_video_decoder {
     uint8_t *scaled_rgba;
     size_t scaled_rgba_size;
     AVFrame *video_lookahead;
+    AVCodecContext *png_encoder;
+    AVFrame *png_frame;
+    AVPacket *png_packet;
+    uint32_t png_width;
+    uint32_t png_height;
     int64_t frame_pts_us;
     uint64_t frame_serial;
     float *audio_pending;
@@ -221,6 +226,9 @@ void ot_video_close(ot_video_decoder **decoder_ptr) {
     ot_video_decoder *decoder = *decoder_ptr;
     free(decoder->audio_pending);
     av_frame_free(&decoder->video_lookahead);
+    av_packet_free(&decoder->png_packet);
+    av_frame_free(&decoder->png_frame);
+    avcodec_free_context(&decoder->png_encoder);
     free(decoder->scaled_rgba);
     free(decoder->rgba);
     swr_free(&decoder->swr);
@@ -329,10 +337,78 @@ static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, 
     return OT_VIDEO_OK;
 }
 
+static int configure_png_encoder(ot_video_decoder *decoder) {
+    if (decoder->png_encoder && decoder->png_width == decoder->output_width && decoder->png_height == decoder->output_height)
+        return OT_VIDEO_OK;
+    av_packet_free(&decoder->png_packet);
+    av_frame_free(&decoder->png_frame);
+    avcodec_free_context(&decoder->png_encoder);
+
+    const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_PNG);
+    if (!codec) return fail(decoder, AVERROR_ENCODER_NOT_FOUND, "PNG encoder unavailable");
+    decoder->png_encoder = avcodec_alloc_context3(codec);
+    decoder->png_frame = av_frame_alloc();
+    decoder->png_packet = av_packet_alloc();
+    if (!decoder->png_encoder || !decoder->png_frame || !decoder->png_packet)
+        return fail(decoder, AVERROR(ENOMEM), "allocate PNG encoder");
+    decoder->png_encoder->width = decoder->output_width;
+    decoder->png_encoder->height = decoder->output_height;
+    decoder->png_encoder->pix_fmt = AV_PIX_FMT_PAL8;
+    decoder->png_encoder->time_base = (AVRational){1, 1000000};
+    decoder->png_encoder->compression_level = 1;
+    av_opt_set(decoder->png_encoder->priv_data, "pred", "none", 0);
+    int result = avcodec_open2(decoder->png_encoder, codec, NULL);
+    if (result < 0) return fail(decoder, result, "avcodec_open2 PNG");
+    decoder->png_frame->format = AV_PIX_FMT_PAL8;
+    decoder->png_frame->width = decoder->output_width;
+    decoder->png_frame->height = decoder->output_height;
+    result = av_frame_get_buffer(decoder->png_frame, 32);
+    if (result < 0) return fail(decoder, result, "av_frame_get_buffer PNG");
+    uint32_t *palette = (uint32_t *)decoder->png_frame->data[1];
+    for (unsigned i = 0; i < 256; i++) {
+        const unsigned r = ((i >> 5) * 255u + 3u) / 7u;
+        const unsigned g = (((i >> 2) & 7u) * 255u + 3u) / 7u;
+        const unsigned b = ((i & 3u) * 255u + 1u) / 3u;
+        palette[i] = 0xFF000000u | (r << 16) | (g << 8) | b;
+    }
+    decoder->png_width = decoder->output_width;
+    decoder->png_height = decoder->output_height;
+    return OT_VIDEO_OK;
+}
+
+static int encode_png(ot_video_decoder *decoder, const uint8_t **out_png, uint64_t *out_png_len) {
+    *out_png = NULL;
+    *out_png_len = 0;
+    if (configure_png_encoder(decoder) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
+    int result = av_frame_make_writable(decoder->png_frame);
+    if (result < 0) return fail(decoder, result, "av_frame_make_writable PNG");
+    for (uint32_t y = 0; y < decoder->output_height; y++) {
+        uint8_t *indices = decoder->png_frame->data[0] + (size_t)y * decoder->png_frame->linesize[0];
+        const uint8_t *rgba = decoder->rgba + (size_t)y * decoder->output_width * 4;
+        for (uint32_t x = 0; x < decoder->output_width; x++) {
+            const uint8_t r = rgba[x * 4];
+            const uint8_t g = rgba[x * 4 + 1];
+            const uint8_t b = rgba[x * 4 + 2];
+            indices[x] = (uint8_t)((r & 0xE0u) | ((g >> 3) & 0x1Cu) | (b >> 6));
+        }
+    }
+    decoder->png_frame->pts = decoder->frame_pts_us;
+    av_packet_unref(decoder->png_packet);
+    result = avcodec_send_frame(decoder->png_encoder, decoder->png_frame);
+    if (result < 0) return fail(decoder, result, "avcodec_send_frame PNG");
+    result = avcodec_receive_packet(decoder->png_encoder, decoder->png_packet);
+    if (result < 0) return fail(decoder, result, "avcodec_receive_packet PNG");
+    *out_png = decoder->png_packet->data;
+    *out_png_len = decoder->png_packet->size;
+    return OT_VIDEO_OK;
+}
+
 int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const uint8_t **out_rgba,
                           uint32_t *out_width, uint32_t *out_height, uint32_t *out_stride,
-                          int64_t *out_pts_us, uint64_t *out_serial) {
-    if (!decoder || !out_rgba || !out_width || !out_height || !out_stride || !out_pts_us || !out_serial) return OT_VIDEO_ERROR;
+                          int64_t *out_pts_us, uint64_t *out_serial,
+                          const uint8_t **out_png, uint64_t *out_png_len) {
+    if (!decoder || !out_rgba || !out_width || !out_height || !out_stride || !out_pts_us || !out_serial || !out_png || !out_png_len)
+        return OT_VIDEO_ERROR;
     int reached_eof = 0;
     for (;;) {
         AVFrame *candidate = decoder->video_lookahead;
@@ -367,6 +443,7 @@ int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const ui
     *out_stride = decoder->output_width * 4;
     *out_pts_us = decoder->frame_pts_us;
     *out_serial = decoder->frame_serial;
+    if (encode_png(decoder, out_png, out_png_len) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
     return OT_VIDEO_OK;
 }
 

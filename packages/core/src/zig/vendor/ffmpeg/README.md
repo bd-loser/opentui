@@ -5,6 +5,8 @@ OpenTUI statically links a minimal decode-only FFmpeg 8.1.1 build containing onl
 - Source: https://ffmpeg.org/releases/ffmpeg-8.1.1.tar.xz
 - SHA-256: `b6863adde98898f42602017462871b5f6333e65aec803fdd7a6308639c52edf3`
 - License: LGPL-2.1-or-later
+- zlib 1.3.1: https://zlib.net/fossils/zlib-1.3.1.tar.gz
+- zlib SHA-256: `9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23`
 - GPL and nonfree components are disabled.
 
 The exact reproducible build configuration is in `packages/core/scripts/build-ffmpeg.ts`. Run `bun packages/core/scripts/build-ffmpeg.ts --all` to build all native targets.

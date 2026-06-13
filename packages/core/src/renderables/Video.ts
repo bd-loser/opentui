@@ -36,6 +36,8 @@ export interface VideoOutputGeometry {
   cellHeight: number
   pixelWidth: number
   pixelHeight: number
+  decodeWidth: number
+  decodeHeight: number
 }
 
 export interface VideoGeometryOptions {
@@ -86,7 +88,10 @@ export function calculateVideoGeometry(options: VideoGeometryOptions): VideoOutp
     resolution && terminalHeight > 0
       ? Math.max(1, Math.round((cellHeight * resolution.height) / terminalHeight))
       : Math.max(1, cellHeight * 4)
-  return { cellWidth, cellHeight, pixelWidth, pixelHeight }
+  const decodeScale = Math.min(1, sourceWidth / pixelWidth, sourceHeight / pixelHeight)
+  const decodeWidth = Math.max(1, Math.round(pixelWidth * decodeScale))
+  const decodeHeight = Math.max(1, Math.round(pixelHeight * decodeScale))
+  return { cellWidth, cellHeight, pixelWidth, pixelHeight, decodeWidth, decodeHeight }
 }
 
 export class VideoRenderable extends Renderable {
@@ -343,13 +348,19 @@ export class VideoRenderable extends Renderable {
       terminalHeight: this._ctx.terminalHeight,
       resolution,
     })
-    if (this.geometry?.pixelWidth === next.pixelWidth && this.geometry?.pixelHeight === next.pixelHeight) return
+    if (
+      this.geometry?.pixelWidth === next.pixelWidth &&
+      this.geometry?.pixelHeight === next.pixelHeight &&
+      this.geometry.decodeWidth === next.decodeWidth &&
+      this.geometry.decodeHeight === next.decodeHeight
+    )
+      return
     const position = this.currentTime
     const wasPlaying = this.wantsPlayback
     this.positionSeconds = position
     this.resetAudio()
     this.geometry = next
-    this.native.configureOutput(next.pixelWidth, next.pixelHeight, this.fitMode === "cover")
+    this.native.configureOutput(next.decodeWidth, next.decodeHeight, this.fitMode === "cover")
     this.native.seek(position)
     this.updateFrame(position)
     if (wasPlaying) this.startClock()

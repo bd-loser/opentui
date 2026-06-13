@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { availableParallelism } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -8,11 +8,16 @@ import { fileURLToPath } from "node:url"
 const VERSION = "8.1.1"
 const SHA256 = "b6863adde98898f42602017462871b5f6333e65aec803fdd7a6308639c52edf3"
 const URL = `https://ffmpeg.org/releases/ffmpeg-${VERSION}.tar.xz`
-const BUILD_REVISION = "3"
+const ZLIB_VERSION = "1.3.1"
+const ZLIB_SHA256 = "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
+const ZLIB_URL = `https://zlib.net/fossils/zlib-${ZLIB_VERSION}.tar.gz`
+const BUILD_REVISION = "4"
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const cache = join(root, ".cache", "ffmpeg")
 const archive = join(cache, "downloads", `ffmpeg-${VERSION}.tar.xz`)
 const source = join(cache, "sources", `ffmpeg-${VERSION}`)
+const zlibArchive = join(cache, "downloads", `zlib-${ZLIB_VERSION}.tar.gz`)
+const zlibSource = join(cache, "sources", `zlib-${ZLIB_VERSION}`)
 
 interface Target {
   name: string
@@ -52,6 +57,50 @@ async function prepareSource(): Promise<void> {
   }
   if (digest(archive) !== SHA256) throw new Error("FFmpeg archive SHA-256 mismatch")
   if (!existsSync(source)) run("tar", ["-xf", archive, "-C", dirname(source)])
+  if (!existsSync(zlibArchive) || digest(zlibArchive) !== ZLIB_SHA256) {
+    const response = await fetch(ZLIB_URL)
+    if (!response.ok) throw new Error(`Failed to download zlib: HTTP ${response.status}`)
+    writeFileSync(zlibArchive, new Uint8Array(await response.arrayBuffer()))
+  }
+  if (digest(zlibArchive) !== ZLIB_SHA256) throw new Error("zlib archive SHA-256 mismatch")
+  if (!existsSync(zlibSource)) run("tar", ["-xf", zlibArchive, "-C", dirname(zlibSource)])
+}
+
+function buildZlib(target: Target, cc: string, prefix: string): void {
+  const build = join(cache, "build", target.name, "zlib")
+  mkdirSync(build, { recursive: true })
+  mkdirSync(join(prefix, "include"), { recursive: true })
+  mkdirSync(join(prefix, "lib"), { recursive: true })
+  const sources = [
+    "adler32.c",
+    "compress.c",
+    "crc32.c",
+    "deflate.c",
+    "infback.c",
+    "inffast.c",
+    "inflate.c",
+    "inftrees.c",
+    "trees.c",
+    "uncompr.c",
+    "zutil.c",
+  ]
+  const objects = sources.map((file) => {
+    const object = join(build, `${file.slice(0, -2)}.o`)
+    run(cc, [
+      "-O3",
+      "-fvisibility=hidden",
+      ...(target.os === "mingw32" ? [] : ["-fPIC"]),
+      `-I${zlibSource}`,
+      "-c",
+      join(zlibSource, file),
+      "-o",
+      object,
+    ])
+    return object
+  })
+  run("zig", ["ar", "rcs", join(prefix, "lib", "libz.a"), ...objects])
+  copyFileSync(join(zlibSource, "zlib.h"), join(prefix, "include", "zlib.h"))
+  copyFileSync(join(zlibSource, "zconf.h"), join(prefix, "include", "zconf.h"))
 }
 
 function hostTarget(): Target {
@@ -98,6 +147,7 @@ function buildTarget(target: Target): void {
         : `#!/bin/sh\nexec zig cc -target ${target.zig} "$@"\n`,
   )
   chmodSync(cc, 0o755)
+  buildZlib(target, cc, prefix)
 
   const configure = [
     `--prefix=${prefix}`,
@@ -118,7 +168,7 @@ function buildTarget(target: Target): void {
     "--disable-bzlib",
     "--disable-iconv",
     "--disable-lzma",
-    "--disable-zlib",
+    "--enable-zlib",
     "--disable-gpl",
     "--disable-version3",
     "--disable-nonfree",
@@ -127,6 +177,7 @@ function buildTarget(target: Target): void {
     "--enable-small",
     "--enable-demuxer=mov",
     "--enable-decoder=h264,aac",
+    "--enable-encoder=png",
     "--enable-parser=h264,aac",
     "--enable-protocol=file",
     "--enable-swscale",
@@ -137,7 +188,9 @@ function buildTarget(target: Target): void {
     "--ranlib=zig ranlib",
     `--arch=${target.arch}`,
     `--target-os=${target.os}`,
-    "--extra-cflags=-Os -ffunction-sections -fdata-sections -fvisibility=hidden",
+    `--extra-cflags=-Os -ffunction-sections -fdata-sections -fvisibility=hidden -I${join(prefix, "include")}`,
+    `--extra-ldflags=-L${join(prefix, "lib")}`,
+    "--extra-libs=-lz",
     ...(target.arch === "x86_64" ? ["--disable-x86asm"] : []),
     ...(target.os === "mingw32" ? ["--disable-pic"] : ["--enable-pic"]),
     ...(target.os === "mingw32" ? ["--disable-pthreads", "--enable-w32threads"] : ["--enable-pthreads"]),

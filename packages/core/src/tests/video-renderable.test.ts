@@ -14,7 +14,14 @@ describe("VideoRenderable geometry", () => {
       terminalHeight: 24,
       resolution: null,
     })
-    expect(geometry).toEqual({ cellWidth: 24, cellHeight: 18, pixelWidth: 48, pixelHeight: 72 })
+    expect(geometry).toEqual({
+      cellWidth: 24,
+      cellHeight: 18,
+      pixelWidth: 48,
+      pixelHeight: 72,
+      decodeWidth: 48,
+      decodeHeight: 72,
+    })
   })
 
   test("cover and fill use the complete measured destination", () => {
@@ -32,13 +39,32 @@ describe("VideoRenderable geometry", () => {
       cellHeight: 10,
       pixelWidth: 400,
       pixelHeight: 200,
+      decodeWidth: 400,
+      decodeHeight: 200,
     })
     expect(calculateVideoGeometry({ ...base, fit: "fill" })).toEqual({
       cellWidth: 40,
       cellHeight: 10,
       pixelWidth: 400,
       pixelHeight: 200,
+      decodeWidth: 400,
+      decodeHeight: 200,
     })
+  })
+
+  test("never upscales native decode above source resolution", () => {
+    expect(
+      calculateVideoGeometry({
+        fit: "fit",
+        sourceWidth: 768,
+        sourceHeight: 1168,
+        targetWidth: 80,
+        targetHeight: 40,
+        terminalWidth: 80,
+        terminalHeight: 40,
+        resolution: { width: 1536, height: 2346 },
+      }),
+    ).toMatchObject({ pixelWidth: 1536, pixelHeight: 2346, decodeWidth: 765, decodeHeight: 1168 })
   })
 })
 

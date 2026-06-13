@@ -260,7 +260,7 @@ fn addVideoDependencies(b: *std.Build, artifact: *std.Build.Step.Compile, target
         else => &.{ "-std=c11", "-fvisibility=hidden" },
     };
     artifact.addCSourceFile(.{ .file = b.path("video-shim.c"), .flags = flags });
-    inline for (.{ "libavformat.a", "libavcodec.a", "libswscale.a", "libswresample.a", "libavutil.a" }) |name| {
+    inline for (.{ "libavformat.a", "libavcodec.a", "libswscale.a", "libswresample.a", "libavutil.a", "libz.a" }) |name| {
         artifact.addObjectFile(.{ .cwd_relative = b.pathJoin(&.{ prefix, "lib", name }) });
     }
     if (target.result.os.tag == .windows) artifact.linkSystemLibrary("bcrypt");

@@ -48,6 +48,8 @@ extern fn ot_video_decode_frame(
     out_stride: *u32,
     out_pts_us: *i64,
     out_serial: *u64,
+    out_png: *?[*]const u8,
+    out_png_len: *u64,
 ) c_int;
 extern fn ot_video_read_audio(decoder: *Decoder, out_samples: ?[*]f32, capacity_frames: u32, out_frames: *u32) c_int;
 extern fn ot_video_last_error(decoder: *const Decoder) [*:0]const u8;
@@ -123,7 +125,20 @@ pub const Video = struct {
         var stride: u32 = 0;
         var pts_us: i64 = -1;
         var serial: u64 = 0;
-        const result = ot_video_decode_frame(self.decoder, target_us, &pixels, &width, &height, &stride, &pts_us, &serial);
+        var png: ?[*]const u8 = null;
+        var png_len: u64 = 0;
+        const result = ot_video_decode_frame(
+            self.decoder,
+            target_us,
+            &pixels,
+            &width,
+            &height,
+            &stride,
+            &pts_us,
+            &serial,
+            &png,
+            &png_len,
+        );
         self.state.current_time_us = target_us;
         if (result == 1) {
             self.state.ended = 1;
@@ -134,6 +149,10 @@ pub const Video = struct {
         if (serial == self.state.frame_serial and self.current_image != null) return false;
         const required = @as(usize, stride) * height;
         const next = try image.createFromRgba(self.allocator, pixels.?[0..required], width, height, stride);
+        errdefer next.deinit();
+        if (png != null and png_len <= std.math.maxInt(usize)) {
+            next.encoded_png = try self.allocator.dupe(u8, png.?[0..@intCast(png_len)]);
+        }
         if (self.current_image) |previous| previous.deinit();
         self.current_image = next;
         self.state.frame_pts_us = pts_us;

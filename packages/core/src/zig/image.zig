@@ -169,6 +169,7 @@ pub const Image = struct {
 };
 
 const png_signature = [_]u8{ 137, 80, 78, 71, 13, 10, 26, 10 };
+
 const srgb_chromaticities = [_]u32{ 31_270, 32_900, 64_000, 33_000, 30_000, 60_000, 15_000, 6_000 };
 
 fn readU32Be(bytes: []const u8) u32 {

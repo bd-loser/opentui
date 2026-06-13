@@ -259,6 +259,7 @@ export default module.default
       [join(rootDir, "src", "zig", "vendor", "libwebp", "PATENTS"), "PATENTS-LIBWEBP"],
       [join(rootDir, ".cache", "ffmpeg", "sources", "ffmpeg-8.1.1", "COPYING.LGPLv2.1"), "LICENSE-FFMPEG"],
       [join(rootDir, "src", "zig", "vendor", "ffmpeg", "README.md"), "FFMPEG-SOURCE.md"],
+      [join(rootDir, ".cache", "ffmpeg", "sources", "zlib-1.3.1", "README"), "LICENSE-ZLIB"],
     ] as const) {
       if (existsSync(source)) copyFileSync(source, join(nativeDir, destination))
     }

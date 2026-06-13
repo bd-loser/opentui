@@ -26,6 +26,8 @@ int ot_video_open(const char *path, ot_video_decoder **out_decoder, ot_video_inf
 void ot_video_close(ot_video_decoder **decoder);
 int ot_video_seek(ot_video_decoder *decoder, int64_t target_us);
 int ot_video_set_output_size(ot_video_decoder *decoder, uint32_t width, uint32_t height, uint32_t cover);
+int ot_video_set_png_options(ot_video_decoder *decoder, uint32_t compression_level, uint32_t predictor,
+                             uint32_t color_mode);
 int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const uint8_t **out_rgba,
                           uint32_t *out_width, uint32_t *out_height, uint32_t *out_stride,
                           int64_t *out_pts_us, uint64_t *out_serial,

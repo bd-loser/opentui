@@ -709,7 +709,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     selectedDescriptionColor: P.violet,
     showDescription: false,
     showScrollIndicator: true,
-    wrapSelection: false,
+    wrapSelection: true,
     fastScrollStep: 8,
   })
   videoFileSelect.on(SelectRenderableEvents.ITEM_SELECTED, (_index: number, option: SelectOption) => {

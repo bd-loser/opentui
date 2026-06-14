@@ -241,6 +241,74 @@ describe("VideoRenderable adaptive quality", () => {
     expect(state.tier).toBe(1)
   })
 
+  test("recovers a 60 FPS source through normal 30 FPS cadence jitter", () => {
+    let state = { ...createAdaptiveVideoQualityState(), tier: 2 }
+    let serial = 0n
+    for (let sample = 0; sample < 120; sample++) {
+      serial += sample % 3 === 2 ? 3n : 2n
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 13.3,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 2n,
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBe(1)
+  })
+
+  test("retains recovery progress across an isolated delayed presentation", () => {
+    let state = { ...createAdaptiveVideoQualityState(), tier: 2 }
+    let serial = 0n
+    for (let sample = 0; sample < 80; sample++) {
+      serial += 2n
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 13.3,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 2n,
+        backpressureCount: 0,
+      })
+    }
+    serial += 4n
+    state = updateAdaptiveVideoQuality(state, {
+      updateTimeMs: 13.3,
+      frameBudgetMs: 1000 / 30,
+      frameSerial: serial,
+      expectedFrameStep: 2n,
+      backpressureCount: 0,
+    })
+    expect(state.headroomSamples).toBe(76)
+    for (let sample = 0; sample < 44; sample++) {
+      serial += 2n
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 13.3,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 2n,
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBe(1)
+  })
+
+  test("sustained source-frame loss still prevents recovery and downgrades", () => {
+    let state = { ...createAdaptiveVideoQualityState(), tier: 1 }
+    let serial = 0n
+    for (let sample = 0; sample < 9; sample++) {
+      serial += 4n
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 10,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 2n,
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBe(2)
+    expect(state.headroomSamples).toBe(0)
+  })
+
   test("does not recover without enough CPU margin for the next tier", () => {
     let state = { ...createAdaptiveVideoQualityState(), tier: 2 }
     for (let serial = 1n; serial <= 240n; serial++) {

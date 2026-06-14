@@ -85,6 +85,7 @@ const VIDEO_CPU_OVERLOAD_RATIO = 0.7
 const VIDEO_QUALITY_RECOVERY_RATIO = 0.5
 const VIDEO_OVERLOAD_SCORE_LIMIT = 8
 const VIDEO_OVERLOAD_SCORE_RECOVERY = 2
+const VIDEO_HEADROOM_PRESSURE_PENALTY = 4
 
 function videoQualityTier(
   index: number,
@@ -128,8 +129,10 @@ export function updateAdaptiveVideoQuality(
 ): AdaptiveVideoQualityState {
   const updateTimeMs =
     state.updateTimeMs === 0 ? sample.updateTimeMs : state.updateTimeMs * 0.9 + sample.updateTimeMs * 0.1
+  const frameStepTolerance = sample.expectedFrameStep > 1n ? 1n : 0n
   const skippedFrames =
-    state.lastFrameSerial !== null && sample.frameSerial > state.lastFrameSerial + sample.expectedFrameStep
+    state.lastFrameSerial !== null &&
+    sample.frameSerial > state.lastFrameSerial + sample.expectedFrameStep + frameStepTolerance
   const backpressured = sample.backpressureCount > state.lastBackpressureCount
   const cpuOverloaded = updateTimeMs > sample.frameBudgetMs * VIDEO_CPU_OVERLOAD_RATIO
   const overloaded = cpuOverloaded || skippedFrames || backpressured
@@ -137,7 +140,9 @@ export function updateAdaptiveVideoQuality(
     ? state.overloadSamples + 1
     : Math.max(0, state.overloadSamples - VIDEO_OVERLOAD_SCORE_RECOVERY)
   let headroomSamples =
-    !overloaded && updateTimeMs < sample.frameBudgetMs * VIDEO_QUALITY_RECOVERY_RATIO ? state.headroomSamples + 1 : 0
+    !overloaded && updateTimeMs < sample.frameBudgetMs * VIDEO_QUALITY_RECOVERY_RATIO
+      ? state.headroomSamples + 1
+      : Math.max(0, state.headroomSamples - VIDEO_HEADROOM_PRESSURE_PENALTY)
   let cooldownSamples = Math.max(0, state.cooldownSamples - 1)
   let tier = state.tier
 

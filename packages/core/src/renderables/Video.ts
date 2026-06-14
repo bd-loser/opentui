@@ -82,7 +82,7 @@ export interface VideoQualityTier {
 const VIDEO_QUALITY_TIER_COUNT = 6
 const VIDEO_PNG_PREDICTORS = { none: 0, up: 2, paeth: 4 } as const
 const VIDEO_CPU_OVERLOAD_RATIO = 0.7
-const VIDEO_QUALITY_RECOVERY_RATIO = 0.5
+const VIDEO_QUALITY_RECOVERY_RATIO = 0.65
 const VIDEO_OVERLOAD_SCORE_LIMIT = 8
 const VIDEO_OVERLOAD_SCORE_RECOVERY = 2
 const VIDEO_HEADROOM_PRESSURE_PENALTY = 4
@@ -103,10 +103,10 @@ function videoQualityTier(
 }
 
 const VIDEO_PNG_QUALITY_TIERS = [
-  videoQualityTier(0, "RGB888", [8, 8, 8], true, 1, "paeth", 1),
-  videoQualityTier(1, "RGB666", [6, 6, 6], false, 1, "paeth", 5),
-  videoQualityTier(2, "RGB444", [4, 4, 4], false, 2, "up", 2),
-  videoQualityTier(3, "RGB444 fast", [4, 4, 4], false, 1, "up", 2),
+  videoQualityTier(0, "RGB888", [8, 8, 8], true, 1, "up", 1),
+  videoQualityTier(1, "RGB777", [7, 7, 7], false, 1, "up", 6),
+  videoQualityTier(2, "RGB666", [6, 6, 6], false, 1, "up", 5),
+  videoQualityTier(3, "RGB444", [4, 4, 4], false, 1, "up", 2),
   videoQualityTier(4, "RGB343", [3, 4, 3], false, 2, "none", 0),
   videoQualityTier(5, "PAL332", [3, 3, 2], false, 1, "paeth", 4),
 ] as const
@@ -146,6 +146,8 @@ export function updateAdaptiveVideoQuality(
   let cooldownSamples = Math.max(0, state.cooldownSamples - 1)
   let tier = state.tier
 
+  if (state.cooldownSamples > 0) overloadSamples = 0
+
   if (
     cooldownSamples === 0 &&
     overloadSamples >= VIDEO_OVERLOAD_SCORE_LIMIT &&
@@ -159,7 +161,7 @@ export function updateAdaptiveVideoQuality(
     tier--
     overloadSamples = 0
     headroomSamples = 0
-    cooldownSamples = 120
+    cooldownSamples = 30
   }
 
   return {

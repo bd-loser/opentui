@@ -115,7 +115,7 @@ describe("VideoRenderable adaptive quality", () => {
         bitsPerChannel: [8, 8, 8],
         lossless: true,
         compressionLevel: 1,
-        predictor: "paeth",
+        predictor: "up",
       })
       expect(video.effectiveProtocol).toBe("blocks")
       setRendererCapabilities(renderer, { kitty_graphics: true })
@@ -160,7 +160,7 @@ describe("VideoRenderable adaptive quality", () => {
     }
   })
 
-  test("steps down to RGB666 under output backpressure", () => {
+  test("steps down to RGB777 under output backpressure", () => {
     let state = createAdaptiveVideoQualityState()
     for (let serial = 1n; serial <= 8n; serial++) {
       state = updateAdaptiveVideoQuality(state, {
@@ -241,6 +241,20 @@ describe("VideoRenderable adaptive quality", () => {
     expect(state.tier).toBe(1)
   })
 
+  test("recovers at the measured lossless RGB888 Up processing cost", () => {
+    let state = { ...createAdaptiveVideoQualityState(), tier: 1 }
+    for (let serial = 1n; serial <= 120n; serial++) {
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 19.1,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 1n,
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBe(0)
+  })
+
   test("recovers a 60 FPS source through normal 30 FPS cadence jitter", () => {
     let state = { ...createAdaptiveVideoQualityState(), tier: 2 }
     let serial = 0n
@@ -313,8 +327,33 @@ describe("VideoRenderable adaptive quality", () => {
     let state = { ...createAdaptiveVideoQualityState(), tier: 2 }
     for (let serial = 1n; serial <= 240n; serial++) {
       state = updateAdaptiveVideoQuality(state, {
-        updateTimeMs: 17,
+        updateTimeMs: 22,
         frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 1n,
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBe(2)
+  })
+
+  test("does not carry overload pressure through a tier cooldown", () => {
+    let state = { ...createAdaptiveVideoQualityState(), tier: 1, cooldownSamples: 30 }
+    for (let serial = 1n; serial <= 30n; serial++) {
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 30,
+        frameBudgetMs: 40,
+        frameSerial: serial,
+        expectedFrameStep: 1n,
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBe(1)
+    expect(state.overloadSamples).toBe(0)
+    for (let serial = 31n; serial <= 38n; serial++) {
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 30,
+        frameBudgetMs: 40,
         frameSerial: serial,
         expectedFrameStep: 1n,
         backpressureCount: 0,

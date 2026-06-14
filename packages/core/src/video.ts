@@ -136,7 +136,7 @@ export class NativeVideo {
     for (const [value, name, maximum] of [
       [compressionLevel, "compression level", 9],
       [predictor, "predictor", 5],
-      [colorMode, "color mode", 5],
+      [colorMode, "color mode", 6],
     ] as const) {
       if (!Number.isInteger(value) || value < 0 || value > maximum) {
         throw new RangeError(`video PNG ${name} must be an integer between 0 and ${maximum}`)

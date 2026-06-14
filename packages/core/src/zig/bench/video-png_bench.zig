@@ -17,6 +17,8 @@ const scenarios = [_]Scenario{
     .{ .name = "RGB888 level 1 paeth", .level = 1, .predictor = 4, .color_mode = 1, .bits = null },
     .{ .name = "RGB888 level 1 mixed", .level = 1, .predictor = 5, .color_mode = 1, .bits = null },
     .{ .name = "RGB888 level 2 up", .level = 2, .predictor = 2, .color_mode = 1, .bits = null },
+    .{ .name = "RGB777 level 1 up", .level = 1, .predictor = 2, .color_mode = 6, .bits = .{ 7, 7, 7 } },
+    .{ .name = "RGB777 level 1 paeth", .level = 1, .predictor = 4, .color_mode = 6, .bits = .{ 7, 7, 7 } },
     .{ .name = "RGB666 level 1 up", .level = 1, .predictor = 2, .color_mode = 5, .bits = .{ 6, 6, 6 } },
     .{ .name = "RGB666 level 1 paeth", .level = 1, .predictor = 4, .color_mode = 5, .bits = .{ 6, 6, 6 } },
     .{ .name = "RGB666 level 1 mixed", .level = 1, .predictor = 5, .color_mode = 5, .bits = .{ 6, 6, 6 } },

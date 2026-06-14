@@ -14,7 +14,11 @@ fn quantize6(value: u8) u8 {
     return @intCast(((@as(u32, value >> 2) * 255) + 31) / 63);
 }
 
-test "video PNG defaults to lossless RGB888 and supports RGB666" {
+fn quantize7(value: u8) u8 {
+    return @intCast(((@as(u32, value >> 1) * 255) + 63) / 127);
+}
+
+test "video PNG defaults to lossless RGB888 and supports RGB666 and RGB777" {
     const value = try openVideo();
     defer value.deinit();
     try value.configureOutput(16, 16, false);
@@ -33,6 +37,17 @@ test "video PNG defaults to lossless RGB888 and supports RGB666" {
             try std.testing.expectEqual(@as(u8, 255), encoded)
         else
             try std.testing.expectEqual(quantize6(source), encoded);
+    }
+
+    try value.configurePng(1, 2, 6);
+    _ = try value.update(0);
+    const rgb777 = try image.decode(std.testing.allocator, value.current_image.?.encoded_png.?, .{});
+    defer rgb777.deinit();
+    for (value.current_image.?.pixels, rgb777.pixels, 0..) |source, encoded, index| {
+        if (index % 4 == 3)
+            try std.testing.expectEqual(@as(u8, 255), encoded)
+        else
+            try std.testing.expectEqual(quantize7(source), encoded);
     }
 }
 

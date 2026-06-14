@@ -120,7 +120,7 @@ export class NativeVideo {
     if (status !== 0) throw videoError(this.lib, this.handle, status)
   }
 
-  public setAvSyncOffset(offsetMs: number): void {
+  public setAvSyncOffsetMs(offsetMs: number): void {
     const offsetUs = Math.round(offsetMs * 1000)
     if (!Number.isFinite(offsetMs) || !Number.isSafeInteger(offsetUs)) {
       throw new RangeError("video A/V sync offset must resolve to a safe number of microseconds")

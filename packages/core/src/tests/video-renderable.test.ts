@@ -142,16 +142,16 @@ describe("VideoRenderable timeline", () => {
 
   test("stores a finite millisecond A/V sync offset without opening media", async () => {
     const renderer = (await createTestRenderer({})).renderer
-    const video = new VideoRenderable(renderer, { source: "unused.mp4", avSyncOffset: 75.25 })
+    const video = new VideoRenderable(renderer, { source: "unused.mp4", avSyncOffsetMs: 75.25 })
     try {
-      expect(video.avSyncOffset).toBe(75.25)
-      video.avSyncOffset = -30
-      expect(video.avSyncOffset).toBe(-30)
+      expect(video.avSyncOffsetMs).toBe(75.25)
+      video.avSyncOffsetMs = -30
+      expect(video.avSyncOffsetMs).toBe(-30)
       expect(() => {
-        video.avSyncOffset = Number.NaN
+        video.avSyncOffsetMs = Number.NaN
       }).toThrow("safe number of microseconds")
       expect(() => {
-        video.avSyncOffset = Number.MAX_VALUE
+        video.avSyncOffsetMs = Number.MAX_VALUE
       }).toThrow("safe number of microseconds")
     } finally {
       video.destroy()

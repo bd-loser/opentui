@@ -92,7 +92,7 @@ let resumeAfterVideoFile = false
 let showingVideo = false
 let fitMode: FitMode = "fit"
 let protocol: ImageRenderProtocol = "auto"
-let avSyncOffset = 0
+let avSyncOffsetMs = 0
 
 const protocols: ImageRenderProtocol[] = ["auto", "kitty", "sixel", "blocks"]
 
@@ -117,7 +117,7 @@ function updateVideoStatus(): void {
   if (!videoStatus || !videoMetadata || !video) return
   const quality = video.qualityTier
   videoStatus.fg = P.cyan
-  const syncOffset = `${video.avSyncOffset >= 0 ? "+" : ""}${video.avSyncOffset.toFixed(0)}MS AV`
+  const syncOffset = `${video.avSyncOffsetMs >= 0 ? "+" : ""}${video.avSyncOffsetMs.toFixed(0)}MS AV`
   videoStatus.content = `${basename(selectedVideoPath)}  |  ${video.effectiveProtocol.toUpperCase()}  |  ${syncOffset}  |  QUALITY ${quality.index + 1}/${quality.total} ${quality.label}${quality.lossless ? " LOSSLESS" : ""}  |  ${videoMetadata.width}×${videoMetadata.height}  ${videoMetadata.fps.toFixed(0)} SOURCE → ${video.presentationFps.toFixed(1)} DISPLAY FPS  ${formatTime(video.currentTime)} / ${formatTime(video.duration)}  ${video.playing ? "PLAYING" : "PAUSED"}`
 }
 
@@ -130,7 +130,7 @@ function createVideo(renderer: CliRenderer, source: string, autoplay: boolean): 
     protocol,
     autoplay,
     loop: true,
-    avSyncOffset,
+    avSyncOffsetMs,
     width: "100%",
     height: "auto",
     flexGrow: 1,
@@ -751,12 +751,12 @@ export async function run(renderer: CliRenderer): Promise<void> {
     } else if (showingVideo && key.name === "right") {
       video?.seekBy(key.shift ? 5 : 0.25)
     } else if (showingVideo && key.raw === "[") {
-      avSyncOffset -= 10
-      if (video) video.avSyncOffset = avSyncOffset
+      avSyncOffsetMs -= 10
+      if (video) video.avSyncOffsetMs = avSyncOffsetMs
       updateVideoStatus()
     } else if (showingVideo && key.raw === "]") {
-      avSyncOffset += 10
-      if (video) video.avSyncOffset = avSyncOffset
+      avSyncOffsetMs += 10
+      if (video) video.avSyncOffsetMs = avSyncOffsetMs
       updateVideoStatus()
     } else if (key.name === "f") fitMode = fitMode === "fit" ? "cover" : "fit"
     else if (key.name === "p") protocol = protocols[(protocols.indexOf(protocol) + 1) % protocols.length]
@@ -807,7 +807,7 @@ export function destroy(renderer: CliRenderer): void {
   controlsText = null
   fitMode = "fit"
   protocol = "auto"
-  avSyncOffset = 0
+  avSyncOffsetMs = 0
   server?.close()
   server = null
 }

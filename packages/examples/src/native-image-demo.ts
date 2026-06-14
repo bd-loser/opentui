@@ -2,13 +2,18 @@
 
 import { createServer, type Server } from "node:http"
 import { readFile } from "node:fs/promises"
+import { basename, dirname, extname, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import {
   BoxRenderable,
   CliRenderer,
   ImageRenderable,
-  NativeImage,
+  InputRenderable,
+  InputRenderableEvents,
+  NativeVideo,
+  SelectRenderable,
+  SelectRenderableEvents,
   TextAttributes,
   TextRenderable,
   VideoRenderable,
@@ -16,9 +21,11 @@ import {
   type ImageSource,
   type ImageRenderProtocol,
   type KeyEvent,
+  type SelectOption,
   type VideoMetadata,
 } from "@opentui/core"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
+import { listVideoDirectory, resolveVideoDirectoryPath, type VideoFileEntry } from "./lib/video-file-browser.js"
 
 // @ts-ignore Bun embeds imported assets and returns their runtime paths.
 import gifPath from "./assets/image-demo.gif" with { type: "image/gif" }
@@ -54,6 +61,10 @@ interface GalleryItem {
   card: string
 }
 
+interface VideoFileOption extends SelectOption {
+  value: VideoFileEntry | { type: "parent" | "empty"; path: string; name: string }
+}
+
 let root: BoxRenderable | null = null
 let server: Server | null = null
 let keyListener: ((key: KeyEvent) => void) | null = null
@@ -62,9 +73,22 @@ let controlsText: TextRenderable | null = null
 let previews: ImageRenderable[] = []
 let galleryView: BoxRenderable | null = null
 let videoView: BoxRenderable | null = null
+let videoPlayerView: BoxRenderable | null = null
+let videoHost: BoxRenderable | null = null
 let video: VideoRenderable | null = null
 let videoStatus: TextRenderable | null = null
+let videoFileView: BoxRenderable | null = null
+let videoFilePath: TextRenderable | null = null
+let videoFilePathInput: InputRenderable | null = null
+let videoFileMessage: TextRenderable | null = null
+let videoFileSelect: SelectRenderable | null = null
 let videoMetadata: VideoMetadata | null = null
+let selectedVideoPath = videoPath
+let videoFileDirectory = resolve(process.cwd())
+let videoFileVisible = false
+let videoFilePathVisible = false
+let videoFileRequestId = 0
+let resumeAfterVideoFile = false
 let showingVideo = false
 let fitMode: FitMode = "fit"
 let protocol: ImageRenderProtocol = "auto"
@@ -74,9 +98,13 @@ const protocols: ImageRenderProtocol[] = ["auto", "kitty", "sixel", "blocks"]
 function updateControls(): void {
   if (!controlsText) return
   const effective = previews[0]?.effectiveProtocol ?? "blocks"
-  controlsText.content = showingVideo
-    ? `V  GALLERY     SPACE  ${video?.playing ? "PAUSE" : "PLAY"}     ←/→  0.25S     F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}`
-    : `V  VIDEO     F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}     ESC  MENU`
+  controlsText.content = videoFileVisible
+    ? videoFilePathVisible
+      ? "ENTER  GO TO DIRECTORY     ESC  BACK"
+      : "↑/↓  CHOOSE     ENTER  OPEN     G  GO TO DIRECTORY     BACKSPACE  PARENT     ESC  CANCEL"
+    : showingVideo
+      ? `V  GALLERY     O  OPEN FILE     SPACE  ${video?.playing ? "PAUSE" : "PLAY"}     ←/→  0.25S     F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}`
+      : `V  VIDEO     F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}     ESC  MENU`
 }
 
 function formatTime(seconds: number): string {
@@ -86,7 +114,234 @@ function formatTime(seconds: number): string {
 
 function updateVideoStatus(): void {
   if (!videoStatus || !videoMetadata || !video) return
-  videoStatus.content = `NATIVE H264  ${videoMetadata.width}×${videoMetadata.height}  ${videoMetadata.fps.toFixed(0)} FPS  ${formatTime(video.currentTime)} / ${formatTime(video.duration)}  ${video.playing ? "PLAYING" : "PAUSED"}`
+  videoStatus.fg = P.cyan
+  videoStatus.content = `${basename(selectedVideoPath)}  |  NATIVE H264  ${videoMetadata.width}×${videoMetadata.height}  ${videoMetadata.fps.toFixed(0)} FPS  ${formatTime(video.currentTime)} / ${formatTime(video.duration)}  ${video.playing ? "PLAYING" : "PAUSED"}`
+}
+
+function createVideo(renderer: CliRenderer, source: string, autoplay: boolean): VideoRenderable {
+  let nextVideo: VideoRenderable
+  nextVideo = new VideoRenderable(renderer, {
+    id: "native-video-preview",
+    source,
+    fit: fitMode,
+    protocol,
+    autoplay,
+    loop: true,
+    width: "100%",
+    height: "auto",
+    flexGrow: 1,
+    flexShrink: 1,
+    onReady: (metadata) => {
+      if (video !== nextVideo) return
+      videoMetadata = metadata
+      updateVideoStatus()
+    },
+    onPlay: () => {
+      if (video !== nextVideo) return
+      updateVideoStatus()
+      updateControls()
+    },
+    onPause: () => {
+      if (video !== nextVideo) return
+      updateVideoStatus()
+      updateControls()
+    },
+    onSeek: () => {
+      if (video === nextVideo) updateVideoStatus()
+    },
+    onTimeUpdate: () => {
+      if (video === nextVideo) updateVideoStatus()
+    },
+    onError: (error) => {
+      if (video !== nextVideo || !videoStatus) return
+      videoStatus.content = `VIDEO FAILED  ${error.message}`
+      videoStatus.fg = P.coral
+    },
+  })
+  return nextVideo
+}
+
+function updateVideoFileHeader(message = ""): void {
+  if (videoFilePath) videoFilePath.content = videoFileDirectory
+  if (videoFileMessage) {
+    videoFileMessage.content = message
+    videoFileMessage.fg = message.startsWith("Cannot") ? P.coral : P.muted
+    videoFileMessage.visible = message.length > 0
+  }
+}
+
+function videoFileOption(entry: VideoFileEntry): VideoFileOption {
+  return {
+    name: entry.type === "directory" ? `${entry.name}/` : entry.name,
+    description: "",
+    color: entry.type === "directory" ? P.violet : P.text,
+    selectedColor: entry.type === "directory" ? "#d8c9ff" : P.cyan,
+    attributes: entry.type === "directory" ? TextAttributes.BOLD : TextAttributes.NONE,
+    detail: entry.type === "file" ? extname(entry.name).slice(1).toUpperCase() : undefined,
+    detailColor: P.muted,
+    selectedDetailColor: P.violet,
+    value: entry,
+  }
+}
+
+function setVideoFileOptions(directory: string, entries: VideoFileEntry[]): void {
+  videoFileDirectory = directory
+  const parent = dirname(directory)
+  const options: VideoFileOption[] =
+    parent === directory
+      ? []
+      : [
+          {
+            name: "../",
+            description: "",
+            color: P.violet,
+            selectedColor: "#d8c9ff",
+            attributes: TextAttributes.BOLD,
+            detail: "UP",
+            detailColor: P.muted,
+            value: { type: "parent", path: parent, name: ".." },
+          },
+        ]
+  options.push(...entries.map(videoFileOption))
+  if (options.length === 0) {
+    options.push({
+      name: "No videos here",
+      description: "",
+      color: P.muted,
+      value: { type: "empty", path: directory, name: "" },
+    })
+  }
+
+  if (videoFileSelect) {
+    videoFileSelect.options = options
+    videoFileSelect.setSelectedIndex(0)
+  }
+  updateVideoFileHeader()
+}
+
+async function refreshVideoFiles(directory: string = videoFileDirectory): Promise<void> {
+  const requestId = ++videoFileRequestId
+  const nextDirectory = resolve(directory)
+  updateVideoFileHeader("Loading...")
+
+  try {
+    const entries = await listVideoDirectory(nextDirectory)
+    if (requestId !== videoFileRequestId || !videoFileVisible) return
+    setVideoFileOptions(nextDirectory, entries)
+  } catch (error) {
+    if (requestId !== videoFileRequestId || !videoFileVisible) return
+    const message = error instanceof Error ? error.message : String(error)
+    updateVideoFileHeader(`Cannot read directory: ${message}`)
+  }
+}
+
+function showVideoFilePathInput(): void {
+  if (!videoFilePath || !videoFilePathInput || !videoFileSelect) return
+  videoFilePathVisible = true
+  videoFilePath.visible = false
+  videoFilePathInput.visible = true
+  videoFileSelect.blur()
+  videoFilePathInput.value = videoFileDirectory
+  videoFilePathInput.focus()
+  videoFilePathInput.selectAll()
+  updateVideoFileHeader()
+  updateControls()
+}
+
+function hideVideoFilePathInput(): void {
+  if (!videoFilePath || !videoFilePathInput || !videoFileSelect) return
+  videoFileRequestId++
+  videoFilePathVisible = false
+  videoFilePathInput.blur()
+  videoFilePathInput.visible = false
+  videoFilePath.visible = true
+  videoFileSelect.focus()
+  updateVideoFileHeader()
+  updateControls()
+}
+
+async function jumpToVideoDirectory(value: string): Promise<void> {
+  const input = value.trim()
+  if (!input || !videoFileVisible || !videoFilePathVisible) return
+  const requestId = ++videoFileRequestId
+  const nextDirectory = resolveVideoDirectoryPath(videoFileDirectory, input)
+
+  try {
+    const entries = await listVideoDirectory(nextDirectory)
+    if (requestId !== videoFileRequestId || !videoFileVisible || !videoFilePathVisible) return
+    setVideoFileOptions(nextDirectory, entries)
+    hideVideoFilePathInput()
+  } catch {
+    // Keep the current directory and path input unchanged.
+  }
+}
+
+function showVideoFiles(): void {
+  if (!videoPlayerView || !videoFileView || !videoFileSelect) return
+  resumeAfterVideoFile = video?.playing ?? false
+  video?.pause()
+  videoFileVisible = true
+  videoFilePathVisible = false
+  videoPlayerView.visible = false
+  videoFileView.visible = true
+  videoFileSelect.focus()
+  updateControls()
+  void refreshVideoFiles()
+}
+
+function hideVideoFiles(resumePlayback = true): void {
+  if (!videoPlayerView || !videoFileView || !videoFileSelect) return
+  videoFileRequestId++
+  videoFileVisible = false
+  videoFilePathVisible = false
+  videoFilePathInput?.blur()
+  if (videoFilePathInput) videoFilePathInput.visible = false
+  if (videoFilePath) videoFilePath.visible = true
+  videoFileSelect.blur()
+  videoFileView.visible = false
+  videoPlayerView.visible = true
+  if (resumePlayback && resumeAfterVideoFile) video?.play()
+  resumeAfterVideoFile = false
+  updateControls()
+}
+
+function loadVideoFile(renderer: CliRenderer, filePath: string): void {
+  updateVideoFileHeader(`Checking ${basename(filePath)}...`)
+  videoFileSelect?.blur()
+
+  try {
+    const validation = NativeVideo.open(filePath)
+    validation.dispose()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    updateVideoFileHeader(`Cannot open ${basename(filePath)}: ${message}`)
+    videoFileSelect?.focus()
+    return
+  }
+
+  const shouldPlay = resumeAfterVideoFile
+  const previousVideo = video
+  const nextVideo = createVideo(renderer, filePath, shouldPlay)
+  previousVideo?.destroy()
+  video = nextVideo
+  videoMetadata = null
+  selectedVideoPath = filePath
+  videoHost?.add(nextVideo)
+  hideVideoFiles(false)
+  if (videoStatus) {
+    videoStatus.fg = P.cyan
+    videoStatus.content = `${basename(filePath)}  |  LOADING NATIVE H264...`
+  }
+}
+
+async function handleVideoFileOption(renderer: CliRenderer, option: SelectOption): Promise<void> {
+  const entry = (option as VideoFileOption).value
+  if (entry.type === "empty") return
+  if (entry.type === "parent" || entry.type === "directory") {
+    await refreshVideoFiles(entry.path)
+    return
+  }
+  loadVideoFile(renderer, entry.path)
 }
 
 function createCard(renderer: CliRenderer, item: GalleryItem, index: number): BoxRenderable {
@@ -275,36 +530,22 @@ export async function run(renderer: CliRenderer): Promise<void> {
     backgroundColor: P.page,
     visible: false,
   })
-  video = new VideoRenderable(renderer, {
-    id: "native-video-preview",
-    source: videoPath,
-    fit: fitMode,
-    protocol,
-    autoplay: false,
-    loop: true,
+  videoPlayerView = new BoxRenderable(renderer, {
+    id: "native-video-player-view",
     width: "100%",
     height: "auto",
     flexGrow: 1,
     flexShrink: 1,
-    onReady: (metadata) => {
-      videoMetadata = metadata
-      updateVideoStatus()
-    },
-    onPlay: () => {
-      updateVideoStatus()
-      updateControls()
-    },
-    onPause: () => {
-      updateVideoStatus()
-      updateControls()
-    },
-    onSeek: updateVideoStatus,
-    onTimeUpdate: updateVideoStatus,
-    onError: (error) => {
-      if (!videoStatus) return
-      videoStatus.content = `VIDEO FAILED  ${error.message}`
-      videoStatus.fg = P.coral
-    },
+    flexDirection: "column",
+    backgroundColor: P.page,
+  })
+  videoHost = new BoxRenderable(renderer, {
+    id: "native-video-host",
+    width: "100%",
+    height: "auto",
+    flexGrow: 1,
+    flexShrink: 1,
+    backgroundColor: P.page,
   })
   videoStatus = new TextRenderable(renderer, {
     id: "native-video-status",
@@ -316,8 +557,135 @@ export async function run(renderer: CliRenderer): Promise<void> {
     fg: P.cyan,
     bg: P.footer,
   })
-  videoView.add(video)
-  videoView.add(videoStatus)
+  video = createVideo(renderer, videoPath, false)
+  videoHost.add(video)
+  videoPlayerView.add(videoHost)
+  videoPlayerView.add(videoStatus)
+  videoView.add(videoPlayerView)
+
+  videoFileView = new BoxRenderable(renderer, {
+    id: "native-video-file-view",
+    width: "100%",
+    height: "auto",
+    flexGrow: 1,
+    flexShrink: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 2,
+    backgroundColor: P.page,
+    visible: false,
+  })
+  const videoFilePanel = new BoxRenderable(renderer, {
+    id: "native-video-file-panel",
+    width: "100%",
+    maxWidth: 96,
+    height: "100%",
+    maxHeight: 34,
+    minHeight: 12,
+    flexDirection: "column",
+    backgroundColor: P.header,
+    paddingLeft: 2,
+    paddingRight: 2,
+    paddingTop: 1,
+    paddingBottom: 1,
+  })
+  const videoFileHeader = new BoxRenderable(renderer, {
+    id: "native-video-file-header",
+    width: "100%",
+    height: 1,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    backgroundColor: P.header,
+  })
+  videoFileHeader.add(
+    new TextRenderable(renderer, {
+      id: "native-video-file-heading",
+      content: "CHOOSE A VIDEO",
+      fg: P.text,
+      bg: P.header,
+      attributes: TextAttributes.BOLD,
+    }),
+  )
+  videoFilePath = new TextRenderable(renderer, {
+    id: "native-video-file-path",
+    content: videoFileDirectory,
+    width: "100%",
+    height: 1,
+    flexGrow: 0,
+    flexShrink: 0,
+    fg: P.cyan,
+    bg: P.header,
+  })
+  videoFilePathInput = new InputRenderable(renderer, {
+    id: "native-video-file-path-input",
+    width: "100%",
+    value: "",
+    placeholder: "Enter an absolute or relative directory path",
+    textColor: P.text,
+    backgroundColor: "#1a2137",
+    cursorColor: P.cyan,
+    placeholderColor: P.muted,
+    selectionBg: "#39456d",
+    selectionFg: P.text,
+    visible: false,
+  })
+  videoFilePathInput.on(InputRenderableEvents.ENTER, (value: string) => {
+    void jumpToVideoDirectory(value)
+  })
+  videoFileMessage = new TextRenderable(renderer, {
+    id: "native-video-file-message",
+    content: "",
+    width: "100%",
+    height: 1,
+    flexGrow: 0,
+    flexShrink: 0,
+    fg: P.muted,
+    bg: P.header,
+    visible: false,
+  })
+  videoFileSelect = new SelectRenderable(renderer, {
+    id: "native-video-file-select",
+    width: "100%",
+    height: "auto",
+    flexGrow: 1,
+    flexShrink: 1,
+    options: [],
+    backgroundColor: P.header,
+    focusedBackgroundColor: P.header,
+    textColor: P.text,
+    focusedTextColor: P.text,
+    selectedBackgroundColor: "#312e52",
+    selectedTextColor: P.cyan,
+    descriptionColor: P.muted,
+    selectedDescriptionColor: P.violet,
+    showDescription: false,
+    showScrollIndicator: true,
+    wrapSelection: false,
+    fastScrollStep: 8,
+  })
+  videoFileSelect.on(SelectRenderableEvents.ITEM_SELECTED, (_index: number, option: SelectOption) => {
+    void handleVideoFileOption(renderer, option)
+  })
+  const videoFileSupport = new TextRenderable(renderer, {
+    id: "native-video-file-support",
+    content: "Shows MP4 and MOV files. Video must use H.264; AAC audio is optional.",
+    width: "100%",
+    height: 1,
+    flexGrow: 0,
+    flexShrink: 0,
+    fg: P.muted,
+    bg: P.header,
+  })
+  videoFilePanel.add(videoFileHeader)
+  videoFilePanel.add(videoFilePath)
+  videoFilePanel.add(videoFilePathInput)
+  videoFilePanel.add(videoFileMessage)
+  videoFilePanel.add(videoFileSelect)
+  videoFilePanel.add(videoFileSupport)
+  videoFileView.add(videoFilePanel)
+  videoView.add(videoFileView)
   root.add(videoView)
 
   const footer = new BoxRenderable(renderer, {
@@ -341,12 +709,37 @@ export async function run(renderer: CliRenderer): Promise<void> {
   updateControls()
 
   keyListener = (key: KeyEvent) => {
+    if (videoFileVisible) {
+      if (videoFilePathVisible) {
+        if (key.name === "escape") {
+          key.preventDefault()
+          key.stopPropagation()
+          hideVideoFilePathInput()
+        }
+        return
+      }
+
+      if (key.name === "escape") {
+        key.preventDefault()
+        key.stopPropagation()
+        hideVideoFiles()
+      } else if (key.name === "g" && !key.ctrl && !key.meta) {
+        key.preventDefault()
+        key.stopPropagation()
+        showVideoFilePathInput()
+      } else if (key.name === "backspace") void refreshVideoFiles(dirname(videoFileDirectory))
+      else if (key.name === "r") void refreshVideoFiles()
+      return
+    }
+
     if (key.name === "v" && !key.ctrl && !key.meta) {
       showingVideo = !showingVideo
       if (galleryView) galleryView.visible = !showingVideo
       if (videoView) videoView.visible = showingVideo
       if (showingVideo) video?.play()
       else video?.pause()
+    } else if (showingVideo && key.name === "o") {
+      showVideoFiles()
     } else if (showingVideo && key.name === "space") {
       video?.toggle()
     } else if (showingVideo && key.name === "left") {
@@ -367,7 +760,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
     }
     updateControls()
   }
-  renderer.keyInput.on("keypress", keyListener)
+  renderer.keyInput.prependListener("keypress", keyListener)
   capabilityListener = updateControls
   renderer.on("capabilities", capabilityListener)
 }
@@ -382,9 +775,22 @@ export function destroy(renderer: CliRenderer): void {
   previews = []
   galleryView = null
   videoView = null
+  videoPlayerView = null
+  videoHost = null
   video = null
   videoStatus = null
+  videoFileView = null
+  videoFilePath = null
+  videoFilePathInput = null
+  videoFileMessage = null
+  videoFileSelect = null
   videoMetadata = null
+  selectedVideoPath = videoPath
+  videoFileDirectory = resolve(process.cwd())
+  videoFileVisible = false
+  videoFilePathVisible = false
+  videoFileRequestId++
+  resumeAfterVideoFile = false
   showingVideo = false
   controlsText = null
   fitMode = "fit"

@@ -2,6 +2,7 @@ import { test, expect, beforeEach, afterEach, describe } from "bun:test"
 import { SelectRenderable, type SelectRenderableOptions, SelectRenderableEvents, type SelectOption } from "./Select.js"
 import { createTestRenderer, type MockInput, type TestRenderer } from "../testing/test-renderer.js"
 import { KeyEvent } from "../lib/KeyHandler.js"
+import { TextAttributes, type CapturedFrame } from "../types.js"
 
 // Helper function to create a KeyEvent from a string or object
 function createKeyEvent(
@@ -42,6 +43,7 @@ let currentRenderer: TestRenderer
 let currentMockInput: MockInput
 let renderOnce: () => Promise<void>
 let captureCharFrame: () => string
+let captureSpans: () => CapturedFrame
 
 const sampleOptions: SelectOption[] = [
   { name: "Option 1", description: "First option" },
@@ -68,6 +70,7 @@ beforeEach(async () => {
     mockInput: currentMockInput,
     renderOnce,
     captureCharFrame,
+    captureSpans,
   } = await createTestRenderer({}))
 })
 
@@ -249,6 +252,32 @@ describe("SelectRenderable", () => {
 
       expect(captureCharFrame()).not.toContain("Option 1")
       expect(captureCharFrame()).not.toContain("Option 2")
+    })
+
+    test("should render option detail and per-option attributes on one line", async () => {
+      await createSelectRenderable(currentRenderer, {
+        width: 24,
+        height: 2,
+        showDescription: false,
+        options: [
+          {
+            name: "Movies/",
+            description: "",
+            detail: "MOV",
+            color: "#A78BFA",
+            attributes: TextAttributes.BOLD,
+          },
+        ],
+      })
+
+      const firstLine = captureCharFrame().split("\n")[0]
+      expect(firstLine).toContain("Movies/")
+      expect(firstLine).toContain("MOV")
+      expect(firstLine.indexOf("MOV")).toBeGreaterThan(firstLine.indexOf("Movies/"))
+
+      const nameSpan = captureSpans().lines[0].spans.find((span) => span.text.includes("Movies/"))
+      expect(nameSpan).toBeDefined()
+      expect(nameSpan!.attributes & TextAttributes.BOLD).toBe(TextAttributes.BOLD)
     })
 
     test("should preserve valid selected index when options change", async () => {

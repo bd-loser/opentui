@@ -17,7 +17,10 @@ import {
   TextAttributes,
   TextRenderable,
   VideoRenderable,
+  bold,
   createCliRenderer,
+  fg,
+  t,
   type ImageSource,
   type ImageRenderProtocol,
   type KeyEvent,
@@ -70,6 +73,8 @@ let server: Server | null = null
 let keyListener: ((key: KeyEvent) => void) | null = null
 let capabilityListener: (() => void) | null = null
 let controlsText: TextRenderable | null = null
+let headerTitle: TextRenderable | null = null
+let headerContext: TextRenderable | null = null
 let previews: ImageRenderable[] = []
 let galleryView: BoxRenderable | null = null
 let videoView: BoxRenderable | null = null
@@ -109,16 +114,31 @@ function updateControls(): void {
 }
 
 function formatTime(seconds: number): string {
-  const minutes = Math.floor(seconds / 60)
-  return `${minutes}:${(seconds - minutes * 60).toFixed(3).padStart(6, "0")}`
+  const wholeSeconds = Math.floor(seconds)
+  const hours = Math.floor(wholeSeconds / 3600)
+  const minutes = Math.floor((wholeSeconds % 3600) / 60)
+  const remaining = seconds - hours * 3600 - minutes * 60
+  return hours > 0
+    ? `${hours}:${minutes.toString().padStart(2, "0")}:${remaining.toFixed(3).padStart(6, "0")}`
+    : `${minutes}:${remaining.toFixed(3).padStart(6, "0")}`
+}
+
+function updateHeader(): void {
+  if (!headerTitle || !headerContext) return
+  headerTitle.content = showingVideo ? "NATIVE VIDEO LAB" : "NATIVE IMAGE LAB"
+  headerContext.content = showingVideo
+    ? t`${fg(P.muted)("SOURCE")}  ${fg(P.cyan)(selectedVideoPath)}`
+    : t`${fg(P.muted)("FILESYSTEM  ·  URL  ·  BYTES  ·  HTTP")}`
 }
 
 function updateVideoStatus(): void {
   if (!videoStatus || !videoMetadata || !video) return
   const quality = video.qualityTier
-  videoStatus.fg = P.cyan
-  const syncOffset = `AUTO ${video.automaticSyncLeadMs.toFixed(0)}MS  ${video.avSyncOffsetMs >= 0 ? "+" : ""}${video.avSyncOffsetMs.toFixed(0)}MS MANUAL`
-  videoStatus.content = `${basename(selectedVideoPath)}  |  ${video.effectiveProtocol.toUpperCase()}  |  ${syncOffset}  |  QUALITY ${quality.index + 1}/${quality.total} ${quality.label}${quality.lossless ? " LOSSLESS" : ""}  |  ${videoMetadata.width}×${videoMetadata.height}  ${videoMetadata.fps.toFixed(0)} SOURCE → ${video.presentationFps.toFixed(1)} DISPLAY FPS  ${formatTime(video.currentTime)} / ${formatTime(video.duration)}  ${video.playing ? "PLAYING" : "PAUSED"}`
+  const separator = fg("#46516d")("  │  ")
+  const state = video.playing ? bold(fg(P.lime)("● PLAYING")) : bold(fg(P.coral)("Ⅱ PAUSED"))
+  const manualSync = `${video.avSyncOffsetMs >= 0 ? "+" : ""}${video.avSyncOffsetMs.toFixed(0)}ms`
+  videoStatus.content = t`${state}${separator}${bold(fg(P.text)(formatTime(video.currentTime)))} ${fg(P.muted)("/")} ${fg(P.text)(formatTime(video.duration))}${separator}${bold(fg(P.cyan)(`${video.presentationFps.toFixed(1)} FPS`))} ${fg(P.muted)("display")}${separator}${fg(P.text)(`${videoMetadata.width}×${videoMetadata.height}`)} ${fg(P.muted)(`@ ${videoMetadata.fps.toFixed(0)} FPS source`)}
+${bold(fg(P.violet)(video.effectiveProtocol.toUpperCase()))}${separator}${bold(fg(P.text)(quality.label))} ${fg(P.muted)(`${quality.index + 1}/${quality.total}${quality.lossless ? " lossless" : ""}`)}${separator}${fg(P.muted)("SYNC")} ${bold(fg(P.cyan)(`auto +${video.automaticSyncLeadMs.toFixed(0)}ms`))} ${fg(P.muted)("· manual")} ${fg(P.text)(manualSync)}`
 }
 
 function createVideo(renderer: CliRenderer, source: string, autoplay: boolean): VideoRenderable {
@@ -330,11 +350,11 @@ function loadVideoFile(renderer: CliRenderer, filePath: string): void {
   video = nextVideo
   videoMetadata = null
   selectedVideoPath = filePath
+  updateHeader()
   videoHost?.add(nextVideo)
   hideVideoFiles(false)
   if (videoStatus) {
-    videoStatus.fg = P.cyan
-    videoStatus.content = `${basename(filePath)}  |  LOADING NATIVE H264...`
+    videoStatus.content = t`${bold(fg(P.violet)("LOADING"))} ${fg(P.muted)("Native H.264 decoder is preparing the stream...")}`
   }
 }
 
@@ -481,20 +501,38 @@ export async function run(renderer: CliRenderer): Promise<void> {
     height: 4,
     flexGrow: 0,
     flexShrink: 0,
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: "column",
+    justifyContent: "center",
     paddingLeft: 3,
     paddingRight: 3,
     backgroundColor: P.header,
   })
-  header.add(
-    new TextRenderable(renderer, {
-      id: "native-image-heading",
-      content: "NATIVE IMAGE LAB",
-      fg: P.text,
-      attributes: TextAttributes.BOLD,
-    }),
-  )
+  headerTitle = new TextRenderable(renderer, {
+    id: "native-image-heading",
+    content: "NATIVE IMAGE LAB",
+    width: "100%",
+    height: 1,
+    flexGrow: 0,
+    flexShrink: 0,
+    wrapMode: "none",
+    truncate: true,
+    fg: P.text,
+    attributes: TextAttributes.BOLD,
+  })
+  headerContext = new TextRenderable(renderer, {
+    id: "native-image-context",
+    content: "",
+    width: "100%",
+    height: 1,
+    flexGrow: 0,
+    flexShrink: 0,
+    wrapMode: "none",
+    truncate: true,
+    fg: P.muted,
+  })
+  header.add(headerTitle)
+  header.add(headerContext)
+  updateHeader()
   root.add(header)
 
   const gallery = new BoxRenderable(renderer, {
@@ -558,7 +596,10 @@ export async function run(renderer: CliRenderer): Promise<void> {
     height: 2,
     flexGrow: 0,
     flexShrink: 0,
-    fg: P.cyan,
+    paddingLeft: 2,
+    wrapMode: "none",
+    truncate: true,
+    fg: P.text,
     bg: P.footer,
   })
   video = createVideo(renderer, videoPath, false)
@@ -742,6 +783,7 @@ export async function run(renderer: CliRenderer): Promise<void> {
       if (videoView) videoView.visible = showingVideo
       if (showingVideo) video?.play()
       else video?.pause()
+      updateHeader()
     } else if (showingVideo && key.name === "o") {
       showVideoFiles()
     } else if (showingVideo && key.name === "space") {
@@ -805,6 +847,8 @@ export function destroy(renderer: CliRenderer): void {
   resumeAfterVideoFile = false
   showingVideo = false
   controlsText = null
+  headerTitle = null
+  headerContext = null
   fitMode = "fit"
   protocol = "auto"
   avSyncOffsetMs = 0

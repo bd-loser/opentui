@@ -187,7 +187,7 @@ describe("VideoRenderable adaptive quality", () => {
     let state = createAdaptiveVideoQualityState()
     for (let serial = 1n; serial <= 8n; serial++) {
       state = updateAdaptiveVideoQuality(state, {
-        updateTimeMs: 30,
+        updateTimeMs: 42,
         frameBudgetMs: 40,
         frameSerial: serial,
         expectedFrameStep: 1n,
@@ -195,6 +195,21 @@ describe("VideoRenderable adaptive quality", () => {
       })
     }
     expect(state.tier).toBe(1)
+  })
+
+  test("does not downgrade when measured preparation stays within the frame budget", () => {
+    let state = createAdaptiveVideoQualityState()
+    for (let serial = 1n; serial <= 240n; serial++) {
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: serial % 30n === 0n ? 25 : 23.5,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 2n,
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBe(0)
+    expect(state.presentationRateTier).toBe(0)
   })
 
   test("starts at the highest tier and can downgrade through all eight tiers", () => {
@@ -206,7 +221,7 @@ describe("VideoRenderable adaptive quality", () => {
       for (let sample = 0; sample < 8; sample++) {
         serial++
         state = updateAdaptiveVideoQuality(state, {
-          updateTimeMs: 30,
+          updateTimeMs: 42,
           frameBudgetMs: 40,
           frameSerial: serial,
           expectedFrameStep: 1n,
@@ -383,6 +398,20 @@ describe("VideoRenderable adaptive quality", () => {
     expect(state.tier).toBe(0)
   })
 
+  test("recovers at the measured complex-scene processing cost", () => {
+    let state = { ...createAdaptiveVideoQualityState(), tier: 1 }
+    for (let serial = 1n; serial <= 120n; serial++) {
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 24,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 2n,
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBe(0)
+  })
+
   test("recovers a 60 FPS source through normal 30 FPS cadence jitter", () => {
     let state = { ...createAdaptiveVideoQualityState(), tier: 2 }
     let serial = 0n
@@ -470,11 +499,11 @@ describe("VideoRenderable adaptive quality", () => {
     expect(state.tier).toBe(1)
   })
 
-  test("does not recover without enough CPU margin for the next tier", () => {
+  test("does not recover without a ten-percent CPU margin for the next tier", () => {
     let state = { ...createAdaptiveVideoQualityState(), tier: 2 }
     for (let serial = 1n; serial <= 240n; serial++) {
       state = updateAdaptiveVideoQuality(state, {
-        updateTimeMs: 22,
+        updateTimeMs: 31,
         frameBudgetMs: 1000 / 30,
         frameSerial: serial,
         expectedFrameStep: 1n,
@@ -488,7 +517,7 @@ describe("VideoRenderable adaptive quality", () => {
     let state = { ...createAdaptiveVideoQualityState(), tier: 1, cooldownSamples: 30 }
     for (let serial = 1n; serial <= 30n; serial++) {
       state = updateAdaptiveVideoQuality(state, {
-        updateTimeMs: 30,
+        updateTimeMs: 42,
         frameBudgetMs: 40,
         frameSerial: serial,
         expectedFrameStep: 1n,
@@ -499,7 +528,7 @@ describe("VideoRenderable adaptive quality", () => {
     expect(state.overloadSamples).toBe(0)
     for (let serial = 31n; serial <= 38n; serial++) {
       state = updateAdaptiveVideoQuality(state, {
-        updateTimeMs: 30,
+        updateTimeMs: 42,
         frameBudgetMs: 40,
         frameSerial: serial,
         expectedFrameStep: 1n,

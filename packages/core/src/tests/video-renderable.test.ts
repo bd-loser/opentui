@@ -128,7 +128,7 @@ describe("VideoRenderable adaptive quality", () => {
 
   test("downgrades CPU quality after sustained frame-budget pressure", () => {
     let state = createAdaptiveVideoQualityState()
-    for (let serial = 1n; serial <= 3n; serial++) {
+    for (let serial = 1n; serial <= 8n; serial++) {
       state = updateAdaptiveVideoQuality(state, {
         updateTimeMs: 30,
         frameBudgetMs: 40,
@@ -146,7 +146,7 @@ describe("VideoRenderable adaptive quality", () => {
     let serial = 0n
     for (let expectedTier = 1; expectedTier <= 5; expectedTier++) {
       state = { ...state, cooldownSamples: 0 }
-      for (let sample = 0; sample < 3; sample++) {
+      for (let sample = 0; sample < 8; sample++) {
         serial++
         state = updateAdaptiveVideoQuality(state, {
           updateTimeMs: 30,
@@ -162,7 +162,7 @@ describe("VideoRenderable adaptive quality", () => {
 
   test("steps down to RGB666 under output backpressure", () => {
     let state = createAdaptiveVideoQualityState()
-    for (let serial = 1n; serial <= 3n; serial++) {
+    for (let serial = 1n; serial <= 8n; serial++) {
       state = updateAdaptiveVideoQuality(state, {
         updateTimeMs: 10,
         frameBudgetMs: 40,
@@ -172,6 +172,37 @@ describe("VideoRenderable adaptive quality", () => {
       })
     }
     expect(state.tier).toBe(1)
+  })
+
+  test("does not downgrade for measured lossless cost with normal timing jitter", () => {
+    let state = createAdaptiveVideoQualityState()
+    for (let serial = 1n; serial <= 240n; serial++) {
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: serial % 10n === 0n ? 22 : 16.7,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 1n,
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBe(0)
+  })
+
+  test("transient pressure decays instead of accumulating into a downgrade", () => {
+    let state = createAdaptiveVideoQualityState()
+    let backpressureCount = 0
+    for (let serial = 1n; serial <= 120n; serial++) {
+      if (serial % 3n === 0n) backpressureCount++
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 10,
+        frameBudgetMs: 40,
+        frameSerial: serial,
+        expectedFrameStep: 1n,
+        backpressureCount,
+      })
+    }
+    expect(state.tier).toBe(0)
+    expect(state.overloadSamples).toBe(1)
   })
 
   test("upgrades only after prolonged stable headroom", () => {

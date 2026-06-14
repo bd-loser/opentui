@@ -81,8 +81,10 @@ export interface VideoQualityTier {
 
 const VIDEO_QUALITY_TIER_COUNT = 6
 const VIDEO_PNG_PREDICTORS = { none: 0, up: 2, paeth: 4 } as const
-const VIDEO_CPU_OVERLOAD_RATIO = 0.55
+const VIDEO_CPU_OVERLOAD_RATIO = 0.7
 const VIDEO_QUALITY_RECOVERY_RATIO = 0.5
+const VIDEO_OVERLOAD_SCORE_LIMIT = 8
+const VIDEO_OVERLOAD_SCORE_RECOVERY = 2
 
 function videoQualityTier(
   index: number,
@@ -131,13 +133,19 @@ export function updateAdaptiveVideoQuality(
   const backpressured = sample.backpressureCount > state.lastBackpressureCount
   const cpuOverloaded = updateTimeMs > sample.frameBudgetMs * VIDEO_CPU_OVERLOAD_RATIO
   const overloaded = cpuOverloaded || skippedFrames || backpressured
-  let overloadSamples = overloaded ? state.overloadSamples + 1 : Math.max(0, state.overloadSamples - 1)
+  let overloadSamples = overloaded
+    ? state.overloadSamples + 1
+    : Math.max(0, state.overloadSamples - VIDEO_OVERLOAD_SCORE_RECOVERY)
   let headroomSamples =
     !overloaded && updateTimeMs < sample.frameBudgetMs * VIDEO_QUALITY_RECOVERY_RATIO ? state.headroomSamples + 1 : 0
   let cooldownSamples = Math.max(0, state.cooldownSamples - 1)
   let tier = state.tier
 
-  if (cooldownSamples === 0 && overloadSamples >= 3 && tier < VIDEO_PNG_QUALITY_TIERS.length - 1) {
+  if (
+    cooldownSamples === 0 &&
+    overloadSamples >= VIDEO_OVERLOAD_SCORE_LIMIT &&
+    tier < VIDEO_PNG_QUALITY_TIERS.length - 1
+  ) {
     tier++
     overloadSamples = 0
     headroomSamples = 0

@@ -18,7 +18,15 @@ fn quantize7(value: u8) u8 {
     return @intCast(((@as(u32, value >> 1) * 255) + 63) / 127);
 }
 
-test "video PNG defaults to lossless RGB888 and supports RGB666 and RGB777" {
+fn quantize5(value: u8) u8 {
+    return @intCast(((@as(u32, value >> 3) * 255) + 15) / 31);
+}
+
+fn quantize4(value: u8) u8 {
+    return @intCast(((@as(u32, value >> 4) * 255) + 7) / 15);
+}
+
+test "video PNG defaults to lossless RGB888 and supports adaptive RGB tiers" {
     const value = try openVideo();
     defer value.deinit();
     try value.configureOutput(16, 16, false);
@@ -48,6 +56,30 @@ test "video PNG defaults to lossless RGB888 and supports RGB666 and RGB777" {
             try std.testing.expectEqual(@as(u8, 255), encoded)
         else
             try std.testing.expectEqual(quantize7(source), encoded);
+    }
+
+    try value.configurePng(1, 4, 7);
+    _ = try value.update(0);
+    const rgb555 = try image.decode(std.testing.allocator, value.current_image.?.encoded_png.?, .{});
+    defer rgb555.deinit();
+    for (value.current_image.?.pixels, rgb555.pixels, 0..) |source, encoded, index| {
+        if (index % 4 == 3)
+            try std.testing.expectEqual(@as(u8, 255), encoded)
+        else
+            try std.testing.expectEqual(quantize5(source), encoded);
+    }
+
+    try value.configurePng(1, 4, 8);
+    _ = try value.update(0);
+    const rgb454 = try image.decode(std.testing.allocator, value.current_image.?.encoded_png.?, .{});
+    defer rgb454.deinit();
+    for (value.current_image.?.pixels, rgb454.pixels, 0..) |source, encoded, index| {
+        if (index % 4 == 3)
+            try std.testing.expectEqual(@as(u8, 255), encoded)
+        else if (index % 4 == 1)
+            try std.testing.expectEqual(quantize5(source), encoded)
+        else
+            try std.testing.expectEqual(quantize4(source), encoded);
     }
 }
 
@@ -79,6 +111,20 @@ test "video audio refill is bounded and preserves pending samples" {
     try std.testing.expectEqual(@as(u32, 1024), audio.getPcmQueuedFrames(value.audio_engine.?));
     try std.testing.expectEqual(@as(u32, 1024), try value.refillAudio(1024));
     try std.testing.expectEqual(@as(u32, 2048), audio.getPcmQueuedFrames(value.audio_engine.?));
+}
+
+test "video audio service does not decode or encode a new video frame" {
+    const value = try openVideo();
+    defer value.deinit();
+    value.audio_offline = true;
+    value.play();
+    _ = try value.update(0);
+    const frame_serial = value.state.frame_serial;
+
+    try value.service(100_000);
+
+    try std.testing.expectEqual(frame_serial, value.state.frame_serial);
+    try std.testing.expect(value.state.audio_produced_frames > 0);
 }
 
 test "video audio seek clears old PCM and refills from target" {

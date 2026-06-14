@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 
 import {
   calculateVideoGeometry,
+  calculateAdaptiveVideoPlaybackFps,
+  calculateVideoFrameStep,
   calculateVideoPlaybackFps,
   calculateVideoTickFps,
   createAdaptiveVideoQualityState,
@@ -101,6 +103,42 @@ describe("VideoRenderable timeline", () => {
     expect(calculateVideoTickFps(24, 30, true)).toBe(24)
     expect(calculateVideoTickFps(1, 30, false)).toBe(1)
   })
+
+  test("reduces presentation cadence through measured rate tiers", () => {
+    expect(calculateAdaptiveVideoPlaybackFps(60, 30, 0)).toBe(30)
+    expect(calculateAdaptiveVideoPlaybackFps(60, 30, 1)).toBe(24)
+    expect(calculateAdaptiveVideoPlaybackFps(60, 30, 3)).toBe(15)
+    expect(calculateAdaptiveVideoPlaybackFps(60, 30, 6)).toBe(7.5)
+    expect(calculateAdaptiveVideoPlaybackFps(60, 30, 8)).toBe(3.75)
+  })
+
+  test("accounts for intentional source-frame advances at reduced display cadence", () => {
+    expect(calculateVideoFrameStep(60, 30)).toBe(2n)
+    expect(calculateVideoFrameStep(60, 24)).toBe(3n)
+    expect(calculateVideoFrameStep(60, 20)).toBe(3n)
+    expect(calculateVideoFrameStep(60, 15)).toBe(4n)
+  })
+
+  test("does not treat reduced-cadence 60 FPS playback as sustained frame loss", () => {
+    let state = {
+      ...createAdaptiveVideoQualityState(),
+      tier: 1,
+      presentationRateTier: 3,
+    }
+    let serial = 0n
+    for (let sample = 0; sample < 420; sample++) {
+      serial += 4n
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 10,
+        frameBudgetMs: 1000 / 15,
+        frameSerial: serial,
+        expectedFrameStep: calculateVideoFrameStep(60, 15),
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBeLessThanOrEqual(1)
+    expect(state.presentationRateTier).toBeLessThan(3)
+  })
 })
 
 describe("VideoRenderable adaptive quality", () => {
@@ -110,12 +148,12 @@ describe("VideoRenderable adaptive quality", () => {
     try {
       expect(video.qualityTier).toEqual({
         index: 0,
-        total: 6,
+        total: 8,
         label: "RGB888",
         bitsPerChannel: [8, 8, 8],
         lossless: true,
         compressionLevel: 1,
-        predictor: "up",
+        predictor: "paeth",
       })
       expect(video.effectiveProtocol).toBe("blocks")
       setRendererCapabilities(renderer, { kitty_graphics: true })
@@ -140,11 +178,11 @@ describe("VideoRenderable adaptive quality", () => {
     expect(state.tier).toBe(1)
   })
 
-  test("starts at the highest tier and can downgrade through all six tiers", () => {
+  test("starts at the highest tier and can downgrade through all eight tiers", () => {
     let state = createAdaptiveVideoQualityState()
     expect(state.tier).toBe(0)
     let serial = 0n
-    for (let expectedTier = 1; expectedTier <= 5; expectedTier++) {
+    for (let expectedTier = 1; expectedTier <= 7; expectedTier++) {
       state = { ...state, cooldownSamples: 0 }
       for (let sample = 0; sample < 8; sample++) {
         serial++
@@ -160,7 +198,7 @@ describe("VideoRenderable adaptive quality", () => {
     }
   })
 
-  test("steps down to RGB777 under output backpressure", () => {
+  test("reduces color quality before presentation cadence under output backpressure", () => {
     let state = createAdaptiveVideoQualityState()
     for (let serial = 1n; serial <= 8n; serial++) {
       state = updateAdaptiveVideoQuality(state, {
@@ -172,6 +210,77 @@ describe("VideoRenderable adaptive quality", () => {
       })
     }
     expect(state.tier).toBe(1)
+    expect(state.presentationRateTier).toBe(0)
+    expect(state.nextTransportReduction).toBe("cadence")
+  })
+
+  test("does not repeatedly reduce quality for one undrained backpressure episode", () => {
+    let state = createAdaptiveVideoQualityState()
+    let serial = 0n
+    for (let sample = 1; sample <= 240; sample++) {
+      serial += 2n
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 10,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 2n,
+        backpressureCount: sample,
+      })
+    }
+    expect(state.tier).toBe(1)
+    expect(state.presentationRateTier).toBe(0)
+    expect(state.awaitingTransportRecovery).toBe(true)
+  })
+
+  test("alternates cadence after output recovers and a new pressure episode begins", () => {
+    let state = createAdaptiveVideoQualityState()
+    let serial = 0n
+    let backpressureCount = 0
+    for (let sample = 0; sample < 8; sample++) {
+      serial += 2n
+      backpressureCount++
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 10,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 2n,
+        backpressureCount,
+      })
+    }
+    for (let sample = 0; sample < 120; sample++) {
+      serial += 2n
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 10,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 2n,
+        backpressureCount,
+      })
+    }
+    for (let sample = 0; sample < 30; sample++) {
+      serial += 2n
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 10,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 2n,
+        backpressureCount,
+      })
+    }
+    for (let sample = 0; sample < 8; sample++) {
+      serial += 2n
+      backpressureCount++
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 10,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 2n,
+        backpressureCount,
+      })
+    }
+    expect(state.tier).toBe(0)
+    expect(state.presentationRateTier).toBe(1)
+    expect(state.nextTransportReduction).toBe("quality")
   })
 
   test("does not downgrade for measured lossless cost with normal timing jitter", () => {
@@ -241,7 +350,7 @@ describe("VideoRenderable adaptive quality", () => {
     expect(state.tier).toBe(1)
   })
 
-  test("recovers at the measured lossless RGB888 Up processing cost", () => {
+  test("recovers at the measured lossless RGB888 processing cost", () => {
     let state = { ...createAdaptiveVideoQualityState(), tier: 1 }
     for (let serial = 1n; serial <= 120n; serial++) {
       state = updateAdaptiveVideoQuality(state, {
@@ -271,7 +380,7 @@ describe("VideoRenderable adaptive quality", () => {
     expect(state.tier).toBe(1)
   })
 
-  test("retains recovery progress across an isolated delayed presentation", () => {
+  test("does not penalize recovery for an isolated decoded-frame catch-up", () => {
     let state = { ...createAdaptiveVideoQualityState(), tier: 2 }
     let serial = 0n
     for (let sample = 0; sample < 80; sample++) {
@@ -292,7 +401,7 @@ describe("VideoRenderable adaptive quality", () => {
       expectedFrameStep: 2n,
       backpressureCount: 0,
     })
-    expect(state.headroomSamples).toBe(76)
+    expect(state.headroomSamples).toBe(81)
     for (let sample = 0; sample < 44; sample++) {
       serial += 2n
       state = updateAdaptiveVideoQuality(state, {
@@ -306,7 +415,7 @@ describe("VideoRenderable adaptive quality", () => {
     expect(state.tier).toBe(1)
   })
 
-  test("sustained source-frame loss still prevents recovery and downgrades", () => {
+  test("does not adapt quality from decoded-frame catch-up alone", () => {
     let state = { ...createAdaptiveVideoQualityState(), tier: 1 }
     let serial = 0n
     for (let sample = 0; sample < 9; sample++) {
@@ -319,8 +428,27 @@ describe("VideoRenderable adaptive quality", () => {
         backpressureCount: 0,
       })
     }
-    expect(state.tier).toBe(2)
-    expect(state.headroomSamples).toBe(0)
+    expect(state.tier).toBe(1)
+    expect(state.presentationRateTier).toBe(0)
+    expect(state.headroomSamples).toBe(9)
+  })
+
+  test("only reduces color quality after reaching the minimum presentation cadence", () => {
+    let state = {
+      ...createAdaptiveVideoQualityState(),
+      presentationRateTier: 8,
+    }
+    for (let serial = 1n; serial <= 8n; serial++) {
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 10,
+        frameBudgetMs: 1000 / 3.75,
+        frameSerial: serial,
+        expectedFrameStep: 16n,
+        backpressureCount: Number(serial),
+      })
+    }
+    expect(state.presentationRateTier).toBe(8)
+    expect(state.tier).toBe(1)
   })
 
   test("does not recover without enough CPU margin for the next tier", () => {

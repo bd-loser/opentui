@@ -231,6 +231,11 @@ pub const Video = struct {
         return true;
     }
 
+    pub fn service(self: *Video, target_us: i64) !void {
+        if (target_us < 0) return error.InvalidArgument;
+        self.state.current_time_us = try self.updateAudio(target_us);
+    }
+
     pub fn getFrame(self: *Video) ?*image.Image {
         const value = self.current_image orelse return null;
         value.retain();

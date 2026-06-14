@@ -136,7 +136,7 @@ export class NativeVideo {
     for (const [value, name, maximum] of [
       [compressionLevel, "compression level", 9],
       [predictor, "predictor", 5],
-      [colorMode, "color mode", 6],
+      [colorMode, "color mode", 8],
     ] as const) {
       if (!Number.isInteger(value) || value < 0 || value > maximum) {
         throw new RangeError(`video PNG ${name} must be an integer between 0 and ${maximum}`)
@@ -157,6 +157,11 @@ export class NativeVideo {
   public update(time: number): NativeVideoState {
     if (!Number.isFinite(time) || time < 0) throw new RangeError("video update time must be finite and non-negative")
     return this.unpackState(this.lib.videoUpdate(this.guard(), BigInt(Math.round(time * 1_000_000))))
+  }
+
+  public service(time: number): NativeVideoState {
+    if (!Number.isFinite(time) || time < 0) throw new RangeError("Video service time must be finite and non-negative")
+    return this.unpackState(this.lib.videoService(this.guard(), BigInt(Math.round(time * 1_000_000))))
   }
 
   public takeFrame(): NativeImage | null {

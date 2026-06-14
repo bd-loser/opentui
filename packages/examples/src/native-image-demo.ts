@@ -116,7 +116,7 @@ function updateVideoStatus(): void {
   if (!videoStatus || !videoMetadata || !video) return
   const quality = video.qualityTier
   videoStatus.fg = P.cyan
-  videoStatus.content = `${basename(selectedVideoPath)}  |  ${video.effectiveProtocol.toUpperCase()}  |  QUALITY ${quality.index + 1}/${quality.total} ${quality.label}${quality.lossless ? " LOSSLESS" : ""}  |  ${videoMetadata.width}×${videoMetadata.height}  ${videoMetadata.fps.toFixed(0)} FPS  ${formatTime(video.currentTime)} / ${formatTime(video.duration)}  ${video.playing ? "PLAYING" : "PAUSED"}`
+  videoStatus.content = `${basename(selectedVideoPath)}  |  ${video.effectiveProtocol.toUpperCase()}  |  QUALITY ${quality.index + 1}/${quality.total} ${quality.label}${quality.lossless ? " LOSSLESS" : ""}  |  ${videoMetadata.width}×${videoMetadata.height}  ${videoMetadata.fps.toFixed(0)} SOURCE → ${video.presentationFps.toFixed(1)} DISPLAY FPS  ${formatTime(video.currentTime)} / ${formatTime(video.duration)}  ${video.playing ? "PLAYING" : "PAUSED"}`
 }
 
 function createVideo(renderer: CliRenderer, source: string, autoplay: boolean): VideoRenderable {

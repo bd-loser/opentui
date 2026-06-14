@@ -287,7 +287,7 @@ int ot_video_set_output_size(ot_video_decoder *decoder, uint32_t width, uint32_t
 
 int ot_video_set_png_options(ot_video_decoder *decoder, uint32_t compression_level, uint32_t predictor,
                              uint32_t color_mode) {
-    if (!decoder || compression_level > 9 || predictor > 5 || color_mode > 6) return OT_VIDEO_ERROR;
+    if (!decoder || compression_level > 9 || predictor > 5 || color_mode > 8) return OT_VIDEO_ERROR;
     if (decoder->png_compression_level == compression_level && decoder->png_predictor == predictor &&
         decoder->png_color_mode == color_mode) return OT_VIDEO_OK;
     decoder->png_compression_level = compression_level;
@@ -473,6 +473,14 @@ static int encode_png(ot_video_decoder *decoder, const uint8_t **out_png, uint64
                     rgb[x * 3] = (uint8_t)(((source_r >> 1) * 255u + 63u) / 127u);
                     rgb[x * 3 + 1] = (uint8_t)(((source_g >> 1) * 255u + 63u) / 127u);
                     rgb[x * 3 + 2] = (uint8_t)(((source_b >> 1) * 255u + 63u) / 127u);
+                } else if (decoder->png_color_mode == 7) {
+                    rgb[x * 3] = (uint8_t)(((source_r >> 3) * 255u + 15u) / 31u);
+                    rgb[x * 3 + 1] = (uint8_t)(((source_g >> 3) * 255u + 15u) / 31u);
+                    rgb[x * 3 + 2] = (uint8_t)(((source_b >> 3) * 255u + 15u) / 31u);
+                } else if (decoder->png_color_mode == 8) {
+                    rgb[x * 3] = (uint8_t)(((source_r >> 4) * 255u + 7u) / 15u);
+                    rgb[x * 3 + 1] = (uint8_t)(((source_g >> 3) * 255u + 15u) / 31u);
+                    rgb[x * 3 + 2] = (uint8_t)(((source_b >> 4) * 255u + 7u) / 15u);
                 } else if (decoder->png_color_mode == 2) {
                     rgb[x * 3] = (uint8_t)(((source_r >> 4) * 255u + 7u) / 15u);
                     rgb[x * 3 + 1] = (uint8_t)(((source_g >> 4) * 255u + 7u) / 15u);

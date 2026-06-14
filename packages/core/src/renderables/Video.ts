@@ -53,19 +53,24 @@ export interface VideoGeometryOptions {
 
 export interface AdaptiveVideoQualityState {
   tier: number
+  presentationRateTier: number
+  nextTransportReduction: "quality" | "cadence"
+  awaitingTransportRecovery: boolean
+  transportRecoverySamples: number
   updateTimeMs: number
   overloadSamples: number
   headroomSamples: number
   cooldownSamples: number
-  lastFrameSerial: bigint | null
   lastBackpressureCount: number
 }
 
 export interface AdaptiveVideoQualitySample {
   updateTimeMs: number
   frameBudgetMs: number
-  frameSerial: bigint
-  expectedFrameStep: bigint
+  /** Diagnostic only; decoded-frame catch-up is not an overload signal. */
+  frameSerial?: bigint
+  /** Diagnostic only; decoded-frame catch-up is not an overload signal. */
+  expectedFrameStep?: bigint
   backpressureCount: number
 }
 
@@ -79,13 +84,15 @@ export interface VideoQualityTier {
   readonly predictor: "none" | "up" | "paeth"
 }
 
-const VIDEO_QUALITY_TIER_COUNT = 6
+const VIDEO_QUALITY_TIER_COUNT = 8
 const VIDEO_PNG_PREDICTORS = { none: 0, up: 2, paeth: 4 } as const
 const VIDEO_CPU_OVERLOAD_RATIO = 0.7
 const VIDEO_QUALITY_RECOVERY_RATIO = 0.65
 const VIDEO_OVERLOAD_SCORE_LIMIT = 8
 const VIDEO_OVERLOAD_SCORE_RECOVERY = 2
 const VIDEO_HEADROOM_PRESSURE_PENALTY = 4
+const VIDEO_STABLE_RECOVERY_SAMPLES = 120
+const VIDEO_PRESENTATION_RATE_SCALES = [1, 0.8, 2 / 3, 0.5, 0.4, 1 / 3, 0.25, 1 / 6, 0.125] as const
 
 function videoQualityTier(
   index: number,
@@ -103,22 +110,27 @@ function videoQualityTier(
 }
 
 const VIDEO_PNG_QUALITY_TIERS = [
-  videoQualityTier(0, "RGB888", [8, 8, 8], true, 1, "up", 1),
-  videoQualityTier(1, "RGB777", [7, 7, 7], false, 1, "up", 6),
-  videoQualityTier(2, "RGB666", [6, 6, 6], false, 1, "up", 5),
-  videoQualityTier(3, "RGB444", [4, 4, 4], false, 1, "up", 2),
-  videoQualityTier(4, "RGB343", [3, 4, 3], false, 2, "none", 0),
-  videoQualityTier(5, "PAL332", [3, 3, 2], false, 1, "paeth", 4),
+  videoQualityTier(0, "RGB888", [8, 8, 8], true, 1, "paeth", 1),
+  videoQualityTier(1, "RGB777", [7, 7, 7], false, 1, "paeth", 6),
+  videoQualityTier(2, "RGB666", [6, 6, 6], false, 1, "paeth", 5),
+  videoQualityTier(3, "RGB555", [5, 5, 5], false, 1, "paeth", 7),
+  videoQualityTier(4, "RGB454", [4, 5, 4], false, 1, "paeth", 8),
+  videoQualityTier(5, "RGB444", [4, 4, 4], false, 2, "up", 2),
+  videoQualityTier(6, "RGB343", [3, 4, 3], false, 2, "none", 0),
+  videoQualityTier(7, "PAL332", [3, 3, 2], false, 1, "paeth", 4),
 ] as const
 
 export function createAdaptiveVideoQualityState(backpressureCount = 0): AdaptiveVideoQualityState {
   return {
     tier: 0,
+    presentationRateTier: 0,
+    nextTransportReduction: "quality",
+    awaitingTransportRecovery: false,
+    transportRecoverySamples: 0,
     updateTimeMs: 0,
     overloadSamples: 0,
     headroomSamples: 0,
     cooldownSamples: 0,
-    lastFrameSerial: null,
     lastBackpressureCount: backpressureCount,
   }
 }
@@ -129,13 +141,22 @@ export function updateAdaptiveVideoQuality(
 ): AdaptiveVideoQualityState {
   const updateTimeMs =
     state.updateTimeMs === 0 ? sample.updateTimeMs : state.updateTimeMs * 0.9 + sample.updateTimeMs * 0.1
-  const frameStepTolerance = sample.expectedFrameStep > 1n ? 1n : 0n
-  const skippedFrames =
-    state.lastFrameSerial !== null &&
-    sample.frameSerial > state.lastFrameSerial + sample.expectedFrameStep + frameStepTolerance
   const backpressured = sample.backpressureCount > state.lastBackpressureCount
   const cpuOverloaded = updateTimeMs > sample.frameBudgetMs * VIDEO_CPU_OVERLOAD_RATIO
-  const overloaded = cpuOverloaded || skippedFrames || backpressured
+  const transportOverloaded = backpressured
+  let awaitingTransportRecovery = state.awaitingTransportRecovery
+  let transportRecoverySamples = state.transportRecoverySamples
+  let transportRecovered = false
+  if (awaitingTransportRecovery) {
+    transportRecoverySamples = transportOverloaded ? 0 : transportRecoverySamples + 1
+    if (transportRecoverySamples >= VIDEO_STABLE_RECOVERY_SAMPLES) {
+      awaitingTransportRecovery = false
+      transportRecoverySamples = 0
+      transportRecovered = true
+    }
+  }
+  const effectiveTransportOverload = transportOverloaded && !awaitingTransportRecovery
+  const overloaded = cpuOverloaded || effectiveTransportOverload
   let overloadSamples = overloaded
     ? state.overloadSamples + 1
     : Math.max(0, state.overloadSamples - VIDEO_OVERLOAD_SCORE_RECOVERY)
@@ -143,21 +164,41 @@ export function updateAdaptiveVideoQuality(
     !overloaded && updateTimeMs < sample.frameBudgetMs * VIDEO_QUALITY_RECOVERY_RATIO
       ? state.headroomSamples + 1
       : Math.max(0, state.headroomSamples - VIDEO_HEADROOM_PRESSURE_PENALTY)
+  if (transportRecovered && !cpuOverloaded) headroomSamples = VIDEO_STABLE_RECOVERY_SAMPLES
   let cooldownSamples = Math.max(0, state.cooldownSamples - 1)
   let tier = state.tier
+  let presentationRateTier = state.presentationRateTier
+  let nextTransportReduction = state.nextTransportReduction
+  const canReduceQuality = tier < VIDEO_PNG_QUALITY_TIERS.length - 1
+  const canReduceCadence = presentationRateTier < VIDEO_PRESENTATION_RATE_SCALES.length - 1
+  const canRespondToOverload = effectiveTransportOverload ? canReduceQuality || canReduceCadence : canReduceQuality
 
-  if (state.cooldownSamples > 0) overloadSamples = 0
+  if (state.cooldownSamples > 0 || awaitingTransportRecovery) overloadSamples = 0
+  if (awaitingTransportRecovery) headroomSamples = 0
 
-  if (
-    cooldownSamples === 0 &&
-    overloadSamples >= VIDEO_OVERLOAD_SCORE_LIMIT &&
-    tier < VIDEO_PNG_QUALITY_TIERS.length - 1
-  ) {
-    tier++
+  if (cooldownSamples === 0 && overloadSamples >= VIDEO_OVERLOAD_SCORE_LIMIT && canRespondToOverload) {
+    const reduceQuality =
+      canReduceQuality && (!transportOverloaded || nextTransportReduction === "quality" || !canReduceCadence)
+    if (reduceQuality) {
+      tier++
+      if (transportOverloaded) nextTransportReduction = "cadence"
+    } else {
+      presentationRateTier++
+      nextTransportReduction = "quality"
+    }
+    if (transportOverloaded) {
+      awaitingTransportRecovery = true
+      transportRecoverySamples = 0
+    }
     overloadSamples = 0
     headroomSamples = 0
     cooldownSamples = 30
-  } else if (cooldownSamples === 0 && headroomSamples >= 120 && tier > 0) {
+  } else if (cooldownSamples === 0 && headroomSamples >= VIDEO_STABLE_RECOVERY_SAMPLES && presentationRateTier > 0) {
+    presentationRateTier--
+    overloadSamples = 0
+    headroomSamples = 0
+    cooldownSamples = 30
+  } else if (cooldownSamples === 0 && headroomSamples >= VIDEO_STABLE_RECOVERY_SAMPLES && tier > 0) {
     tier--
     overloadSamples = 0
     headroomSamples = 0
@@ -166,11 +207,14 @@ export function updateAdaptiveVideoQuality(
 
   return {
     tier,
+    presentationRateTier,
+    nextTransportReduction,
+    awaitingTransportRecovery,
+    transportRecoverySamples,
     updateTimeMs,
     overloadSamples,
     headroomSamples,
     cooldownSamples,
-    lastFrameSerial: sample.frameSerial,
     lastBackpressureCount: sample.backpressureCount,
   }
 }
@@ -179,6 +223,21 @@ const MAX_VIDEO_FPS = 30
 
 export function calculateVideoPlaybackFps(sourceFps: number, requestedMaxFps: number): number {
   return Math.min(sourceFps > 0 ? sourceFps : requestedMaxFps, requestedMaxFps, MAX_VIDEO_FPS)
+}
+
+export function calculateAdaptiveVideoPlaybackFps(
+  sourceFps: number,
+  requestedMaxFps: number,
+  presentationRateTier: number,
+): number {
+  const baseFps = calculateVideoPlaybackFps(sourceFps, requestedMaxFps)
+  const scale =
+    VIDEO_PRESENTATION_RATE_SCALES[Math.min(presentationRateTier, VIDEO_PRESENTATION_RATE_SCALES.length - 1)]
+  return baseFps * scale
+}
+
+export function calculateVideoFrameStep(sourceFps: number, presentationFps: number): bigint {
+  return BigInt(Math.max(1, Math.ceil(sourceFps / presentationFps)))
 }
 
 export function calculateVideoTickFps(sourceFps: number, requestedMaxFps: number, hasAudio: boolean): number {
@@ -250,6 +309,7 @@ export class VideoRenderable extends Renderable {
   private ticker: ReturnType<typeof setTimeout> | null = null
   private updating = false
   private adaptiveQuality: AdaptiveVideoQualityState
+  private nextPresentationAt = 0
 
   constructor(ctx: RenderContext, options: VideoRenderableOptions) {
     super(ctx, options)
@@ -297,6 +357,14 @@ export class VideoRenderable extends Renderable {
   public get qualityTier(): VideoQualityTier {
     const info = VIDEO_PNG_QUALITY_TIERS[this.adaptiveQuality.tier].info
     return { ...info, bitsPerChannel: [...info.bitsPerChannel] }
+  }
+
+  public get presentationFps(): number {
+    return calculateAdaptiveVideoPlaybackFps(
+      this.metadata?.fps ?? 0,
+      this.maxFps,
+      this.adaptiveQuality.presentationRateTier,
+    )
   }
 
   public set protocol(value: ImageRenderProtocol) {
@@ -376,6 +444,7 @@ export class VideoRenderable extends Renderable {
     this.playbackEnded = false
     if (!this.ensureNative()) return
     this.native!.play()
+    this.nextPresentationAt = 0
     this.startClock()
     this.startTicker()
     this.onPlay?.()
@@ -569,13 +638,15 @@ export class VideoRenderable extends Renderable {
         return
       }
       const updateStarted = performance.now()
+      const now = performance.now()
+      if (this.currentImage && now < this.nextPresentationAt) {
+        const state = this.native.service(time)
+        this.onTimeUpdate?.(state.currentTime)
+        return
+      }
       const state = this.updateFrame(time)
-      if (state)
-        this.updateAdaptiveQuality(
-          performance.now() - updateStarted,
-          state,
-          1000 / calculateVideoPlaybackFps(this.metadata?.fps ?? 0, this.maxFps),
-        )
+      this.nextPresentationAt = now + 1000 / this.presentationFps
+      if (state) this.updateAdaptiveQuality(performance.now() - updateStarted, state, 1000 / this.presentationFps)
       if (state?.ended) {
         if (this.loopPlayback) {
           this.positionSeconds = 0
@@ -622,15 +693,6 @@ export class VideoRenderable extends Renderable {
     const next = updateAdaptiveVideoQuality(this.adaptiveQuality, {
       updateTimeMs,
       frameBudgetMs,
-      frameSerial: state.frameSerial,
-      expectedFrameStep: BigInt(
-        Math.max(
-          1,
-          Math.ceil(
-            (this.metadata?.fps ?? this.maxFps) / calculateVideoPlaybackFps(this.metadata?.fps ?? 0, this.maxFps),
-          ),
-        ),
-      ),
       backpressureCount: this._ctx.renderBackpressureCount ?? 0,
     })
     if (next.tier !== this.adaptiveQuality.tier) {
@@ -648,8 +710,11 @@ export class VideoRenderable extends Renderable {
     this.adaptiveQuality = {
       ...createAdaptiveVideoQualityState(this._ctx.renderBackpressureCount ?? 0),
       tier: this.adaptiveQuality.tier,
+      presentationRateTier: this.adaptiveQuality.presentationRateTier,
+      nextTransportReduction: this.adaptiveQuality.nextTransportReduction,
       cooldownSamples: 30,
     }
+    this.nextPresentationAt = 0
   }
 
   private clockElapsed(): number {

@@ -109,11 +109,14 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
     if (bench_utils.matchesBenchFilter("Steady prepared video frame", bench_filter)) {
         const value = try video.Video.open(allocator, asset);
         defer value.deinit();
+        _ = try value.update(0);
+        value.frameSubmitted(0);
         var stats: bench_utils.BenchStats = .{};
         for (1..48) |index| {
+            const prepared_pts = value.getState().prepared_pts_us;
+            if (prepared_pts >= 0) try value.schedule(prepared_pts, 33_333, index * 2, 20_000);
             var timer = try std.time.Timer.start();
-            _ = try value.prepare(@intCast(index * 33_333));
-            stats.record(timer.read());
+            if (try value.prepareNext(33_333, index * 2 + 1, 20_000)) stats.record(timer.read());
         }
         try appendResult(allocator, &results, "Steady prepared video frame", stats, null);
     }

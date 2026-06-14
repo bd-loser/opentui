@@ -28,6 +28,8 @@ export interface NativeVideoState {
   audioProducedFrames: bigint
   audioUnderruns: bigint
   audioUnderrunFrames: bigint
+  preparedPts: number
+  syncLead: number
 }
 
 function videoError(lib: RenderLib, handle: VideoHandle | null, status: number): Error {
@@ -92,6 +94,8 @@ export class NativeVideo {
       audioProducedFrames: result.state.audioProducedFrames,
       audioUnderruns: result.state.audioUnderruns,
       audioUnderrunFrames: result.state.audioUnderrunFrames,
+      preparedPts: Number(result.state.preparedPtsUs) / 1_000_000,
+      syncLead: result.state.syncLeadUs / 1_000_000,
     }
   }
 
@@ -172,6 +176,46 @@ export class NativeVideo {
     if (!Number.isFinite(time) || time < 0)
       throw new RangeError("video preparation time must be finite and non-negative")
     return this.unpackState(this.lib.videoPrepare(this.guard(), BigInt(Math.round(time * 1_000_000))))
+  }
+
+  public schedule(
+    time: number,
+    presentationInterval: number,
+    output: { frameCount: number; timeUs?: number },
+  ): NativeVideoState {
+    if (!Number.isFinite(time) || time < 0) throw new RangeError("video schedule time must be finite and non-negative")
+    if (!Number.isFinite(presentationInterval) || presentationInterval <= 0)
+      throw new RangeError("video presentation interval must be positive and finite")
+    const result = this.lib.videoSchedule(
+      this.guard(),
+      BigInt(Math.round(time * 1_000_000)),
+      Math.max(1, Math.round(presentationInterval * 1_000_000)),
+      BigInt(output.frameCount),
+      Math.max(0, Math.round(output.timeUs ?? 0)),
+    )
+    return this.unpackState(result)
+  }
+
+  public prepareNext(presentationInterval: number, output: { frameCount: number; timeUs?: number }): NativeVideoState {
+    if (!Number.isFinite(presentationInterval) || presentationInterval <= 0)
+      throw new RangeError("video presentation interval must be positive and finite")
+    const result = this.lib.videoPrepareNext(
+      this.guard(),
+      Math.max(1, Math.round(presentationInterval * 1_000_000)),
+      BigInt(output.frameCount),
+      Math.max(0, Math.round(output.timeUs ?? 0)),
+    )
+    return this.unpackState(result)
+  }
+
+  public frameSubmitted(outputFrame: number): void {
+    const status = this.lib.videoFrameSubmitted(this.guard(), BigInt(outputFrame))
+    if (status !== 0) throw videoError(this.lib, this.handle, status)
+  }
+
+  public resetOutputTiming(): void {
+    const status = this.lib.videoResetOutputTiming(this.guard())
+    if (status !== 0) throw videoError(this.lib, this.handle, status)
   }
 
   public service(time: number): NativeVideoState {

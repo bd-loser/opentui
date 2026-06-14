@@ -446,6 +446,8 @@ export type NativeVideoState = {
   audioProducedFrames: bigint
   audioUnderruns: bigint
   audioUnderrunFrames: bigint
+  preparedPtsUs: bigint
+  syncLeadUs: number
 }
 
 export const NativeVideoInfoStruct = defineStruct([
@@ -476,4 +478,6 @@ export const NativeVideoStateStruct = defineStruct([
   ["audioProducedFrames", "u64"],
   ["audioUnderruns", "u64"],
   ["audioUnderrunFrames", "u64"],
+  ["preparedPtsUs", "i64"],
+  ["syncLeadUs", "u32"],
 ])

@@ -145,7 +145,8 @@ test "video frame preparation does not advance audio or media time" {
     try std.testing.expectEqual(before.current_time_us, after.current_time_us);
     try std.testing.expectEqual(before.audio_consumed_frames, after.audio_consumed_frames);
     try std.testing.expectEqual(queued, after.audio_queued_frames);
-    try std.testing.expectEqual(@as(i64, 500_000), after.frame_pts_us);
+    try std.testing.expectEqual(before.frame_pts_us, after.frame_pts_us);
+    try std.testing.expectEqual(@as(i64, 500_000), after.prepared_pts_us);
 }
 
 test "video frame preparation clamps ahead of EOF without ending playback" {
@@ -156,7 +157,78 @@ test "video frame preparation clamps ahead of EOF without ending playback" {
 
     const state = value.getState();
     try std.testing.expectEqual(@as(u32, 0), state.ended);
-    try std.testing.expect(state.frame_pts_us < value.info.duration_us);
+    try std.testing.expect(state.prepared_pts_us < value.info.duration_us);
+}
+
+test "native video scheduler waits presents and drops one prepared frame" {
+    const value = try openVideo();
+    defer value.deinit();
+    _ = try value.update(0);
+
+    try std.testing.expect(try value.prepare(500_000));
+    value.frameSubmitted(0);
+    try value.schedule(400_000, 33_333, 2, 30_000);
+    try std.testing.expectEqual(@as(i64, 500_000), value.getState().prepared_pts_us);
+
+    try value.schedule(470_000, 33_333, 3, 30_000);
+    try std.testing.expectEqual(@as(i64, 500_000), value.getState().frame_pts_us);
+    try std.testing.expectEqual(@as(i64, -1), value.getState().prepared_pts_us);
+
+    try std.testing.expect(try value.prepare(550_000));
+    try value.schedule(600_000, 33_333, 4, 30_000);
+    try std.testing.expectEqual(@as(i64, -1), value.getState().prepared_pts_us);
+    try std.testing.expectEqual(@as(i64, 500_000), value.getState().frame_pts_us);
+}
+
+test "native video scheduler derives future targets from native latency windows" {
+    const value = try openVideo();
+    defer value.deinit();
+
+    _ = try value.update(1_000_000);
+    value.frameSubmitted(0);
+    try value.schedule(1_000_000, 33_333, 2, 34_000);
+    try std.testing.expect(try value.prepareNext(33_333, 3, 34_000));
+    const state = value.getState();
+
+    try std.testing.expect(state.sync_lead_us >= 34_000);
+    try std.testing.expect(state.prepared_pts_us > 1_030_000);
+}
+
+test "native video scheduler owns one prepared slot and seek clears it" {
+    const value = try openVideo();
+    defer value.deinit();
+    _ = try value.update(0);
+
+    try std.testing.expect(try value.prepareNext(33_333, 0, 20_000));
+    const prepared = value.getState().prepared_pts_us;
+    try std.testing.expect(prepared > 0);
+    try std.testing.expect(!(try value.prepareNext(33_333, 0, 40_000)));
+    try std.testing.expectEqual(prepared, value.getState().prepared_pts_us);
+
+    try value.seek(1_000_000);
+    try std.testing.expectEqual(@as(i64, -1), value.getState().prepared_pts_us);
+}
+
+test "native latency window expires old maxima without allocation" {
+    var window = video.LatencyWindow{};
+    window.add(90_000);
+    for (0..30) |_| window.add(20_000);
+    try std.testing.expectEqual(@as(u32, 20_000), window.maximum());
+}
+
+test "native scheduler ignores output samples before its first submitted video frame" {
+    const value = try openVideo();
+    defer value.deinit();
+    _ = try value.update(0);
+
+    try value.schedule(0, 33_333, 100, 900_000);
+    try std.testing.expectEqual(@as(u32, 0), value.getState().sync_lead_us);
+
+    value.frameSubmitted(100);
+    try value.schedule(0, 33_333, 101, 900_000);
+    try std.testing.expectEqual(@as(u32, 0), value.getState().sync_lead_us);
+    try value.schedule(0, 33_333, 102, 20_000);
+    try std.testing.expectEqual(@as(u32, 20_000), value.getState().sync_lead_us);
 }
 
 test "video AV sync offset changes only the selected frame target" {

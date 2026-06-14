@@ -1290,6 +1290,10 @@ function getOpenTUILib(libPath?: string) {
     videoSeek: { args: ["u32", "i64", "ptr"], returns: "u32" },
     videoUpdate: { args: ["u32", "i64", "ptr"], returns: "u32" },
     videoPrepare: { args: ["u32", "i64", "ptr"], returns: "u32" },
+    videoSchedule: { args: ["u32", "i64", "u32", "u64", "u32", "ptr"], returns: "u32" },
+    videoPrepareNext: { args: ["u32", "u32", "u64", "u32", "ptr"], returns: "u32" },
+    videoFrameSubmitted: { args: ["u32", "u64"], returns: "u32" },
+    videoResetOutputTiming: { args: ["u32"], returns: "u32" },
     videoService: { args: ["u32", "i64", "ptr"], returns: "u32" },
     videoGetCurrentFrame: { args: ["u32", "u64", "ptr", "ptr"], returns: "u32" },
     videoReadAudio: { args: ["u32", "ptr", "u32", "u32", "ptr"], returns: "u32" },
@@ -2653,6 +2657,21 @@ export interface RenderLib extends AudioEngineLib {
   videoSeek: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
   videoUpdate: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
   videoPrepare: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
+  videoSchedule: (
+    video: VideoHandle,
+    targetUs: bigint,
+    presentationIntervalUs: number,
+    outputFrame: bigint,
+    outputWriteUs: number,
+  ) => { status: number; state: NativeVideoState }
+  videoPrepareNext: (
+    video: VideoHandle,
+    presentationIntervalUs: number,
+    outputFrame: bigint,
+    outputWriteUs: number,
+  ) => { status: number; state: NativeVideoState }
+  videoFrameSubmitted: (video: VideoHandle, outputFrame: bigint) => number
+  videoResetOutputTiming: (video: VideoHandle) => number
   videoService: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
   videoGetCurrentFrame: (
     video: VideoHandle,
@@ -5543,6 +5562,7 @@ class FFIRenderLib implements RenderLib {
         audioUnderruns: typeof state.audioUnderruns === "bigint" ? state.audioUnderruns : BigInt(state.audioUnderruns),
         audioUnderrunFrames:
           typeof state.audioUnderrunFrames === "bigint" ? state.audioUnderrunFrames : BigInt(state.audioUnderrunFrames),
+        preparedPtsUs: typeof state.preparedPtsUs === "bigint" ? state.preparedPtsUs : BigInt(state.preparedPtsUs),
       },
     }
   }
@@ -5582,6 +5602,10 @@ class FFIRenderLib implements RenderLib {
   ) {
     const output = new ArrayBuffer(NativeVideoStateStruct.size)
     const status = this.opentui.symbols[symbol](video, targetUs, ptr(output))
+    return this.unpackVideoStateResult(status, output)
+  }
+
+  private unpackVideoStateResult(status: number, output: ArrayBuffer) {
     const state = NativeVideoStateStruct.unpack(output)
     return {
       status,
@@ -5597,6 +5621,7 @@ class FFIRenderLib implements RenderLib {
         audioUnderruns: typeof state.audioUnderruns === "bigint" ? state.audioUnderruns : BigInt(state.audioUnderruns),
         audioUnderrunFrames:
           typeof state.audioUnderrunFrames === "bigint" ? state.audioUnderrunFrames : BigInt(state.audioUnderrunFrames),
+        preparedPtsUs: typeof state.preparedPtsUs === "bigint" ? state.preparedPtsUs : BigInt(state.preparedPtsUs),
       },
     }
   }
@@ -5611,6 +5636,50 @@ class FFIRenderLib implements RenderLib {
 
   public videoPrepare(video: VideoHandle, targetUs: bigint) {
     return this.videoStateCall("videoPrepare", video, targetUs)
+  }
+
+  public videoSchedule(
+    video: VideoHandle,
+    targetUs: bigint,
+    presentationIntervalUs: number,
+    outputFrame: bigint,
+    outputWriteUs: number,
+  ) {
+    const output = new ArrayBuffer(NativeVideoStateStruct.size)
+    const status = this.opentui.symbols.videoSchedule(
+      video,
+      targetUs,
+      presentationIntervalUs,
+      outputFrame,
+      outputWriteUs,
+      ptr(output),
+    )
+    return this.unpackVideoStateResult(status, output)
+  }
+
+  public videoPrepareNext(
+    video: VideoHandle,
+    presentationIntervalUs: number,
+    outputFrame: bigint,
+    outputWriteUs: number,
+  ) {
+    const output = new ArrayBuffer(NativeVideoStateStruct.size)
+    const status = this.opentui.symbols.videoPrepareNext(
+      video,
+      presentationIntervalUs,
+      outputFrame,
+      outputWriteUs,
+      ptr(output),
+    )
+    return this.unpackVideoStateResult(status, output)
+  }
+
+  public videoFrameSubmitted(video: VideoHandle, outputFrame: bigint): number {
+    return this.opentui.symbols.videoFrameSubmitted(video, outputFrame)
+  }
+
+  public videoResetOutputTiming(video: VideoHandle): number {
+    return this.opentui.symbols.videoResetOutputTiming(video)
   }
 
   public videoService(video: VideoHandle, targetUs: bigint) {

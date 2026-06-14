@@ -48,6 +48,38 @@ pub const State = extern struct {
     audio_produced_frames: u64 = 0,
     audio_underruns: u64 = 0,
     audio_underrun_frames: u64 = 0,
+    prepared_pts_us: i64 = -1,
+    sync_lead_us: u32 = 0,
+};
+
+const latency_window_size = 30;
+
+pub const LatencyWindow = struct {
+    samples: [latency_window_size]u32 = [_]u32{0} ** latency_window_size,
+    count: u8 = 0,
+    cursor: u8 = 0,
+
+    pub fn add(self: *LatencyWindow, sample: u32) void {
+        self.samples[self.cursor] = sample;
+        self.cursor = @intCast((@as(usize, self.cursor) + 1) % latency_window_size);
+        if (self.count < latency_window_size) self.count += 1;
+    }
+
+    pub fn maximum(self: *const LatencyWindow) u32 {
+        var result: u32 = 0;
+        for (self.samples[0..self.count]) |sample| result = @max(result, sample);
+        return result;
+    }
+
+    fn reset(self: *LatencyWindow) void {
+        self.* = .{};
+    }
+};
+
+const PreparedFrame = struct {
+    value: *image.Image,
+    pts_us: i64,
+    serial: u64,
 };
 
 extern fn ot_video_open(path: [*:0]const u8, out_decoder: *?*Decoder, out_info: *Info) c_int;
@@ -77,6 +109,13 @@ pub const Video = struct {
     info: Info,
     state: State = .{},
     current_image: ?*image.Image = null,
+    prepared_image: ?*image.Image = null,
+    prepared_serial: u64 = 0,
+    last_presented_pts_us: i64 = -1,
+    preparation_latency: LatencyWindow = .{},
+    output_latency: LatencyWindow = .{},
+    output_start_frame: ?u64 = null,
+    last_output_frame: u64 = 0,
     output_width: u32,
     output_height: u32,
     output_cover: bool = false,
@@ -130,6 +169,7 @@ pub const Video = struct {
         if (self.audio_engine) |engine| audio.destroy(engine);
         if (self.audio_buffer) |buffer| self.allocator.free(buffer);
         if (self.current_image) |value| value.deinit();
+        if (self.prepared_image) |value| value.deinit();
         var decoder: ?*Decoder = self.decoder;
         ot_video_close(&decoder);
         self.allocator.destroy(self);
@@ -145,6 +185,8 @@ pub const Video = struct {
         if (ot_video_seek_video(self.decoder, self.state.current_time_us) != 0) return error.SeekFailed;
         if (self.current_image) |value| value.deinit();
         self.current_image = null;
+        self.clearPrepared();
+        self.resetScheduler();
         self.state.frame_serial = 0;
         self.state.frame_pts_us = -1;
         self.state.has_frame = 0;
@@ -157,6 +199,8 @@ pub const Video = struct {
         self.state.has_frame = 0;
         if (self.current_image) |value| value.deinit();
         self.current_image = null;
+        self.clearPrepared();
+        self.preparation_latency.reset();
     }
 
     pub fn seek(self: *Video, target_us: i64) !void {
@@ -185,6 +229,8 @@ pub const Video = struct {
         self.state.has_frame = 0;
         if (self.current_image) |value| value.deinit();
         self.current_image = null;
+        self.clearPrepared();
+        self.last_presented_pts_us = -1;
     }
 
     pub fn update(self: *Video, target_us: i64) !bool {
@@ -200,7 +246,9 @@ pub const Video = struct {
                 @min(frame_target, self.info.duration_us - 1);
         }
         self.state.current_time_us = effective_target;
-        return self.decodeFrame(frame_target, true);
+        const decoded = try self.decodeFrame(frame_target, true) orelse return false;
+        self.publish(decoded);
+        return true;
     }
 
     pub fn prepare(self: *Video, target_us: i64) !bool {
@@ -209,10 +257,17 @@ pub const Video = struct {
             @min(target_us, self.info.duration_us - 1)
         else
             target_us;
-        return self.decodeFrame(frame_target, false);
+        const started = std.time.microTimestamp();
+        const decoded = try self.decodeFrame(frame_target, false) orelse return false;
+        self.preparation_latency.add(@intCast(@min(std.time.microTimestamp() - started, std.math.maxInt(u32))));
+        self.clearPrepared();
+        self.prepared_image = decoded.value;
+        self.prepared_serial = decoded.serial;
+        self.state.prepared_pts_us = decoded.pts_us;
+        return true;
     }
 
-    fn decodeFrame(self: *Video, target_us: i64, mark_ended: bool) !bool {
+    fn decodeFrame(self: *Video, target_us: i64, mark_ended: bool) !?PreparedFrame {
         var pixels: ?[*]const u8 = null;
         var width: u32 = 0;
         var height: u32 = 0;
@@ -235,23 +290,103 @@ pub const Video = struct {
         );
         if (result == 1) {
             if (mark_ended) self.state.ended = 1;
-            return false;
+            return null;
         }
         if (result != 0 or pixels == null) return error.DecodeFailed;
         if (mark_ended) self.state.ended = 0;
-        if (serial == self.state.frame_serial and self.current_image != null) return false;
+        if ((serial == self.state.frame_serial and self.current_image != null) or serial == self.prepared_serial) return null;
         const required = @as(usize, stride) * height;
         const next = try image.createFromRgba(self.allocator, pixels.?[0..required], width, height, stride);
         errdefer next.deinit();
         if (png != null and png_len <= std.math.maxInt(usize)) {
             next.encoded_png = try self.allocator.dupe(u8, png.?[0..@intCast(png_len)]);
         }
+        return .{ .value = next, .pts_us = pts_us, .serial = serial };
+    }
+
+    pub fn schedule(self: *Video, fallback_time_us: i64, presentation_interval_us: u32, output_frame: u64, output_write_us: u32) !void {
+        if (fallback_time_us < 0 or presentation_interval_us == 0) return error.InvalidArgument;
+        self.state.current_time_us = try self.updateAudio(fallback_time_us);
+        self.observeOutput(output_frame, output_write_us);
+        self.updateSyncLead();
+        const prepared = self.prepared_image orelse return;
+        const prepared_pts = self.state.prepared_pts_us;
+        if (prepared_pts < self.state.current_time_us - presentation_interval_us) {
+            self.clearPrepared();
+            return;
+        }
+        const deadline = prepared_pts - @as(i64, self.output_latency.maximum()) - self.av_sync_offset_us;
+        if (self.state.current_time_us < deadline) return;
+        self.prepared_image = null;
+        self.publish(.{ .value = prepared, .pts_us = prepared_pts, .serial = self.prepared_serial });
+        self.prepared_serial = 0;
+        self.state.prepared_pts_us = -1;
+    }
+
+    pub fn prepareNext(self: *Video, presentation_interval_us: u32, output_frame: u64, output_write_us: u32) !bool {
+        if (presentation_interval_us == 0) return error.InvalidArgument;
+        self.observeOutput(output_frame, output_write_us);
+        if (self.prepared_image != null) return false;
+        self.updateSyncLead();
+        const source_interval_us: i64 = if (self.info.fps_num > 0)
+            @intCast((@as(u64, 1_000_000) * self.info.fps_den + self.info.fps_num - 1) / self.info.fps_num)
+        else
+            presentation_interval_us;
+        const measured_target = self.state.current_time_us + @as(i64, self.state.sync_lead_us) + source_interval_us + self.av_sync_offset_us;
+        const cadence_target = if (self.last_presented_pts_us >= 0)
+            self.last_presented_pts_us + presentation_interval_us
+        else
+            0;
+        return self.prepare(@max(measured_target, cadence_target));
+    }
+
+    fn publish(self: *Video, decoded: PreparedFrame) void {
         if (self.current_image) |previous| previous.deinit();
-        self.current_image = next;
-        self.state.frame_pts_us = pts_us;
-        self.state.frame_serial = serial;
+        self.current_image = decoded.value;
+        self.state.frame_pts_us = decoded.pts_us;
+        self.state.frame_serial = decoded.serial;
         self.state.has_frame = 1;
-        return true;
+        self.last_presented_pts_us = decoded.pts_us;
+    }
+
+    fn clearPrepared(self: *Video) void {
+        if (self.prepared_image) |value| value.deinit();
+        self.prepared_image = null;
+        self.prepared_serial = 0;
+        self.state.prepared_pts_us = -1;
+    }
+
+    fn updateSyncLead(self: *Video) void {
+        self.state.sync_lead_us = self.preparation_latency.maximum() +| self.output_latency.maximum();
+    }
+
+    pub fn frameSubmitted(self: *Video, output_frame: u64) void {
+        if (self.output_start_frame == null) self.output_start_frame = output_frame +| 2;
+    }
+
+    pub fn resetOutputTiming(self: *Video) void {
+        self.output_latency.reset();
+        self.output_start_frame = null;
+        self.last_output_frame = 0;
+        self.updateSyncLead();
+        self.clearPrepared();
+    }
+
+    fn observeOutput(self: *Video, output_frame: u64, output_write_us: u32) void {
+        const start = self.output_start_frame orelse return;
+        if (output_frame < start or output_frame == self.last_output_frame or output_write_us == 0) return;
+        self.last_output_frame = output_frame;
+        self.output_latency.add(output_write_us);
+    }
+
+    fn resetScheduler(self: *Video) void {
+        self.clearPrepared();
+        self.last_presented_pts_us = -1;
+        self.preparation_latency.reset();
+        self.output_latency.reset();
+        self.output_start_frame = null;
+        self.last_output_frame = 0;
+        self.state.sync_lead_us = 0;
     }
 
     pub fn service(self: *Video, target_us: i64) !void {
@@ -449,6 +584,7 @@ pub const Video = struct {
 
     pub fn setAvSyncOffset(self: *Video, offset_us: i64) void {
         self.av_sync_offset_us = offset_us;
+        self.clearPrepared();
     }
 
     pub fn setAudioOffline(self: *Video, offline: bool) void {

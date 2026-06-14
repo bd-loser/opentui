@@ -592,6 +592,32 @@ export fn videoPrepare(video_handle: NativeHandle, target_us: i64, out_state: ?*
     return @intFromEnum(native_video.Status.ok);
 }
 
+export fn videoSchedule(video_handle: NativeHandle, target_us: i64, presentation_interval_us: u32, output_frame: u64, output_write_us: u32, out_state: ?*native_video.State) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    value.schedule(target_us, presentation_interval_us, output_frame, output_write_us) catch |err| return @intFromEnum(native_video.statusFromError(err));
+    if (out_state) |output| output.* = value.getState();
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoPrepareNext(video_handle: NativeHandle, presentation_interval_us: u32, output_frame: u64, output_write_us: u32, out_state: ?*native_video.State) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    _ = value.prepareNext(presentation_interval_us, output_frame, output_write_us) catch |err| return @intFromEnum(native_video.statusFromError(err));
+    if (out_state) |output| output.* = value.getState();
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoFrameSubmitted(video_handle: NativeHandle, output_frame: u64) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    value.frameSubmitted(output_frame);
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoResetOutputTiming(video_handle: NativeHandle) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    value.resetOutputTiming();
+    return @intFromEnum(native_video.Status.ok);
+}
+
 export fn videoService(video_handle: NativeHandle, target_us: i64, out_state: ?*native_video.State) u32 {
     const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
     value.service(target_us) catch |err| return @intFromEnum(native_video.statusFromError(err));

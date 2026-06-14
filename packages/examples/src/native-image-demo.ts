@@ -588,6 +588,15 @@ export async function run(renderer: CliRenderer): Promise<void> {
     flexShrink: 1,
     backgroundColor: P.page,
   })
+  const videoStatusBar = new BoxRenderable(renderer, {
+    id: "native-video-status-bar",
+    width: "100%",
+    height: 2,
+    flexGrow: 0,
+    flexShrink: 0,
+    paddingLeft: 1,
+    backgroundColor: P.footer,
+  })
   videoStatus = new TextRenderable(renderer, {
     id: "native-video-status",
     content: "NATIVE H264  READY ON V",
@@ -595,16 +604,16 @@ export async function run(renderer: CliRenderer): Promise<void> {
     height: 2,
     flexGrow: 0,
     flexShrink: 0,
-    paddingLeft: 2,
     wrapMode: "none",
     truncate: true,
     fg: P.text,
     bg: P.footer,
   })
+  videoStatusBar.add(videoStatus)
   video = createVideo(renderer, videoPath, false)
   videoHost.add(video)
   videoPlayerView.add(videoHost)
-  videoPlayerView.add(videoStatus)
+  videoPlayerView.add(videoStatusBar)
   videoView.add(videoPlayerView)
 
   videoFileView = new BoxRenderable(renderer, {

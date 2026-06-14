@@ -3,7 +3,7 @@ import { NativeImage } from "../image.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import type { ImageRenderProtocol, RenderContext } from "../types.js"
 import { NativeVideo, type NativeVideoState } from "../video.js"
-import type { ImageFit } from "./Image.js"
+import { resolveImageRenderProtocol, type ImageFit } from "./Image.js"
 
 export interface VideoMetadata {
   width: number
@@ -69,13 +69,41 @@ export interface AdaptiveVideoQualitySample {
   backpressureCount: number
 }
 
+export interface VideoQualityTier {
+  readonly index: number
+  readonly total: number
+  readonly label: string
+  readonly bitsPerChannel: readonly [number, number, number]
+  readonly lossless: boolean
+  readonly compressionLevel: number
+  readonly predictor: "none" | "up" | "paeth"
+}
+
+const VIDEO_QUALITY_TIER_COUNT = 6
+const VIDEO_PNG_PREDICTORS = { none: 0, up: 2, paeth: 4 } as const
+
+function videoQualityTier(
+  index: number,
+  label: string,
+  bitsPerChannel: readonly [number, number, number],
+  lossless: boolean,
+  compressionLevel: number,
+  predictor: VideoQualityTier["predictor"],
+  colorMode: number,
+) {
+  return {
+    info: { index, total: VIDEO_QUALITY_TIER_COUNT, label, bitsPerChannel, lossless, compressionLevel, predictor },
+    colorMode,
+  }
+}
+
 const VIDEO_PNG_QUALITY_TIERS = [
-  { compressionLevel: 1, predictor: 4, colorMode: 1 },
-  { compressionLevel: 1, predictor: 4, colorMode: 5 },
-  { compressionLevel: 2, predictor: 2, colorMode: 2 },
-  { compressionLevel: 1, predictor: 2, colorMode: 2 },
-  { compressionLevel: 2, predictor: 0, colorMode: 0 },
-  { compressionLevel: 1, predictor: 4, colorMode: 4 },
+  videoQualityTier(0, "RGB888", [8, 8, 8], true, 1, "paeth", 1),
+  videoQualityTier(1, "RGB666", [6, 6, 6], false, 1, "paeth", 5),
+  videoQualityTier(2, "RGB444", [4, 4, 4], false, 2, "up", 2),
+  videoQualityTier(3, "RGB444 fast", [4, 4, 4], false, 1, "up", 2),
+  videoQualityTier(4, "RGB343", [3, 4, 3], false, 2, "none", 0),
+  videoQualityTier(5, "PAL332", [3, 3, 2], false, 1, "paeth", 4),
 ] as const
 
 export function createAdaptiveVideoQualityState(backpressureCount = 0): AdaptiveVideoQualityState {
@@ -242,6 +270,15 @@ export class VideoRenderable extends Renderable {
 
   public get protocol(): ImageRenderProtocol {
     return this.renderProtocol
+  }
+
+  public get effectiveProtocol(): Exclude<ImageRenderProtocol, "auto"> {
+    return resolveImageRenderProtocol(this.renderProtocol, this._ctx.capabilities, this._ctx.resolution !== null)
+  }
+
+  public get qualityTier(): VideoQualityTier {
+    const info = VIDEO_PNG_QUALITY_TIERS[this.adaptiveQuality.tier].info
+    return { ...info, bitsPerChannel: [...info.bitsPerChannel] }
   }
 
   public set protocol(value: ImageRenderProtocol) {
@@ -580,7 +617,11 @@ export class VideoRenderable extends Renderable {
     })
     if (next.tier !== this.adaptiveQuality.tier) {
       const quality = VIDEO_PNG_QUALITY_TIERS[next.tier]
-      this.native.configurePng(quality.compressionLevel, quality.predictor, quality.colorMode)
+      this.native.configurePng(
+        quality.info.compressionLevel,
+        VIDEO_PNG_PREDICTORS[quality.info.predictor],
+        quality.colorMode,
+      )
     }
     this.adaptiveQuality = next
   }

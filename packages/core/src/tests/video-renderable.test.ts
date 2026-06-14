@@ -7,7 +7,10 @@ import {
   createAdaptiveVideoQualityState,
   normalizeVideoTime,
   updateAdaptiveVideoQuality,
+  VideoRenderable,
 } from "../renderables/Video.js"
+import { createTestRenderer } from "../testing/test-renderer.js"
+import { setRendererCapabilities } from "../testing/terminal-capabilities.js"
 
 describe("VideoRenderable geometry", () => {
   test("fits portrait video using physical cell aspect", () => {
@@ -101,6 +104,28 @@ describe("VideoRenderable timeline", () => {
 })
 
 describe("VideoRenderable adaptive quality", () => {
+  test("exposes its active quality tier and effective protocol", async () => {
+    const renderer = (await createTestRenderer({})).renderer
+    const video = new VideoRenderable(renderer, { source: "unused.mp4" })
+    try {
+      expect(video.qualityTier).toEqual({
+        index: 0,
+        total: 6,
+        label: "RGB888",
+        bitsPerChannel: [8, 8, 8],
+        lossless: true,
+        compressionLevel: 1,
+        predictor: "paeth",
+      })
+      expect(video.effectiveProtocol).toBe("blocks")
+      setRendererCapabilities(renderer, { kitty_graphics: true })
+      expect(video.effectiveProtocol).toBe("kitty")
+    } finally {
+      video.destroy()
+      renderer.destroy()
+    }
+  })
+
   test("downgrades CPU quality after sustained frame-budget pressure", () => {
     let state = createAdaptiveVideoQualityState()
     for (let serial = 1n; serial <= 3n; serial++) {

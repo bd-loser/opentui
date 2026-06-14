@@ -160,7 +160,7 @@ describe("VideoRenderable adaptive quality", () => {
     }
   })
 
-  test("skips the byte-heavy CPU tier under output backpressure", () => {
+  test("steps down to RGB666 under output backpressure", () => {
     let state = createAdaptiveVideoQualityState()
     for (let serial = 1n; serial <= 3n; serial++) {
       state = updateAdaptiveVideoQuality(state, {
@@ -171,7 +171,7 @@ describe("VideoRenderable adaptive quality", () => {
         backpressureCount: Number(serial),
       })
     }
-    expect(state.tier).toBe(2)
+    expect(state.tier).toBe(1)
   })
 
   test("upgrades only after prolonged stable headroom", () => {
@@ -194,6 +194,34 @@ describe("VideoRenderable adaptive quality", () => {
       backpressureCount: 0,
     })
     expect(state.tier).toBe(0)
+  })
+
+  test("recovers tiers that sustain 30 FPS without meeting the obsolete 35% gate", () => {
+    let state = { ...createAdaptiveVideoQualityState(), tier: 2 }
+    for (let serial = 1n; serial <= 120n; serial++) {
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 13.3,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 1n,
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBe(1)
+  })
+
+  test("does not recover without enough CPU margin for the next tier", () => {
+    let state = { ...createAdaptiveVideoQualityState(), tier: 2 }
+    for (let serial = 1n; serial <= 240n; serial++) {
+      state = updateAdaptiveVideoQuality(state, {
+        updateTimeMs: 17,
+        frameBudgetMs: 1000 / 30,
+        frameSerial: serial,
+        expectedFrameStep: 1n,
+        backpressureCount: 0,
+      })
+    }
+    expect(state.tier).toBe(2)
   })
 
   test("treats two source frames per update as expected for a 60 to 30 FPS cap", () => {

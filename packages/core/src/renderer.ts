@@ -4580,6 +4580,11 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this.lib.getRenderStats(this.rendererPtr)
   }
 
+  public getOutputWriteSample(): { frameCount: number; timeUs?: number } {
+    const stats = this.lib.getRenderStats(this.rendererPtr)
+    return { frameCount: stats.nativeFrameCount, timeUs: stats.nativeStdoutWriteTime }
+  }
+
   public getStats(): CliRendererStats {
     const nativeStats = this.getNativeStats()
     const frameTimes = [...this.frameTimes]

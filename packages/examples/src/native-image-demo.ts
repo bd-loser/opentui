@@ -117,7 +117,7 @@ function updateVideoStatus(): void {
   if (!videoStatus || !videoMetadata || !video) return
   const quality = video.qualityTier
   videoStatus.fg = P.cyan
-  const syncOffset = `${video.avSyncOffsetMs >= 0 ? "+" : ""}${video.avSyncOffsetMs.toFixed(0)}MS AV`
+  const syncOffset = `AUTO ${video.automaticSyncLeadMs.toFixed(0)}MS  ${video.avSyncOffsetMs >= 0 ? "+" : ""}${video.avSyncOffsetMs.toFixed(0)}MS MANUAL`
   videoStatus.content = `${basename(selectedVideoPath)}  |  ${video.effectiveProtocol.toUpperCase()}  |  ${syncOffset}  |  QUALITY ${quality.index + 1}/${quality.total} ${quality.label}${quality.lossless ? " LOSSLESS" : ""}  |  ${videoMetadata.width}×${videoMetadata.height}  ${videoMetadata.fps.toFixed(0)} SOURCE → ${video.presentationFps.toFixed(1)} DISPLAY FPS  ${formatTime(video.currentTime)} / ${formatTime(video.duration)}  ${video.playing ? "PLAYING" : "PAUSED"}`
 }
 

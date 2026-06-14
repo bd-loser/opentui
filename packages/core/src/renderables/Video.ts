@@ -86,6 +86,21 @@ export interface VideoQualityTier {
   readonly predictor: "none" | "up" | "paeth"
 }
 
+export interface VideoLatencyWindow {
+  samples: number[]
+  maximum: number
+}
+
+export interface VideoFrameTargetOptions {
+  mediaTime: number
+  lastPresentedPts: number
+  presentationFps: number
+  sourceFps: number
+  preparationBudgetMs: number
+  outputBudgetMs: number
+  manualOffsetMs: number
+}
+
 const VIDEO_QUALITY_TIER_COUNT = 8
 const VIDEO_PNG_PREDICTORS = { none: 0, up: 2, paeth: 4 } as const
 const VIDEO_CPU_OVERLOAD_RATIO = 0.7
@@ -94,6 +109,7 @@ const VIDEO_OVERLOAD_SCORE_LIMIT = 8
 const VIDEO_OVERLOAD_SCORE_RECOVERY = 2
 const VIDEO_HEADROOM_PRESSURE_PENALTY = 4
 const VIDEO_STABLE_RECOVERY_SAMPLES = 120
+const VIDEO_LATENCY_WINDOW_SIZE = 30
 const VIDEO_PRESENTATION_RATE_SCALES = [1, 0.8, 2 / 3, 0.5, 0.4, 1 / 3, 0.25, 1 / 6, 0.125] as const
 
 function videoQualityTier(
@@ -255,6 +271,47 @@ export function normalizeVideoTime(value: number, duration: number, loop: boolea
   return ((nonNegative % duration) + duration) % duration
 }
 
+export function updateVideoLatencyWindow(
+  state: VideoLatencyWindow,
+  sampleMs: number,
+  capacity = VIDEO_LATENCY_WINDOW_SIZE,
+): VideoLatencyWindow {
+  if (!Number.isFinite(sampleMs) || sampleMs < 0 || !Number.isInteger(capacity) || capacity <= 0) return state
+  if (state.samples.length >= capacity) state.samples.shift()
+  state.samples.push(sampleMs)
+  state.maximum = Math.max(...state.samples)
+  return state
+}
+
+export function calculateVideoFrameTarget(options: VideoFrameTargetOptions): number {
+  const presentationInterval = 1 / options.presentationFps
+  const sourceInterval = 1 / (options.sourceFps > 0 ? options.sourceFps : options.presentationFps)
+  const measuredLead = (options.preparationBudgetMs + options.outputBudgetMs + options.manualOffsetMs) / 1000
+  return Math.max(
+    options.mediaTime + measuredLead + sourceInterval,
+    options.lastPresentedPts >= 0 ? options.lastPresentedPts + presentationInterval : 0,
+  )
+}
+
+export function calculateVideoPresentationDeadline(
+  framePts: number,
+  outputBudgetMs: number,
+  manualOffsetMs: number,
+): number {
+  return framePts - (outputBudgetMs + manualOffsetMs) / 1000
+}
+
+export function classifyPreparedVideoFrame(
+  mediaTime: number,
+  framePts: number,
+  presentationFps: number,
+  outputBudgetMs: number,
+  manualOffsetMs: number,
+): "wait" | "present" | "drop" {
+  if (framePts < mediaTime - 1 / presentationFps) return "drop"
+  return mediaTime >= calculateVideoPresentationDeadline(framePts, outputBudgetMs, manualOffsetMs) ? "present" : "wait"
+}
+
 export function calculateVideoGeometry(options: VideoGeometryOptions): VideoOutputGeometry {
   const { fit, sourceWidth, sourceHeight, targetWidth, targetHeight, terminalWidth, terminalHeight, resolution } =
     options
@@ -303,6 +360,9 @@ export class VideoRenderable extends Renderable {
   private native: NativeVideo | null = null
   private metadata: VideoMetadata | null = null
   private currentImage: NativeImage | null = null
+  private preparedImage: NativeImage | null = null
+  private preparedPts = -1
+  private lastPresentedPts = -1
   private geometry: VideoOutputGeometry | null = null
   private wallClock = false
   private positionSeconds = 0
@@ -310,8 +370,16 @@ export class VideoRenderable extends Renderable {
   private wantsPlayback: boolean
   private playbackEnded = false
   private ticker: ReturnType<typeof setTimeout> | null = null
+  private prepareTimer: ReturnType<typeof setTimeout> | null = null
+  private prepareGeneration = 0
   private updating = false
+  private preparing = false
   private adaptiveQuality: AdaptiveVideoQualityState
+  private preparationLatency: VideoLatencyWindow = { samples: [], maximum: 0 }
+  private outputLatency: VideoLatencyWindow = { samples: [], maximum: 0 }
+  private outputSamplingAfterFrame: number | null = null
+  private lastOutputSampleFrame = -1
+  private lastOutputObservationFrame = -1
   private nextPresentationAt = 0
 
   constructor(ctx: RenderContext, options: VideoRenderableOptions) {
@@ -372,9 +440,18 @@ export class VideoRenderable extends Renderable {
     )
   }
 
+  public get automaticSyncLeadMs(): number {
+    const sourceFps = this.metadata?.fps ?? 0
+    const sourceIntervalMs = 1000 / (sourceFps > 0 ? sourceFps : this.presentationFps)
+    return this.preparationLatency.maximum + this.outputLatency.maximum + sourceIntervalMs
+  }
+
   public set protocol(value: ImageRenderProtocol) {
     if (this.renderProtocol === value) return
     this.renderProtocol = value
+    this.outputLatency = { samples: [], maximum: 0 }
+    this.outputSamplingAfterFrame = null
+    this.lastOutputSampleFrame = -1
     this.requestRender()
   }
 
@@ -408,7 +485,9 @@ export class VideoRenderable extends Renderable {
     if (this.avSyncOffsetValue === value) return
     this.avSyncOffsetValue = value
     this.native?.setAvSyncOffsetMs(value)
+    this.discardPreparedFrame()
     this.nextPresentationAt = 0
+    if (this.wantsPlayback) this.schedulePreparation()
   }
 
   public get playing(): boolean {
@@ -464,6 +543,7 @@ export class VideoRenderable extends Renderable {
     this.nextPresentationAt = 0
     this.startClock()
     this.startTicker()
+    this.schedulePreparation()
     this.onPlay?.()
   }
 
@@ -476,6 +556,7 @@ export class VideoRenderable extends Renderable {
     this.positionSeconds = this.currentTime
     this.wantsPlayback = false
     this.stopTicker()
+    this.cancelPreparation()
     this.native?.pause()
     this.wallClock = false
     this.onPause?.()
@@ -493,10 +574,13 @@ export class VideoRenderable extends Renderable {
     this.playbackEnded = false
     if (!this.ensureNative()) return
     try {
+      this.cancelPreparation()
+      this.discardPreparedFrame()
       this.native!.seek(target)
       this.resetAdaptiveQualitySamples()
       this.updateFrame(target)
       if (this.wantsPlayback) this.startClock()
+      if (this.wantsPlayback) this.schedulePreparation()
       this.onSeek?.(target)
       this.onTimeUpdate?.(target)
     } catch (error) {
@@ -560,6 +644,7 @@ export class VideoRenderable extends Renderable {
       if (this.wantsPlayback) {
         this.startClock()
         this.startTicker()
+        this.schedulePreparation()
       }
       return true
     } catch (error) {
@@ -591,10 +676,17 @@ export class VideoRenderable extends Renderable {
     )
       return
     const position = this.currentTime
+    this.cancelPreparation()
+    this.discardPreparedFrame()
+    this.preparationLatency = { samples: [], maximum: 0 }
+    this.outputLatency = { samples: [], maximum: 0 }
+    this.outputSamplingAfterFrame = null
+    this.lastOutputSampleFrame = -1
     this.geometry = next
     this.native.configureOutput(next.decodeWidth, next.decodeHeight, this.fitMode === "cover")
     this.resetAdaptiveQualitySamples()
     this.updateFrame(position)
+    if (this.wantsPlayback) this.schedulePreparation()
   }
 
   private startClock(): void {
@@ -641,6 +733,7 @@ export class VideoRenderable extends Renderable {
         this.resetAdaptiveQualitySamples()
         this.startClock()
         this.updateFrame(time)
+        this.schedulePreparation()
         this.onTimeUpdate?.(time)
         return
       }
@@ -655,35 +748,34 @@ export class VideoRenderable extends Renderable {
         this.onEnd?.()
         return
       }
-      const updateStarted = performance.now()
-      const now = performance.now()
-      if (this.currentImage && now < this.nextPresentationAt) {
-        const state = this.native.service(time)
-        this.onTimeUpdate?.(state.currentTime)
-        return
-      }
-      const state = this.updateFrame(time)
-      this.nextPresentationAt = now + 1000 / this.presentationFps
-      if (state) this.updateAdaptiveQuality(performance.now() - updateStarted, state, 1000 / this.presentationFps)
-      if (state?.ended) {
+      const state = this.native.service(time)
+      const mediaTime = nativeAudioClock ? state.currentTime : time
+      this.observeOutputLatency()
+      this.presentPreparedFrame(mediaTime)
+      if (!this.preparedImage) this.schedulePreparation()
+      if (this.duration > 0 && mediaTime >= this.duration) {
         if (this.loopPlayback) {
           this.positionSeconds = 0
+          this.cancelPreparation()
+          this.discardPreparedFrame()
           this.native.seek(0)
           this.resetAdaptiveQualitySamples()
           this.startClock()
           this.updateFrame(0)
+          this.schedulePreparation()
         } else {
-          this.positionSeconds = this.duration || time
+          this.positionSeconds = this.duration
           this.wantsPlayback = false
           this.playbackEnded = true
           this.stopTicker()
+          this.cancelPreparation()
           this.native.pause()
           this.onTimeUpdate?.(this.positionSeconds)
           this.onEnd?.()
         }
         return
       }
-      this.onTimeUpdate?.(state?.currentTime ?? time)
+      this.onTimeUpdate?.(mediaTime)
     } catch (error) {
       this.reportError(error)
       this.wantsPlayback = false
@@ -696,14 +788,130 @@ export class VideoRenderable extends Renderable {
 
   private updateFrame(time: number) {
     if (!this.native) return null
+    const started = performance.now()
     const state = this.native.update(time)
+    this.preparationLatency = updateVideoLatencyWindow(this.preparationLatency, performance.now() - started)
     const next = this.native.takeFrame()
     if (!next) return state
     const previous = this.currentImage
     this.currentImage = next
+    this.lastPresentedPts = state.framePts
     previous?.dispose()
     this.requestRender()
+    this.markOutputSamplingStart()
     return state
+  }
+
+  private schedulePreparation(): void {
+    if (this.prepareTimer || this.preparing || this.preparedImage || !this.wantsPlayback || !this.native) return
+    const generation = this.prepareGeneration
+    this.prepareTimer = setTimeout(() => {
+      this.prepareTimer = null
+      if (generation !== this.prepareGeneration || !this.wantsPlayback || !this.native || this.isDestroyed) return
+      this.prepareNextFrame(generation)
+    }, 0)
+  }
+
+  private prepareNextFrame(generation: number): void {
+    if (!this.native || this.preparing || this.preparedImage || generation !== this.prepareGeneration) return
+    this.preparing = true
+    try {
+      this.observeOutputLatency()
+      const before = this.native.state
+      const mediaTime = before.audioActive || before.buffering ? before.currentTime : this.currentTime
+      const target = normalizeVideoTime(
+        calculateVideoFrameTarget({
+          mediaTime,
+          lastPresentedPts: this.lastPresentedPts,
+          presentationFps: this.presentationFps,
+          sourceFps: this.metadata?.fps ?? 0,
+          preparationBudgetMs: this.preparationLatency.maximum,
+          outputBudgetMs: this.outputLatency.maximum,
+          manualOffsetMs: this.avSyncOffsetValue,
+        }),
+        this.duration,
+        false,
+      )
+      const started = performance.now()
+      const state = this.native.prepare(target)
+      const preparationTime = performance.now() - started
+      this.preparationLatency = updateVideoLatencyWindow(this.preparationLatency, preparationTime)
+      const next = this.native.takeFrame()
+      if (generation !== this.prepareGeneration || !this.wantsPlayback) {
+        next?.dispose()
+        return
+      }
+      if (next && state.framePts > this.lastPresentedPts) {
+        this.preparedImage = next
+        this.preparedPts = state.framePts
+      } else {
+        next?.dispose()
+      }
+      this.updateAdaptiveQuality(preparationTime, state, 1000 / this.presentationFps)
+    } finally {
+      this.preparing = false
+    }
+    if (!this.native || generation !== this.prepareGeneration || !this.wantsPlayback) return
+    const state = this.native.state
+    const mediaTime = state.audioActive || state.buffering ? state.currentTime : this.currentTime
+    this.presentPreparedFrame(mediaTime)
+  }
+
+  private presentPreparedFrame(mediaTime: number): void {
+    if (!this.preparedImage) return
+    const action = classifyPreparedVideoFrame(
+      mediaTime,
+      this.preparedPts,
+      this.presentationFps,
+      this.outputLatency.maximum,
+      this.avSyncOffsetValue,
+    )
+    if (action === "wait") return
+    if (action === "drop") {
+      this.discardPreparedFrame()
+      this.schedulePreparation()
+      return
+    }
+    if (performance.now() < this.nextPresentationAt) return
+
+    const previous = this.currentImage
+    this.currentImage = this.preparedImage
+    this.preparedImage = null
+    this.lastPresentedPts = this.preparedPts
+    this.preparedPts = -1
+    previous?.dispose()
+    this.nextPresentationAt = performance.now() + 1000 / this.presentationFps
+    this.requestRender()
+    this.markOutputSamplingStart()
+    this.schedulePreparation()
+  }
+
+  private observeOutputLatency(): void {
+    if (this.lastOutputObservationFrame === this._ctx.frameId) return
+    this.lastOutputObservationFrame = this._ctx.frameId
+    const sample = this._ctx.getOutputWriteSample?.()
+    if (!sample || this.outputSamplingAfterFrame === null || sample.frameCount < this.outputSamplingAfterFrame) return
+    if (sample.frameCount === this.lastOutputSampleFrame || sample.timeUs === undefined || sample.timeUs < 0) return
+    this.lastOutputSampleFrame = sample.frameCount
+    this.outputLatency = updateVideoLatencyWindow(this.outputLatency, sample.timeUs / 1000)
+  }
+
+  private markOutputSamplingStart(): void {
+    if (this.outputSamplingAfterFrame !== null) return
+    const sample = this._ctx.getOutputWriteSample?.()
+    if (sample) this.outputSamplingAfterFrame = sample.frameCount + 2
+  }
+
+  private discardPreparedFrame(): void {
+    this.preparedImage?.dispose()
+    this.preparedImage = null
+    this.preparedPts = -1
+  }
+
+  private cancelPreparation(): void {
+    this.prepareGeneration++
+    if (this.prepareTimer) clearTimeout(this.prepareTimer)
+    this.prepareTimer = null
   }
 
   private updateAdaptiveQuality(updateTimeMs: number, state: NativeVideoState, frameBudgetMs: number): void {
@@ -720,6 +928,7 @@ export class VideoRenderable extends Renderable {
         VIDEO_PNG_PREDICTORS[quality.info.predictor],
         quality.colorMode,
       )
+      this.preparationLatency = { samples: [updateTimeMs], maximum: updateTimeMs }
     }
     this.adaptiveQuality = next
   }
@@ -753,7 +962,9 @@ export class VideoRenderable extends Renderable {
   protected destroySelf(): void {
     this.wantsPlayback = false
     this.stopTicker()
+    this.cancelPreparation()
     this.wallClock = false
+    this.discardPreparedFrame()
     this.currentImage?.dispose()
     this.currentImage = null
     this.native?.dispose()

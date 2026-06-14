@@ -127,6 +127,38 @@ test "video audio service does not decode or encode a new video frame" {
     try std.testing.expect(value.state.audio_produced_frames > 0);
 }
 
+test "video frame preparation does not advance audio or media time" {
+    const value = try openVideo();
+    defer value.deinit();
+    value.setAudioOffline(true);
+    value.play();
+    for (0..3) |_| _ = try value.update(0);
+
+    var output: [1920]f32 = undefined;
+    try std.testing.expectEqual(audio.Status.ok, audio.mixToBuffer(value.audio_engine.?, &output, 960, 2));
+    const before = value.getState();
+    const queued = before.audio_queued_frames;
+
+    try std.testing.expect(try value.prepare(500_000));
+    const after = value.getState();
+
+    try std.testing.expectEqual(before.current_time_us, after.current_time_us);
+    try std.testing.expectEqual(before.audio_consumed_frames, after.audio_consumed_frames);
+    try std.testing.expectEqual(queued, after.audio_queued_frames);
+    try std.testing.expectEqual(@as(i64, 500_000), after.frame_pts_us);
+}
+
+test "video frame preparation clamps ahead of EOF without ending playback" {
+    const value = try openVideo();
+    defer value.deinit();
+
+    _ = try value.prepare(value.info.duration_us + 1_000_000);
+
+    const state = value.getState();
+    try std.testing.expectEqual(@as(u32, 0), state.ended);
+    try std.testing.expect(state.frame_pts_us < value.info.duration_us);
+}
+
 test "video AV sync offset changes only the selected frame target" {
     const value = try openVideo();
     defer value.deinit();

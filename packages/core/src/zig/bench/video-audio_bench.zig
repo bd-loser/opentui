@@ -106,6 +106,18 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         try appendResult(allocator, &results, "Steady native audio video update", stats, null);
     }
 
+    if (bench_utils.matchesBenchFilter("Steady prepared video frame", bench_filter)) {
+        const value = try video.Video.open(allocator, asset);
+        defer value.deinit();
+        var stats: bench_utils.BenchStats = .{};
+        for (1..48) |index| {
+            var timer = try std.time.Timer.start();
+            _ = try value.prepare(@intCast(index * 33_333));
+            stats.record(timer.read());
+        }
+        try appendResult(allocator, &results, "Steady prepared video frame", stats, null);
+    }
+
     if (bench_utils.matchesBenchFilter("Seek and incremental audio restart", bench_filter)) {
         const value = try video.Video.open(allocator, asset);
         defer value.deinit();

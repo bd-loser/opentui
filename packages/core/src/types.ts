@@ -117,6 +117,8 @@ export interface RenderContext extends EventEmitter {
   frameId: number
   /** Monotonic count of native frames rejected by output backpressure. */
   renderBackpressureCount?: number
+  /** Latest completed native output write and renderer frame count. */
+  getOutputWriteSample?: () => { frameCount: number; timeUs?: number }
   requestRender: () => void
   setCursorPosition: (x: number, y: number, visible: boolean) => void
   setCursorStyle: (options: CursorStyleOptions) => void

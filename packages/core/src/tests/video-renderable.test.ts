@@ -4,10 +4,14 @@ import {
   calculateVideoGeometry,
   calculateAdaptiveVideoPlaybackFps,
   calculateVideoFrameStep,
+  calculateVideoFrameTarget,
+  calculateVideoPresentationDeadline,
   calculateVideoPlaybackFps,
   calculateVideoTickFps,
+  classifyPreparedVideoFrame,
   createAdaptiveVideoQualityState,
   normalizeVideoTime,
+  updateVideoLatencyWindow,
   updateAdaptiveVideoQuality,
   VideoRenderable,
 } from "../renderables/Video.js"
@@ -157,6 +161,79 @@ describe("VideoRenderable timeline", () => {
       video.destroy()
       renderer.destroy()
     }
+  })
+
+  test("prepares one future frame from measured pipeline budgets", () => {
+    expect(
+      calculateVideoFrameTarget({
+        mediaTime: 1,
+        lastPresentedPts: 0.95,
+        presentationFps: 30,
+        sourceFps: 60,
+        preparationBudgetMs: 32,
+        outputBudgetMs: 34,
+        manualOffsetMs: 0,
+      }),
+    ).toBeCloseTo(1.082667, 5)
+  })
+
+  test("never prepares behind the next presentation cadence slot", () => {
+    expect(
+      calculateVideoFrameTarget({
+        mediaTime: 1,
+        lastPresentedPts: 1.1,
+        presentationFps: 30,
+        sourceFps: 60,
+        preparationBudgetMs: 10,
+        outputBudgetMs: 10,
+        manualOffsetMs: 0,
+      }),
+    ).toBeCloseTo(1.133333, 6)
+  })
+
+  test("submits a prepared frame one measured output duration before its PTS", () => {
+    expect(calculateVideoPresentationDeadline(2, 34, 0)).toBeCloseTo(1.966, 6)
+    expect(calculateVideoPresentationDeadline(2, 34, 20)).toBeCloseTo(1.946, 6)
+    expect(calculateVideoPresentationDeadline(2, 34, -20)).toBeCloseTo(1.986, 6)
+  })
+
+  test("tracks an exact bounded maximum of recent latency samples", () => {
+    let window = { samples: [] as number[], maximum: 0 }
+    window = updateVideoLatencyWindow(window, 12, 3)
+    window = updateVideoLatencyWindow(window, 30, 3)
+    window = updateVideoLatencyWindow(window, 18, 3)
+    expect(window.maximum).toBe(30)
+    window = updateVideoLatencyWindow(window, 16, 3)
+    expect(window.samples).toEqual([30, 18, 16])
+    window = updateVideoLatencyWindow(window, 14, 3)
+    expect(window.maximum).toBe(18)
+  })
+
+  test("waits for early prepared frames and drops frames over one presentation interval late", () => {
+    expect(classifyPreparedVideoFrame(1.9, 2, 30, 34, 0)).toBe("wait")
+    expect(classifyPreparedVideoFrame(1.97, 2, 30, 34, 0)).toBe("present")
+    expect(classifyPreparedVideoFrame(2.04, 2, 30, 34, 0)).toBe("drop")
+  })
+
+  test("lands a 60 FPS frame on its audio deadline with measured preparation and output costs", () => {
+    const preparationMs = 32
+    const outputMs = 34
+    const target = calculateVideoFrameTarget({
+      mediaTime: 1,
+      lastPresentedPts: 0.95,
+      presentationFps: 30,
+      sourceFps: 60,
+      preparationBudgetMs: preparationMs,
+      outputBudgetMs: outputMs,
+      manualOffsetMs: 0,
+    })
+    const selectedPts = Math.floor(target * 60) / 60
+    const preparationCompletedAt = 1 + preparationMs / 1000
+    const submissionAt = Math.max(preparationCompletedAt, calculateVideoPresentationDeadline(selectedPts, outputMs, 0))
+    const outputCompletedAt = submissionAt + outputMs / 1000
+
+    expect(selectedPts).toBeCloseTo(1.066667, 5)
+    expect(outputCompletedAt).toBeCloseTo(selectedPts, 5)
   })
 })
 

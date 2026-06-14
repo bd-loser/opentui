@@ -199,6 +199,20 @@ pub const Video = struct {
             else
                 @min(frame_target, self.info.duration_us - 1);
         }
+        self.state.current_time_us = effective_target;
+        return self.decodeFrame(frame_target, true);
+    }
+
+    pub fn prepare(self: *Video, target_us: i64) !bool {
+        if (target_us < 0) return error.InvalidArgument;
+        const frame_target = if (self.info.duration_us > 0)
+            @min(target_us, self.info.duration_us - 1)
+        else
+            target_us;
+        return self.decodeFrame(frame_target, false);
+    }
+
+    fn decodeFrame(self: *Video, target_us: i64, mark_ended: bool) !bool {
         var pixels: ?[*]const u8 = null;
         var width: u32 = 0;
         var height: u32 = 0;
@@ -209,7 +223,7 @@ pub const Video = struct {
         var png_len: u64 = 0;
         const result = ot_video_decode_frame(
             self.decoder,
-            frame_target,
+            target_us,
             &pixels,
             &width,
             &height,
@@ -219,13 +233,12 @@ pub const Video = struct {
             &png,
             &png_len,
         );
-        self.state.current_time_us = effective_target;
         if (result == 1) {
-            self.state.ended = 1;
+            if (mark_ended) self.state.ended = 1;
             return false;
         }
         if (result != 0 or pixels == null) return error.DecodeFailed;
-        self.state.ended = 0;
+        if (mark_ended) self.state.ended = 0;
         if (serial == self.state.frame_serial and self.current_image != null) return false;
         const required = @as(usize, stride) * height;
         const next = try image.createFromRgba(self.allocator, pixels.?[0..required], width, height, stride);

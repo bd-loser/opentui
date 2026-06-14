@@ -585,6 +585,13 @@ export fn videoUpdate(video_handle: NativeHandle, target_us: i64, out_state: ?*n
     return @intFromEnum(native_video.Status.ok);
 }
 
+export fn videoPrepare(video_handle: NativeHandle, target_us: i64, out_state: ?*native_video.State) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    _ = value.prepare(target_us) catch |err| return @intFromEnum(native_video.statusFromError(err));
+    if (out_state) |output| output.* = value.getState();
+    return @intFromEnum(native_video.Status.ok);
+}
+
 export fn videoService(video_handle: NativeHandle, target_us: i64, out_state: ?*native_video.State) u32 {
     const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
     value.service(target_us) catch |err| return @intFromEnum(native_video.statusFromError(err));

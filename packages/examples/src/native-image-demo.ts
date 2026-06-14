@@ -109,7 +109,7 @@ function updateControls(): void {
       ? "ENTER  GO TO DIRECTORY     ESC  BACK"
       : "↑/↓  CHOOSE     ENTER  OPEN     G  GO TO DIRECTORY     BACKSPACE  PARENT     ESC  CANCEL"
     : showingVideo
-      ? `V  GALLERY     O  OPEN FILE     SPACE  ${video?.playing ? "PAUSE" : "PLAY"}     ←/→  0.25S     [ / ]  AV SYNC     F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}`
+      ? `V  GALLERY     O  OPEN FILE     SPACE  ${video?.playing ? "PAUSE" : "PLAY"}     ←/→  0.25S     SHIFT+←/→  5S     [ / ]  AV SYNC     F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}`
       : `V  VIDEO     F  ${fitMode.toUpperCase()}     P  ${protocol.toUpperCase()} → ${effective.toUpperCase()}     ESC  MENU`
 }
 
@@ -791,8 +791,12 @@ export async function run(renderer: CliRenderer): Promise<void> {
     } else if (showingVideo && key.name === "space") {
       video?.toggle()
     } else if (showingVideo && key.name === "left") {
+      key.preventDefault()
+      key.stopPropagation()
       video?.seekBy(key.shift ? -5 : -0.25)
     } else if (showingVideo && key.name === "right") {
+      key.preventDefault()
+      key.stopPropagation()
       video?.seekBy(key.shift ? 5 : 0.25)
     } else if (showingVideo && key.raw === "[") {
       avSyncOffsetMs -= 10

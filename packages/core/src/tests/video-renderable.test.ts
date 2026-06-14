@@ -139,6 +139,25 @@ describe("VideoRenderable timeline", () => {
     expect(state.tier).toBeLessThanOrEqual(1)
     expect(state.presentationRateTier).toBeLessThan(3)
   })
+
+  test("stores a finite millisecond A/V sync offset without opening media", async () => {
+    const renderer = (await createTestRenderer({})).renderer
+    const video = new VideoRenderable(renderer, { source: "unused.mp4", avSyncOffset: 75.25 })
+    try {
+      expect(video.avSyncOffset).toBe(75.25)
+      video.avSyncOffset = -30
+      expect(video.avSyncOffset).toBe(-30)
+      expect(() => {
+        video.avSyncOffset = Number.NaN
+      }).toThrow("safe number of microseconds")
+      expect(() => {
+        video.avSyncOffset = Number.MAX_VALUE
+      }).toThrow("safe number of microseconds")
+    } finally {
+      video.destroy()
+      renderer.destroy()
+    }
+  })
 })
 
 describe("VideoRenderable adaptive quality", () => {

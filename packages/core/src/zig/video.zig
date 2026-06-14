@@ -96,6 +96,7 @@ pub const Video = struct {
     audio_device_status: std.atomic.Value(i32) = std.atomic.Value(i32).init(0),
     audio_produced_frames: u64 = 0,
     audio_gain_dirty: bool = true,
+    av_sync_offset_us: i64 = 0,
 
     pub fn open(allocator: Allocator, path: []const u8) !*Video {
         if (path.len == 0 or std.mem.indexOfScalar(u8, path, 0) != null) return error.InvalidArgument;
@@ -189,6 +190,15 @@ pub const Video = struct {
     pub fn update(self: *Video, target_us: i64) !bool {
         if (target_us < 0) return error.InvalidArgument;
         const effective_target = try self.updateAudio(target_us);
+        var frame_target = std.math.add(i64, effective_target, self.av_sync_offset_us) catch
+            if (self.av_sync_offset_us > 0) @as(i64, std.math.maxInt(i64)) else @as(i64, std.math.minInt(i64));
+        frame_target = @max(0, frame_target);
+        if (self.info.duration_us > 0) {
+            frame_target = if (effective_target >= self.info.duration_us)
+                self.info.duration_us
+            else
+                @min(frame_target, self.info.duration_us - 1);
+        }
         var pixels: ?[*]const u8 = null;
         var width: u32 = 0;
         var height: u32 = 0;
@@ -199,7 +209,7 @@ pub const Video = struct {
         var png_len: u64 = 0;
         const result = ot_video_decode_frame(
             self.decoder,
-            effective_target,
+            frame_target,
             &pixels,
             &width,
             &height,
@@ -422,6 +432,10 @@ pub const Video = struct {
                 self.audio_gain_dirty = false;
             };
         }
+    }
+
+    pub fn setAvSyncOffset(self: *Video, offset_us: i64) void {
+        self.av_sync_offset_us = offset_us;
     }
 
     pub fn setAudioOffline(self: *Video, offline: bool) void {

@@ -21,6 +21,8 @@ export interface VideoRenderableOptions extends RenderableOptions<VideoRenderabl
   loop?: boolean
   muted?: boolean
   volume?: number
+  // Positive values advance video frame selection relative to audio.
+  avSyncOffset?: number
   maxFps?: number
   onReady?: (metadata: VideoMetadata) => void
   onError?: (error: Error) => void
@@ -297,6 +299,7 @@ export class VideoRenderable extends Renderable {
   private renderProtocol: ImageRenderProtocol
   private mutedPlayback: boolean
   private volumeLevel: number
+  private avSyncOffsetMs: number
   private native: NativeVideo | null = null
   private metadata: VideoMetadata | null = null
   private currentImage: NativeImage | null = null
@@ -321,6 +324,8 @@ export class VideoRenderable extends Renderable {
     this.volumeLevel = options.volume ?? 1
     if (!Number.isFinite(this.volumeLevel) || this.volumeLevel < 0)
       throw new RangeError("volume must be finite and non-negative")
+    this.avSyncOffsetMs = options.avSyncOffset ?? 0
+    this.validateAvSyncOffset(this.avSyncOffsetMs)
     const maxFps = options.maxFps ?? 30
     if (!Number.isFinite(maxFps) || maxFps <= 0) throw new RangeError("maxFps must be a positive finite number")
     this.maxFps = maxFps
@@ -392,6 +397,18 @@ export class VideoRenderable extends Renderable {
     if (this.volumeLevel === value) return
     this.volumeLevel = value
     this.native?.setVolume(value)
+  }
+
+  public get avSyncOffset(): number {
+    return this.avSyncOffsetMs
+  }
+
+  public set avSyncOffset(value: number) {
+    this.validateAvSyncOffset(value)
+    if (this.avSyncOffsetMs === value) return
+    this.avSyncOffsetMs = value
+    this.native?.setAvSyncOffset(value)
+    this.nextPresentationAt = 0
   }
 
   public get playing(): boolean {
@@ -537,6 +554,7 @@ export class VideoRenderable extends Renderable {
       }
       this.native.setMuted(this.mutedPlayback)
       this.native.setVolume(this.volumeLevel)
+      this.native.setAvSyncOffset(this.avSyncOffsetMs)
       if (this.wantsPlayback) this.native.play()
       this.onReady?.(this.metadata)
       if (this.wantsPlayback) {
@@ -720,6 +738,12 @@ export class VideoRenderable extends Renderable {
   private clockElapsed(): number {
     if (this.wallClock) return Math.max(0, performance.now() - this.playbackStartedAt) / 1000
     return 0
+  }
+
+  private validateAvSyncOffset(value: number): void {
+    if (!Number.isFinite(value) || !Number.isSafeInteger(Math.round(value * 1000))) {
+      throw new RangeError("avSyncOffset must resolve to a safe number of microseconds")
+    }
   }
 
   private reportError(error: unknown): void {

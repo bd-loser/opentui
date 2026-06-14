@@ -553,6 +553,12 @@ export fn videoSetVolume(video_handle: NativeHandle, volume: f32) u32 {
     return @intFromEnum(native_video.Status.ok);
 }
 
+export fn videoSetAvSyncOffset(video_handle: NativeHandle, offset_us: i64) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    value.setAvSyncOffset(offset_us);
+    return @intFromEnum(native_video.Status.ok);
+}
+
 export fn videoConfigureOutput(video_handle: NativeHandle, width: u32, height: u32, cover: u32) u32 {
     const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
     value.configureOutput(width, height, cover != 0) catch |err| return @intFromEnum(native_video.statusFromError(err));

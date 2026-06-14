@@ -127,6 +127,63 @@ test "video audio service does not decode or encode a new video frame" {
     try std.testing.expect(value.state.audio_produced_frames > 0);
 }
 
+test "video AV sync offset changes only the selected frame target" {
+    const value = try openVideo();
+    defer value.deinit();
+    value.setAudioOffline(true);
+    value.play();
+    for (0..3) |_| _ = try value.update(0);
+
+    var output: [9600]f32 = undefined;
+    try std.testing.expectEqual(audio.Status.ok, audio.mixToBuffer(value.audio_engine.?, &output, 4800, 2));
+
+    value.setAvSyncOffset(100_000);
+    _ = try value.update(0);
+    const advanced = value.getState();
+    try std.testing.expectEqual(@as(i64, 100_000), advanced.current_time_us);
+    try std.testing.expect(advanced.frame_pts_us > advanced.current_time_us);
+    try std.testing.expect(advanced.frame_pts_us <= advanced.current_time_us + 100_000);
+
+    try value.seek(0);
+    value.setAvSyncOffset(-100_000);
+    for (0..3) |_| _ = try value.update(0);
+    try std.testing.expectEqual(audio.Status.ok, audio.mixToBuffer(value.audio_engine.?, &output, 4800, 2));
+
+    _ = try value.update(0);
+    const delayed = value.getState();
+    try std.testing.expectEqual(@as(i64, 100_000), delayed.current_time_us);
+    try std.testing.expectEqual(@as(i64, 0), delayed.frame_pts_us);
+}
+
+test "video AV sync offset does not make service decode a frame" {
+    const value = try openVideo();
+    defer value.deinit();
+    value.setAudioOffline(true);
+    value.play();
+    value.setAvSyncOffset(250_000);
+
+    try value.service(0);
+
+    const state = value.getState();
+    try std.testing.expectEqual(@as(u64, 0), state.frame_serial);
+    try std.testing.expectEqual(@as(u32, 0), state.has_frame);
+}
+
+test "video AV sync offset does not change end-of-playback timing" {
+    const value = try openVideo();
+    defer value.deinit();
+    const before_end = value.info.duration_us - 100_000;
+
+    try value.seek(before_end);
+    value.setAvSyncOffset(500_000);
+    _ = try value.update(before_end);
+    try std.testing.expectEqual(@as(u32, 0), value.getState().ended);
+
+    value.setAvSyncOffset(-500_000);
+    _ = try value.update(value.info.duration_us);
+    try std.testing.expectEqual(@as(u32, 1), value.getState().ended);
+}
+
 test "video audio seek clears old PCM and refills from target" {
     const value = try openVideo();
     defer value.deinit();

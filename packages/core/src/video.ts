@@ -120,6 +120,15 @@ export class NativeVideo {
     if (status !== 0) throw videoError(this.lib, this.handle, status)
   }
 
+  public setAvSyncOffset(offsetMs: number): void {
+    const offsetUs = Math.round(offsetMs * 1000)
+    if (!Number.isFinite(offsetMs) || !Number.isSafeInteger(offsetUs)) {
+      throw new RangeError("video A/V sync offset must resolve to a safe number of microseconds")
+    }
+    const status = this.lib.videoSetAvSyncOffset(this.guard(), BigInt(offsetUs))
+    if (status !== 0) throw videoError(this.lib, this.handle, status)
+  }
+
   public configureOutput(width: number, height: number, cover = false): void {
     if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
       throw new RangeError("video output dimensions must be positive integers")

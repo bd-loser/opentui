@@ -58,6 +58,7 @@ const text_chunk_graphemes_bench = @import("bench/text-chunk-graphemes_bench.zig
 const editor_view_bench = @import("bench/editor-view_bench.zig");
 const terminal_image_bench = @import("bench/terminal-image_bench.zig");
 const video_png_bench = @import("bench/video-png_bench.zig");
+const video_audio_bench = @import("bench/video-audio_bench.zig");
 
 const BenchModule = struct {
     name: []const u8,
@@ -111,6 +112,7 @@ pub fn main() !void {
         .{ .name = editor_view_bench.benchName, .run = editor_view_bench.run },
         .{ .name = terminal_image_bench.benchName, .run = terminal_image_bench.run },
         .{ .name = video_png_bench.benchName, .run = video_png_bench.run },
+        .{ .name = video_audio_bench.benchName, .run = video_audio_bench.run },
     };
 
     const args = try std.process.argsAlloc(allocator);

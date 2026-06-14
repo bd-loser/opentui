@@ -435,6 +435,17 @@ export type NativeVideoState = {
   frameSerial: bigint
   hasFrame: number
   ended: number
+  playing: number
+  buffering: number
+  audioActive: number
+  audioEnded: number
+  audioFailed: number
+  audioQueuedFrames: number
+  audioRefillTimeUs: number
+  audioConsumedFrames: bigint
+  audioProducedFrames: bigint
+  audioUnderruns: bigint
+  audioUnderrunFrames: bigint
 }
 
 export const NativeVideoInfoStruct = defineStruct([
@@ -454,4 +465,15 @@ export const NativeVideoStateStruct = defineStruct([
   ["frameSerial", "u64"],
   ["hasFrame", "u32"],
   ["ended", "u32"],
+  ["playing", "u32"],
+  ["buffering", "u32"],
+  ["audioActive", "u32"],
+  ["audioEnded", "u32"],
+  ["audioFailed", "u32"],
+  ["audioQueuedFrames", "u32"],
+  ["audioRefillTimeUs", "u32"],
+  ["audioConsumedFrames", "u64"],
+  ["audioProducedFrames", "u64"],
+  ["audioUnderruns", "u64"],
+  ["audioUnderrunFrames", "u64"],
 ])

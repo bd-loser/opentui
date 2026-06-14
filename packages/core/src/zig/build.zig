@@ -447,9 +447,18 @@ pub fn build(b: *std.Build) void {
         .root_module = bench_mod,
     });
     bench_exe.linkLibC();
+    addMiniaudioShim(b, bench_exe, native_target, macos_sdk_path);
     addImageShim(b, bench_exe, native_target, macos_sdk_path);
     addVideoDependencies(b, bench_exe, native_target, macos_sdk_path);
-    if (native_target.result.os.tag == .macos) addMacOSSystemLibraries(b, bench_exe, macos_sdk_path.?);
+    switch (native_target.result.os.tag) {
+        .macos => addMacOSSystemLibraries(b, bench_exe, macos_sdk_path.?),
+        .linux => {
+            bench_exe.linkSystemLibrary("dl");
+            bench_exe.linkSystemLibrary("pthread");
+            bench_exe.linkSystemLibrary("m");
+        },
+        else => {},
+    }
     const run_bench = b.addRunArtifact(bench_exe);
     if (b.args) |args| {
         run_bench.addArgs(args);

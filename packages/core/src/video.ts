@@ -17,6 +17,17 @@ export interface NativeVideoState {
   frameSerial: bigint
   hasFrame: boolean
   ended: boolean
+  playing: boolean
+  buffering: boolean
+  audioActive: boolean
+  audioEnded: boolean
+  audioFailed: boolean
+  audioQueuedFrames: number
+  audioRefillTimeUs: number
+  audioConsumedFrames: bigint
+  audioProducedFrames: bigint
+  audioUnderruns: bigint
+  audioUnderrunFrames: bigint
 }
 
 function videoError(lib: RenderLib, handle: VideoHandle | null, status: number): Error {
@@ -70,7 +81,43 @@ export class NativeVideo {
       frameSerial: result.state.frameSerial,
       hasFrame: result.state.hasFrame !== 0,
       ended: result.state.ended !== 0,
+      playing: result.state.playing !== 0,
+      buffering: result.state.buffering !== 0,
+      audioActive: result.state.audioActive !== 0,
+      audioEnded: result.state.audioEnded !== 0,
+      audioFailed: result.state.audioFailed !== 0,
+      audioQueuedFrames: result.state.audioQueuedFrames,
+      audioRefillTimeUs: result.state.audioRefillTimeUs,
+      audioConsumedFrames: result.state.audioConsumedFrames,
+      audioProducedFrames: result.state.audioProducedFrames,
+      audioUnderruns: result.state.audioUnderruns,
+      audioUnderrunFrames: result.state.audioUnderrunFrames,
     }
+  }
+
+  public get state(): NativeVideoState {
+    return this.unpackState(this.lib.videoGetState(this.guard()))
+  }
+
+  public play(): void {
+    const status = this.lib.videoPlay(this.guard())
+    if (status !== 0) throw videoError(this.lib, this.handle, status)
+  }
+
+  public pause(): void {
+    const status = this.lib.videoPause(this.guard())
+    if (status !== 0) throw videoError(this.lib, this.handle, status)
+  }
+
+  public setMuted(muted: boolean): void {
+    const status = this.lib.videoSetMuted(this.guard(), muted)
+    if (status !== 0) throw videoError(this.lib, this.handle, status)
+  }
+
+  public setVolume(volume: number): void {
+    if (!Number.isFinite(volume) || volume < 0) throw new RangeError("video volume must be finite and non-negative")
+    const status = this.lib.videoSetVolume(this.guard(), volume)
+    if (status !== 0) throw videoError(this.lib, this.handle, status)
   }
 
   public configureOutput(width: number, height: number, cover = false): void {

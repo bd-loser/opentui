@@ -58,8 +58,13 @@ struct ot_video_decoder {
     int64_t frame_pts_us;
     uint64_t frame_serial;
     float *audio_pending;
+    size_t audio_pending_capacity;
     uint32_t audio_pending_frames;
     uint32_t audio_pending_offset;
+    int audio_swr_drained;
+    enum AVSampleFormat audio_source_format;
+    int audio_source_rate;
+    AVChannelLayout audio_source_layout;
     char error[256];
 };
 
@@ -170,12 +175,27 @@ static int receive_or_read(ot_video_decoder *decoder, ot_stream_decoder *stream)
 static int configure_swr(ot_video_decoder *decoder, const AVFrame *frame) {
     AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
     swr_free(&decoder->swr);
+    av_channel_layout_uninit(&decoder->audio_source_layout);
     int result = swr_alloc_set_opts2(&decoder->swr, &stereo, AV_SAMPLE_FMT_FLT, 48000,
                                      &frame->ch_layout, (enum AVSampleFormat)frame->format,
                                      frame->sample_rate, 0, NULL);
     if (result < 0) return fail(decoder, result, "swr_alloc_set_opts2");
     result = swr_init(decoder->swr);
     if (result < 0) return fail(decoder, result, "swr_init");
+    decoder->audio_source_format = (enum AVSampleFormat)frame->format;
+    decoder->audio_source_rate = frame->sample_rate;
+    result = av_channel_layout_copy(&decoder->audio_source_layout, &frame->ch_layout);
+    if (result < 0) return fail(decoder, result, "av_channel_layout_copy");
+    decoder->audio_swr_drained = 0;
+    return OT_VIDEO_OK;
+}
+
+static int ensure_audio_capacity(ot_video_decoder *decoder, size_t frames) {
+    if (frames <= decoder->audio_pending_capacity) return OT_VIDEO_OK;
+    float *next = realloc(decoder->audio_pending, frames * 2 * sizeof(float));
+    if (!next) return fail(decoder, AVERROR(ENOMEM), "audio allocation");
+    decoder->audio_pending = next;
+    decoder->audio_pending_capacity = frames;
     return OT_VIDEO_OK;
 }
 
@@ -199,9 +219,8 @@ int ot_video_open(const char *path, ot_video_decoder **out_decoder, ot_video_inf
     }
     int audio_result = open_stream(decoder, path, AVMEDIA_TYPE_AUDIO, AV_CODEC_ID_AAC, &decoder->audio);
     if (audio_result == OT_VIDEO_ERROR) {
-        close_stream(&decoder->audio);
-        decoder->error[0] = 0;
-        audio_result = OT_VIDEO_EOF;
+        ot_video_close(&decoder);
+        return OT_VIDEO_ERROR;
     }
     decoder->has_audio = audio_result == OT_VIDEO_OK;
     decoder->origin_us = decoder->video.format->start_time == AV_NOPTS_VALUE ? 0 : decoder->video.format->start_time;
@@ -234,6 +253,7 @@ void ot_video_close(ot_video_decoder **decoder_ptr) {
     if (!decoder_ptr || !*decoder_ptr) return;
     ot_video_decoder *decoder = *decoder_ptr;
     free(decoder->audio_pending);
+    av_channel_layout_uninit(&decoder->audio_source_layout);
     av_frame_free(&decoder->video_selected);
     av_frame_free(&decoder->video_lookahead);
     av_packet_free(&decoder->png_packet);
@@ -308,9 +328,21 @@ int ot_video_seek(ot_video_decoder *decoder, int64_t target_us) {
     decoder->frame_pts_us = AV_NOPTS_VALUE;
     decoder->audio_pending_frames = 0;
     decoder->audio_pending_offset = 0;
+    decoder->audio_swr_drained = 0;
     av_frame_unref(decoder->video_lookahead);
     av_frame_unref(decoder->video_selected);
     swr_free(&decoder->swr);
+    return OT_VIDEO_OK;
+}
+
+int ot_video_seek_video(ot_video_decoder *decoder, int64_t target_us) {
+    if (!decoder) return OT_VIDEO_ERROR;
+    if (target_us < 0) target_us = 0;
+    if (decoder->duration_us > 0 && target_us > decoder->duration_us) target_us = decoder->duration_us;
+    if (seek_stream(decoder, &decoder->video, target_us) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
+    decoder->frame_pts_us = AV_NOPTS_VALUE;
+    av_frame_unref(decoder->video_lookahead);
+    av_frame_unref(decoder->video_selected);
     return OT_VIDEO_OK;
 }
 
@@ -540,19 +572,34 @@ int ot_video_read_audio(ot_video_decoder *decoder, float *out_samples, uint32_t 
         decoder->audio_pending_frames = 0;
         decoder->audio_pending_offset = 0;
         int result = receive_or_read(decoder, &decoder->audio);
-        if (result == OT_VIDEO_EOF) break;
+        if (result == OT_VIDEO_EOF) {
+            if (decoder->swr && !decoder->audio_swr_drained) {
+                int capacity = swr_get_out_samples(decoder->swr, 0);
+                if (capacity < 0) return fail(decoder, capacity, "swr_get_out_samples drain");
+                if (ensure_audio_capacity(decoder, (size_t)capacity) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
+                uint8_t *output[1] = {(uint8_t *)decoder->audio_pending};
+                int produced = swr_convert(decoder->swr, output, capacity, NULL, 0);
+                if (produced < 0) return fail(decoder, produced, "swr_convert drain");
+                decoder->audio_swr_drained = 1;
+                decoder->audio_pending_frames = (uint32_t)produced;
+                if (produced > 0) continue;
+            }
+            break;
+        }
         if (result != OT_VIDEO_OK) return result;
         int64_t pts = stream_pts_us(decoder, &decoder->audio, decoder->audio.frame);
         int64_t end_us = pts == AV_NOPTS_VALUE ? decoder->seek_us : pts + av_rescale_q(decoder->audio.frame->nb_samples,
                                                                                        (AVRational){1, decoder->audio.frame->sample_rate},
                                                                                        AV_TIME_BASE_Q);
         if (end_us <= decoder->seek_us) continue;
-        if (!decoder->swr && configure_swr(decoder, decoder->audio.frame) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
+        if (!decoder->swr || decoder->audio_source_format != (enum AVSampleFormat)decoder->audio.frame->format ||
+            decoder->audio_source_rate != decoder->audio.frame->sample_rate ||
+            av_channel_layout_compare(&decoder->audio_source_layout, &decoder->audio.frame->ch_layout) != 0) {
+            if (configure_swr(decoder, decoder->audio.frame) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
+        }
         int capacity = swr_get_out_samples(decoder->swr, decoder->audio.frame->nb_samples);
         if (capacity < 0) return fail(decoder, capacity, "swr_get_out_samples");
-        float *next = realloc(decoder->audio_pending, (size_t)capacity * 2 * sizeof(float));
-        if (!next) return fail(decoder, AVERROR(ENOMEM), "audio allocation");
-        decoder->audio_pending = next;
+        if (ensure_audio_capacity(decoder, (size_t)capacity) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
         uint8_t *output[1] = {(uint8_t *)decoder->audio_pending};
         int produced = swr_convert(decoder->swr, output, capacity,
                                    (const uint8_t *const *)decoder->audio.frame->extended_data,

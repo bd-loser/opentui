@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   calculateVideoGeometry,
   calculateVideoPlaybackFps,
+  calculateVideoTickFps,
   createAdaptiveVideoQualityState,
   normalizeVideoTime,
   updateAdaptiveVideoQuality,
@@ -89,6 +90,13 @@ describe("VideoRenderable timeline", () => {
     expect(calculateVideoPlaybackFps(30, 60)).toBe(30)
     expect(calculateVideoPlaybackFps(24, 60)).toBe(24)
     expect(calculateVideoPlaybackFps(0, 20)).toBe(20)
+  })
+
+  test("services native audio at least 15 times per second without raising video FPS", () => {
+    expect(calculateVideoTickFps(1, 30, true)).toBe(15)
+    expect(calculateVideoTickFps(10, 30, true)).toBe(15)
+    expect(calculateVideoTickFps(24, 30, true)).toBe(24)
+    expect(calculateVideoTickFps(1, 30, false)).toBe(1)
   })
 })
 

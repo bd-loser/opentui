@@ -25,6 +25,7 @@ enum {
 int ot_video_open(const char *path, ot_video_decoder **out_decoder, ot_video_info *out_info);
 void ot_video_close(ot_video_decoder **decoder);
 int ot_video_seek(ot_video_decoder *decoder, int64_t target_us);
+int ot_video_seek_video(ot_video_decoder *decoder, int64_t target_us);
 int ot_video_set_output_size(ot_video_decoder *decoder, uint32_t width, uint32_t height, uint32_t cover);
 int ot_video_set_png_options(ot_video_decoder *decoder, uint32_t compression_level, uint32_t predictor,
                              uint32_t color_mode);

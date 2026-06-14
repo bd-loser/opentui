@@ -525,7 +525,31 @@ export fn videoGetInfo(video_handle: NativeHandle, out_info: ?*native_video.Info
 export fn videoGetState(video_handle: NativeHandle, out_state: ?*native_video.State) u32 {
     const output = out_state orelse return @intFromEnum(native_video.Status.invalid_argument);
     const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
-    output.* = value.state;
+    output.* = value.getState();
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoPlay(video_handle: NativeHandle) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    value.play();
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoPause(video_handle: NativeHandle) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    value.pause();
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoSetMuted(video_handle: NativeHandle, muted: u32) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    value.setMuted(muted != 0) catch |err| return @intFromEnum(native_video.statusFromError(err));
+    return @intFromEnum(native_video.Status.ok);
+}
+
+export fn videoSetVolume(video_handle: NativeHandle, volume: f32) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    value.setVolume(volume) catch |err| return @intFromEnum(native_video.statusFromError(err));
     return @intFromEnum(native_video.Status.ok);
 }
 
@@ -544,14 +568,14 @@ export fn videoConfigurePng(video_handle: NativeHandle, compression_level: u32, 
 export fn videoSeek(video_handle: NativeHandle, target_us: i64, out_state: ?*native_video.State) u32 {
     const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
     value.seek(target_us) catch |err| return @intFromEnum(native_video.statusFromError(err));
-    if (out_state) |output| output.* = value.state;
+    if (out_state) |output| output.* = value.getState();
     return @intFromEnum(native_video.Status.ok);
 }
 
 export fn videoUpdate(video_handle: NativeHandle, target_us: i64, out_state: ?*native_video.State) u32 {
     const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
     _ = value.update(target_us) catch |err| return @intFromEnum(native_video.statusFromError(err));
-    if (out_state) |output| output.* = value.state;
+    if (out_state) |output| output.* = value.getState();
     return @intFromEnum(native_video.Status.ok);
 }
 

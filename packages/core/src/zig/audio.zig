@@ -111,7 +111,10 @@ pub const Engine = struct {
     pcm_ring: c.ma_pcm_rb = undefined,
     pcm_ring_initialized: bool = false,
     pcm_channels: u8 = 0,
-    pcm_frames_written: u64 = 0,
+    pcm_frames_written: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
+    pcm_frames_consumed: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
+    pcm_underrun_events: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
+    pcm_underrun_frames: std.atomic.Value(u64) = std.atomic.Value(u64).init(0),
 
     pub fn init(allocator: std.mem.Allocator, sample_rate: u32, output_channels: u8) Engine {
         const normalized_sample_rate = if (sample_rate == 0) default_sample_rate else sample_rate;
@@ -150,7 +153,10 @@ pub const Engine = struct {
             .pcm_ring = undefined,
             .pcm_ring_initialized = false,
             .pcm_channels = 0,
-            .pcm_frames_written = 0,
+            .pcm_frames_written = std.atomic.Value(u64).init(0),
+            .pcm_frames_consumed = std.atomic.Value(u64).init(0),
+            .pcm_underrun_events = std.atomic.Value(u64).init(0),
+            .pcm_underrun_frames = std.atomic.Value(u64).init(0),
         };
     }
 
@@ -553,6 +559,11 @@ fn readEngineStereo(engine: *Engine, out_stereo: []f32, frame_count: u32) i32 {
             if (c.ma_pcm_rb_commit_read(&engine.pcm_ring, readable) != c.MA_SUCCESS) return Status.err_device;
             frame_offset += readable;
         }
+        _ = engine.pcm_frames_consumed.fetchAdd(frame_offset, .monotonic);
+        if (frame_offset < requested) {
+            _ = engine.pcm_underrun_events.fetchAdd(1, .monotonic);
+            _ = engine.pcm_underrun_frames.fetchAdd(requested - frame_offset, .monotonic);
+        }
     }
 
     return Status.ok;
@@ -661,10 +672,15 @@ pub fn clearPlaybackDeviceSelection(engine: *Engine) void {
     }
 }
 
-pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
+fn startInternal(engine: *Engine, options_ptr: ?*const StartOptions, running: bool) i32 {
     const e = engine;
+    e.lock.lock();
+    defer e.lock.unlock();
     const options = if (options_ptr) |opts| opts.* else StartOptions{};
-    if (e.started and e.has_device) return Status.ok;
+    if (e.has_device) {
+        e.started = running;
+        return Status.ok;
+    }
 
     if (!e.has_device) {
         const context_status = ensureContextInitialized(e);
@@ -725,8 +741,16 @@ pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
         return Status.err_device;
     }
 
-    e.started = true;
+    e.started = running;
     return Status.ok;
+}
+
+pub fn start(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
+    return startInternal(engine, options_ptr, true);
+}
+
+pub fn startSuspended(engine: *Engine, options_ptr: ?*const StartOptions) i32 {
+    return startInternal(engine, options_ptr, false);
 }
 
 pub fn startMixer(engine: *Engine) i32 {
@@ -743,6 +767,18 @@ pub fn stop(engine: *Engine) i32 {
     }
     e.started = false;
     return Status.ok;
+}
+
+pub fn suspendMixer(engine: *Engine) void {
+    engine.lock.lock();
+    defer engine.lock.unlock();
+    engine.started = false;
+}
+
+pub fn resumeMixer(engine: *Engine) void {
+    engine.lock.lock();
+    defer engine.lock.unlock();
+    engine.started = true;
 }
 
 pub fn load(engine: *Engine, data_ptr: ?[*]const u8, data_len: usize, out_sound_id: ?*u32) i32 {
@@ -1098,7 +1134,10 @@ pub fn enablePcmStream(engine: *Engine, enabled: bool, capacity_frames: u32, cha
         engine.pcm_ring_initialized = false;
     }
     engine.pcm_channels = 0;
-    engine.pcm_frames_written = 0;
+    engine.pcm_frames_written.store(0, .release);
+    engine.pcm_frames_consumed.store(0, .release);
+    engine.pcm_underrun_events.store(0, .release);
+    engine.pcm_underrun_frames.store(0, .release);
     if (!enabled) return Status.ok;
 
     if (c.ma_pcm_rb_init(c.ma_format_f32, channels, capacity_frames, null, null, &engine.pcm_ring) != c.MA_SUCCESS) {
@@ -1131,7 +1170,7 @@ pub fn writePcm(engine: *Engine, samples_ptr: ?[*]const f32, frame_count: u32, o
         total_written += writable;
     }
 
-    engine.pcm_frames_written += total_written;
+    _ = engine.pcm_frames_written.fetchAdd(total_written, .monotonic);
     out_frames_written.?.* = total_written;
     return Status.ok;
 }
@@ -1143,7 +1182,15 @@ pub fn getPcmQueuedFrames(engine: *Engine) u32 {
 
 pub fn getPcmConsumedFrames(engine: *Engine) u64 {
     if (!engine.pcm_ring_initialized) return 0;
-    return engine.pcm_frames_written -| c.ma_pcm_rb_available_read(&engine.pcm_ring);
+    return engine.pcm_frames_consumed.load(.acquire);
+}
+
+pub fn getPcmUnderrunEvents(engine: *Engine) u64 {
+    return engine.pcm_underrun_events.load(.acquire);
+}
+
+pub fn getPcmUnderrunFrames(engine: *Engine) u64 {
+    return engine.pcm_underrun_frames.load(.acquire);
 }
 
 fn audioCallback(device_ptr: ?*c.ma_device, output_ptr: ?*anyopaque, input_ptr: ?*const anyopaque, frame_count: c.ma_uint32) callconv(.c) void {

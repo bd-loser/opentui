@@ -1280,6 +1280,10 @@ function getOpenTUILib(libPath?: string) {
     videoDestroy: { args: ["u32"], returns: "void" },
     videoGetInfo: { args: ["u32", "ptr"], returns: "u32" },
     videoGetState: { args: ["u32", "ptr"], returns: "u32" },
+    videoPlay: { args: ["u32"], returns: "u32" },
+    videoPause: { args: ["u32"], returns: "u32" },
+    videoSetMuted: { args: ["u32", "u32"], returns: "u32" },
+    videoSetVolume: { args: ["u32", "f32"], returns: "u32" },
     videoConfigureOutput: { args: ["u32", "u32", "u32", "u32"], returns: "u32" },
     videoConfigurePng: { args: ["u32", "u32", "u32", "u32"], returns: "u32" },
     videoSeek: { args: ["u32", "i64", "ptr"], returns: "u32" },
@@ -2636,6 +2640,10 @@ export interface RenderLib extends AudioEngineLib {
   videoDestroy: (video: VideoHandle) => void
   videoGetInfo: (video: VideoHandle) => { status: number; info: NativeVideoInfo }
   videoGetState: (video: VideoHandle) => { status: number; state: NativeVideoState }
+  videoPlay: (video: VideoHandle) => number
+  videoPause: (video: VideoHandle) => number
+  videoSetMuted: (video: VideoHandle, muted: boolean) => number
+  videoSetVolume: (video: VideoHandle, volume: number) => number
   videoConfigureOutput: (video: VideoHandle, width: number, height: number, cover: boolean) => number
   videoConfigurePng: (video: VideoHandle, compressionLevel: number, predictor: number, colorMode: number) => number
   videoSeek: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
@@ -5522,8 +5530,31 @@ class FFIRenderLib implements RenderLib {
         currentTimeUs: typeof state.currentTimeUs === "bigint" ? state.currentTimeUs : BigInt(state.currentTimeUs),
         framePtsUs: typeof state.framePtsUs === "bigint" ? state.framePtsUs : BigInt(state.framePtsUs),
         frameSerial: typeof state.frameSerial === "bigint" ? state.frameSerial : BigInt(state.frameSerial),
+        audioConsumedFrames:
+          typeof state.audioConsumedFrames === "bigint" ? state.audioConsumedFrames : BigInt(state.audioConsumedFrames),
+        audioProducedFrames:
+          typeof state.audioProducedFrames === "bigint" ? state.audioProducedFrames : BigInt(state.audioProducedFrames),
+        audioUnderruns: typeof state.audioUnderruns === "bigint" ? state.audioUnderruns : BigInt(state.audioUnderruns),
+        audioUnderrunFrames:
+          typeof state.audioUnderrunFrames === "bigint" ? state.audioUnderrunFrames : BigInt(state.audioUnderrunFrames),
       },
     }
+  }
+
+  public videoPlay(video: VideoHandle): number {
+    return this.opentui.symbols.videoPlay(video)
+  }
+
+  public videoPause(video: VideoHandle): number {
+    return this.opentui.symbols.videoPause(video)
+  }
+
+  public videoSetMuted(video: VideoHandle, muted: boolean): number {
+    return this.opentui.symbols.videoSetMuted(video, muted ? 1 : 0)
+  }
+
+  public videoSetVolume(video: VideoHandle, volume: number): number {
+    return this.opentui.symbols.videoSetVolume(video, volume)
   }
 
   public videoConfigureOutput(video: VideoHandle, width: number, height: number, cover: boolean): number {
@@ -5545,6 +5576,13 @@ class FFIRenderLib implements RenderLib {
         currentTimeUs: typeof state.currentTimeUs === "bigint" ? state.currentTimeUs : BigInt(state.currentTimeUs),
         framePtsUs: typeof state.framePtsUs === "bigint" ? state.framePtsUs : BigInt(state.framePtsUs),
         frameSerial: typeof state.frameSerial === "bigint" ? state.frameSerial : BigInt(state.frameSerial),
+        audioConsumedFrames:
+          typeof state.audioConsumedFrames === "bigint" ? state.audioConsumedFrames : BigInt(state.audioConsumedFrames),
+        audioProducedFrames:
+          typeof state.audioProducedFrames === "bigint" ? state.audioProducedFrames : BigInt(state.audioProducedFrames),
+        audioUnderruns: typeof state.audioUnderruns === "bigint" ? state.audioUnderruns : BigInt(state.audioUnderruns),
+        audioUnderrunFrames:
+          typeof state.audioUnderrunFrames === "bigint" ? state.audioUnderrunFrames : BigInt(state.audioUnderrunFrames),
       },
     }
   }

@@ -1,4 +1,3 @@
-import { Audio } from "../audio.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { NativeImage } from "../image.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
@@ -21,6 +20,7 @@ export interface VideoRenderableOptions extends RenderableOptions<VideoRenderabl
   autoplay?: boolean
   loop?: boolean
   muted?: boolean
+  volume?: number
   maxFps?: number
   onReady?: (metadata: VideoMetadata) => void
   onError?: (error: Error) => void
@@ -127,15 +127,15 @@ export function updateAdaptiveVideoQuality(
   }
 }
 
-const AUDIO_SAMPLE_RATE = 48_000
-const AUDIO_CHANNELS = 2
-const AUDIO_CAPACITY_FRAMES = 24_000
-const AUDIO_PREBUFFER_FRAMES = 12_000
-const AUDIO_READ_FRAMES = 4096
 const MAX_VIDEO_FPS = 30
 
 export function calculateVideoPlaybackFps(sourceFps: number, requestedMaxFps: number): number {
   return Math.min(sourceFps > 0 ? sourceFps : requestedMaxFps, requestedMaxFps, MAX_VIDEO_FPS)
+}
+
+export function calculateVideoTickFps(sourceFps: number, requestedMaxFps: number, hasAudio: boolean): number {
+  const playbackFps = calculateVideoPlaybackFps(sourceFps, requestedMaxFps)
+  return hasAudio ? Math.max(playbackFps, 15) : playbackFps
 }
 
 export function normalizeVideoTime(value: number, duration: number, loop: boolean): number {
@@ -189,15 +189,11 @@ export class VideoRenderable extends Renderable {
   private fitMode: ImageFit
   private renderProtocol: ImageRenderProtocol
   private mutedPlayback: boolean
+  private volumeLevel: number
   private native: NativeVideo | null = null
   private metadata: VideoMetadata | null = null
   private currentImage: NativeImage | null = null
   private geometry: VideoOutputGeometry | null = null
-  private audio: Audio | null = null
-  private audioBuffer = new Float32Array(AUDIO_READ_FRAMES * AUDIO_CHANNELS)
-  private audioClock = false
-  private audioConsumedOrigin = 0n
-  private audioExhausted = false
   private wallClock = false
   private positionSeconds = 0
   private playbackStartedAt = 0
@@ -214,6 +210,9 @@ export class VideoRenderable extends Renderable {
     this.renderProtocol = options.protocol ?? "auto"
     this.loopPlayback = options.loop ?? false
     this.mutedPlayback = options.muted ?? false
+    this.volumeLevel = options.volume ?? 1
+    if (!Number.isFinite(this.volumeLevel) || this.volumeLevel < 0)
+      throw new RangeError("volume must be finite and non-negative")
     const maxFps = options.maxFps ?? 30
     if (!Number.isFinite(maxFps) || maxFps <= 0) throw new RangeError("maxFps must be a positive finite number")
     this.maxFps = maxFps
@@ -255,15 +254,19 @@ export class VideoRenderable extends Renderable {
 
   public set muted(value: boolean) {
     if (this.mutedPlayback === value) return
-    this.positionSeconds = this.currentTime
     this.mutedPlayback = value
-    this.resetAudio()
-    if (this.native) {
-      this.native.seek(this.positionSeconds)
-      this.resetAdaptiveQualitySamples()
-      this.updateFrame(this.positionSeconds)
-    }
-    if (this.wantsPlayback) this.startClock()
+    this.native?.setMuted(value)
+  }
+
+  public get volume(): number {
+    return this.volumeLevel
+  }
+
+  public set volume(value: number) {
+    if (!Number.isFinite(value) || value < 0) throw new RangeError("volume must be finite and non-negative")
+    if (this.volumeLevel === value) return
+    this.volumeLevel = value
+    this.native?.setVolume(value)
   }
 
   public get playing(): boolean {
@@ -296,6 +299,8 @@ export class VideoRenderable extends Renderable {
 
   public get currentTime(): number {
     if (!this.wantsPlayback) return this.positionSeconds
+    const state = this.native?.state
+    if (state && (state.audioActive || state.buffering)) return state.currentTime
     return normalizeVideoTime(this.positionSeconds + this.clockElapsed(), this.duration, this.loopPlayback)
   }
 
@@ -313,6 +318,7 @@ export class VideoRenderable extends Renderable {
     this.wantsPlayback = true
     this.playbackEnded = false
     if (!this.ensureNative()) return
+    this.native!.play()
     this.startClock()
     this.startTicker()
     this.onPlay?.()
@@ -327,8 +333,7 @@ export class VideoRenderable extends Renderable {
     this.positionSeconds = this.currentTime
     this.wantsPlayback = false
     this.stopTicker()
-    this.audio?.stop()
-    this.audioClock = false
+    this.native?.pause()
     this.wallClock = false
     this.onPause?.()
     this.onTimeUpdate?.(this.positionSeconds)
@@ -347,7 +352,6 @@ export class VideoRenderable extends Renderable {
     try {
       this.native!.seek(target)
       this.resetAdaptiveQualitySamples()
-      this.resetAudio()
       this.updateFrame(target)
       if (this.wantsPlayback) this.startClock()
       this.onSeek?.(target)
@@ -405,6 +409,9 @@ export class VideoRenderable extends Renderable {
         duration: info.duration,
         hasAudio: info.hasAudio,
       }
+      this.native.setMuted(this.mutedPlayback)
+      this.native.setVolume(this.volumeLevel)
+      if (this.wantsPlayback) this.native.play()
       this.onReady?.(this.metadata)
       if (this.wantsPlayback) {
         this.startClock()
@@ -440,65 +447,20 @@ export class VideoRenderable extends Renderable {
     )
       return
     const position = this.currentTime
-    const wasPlaying = this.wantsPlayback
-    this.positionSeconds = position
-    this.resetAudio()
     this.geometry = next
     this.native.configureOutput(next.decodeWidth, next.decodeHeight, this.fitMode === "cover")
-    this.native.seek(position)
     this.resetAdaptiveQualitySamples()
     this.updateFrame(position)
-    if (wasPlaying) this.startClock()
   }
 
   private startClock(): void {
     this.playbackStartedAt = performance.now()
-    this.audioClock = false
     this.wallClock = true
-    if (!this.native?.info.hasAudio || this.mutedPlayback) return
-    if (this.audio) {
-      this.audioConsumedOrigin = this.audio.getPcmConsumedFrames()
-      if (this.audio.start()) {
-        this.audioClock = true
-        this.wallClock = false
-      }
-      return
-    }
-    const audio = Audio.create({ autoStart: false, sampleRate: AUDIO_SAMPLE_RATE, playbackChannels: AUDIO_CHANNELS })
-    audio.on("error", () => {})
-    if (!audio.enablePcmStream(AUDIO_CAPACITY_FRAMES, AUDIO_CHANNELS)) {
-      audio.dispose()
-      return
-    }
-    this.audio = audio
-    this.audioExhausted = false
-    this.pumpAudio()
-    const queued = audio.getPcmQueuedFrames()
-    if ((queued >= AUDIO_PREBUFFER_FRAMES || (this.audioExhausted && queued > 0)) && audio.start()) {
-      this.audioConsumedOrigin = audio.getPcmConsumedFrames()
-      this.audioClock = true
-      this.wallClock = false
-    }
-  }
-
-  private pumpAudio(): void {
-    const audio = this.audio
-    const native = this.native
-    if (!audio || !native) return
-    while (audio.getPcmQueuedFrames() < AUDIO_PREBUFFER_FRAMES) {
-      const frames = native.readAudio(this.audioBuffer)
-      if (frames === 0) {
-        this.audioExhausted = true
-        break
-      }
-      const written = audio.writePcm(this.audioBuffer.subarray(0, frames * AUDIO_CHANNELS))
-      if (written == null || written < frames) break
-    }
   }
 
   private startTicker(): void {
     if (this.ticker) return
-    const fps = calculateVideoPlaybackFps(this.metadata?.fps ?? 0, this.maxFps)
+    const fps = calculateVideoTickFps(this.metadata?.fps ?? 0, this.maxFps, this.metadata?.hasAudio ?? false)
     const frameTime = 1000 / fps
     const schedule = (): void => {
       if (!this.wantsPlayback || this.isDestroyed) {
@@ -525,34 +487,26 @@ export class VideoRenderable extends Renderable {
     if (!this.wantsPlayback || this.updating || !this.native) return
     this.updating = true
     try {
-      if (this.audioClock && this.audio && this.audioExhausted && this.audio.getPcmQueuedFrames() === 0) {
-        this.positionSeconds += this.clockElapsed()
-        this.audio.dispose()
-        this.audio = null
-        this.audioClock = false
-        this.audioConsumedOrigin = 0n
-        this.wallClock = true
-        this.playbackStartedAt = performance.now()
-      }
       const unwrappedTime = this.positionSeconds + this.clockElapsed()
       let time = normalizeVideoTime(unwrappedTime, this.duration, this.loopPlayback)
-      if (this.loopPlayback && this.duration > 0 && unwrappedTime >= this.duration) {
+      const nativeState = this.native.state
+      const nativeAudioClock = nativeState.audioActive || nativeState.buffering
+      if (!nativeAudioClock && this.loopPlayback && this.duration > 0 && unwrappedTime >= this.duration) {
         this.positionSeconds = time
         this.native.seek(time)
         this.resetAdaptiveQualitySamples()
-        this.resetAudio()
         this.startClock()
         this.updateFrame(time)
         this.onTimeUpdate?.(time)
         return
       }
-      if (!this.loopPlayback && this.duration > 0 && time >= this.duration) {
+      if (!nativeAudioClock && !this.loopPlayback && this.duration > 0 && time >= this.duration) {
         time = this.duration
         this.positionSeconds = time
         this.wantsPlayback = false
         this.playbackEnded = true
         this.stopTicker()
-        this.resetAudio()
+        this.native.pause()
         this.onTimeUpdate?.(time)
         this.onEnd?.()
         return
@@ -570,7 +524,6 @@ export class VideoRenderable extends Renderable {
           this.positionSeconds = 0
           this.native.seek(0)
           this.resetAdaptiveQualitySamples()
-          this.resetAudio()
           this.startClock()
           this.updateFrame(0)
         } else {
@@ -578,19 +531,18 @@ export class VideoRenderable extends Renderable {
           this.wantsPlayback = false
           this.playbackEnded = true
           this.stopTicker()
-          this.resetAudio()
+          this.native.pause()
           this.onTimeUpdate?.(this.positionSeconds)
           this.onEnd?.()
         }
         return
       }
-      this.pumpAudio()
-      this.onTimeUpdate?.(time)
+      this.onTimeUpdate?.(state?.currentTime ?? time)
     } catch (error) {
       this.reportError(error)
       this.wantsPlayback = false
       this.stopTicker()
-      this.resetAudio()
+      this.native?.pause()
     } finally {
       this.updating = false
     }
@@ -640,19 +592,8 @@ export class VideoRenderable extends Renderable {
   }
 
   private clockElapsed(): number {
-    if (this.audioClock && this.audio)
-      return Number(this.audio.getPcmConsumedFrames() - this.audioConsumedOrigin) / AUDIO_SAMPLE_RATE
     if (this.wallClock) return Math.max(0, performance.now() - this.playbackStartedAt) / 1000
     return 0
-  }
-
-  private resetAudio(): void {
-    this.audio?.dispose()
-    this.audio = null
-    this.audioClock = false
-    this.audioConsumedOrigin = 0n
-    this.audioExhausted = false
-    this.wallClock = false
   }
 
   private reportError(error: unknown): void {
@@ -662,7 +603,7 @@ export class VideoRenderable extends Renderable {
   protected destroySelf(): void {
     this.wantsPlayback = false
     this.stopTicker()
-    this.resetAudio()
+    this.wallClock = false
     this.currentImage?.dispose()
     this.currentImage = null
     this.native?.dispose()

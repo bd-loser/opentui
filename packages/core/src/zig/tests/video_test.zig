@@ -1,5 +1,6 @@
 const std = @import("std");
 const audio = @import("../audio.zig");
+const image = @import("../image.zig");
 const video = @import("../video.zig");
 
 const asset = "../../../examples/src/assets/dragon.mp4";
@@ -7,6 +8,32 @@ const asset = "../../../examples/src/assets/dragon.mp4";
 fn openVideo() !*video.Video {
     std.fs.cwd().access(asset, .{}) catch return error.SkipZigTest;
     return video.Video.open(std.testing.allocator, asset);
+}
+
+fn quantize6(value: u8) u8 {
+    return @intCast(((@as(u32, value >> 2) * 255) + 31) / 63);
+}
+
+test "video PNG defaults to lossless RGB888 and supports RGB666" {
+    const value = try openVideo();
+    defer value.deinit();
+    try value.configureOutput(16, 16, false);
+    _ = try value.update(0);
+
+    const lossless = try image.decode(std.testing.allocator, value.current_image.?.encoded_png.?, .{});
+    defer lossless.deinit();
+    try std.testing.expectEqualSlices(u8, value.current_image.?.pixels, lossless.pixels);
+
+    try value.configurePng(1, 4, 5);
+    _ = try value.update(0);
+    const rgb666 = try image.decode(std.testing.allocator, value.current_image.?.encoded_png.?, .{});
+    defer rgb666.deinit();
+    for (value.current_image.?.pixels, rgb666.pixels, 0..) |source, encoded, index| {
+        if (index % 4 == 3)
+            try std.testing.expectEqual(@as(u8, 255), encoded)
+        else
+            try std.testing.expectEqual(quantize6(source), encoded);
+    }
 }
 
 test "video audio decodes real AAC into its native PCM ring" {

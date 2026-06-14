@@ -209,9 +209,9 @@ int ot_video_open(const char *path, ot_video_decoder **out_decoder, ot_video_inf
     decoder->video.stream_index = -1;
     decoder->audio.stream_index = -1;
     decoder->frame_pts_us = AV_NOPTS_VALUE;
-    decoder->png_compression_level = 2;
-    decoder->png_predictor = 2;
-    decoder->png_color_mode = 2;
+    decoder->png_compression_level = 1;
+    decoder->png_predictor = 4;
+    decoder->png_color_mode = 1;
 
     if (open_stream(decoder, path, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_H264, &decoder->video) != OT_VIDEO_OK) {
         ot_video_close(&decoder);
@@ -287,7 +287,7 @@ int ot_video_set_output_size(ot_video_decoder *decoder, uint32_t width, uint32_t
 
 int ot_video_set_png_options(ot_video_decoder *decoder, uint32_t compression_level, uint32_t predictor,
                              uint32_t color_mode) {
-    if (!decoder || compression_level > 9 || predictor > 5 || color_mode > 4) return OT_VIDEO_ERROR;
+    if (!decoder || compression_level > 9 || predictor > 5 || color_mode > 5) return OT_VIDEO_ERROR;
     if (decoder->png_compression_level == compression_level && decoder->png_predictor == predictor &&
         decoder->png_color_mode == color_mode) return OT_VIDEO_OK;
     decoder->png_compression_level = compression_level;
@@ -465,6 +465,10 @@ static int encode_png(ot_video_decoder *decoder, const uint8_t **out_png, uint64
                     rgb[x * 3] = source_r;
                     rgb[x * 3 + 1] = source_g;
                     rgb[x * 3 + 2] = source_b;
+                } else if (decoder->png_color_mode == 5) {
+                    rgb[x * 3] = (uint8_t)(((source_r >> 2) * 255u + 31u) / 63u);
+                    rgb[x * 3 + 1] = (uint8_t)(((source_g >> 2) * 255u + 31u) / 63u);
+                    rgb[x * 3 + 2] = (uint8_t)(((source_b >> 2) * 255u + 31u) / 63u);
                 } else if (decoder->png_color_mode == 2) {
                     rgb[x * 3] = (uint8_t)(((source_r >> 4) * 255u + 7u) / 15u);
                     rgb[x * 3 + 1] = (uint8_t)(((source_g >> 4) * 255u + 7u) / 15u);

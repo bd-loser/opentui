@@ -70,6 +70,8 @@ export interface AdaptiveVideoQualitySample {
 }
 
 const VIDEO_PNG_QUALITY_TIERS = [
+  { compressionLevel: 1, predictor: 4, colorMode: 1 },
+  { compressionLevel: 1, predictor: 4, colorMode: 5 },
   { compressionLevel: 2, predictor: 2, colorMode: 2 },
   { compressionLevel: 1, predictor: 2, colorMode: 2 },
   { compressionLevel: 2, predictor: 0, colorMode: 0 },

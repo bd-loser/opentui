@@ -115,6 +115,26 @@ describe("VideoRenderable adaptive quality", () => {
     expect(state.tier).toBe(1)
   })
 
+  test("starts at the highest tier and can downgrade through all six tiers", () => {
+    let state = createAdaptiveVideoQualityState()
+    expect(state.tier).toBe(0)
+    let serial = 0n
+    for (let expectedTier = 1; expectedTier <= 5; expectedTier++) {
+      state = { ...state, cooldownSamples: 0 }
+      for (let sample = 0; sample < 3; sample++) {
+        serial++
+        state = updateAdaptiveVideoQuality(state, {
+          updateTimeMs: 30,
+          frameBudgetMs: 40,
+          frameSerial: serial,
+          expectedFrameStep: 1n,
+          backpressureCount: 0,
+        })
+      }
+      expect(state.tier).toBe(expectedTier)
+    }
+  })
+
   test("skips the byte-heavy CPU tier under output backpressure", () => {
     let state = createAdaptiveVideoQualityState()
     for (let serial = 1n; serial <= 3n; serial++) {

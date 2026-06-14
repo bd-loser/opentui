@@ -9,32 +9,22 @@ const Scenario = struct {
     level: u32,
     predictor: u32,
     color_mode: u32,
+    bits: ?[3]u3,
 };
 
 const scenarios = [_]Scenario{
-    .{ .name = "RGB343 level 1 none", .level = 1, .predictor = 0, .color_mode = 0 },
-    .{ .name = "RGB343 level 1 sub", .level = 1, .predictor = 1, .color_mode = 0 },
-    .{ .name = "RGB343 level 1 up", .level = 1, .predictor = 2, .color_mode = 0 },
-    .{ .name = "RGB343 level 1 avg", .level = 1, .predictor = 3, .color_mode = 0 },
-    .{ .name = "RGB343 level 1 paeth", .level = 1, .predictor = 4, .color_mode = 0 },
-    .{ .name = "RGB343 level 1 mixed", .level = 1, .predictor = 5, .color_mode = 0 },
-    .{ .name = "RGB343 level 2 none", .level = 2, .predictor = 0, .color_mode = 0 },
-    .{ .name = "RGB343 level 2 up", .level = 2, .predictor = 2, .color_mode = 0 },
-    .{ .name = "RGB343 level 2 paeth", .level = 2, .predictor = 4, .color_mode = 0 },
-    .{ .name = "RGB343 level 3 none", .level = 3, .predictor = 0, .color_mode = 0 },
-    .{ .name = "RGB343 level 3 up", .level = 3, .predictor = 2, .color_mode = 0 },
-    .{ .name = "RGB343 level 3 paeth", .level = 3, .predictor = 4, .color_mode = 0 },
-    .{ .name = "RGB343 level 6 paeth", .level = 6, .predictor = 4, .color_mode = 0 },
-    .{ .name = "RGB343 level 9 paeth", .level = 9, .predictor = 4, .color_mode = 0 },
-    .{ .name = "RGB888 level 1 paeth", .level = 1, .predictor = 4, .color_mode = 1 },
-    .{ .name = "RGB444 level 1 paeth", .level = 1, .predictor = 4, .color_mode = 2 },
-    .{ .name = "RGB444 level 1 none", .level = 1, .predictor = 0, .color_mode = 2 },
-    .{ .name = "RGB444 level 1 up", .level = 1, .predictor = 2, .color_mode = 2 },
-    .{ .name = "RGB444 level 1 mixed", .level = 1, .predictor = 5, .color_mode = 2 },
-    .{ .name = "RGB444 level 2 up", .level = 2, .predictor = 2, .color_mode = 2 },
-    .{ .name = "RGB332 level 1 paeth", .level = 1, .predictor = 4, .color_mode = 3 },
-    .{ .name = "PAL332 level 1 none", .level = 1, .predictor = 0, .color_mode = 4 },
-    .{ .name = "PAL332 level 1 paeth", .level = 1, .predictor = 4, .color_mode = 4 },
+    .{ .name = "RGB888 level 1 up", .level = 1, .predictor = 2, .color_mode = 1, .bits = null },
+    .{ .name = "RGB888 level 1 paeth", .level = 1, .predictor = 4, .color_mode = 1, .bits = null },
+    .{ .name = "RGB888 level 1 mixed", .level = 1, .predictor = 5, .color_mode = 1, .bits = null },
+    .{ .name = "RGB888 level 2 up", .level = 2, .predictor = 2, .color_mode = 1, .bits = null },
+    .{ .name = "RGB666 level 1 up", .level = 1, .predictor = 2, .color_mode = 5, .bits = .{ 6, 6, 6 } },
+    .{ .name = "RGB666 level 1 paeth", .level = 1, .predictor = 4, .color_mode = 5, .bits = .{ 6, 6, 6 } },
+    .{ .name = "RGB666 level 1 mixed", .level = 1, .predictor = 5, .color_mode = 5, .bits = .{ 6, 6, 6 } },
+    .{ .name = "RGB666 level 2 up", .level = 2, .predictor = 2, .color_mode = 5, .bits = .{ 6, 6, 6 } },
+    .{ .name = "RGB444 level 2 up", .level = 2, .predictor = 2, .color_mode = 2, .bits = .{ 4, 4, 4 } },
+    .{ .name = "RGB444 level 1 up", .level = 1, .predictor = 2, .color_mode = 2, .bits = .{ 4, 4, 4 } },
+    .{ .name = "RGB343 level 2 none", .level = 2, .predictor = 0, .color_mode = 0, .bits = .{ 3, 4, 3 } },
+    .{ .name = "PAL332 level 1 paeth", .level = 1, .predictor = 4, .color_mode = 4, .bits = .{ 3, 3, 2 } },
 };
 
 fn quantize(value: u8, bits: u3) u8 {
@@ -68,16 +58,12 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
             png_total += png_len;
             png_min = @min(png_min, png_len);
             png_max = @max(png_max, png_len);
-            if (scenario.color_mode != 1) {
+            if (scenario.bits) |bits| {
                 const pixels = decoder.current_image.?.pixels;
                 var pixel: usize = 0;
                 while (pixel < pixels.len) : (pixel += 4) {
-                    const r_bits: u3 = if (scenario.color_mode == 2) 4 else 3;
-                    const g_bits: u3 = if (scenario.color_mode == 0) 4 else if (scenario.color_mode == 2) 4 else 3;
-                    const b_bits: u3 = if (scenario.color_mode == 2) 4 else if (scenario.color_mode >= 3) 2 else 3;
                     inline for (0..3) |channel| {
-                        const bits = if (channel == 0) r_bits else if (channel == 1) g_bits else b_bits;
-                        const delta = @as(i32, pixels[pixel + channel]) - quantize(pixels[pixel + channel], bits);
+                        const delta = @as(i32, pixels[pixel + channel]) - quantize(pixels[pixel + channel], bits[channel]);
                         squared_error += @intCast(delta * delta);
                         sample_count += 1;
                     }

@@ -190,7 +190,6 @@ function updateVideoFileHeader(message = ""): void {
   if (videoFileMessage) {
     videoFileMessage.content = message
     videoFileMessage.fg = message.startsWith("Cannot") ? P.coral : P.muted
-    videoFileMessage.visible = message.length > 0
   }
 }
 
@@ -660,6 +659,8 @@ export async function run(renderer: CliRenderer): Promise<void> {
     height: 1,
     flexGrow: 0,
     flexShrink: 0,
+    wrapMode: "none",
+    truncate: true,
     fg: P.cyan,
     bg: P.header,
   })
@@ -686,9 +687,10 @@ export async function run(renderer: CliRenderer): Promise<void> {
     height: 1,
     flexGrow: 0,
     flexShrink: 0,
+    wrapMode: "none",
+    truncate: true,
     fg: P.muted,
     bg: P.header,
-    visible: false,
   })
   videoFileSelect = new SelectRenderable(renderer, {
     id: "native-video-file-select",

@@ -524,6 +524,38 @@ describe("SelectRenderable", () => {
     })
   })
 
+  describe("Scroll Indicator", () => {
+    const manyOptions: SelectOption[] = Array.from({ length: 20 }, (_, index) => ({
+      name: `Item ${index}`,
+      description: "",
+    }))
+
+    test.each([
+      { selectedIndex: 0, expectedRow: 1 },
+      { selectedIndex: 2, expectedRow: 1 },
+      { selectedIndex: 7, expectedRow: 2 },
+      { selectedIndex: 12, expectedRow: 3 },
+      { selectedIndex: 17, expectedRow: 4 },
+      { selectedIndex: 19, expectedRow: 4 },
+    ])("renders the viewport position for selected index $selectedIndex", async ({ selectedIndex, expectedRow }) => {
+      const { select } = await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options: manyOptions,
+        showScrollIndicator: true,
+        showDescription: false,
+      })
+
+      select.setSelectedIndex(selectedIndex)
+      await renderOnce()
+
+      const indicatorRow = captureCharFrame()
+        .split("\n")
+        .findIndex((line) => line.includes("█"))
+      expect(indicatorRow).toBe(expectedRow)
+    })
+  })
+
   describe("Property Changes", () => {
     test("should update showScrollIndicator", async () => {
       const { select } = await createSelectRenderable(currentRenderer, {

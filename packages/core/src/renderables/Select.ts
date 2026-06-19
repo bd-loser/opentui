@@ -152,6 +152,7 @@ export class SelectRenderable extends Renderable {
     const mergedBindings = mergeKeyBindings(defaultSelectKeybindings, this._keyBindings)
     this._keyBindingsMap = buildKeyBindingsMap(mergedBindings, this._keyAliasMap)
 
+    this.updateScrollOffset()
     this.requestRender() // Initial render needed
   }
 

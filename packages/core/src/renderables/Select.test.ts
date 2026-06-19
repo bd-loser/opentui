@@ -105,6 +105,26 @@ describe("SelectRenderable", () => {
       expect(select.getSelectedOption()).toEqual(sampleOptions[2])
     })
 
+    test("should scroll an initial off-screen selection into view", async () => {
+      const options: SelectOption[] = Array.from({ length: 20 }, (_, index) => ({
+        name: `Item ${index}`,
+        description: "",
+      }))
+
+      await createSelectRenderable(currentRenderer, {
+        width: 20,
+        height: 5,
+        options,
+        selectedIndex: 12,
+        showDescription: false,
+        showScrollIndicator: true,
+      })
+
+      const frame = captureCharFrame().split("\n")
+      expect(frame.some((line) => line.includes("▶ Item 12"))).toBe(true)
+      expect(frame.findIndex((line) => line.includes("█"))).toBe(3)
+    })
+
     test("should initialize with custom options", async () => {
       const { select } = await createSelectRenderable(currentRenderer, {
         width: 20,

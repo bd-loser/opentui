@@ -6,6 +6,7 @@ import {
   ScrollBoxRenderable,
   type Selection,
   StyledText,
+  TextAttributes,
   TextRenderable,
   type ThemeMode,
   createCliRenderer,
@@ -38,6 +39,8 @@ interface PlaybackSpeed {
 }
 
 type PixelMatrix = boolean[][]
+
+export type LogoAnimationKind = "typeset" | "combine" | "invert" | "braille" | "pack" | "trace" | "density" | "build"
 
 interface DemoPalette {
   border: string
@@ -85,6 +88,36 @@ const PLAYBACK_SPEEDS: readonly PlaybackSpeed[] = [
   { name: "Faster", interval: 100 },
   { name: "Fastest", interval: 50 },
 ]
+const ANIMATION_LABELS: Readonly<Record<LogoAnimationKind, string>> = {
+  typeset: "italic → roman",
+  combine: "add combining marks",
+  invert: "flip polarity",
+  braille: "set Braille dots",
+  pack: "pack subcells",
+  trace: "trace connections",
+  density: "condense shades",
+  build: "set half-cells",
+}
+const ANIMATION_DURATIONS: Readonly<Record<LogoAnimationKind, number>> = {
+  typeset: 460,
+  combine: 560,
+  invert: 520,
+  braille: 720,
+  pack: 640,
+  trace: 820,
+  density: 620,
+  build: 720,
+}
+const ANIMATION_STAGGER: Readonly<Record<LogoAnimationKind, readonly [spread: number, activeDuration: number]>> = {
+  typeset: [0.28, 0.56],
+  combine: [0.38, 0.54],
+  invert: [0.32, 0.54],
+  braille: [0.34, 0.58],
+  pack: [0.3, 0.58],
+  trace: [0.45, 0.5],
+  density: [0.32, 0.56],
+  build: [0.32, 0.56],
+}
 
 const TINY_FONT: Record<string, readonly string[]> = {
   O: ["111", "101", "101", "101", "101", "111"],
@@ -395,6 +428,45 @@ function variant(name: string, category: string, content: string, note: string):
   return { name, category, content, note }
 }
 
+export function logoAnimationKind(item: Pick<LogoVariant, "name" | "category">): LogoAnimationKind {
+  if (item.name.startsWith("Combining")) return "combine"
+  if (item.name.startsWith("Inverse") || item.name.includes(" inverse")) return "invert"
+  if (item.name.includes("Braille") || item.name.startsWith("Semantic")) return "braille"
+  if (
+    item.category === "One row / typography" ||
+    item.category === "One-cell capability probes" ||
+    item.name.includes("slant")
+  )
+    return "typeset"
+  if (item.category === "Connected stroke topology") return "trace"
+  if (item.category === "Legacy mosaics / two rows" || item.category.includes("half width")) return "pack"
+  if (/shade|density|solid/i.test(item.name)) return "density"
+  return "build"
+}
+
+export function logoAnimationDuration(kind: LogoAnimationKind): number {
+  return ANIMATION_DURATIONS[kind]
+}
+
+export function logoAnimationProgress(elapsed: number, duration: number): number {
+  return Math.max(0, Math.min(1, elapsed / duration))
+}
+
+export function shouldAutoPlayLogoAnimation(options: {
+  enabled: boolean
+  previousIndex: number
+  nextIndex: number
+  isPlaying: boolean
+  scrollMode: boolean
+  hasComparison: boolean
+}): boolean {
+  return (
+    options.enabled &&
+    options.previousIndex !== options.nextIndex &&
+    (options.isPlaying || (!options.scrollMode && !options.hasComparison))
+  )
+}
+
 function remapOriginal(
   replacements: Readonly<Record<string, string>>,
   transform?: (character: string, row: number, column: number) => string,
@@ -417,15 +489,56 @@ function inverseOriginal(fill = "█"): string {
     .join("\n")
 }
 
+function originalShadow(glyph: string, offset = 0, spread = 0): string {
+  const lines = ORIGINAL_LOGO.split("\n").map((line) => [...line])
+  const width = Math.max(...lines.map((line) => line.length))
+  const footprint = Array.from({ length: width }, (_, column) => lines.some((line) => line[column] !== " "))
+  const shadow = footprint
+    .map((_, column) =>
+      footprint.some((active, sourceColumn) => active && Math.abs(sourceColumn - column) <= spread) ? glyph : " ",
+    )
+    .join("")
+    .trimEnd()
+  return `${" ".repeat(offset)}${shadow}`
+}
+
 function buildVariants(): LogoVariant[] {
   const variants = [
-    variant(
-      "Original six-pixel alphabet",
-      "Three rows",
-      ORIGINAL_LOGO,
-      "3 rows × 27 columns. The HEAD concept, retained as review ID #001.",
-    ),
+    variant("Original six-pixel alphabet", "Three rows", ORIGINAL_LOGO, "3 rows × 27 columns. The HEAD concept."),
   ]
+
+  variants.push(
+    variant(
+      "Lower-eighth contact shadow",
+      "Original shadow studies",
+      `${ORIGINAL_LOGO}\n${originalShadow("▁")}`,
+      "#001 unchanged, grounded by a one-eighth block projection directly below each letter.",
+    ),
+    variant(
+      "Braille lower-dot shadow",
+      "Original shadow studies",
+      `${ORIGINAL_LOGO}\n${originalShadow("⣀")}`,
+      "#001 unchanged, with Braille dots 7 and 8 forming a fine baseline shadow.",
+    ),
+    variant(
+      "Offset Braille stipple",
+      "Original shadow studies",
+      `${ORIGINAL_LOGO}\n${originalShadow("⠤", 1)}`,
+      "#001 unchanged, with a one-cell rightward cast made from sparse Braille dots.",
+    ),
+    variant(
+      "Soft expanded floor shadow",
+      "Original shadow studies",
+      `${ORIGINAL_LOGO}\n${originalShadow("░", 1, 1)}`,
+      "#001 unchanged, with a widened light-shade projection creating a soft floor plane.",
+    ),
+    variant(
+      "Two-step falling shadow",
+      "Original shadow studies",
+      `${ORIGINAL_LOGO}\n${originalShadow("▒", 1)}\n${originalShadow("░", 2, 1)}`,
+      "#001 unchanged, with a denser contact row fading down and to the right.",
+    ),
+  )
 
   const styles = matrixStyles()
   for (const [setName, glyphs] of HALF_CELL_SETS) {
@@ -750,6 +863,11 @@ const CATEGORIES: readonly LogoCategory[] = [
     includes: (item, index) => index === 0 || item.category === "Original block studies",
   },
   {
+    name: "Original shadow studies",
+    description: "Grounding treatments projected below the unchanged #001 silhouette",
+    includes: (item) => item.category === "Original shadow studies",
+  },
+  {
     name: "Three-row cell alphabets",
     description: "Alternate six-pixel alphabets using half cells, stems, shades, and geometry",
     includes: (item, index) => index !== 0 && item.category === "Three rows",
@@ -819,7 +937,6 @@ let titleText: TextRenderable | null = null
 let noteText: TextRenderable | null = null
 let controlsText: TextRenderable | null = null
 let filterText: TextRenderable | null = null
-let copyStatusText: TextRenderable | null = null
 let scrollBox: ScrollBoxRenderable | null = null
 const scrollCards = new Map<number, BoxRenderable>()
 const scrollLabels = new Map<number, TextRenderable>()
@@ -830,6 +947,9 @@ let scrollMode = false
 let isPlaying = false
 let playbackSpeedIndex = 1
 let playbackTimer: ReturnType<typeof setInterval> | null = null
+let logoAnimationFrameHandler: ((deltaTime: number) => Promise<void>) | null = null
+let autoPlayLogoAnimations = false
+let animateNextBrowseRender = false
 const comparisonSlots: Array<number | null> = [null, null, null]
 let keyHandler: ((key: KeyEvent) => void) | null = null
 let resizeHandler: ((width: number) => void) | null = null
@@ -853,6 +973,150 @@ function rainbow(content: string): StyledText {
     if (lineIndex < lines.length - 1) chunks.push({ __isChunk: true as const, text: "\n" })
   }
   return new StyledText(chunks)
+}
+
+function staggeredProgress(progress: number, score: number, kind: LogoAnimationKind): number {
+  const [spread, activeDuration] = ANIMATION_STAGGER[kind]
+  const delay = score * spread
+  const localProgress = Math.max(0, Math.min(1, (progress - delay) / activeDuration))
+  return localProgress * localProgress * (3 - 2 * localProgress)
+}
+
+function animatedBraille(character: string, progress: number): string {
+  const codePoint = character.codePointAt(0)!
+  if (codePoint < 0x2800 || codePoint > 0x28ff) return progress < 0.75 ? "⠂" : character
+  const dotOrder = [0, 1, 2, 6, 3, 4, 5, 7]
+  const dotsToShow = Math.min(dotOrder.length, Math.floor(progress * (dotOrder.length + 1)))
+  let revealMask = 0
+  for (let index = 0; index < dotsToShow; index++) revealMask |= 1 << dotOrder[index]!
+  return String.fromCodePoint(0x2800 + ((codePoint - 0x2800) & revealMask))
+}
+
+function animatedHalfBlock(
+  character: string,
+  progress: number,
+  column: number,
+  row: number,
+  width: number,
+  height: number,
+): string | null {
+  if (character !== "▀" && character !== "▄" && character !== "█") return null
+  const sourceHeight = height * 2
+  const axisCount = Number(width > 1) + Number(sourceHeight > 1)
+  const horizontal = width > 1 ? column / (width - 1) : 0
+  const topVertical = sourceHeight > 1 ? (row * 2) / (sourceHeight - 1) : 0
+  const bottomVertical = sourceHeight > 1 ? (row * 2 + 1) / (sourceHeight - 1) : 0
+  const topVisible = progress >= (horizontal + topVertical) / axisCount
+  const bottomVisible = progress >= (horizontal + bottomVertical) / axisCount
+  const top = character !== "▄" && topVisible
+  const bottom = character !== "▀" && bottomVisible
+  if (top && bottom) return "█"
+  if (top) return "▀"
+  if (bottom) return "▄"
+  return " "
+}
+
+export function animatedLogo(item: LogoVariant, progress: number, foreground: string | null): StyledText {
+  const chunks = []
+  const lines = item.content.split("\n")
+  const height = lines.length
+  const width = Math.max(...lines.map((line) => [...line].filter((character) => !/\p{Mark}/u.test(character)).length))
+  const kind = logoAnimationKind(item)
+
+  for (const [row, line] of lines.entries()) {
+    let column = 0
+    for (const character of [...line]) {
+      const isMark = /\p{Mark}/u.test(character)
+      const effectiveColumn = isMark ? Math.max(0, column - 1) : column
+      const horizontalScore = effectiveColumn / Math.max(1, width - 1)
+      const centerScore = Math.abs(effectiveColumn - (width - 1) / 2) / Math.max(1, (width - 1) / 2)
+      const pathScore = (row * width + effectiveColumn) / Math.max(1, height * width - 1)
+      const bottomUpScore = ((height - 1 - row) * width + effectiveColumn) / Math.max(1, height * width - 1)
+      const score =
+        kind === "pack" || kind === "invert"
+          ? centerScore
+          : kind === "trace"
+            ? pathScore
+            : kind === "build"
+              ? bottomUpScore
+              : horizontalScore
+      const localProgress = staggeredProgress(progress, score, kind)
+      const colorIndex = Math.min(
+        palette.spectrum.length - 1,
+        Math.floor((effectiveColumn * palette.spectrum.length) / width),
+      )
+      const color = foreground ?? palette.spectrum[colorIndex]!
+      let renderedCharacter = character
+      let attributes = TextAttributes.NONE
+
+      if (kind === "typeset") {
+        if (localProgress < 0.66) attributes |= TextAttributes.ITALIC
+      } else if (kind === "combine") {
+        if (isMark && localProgress < 0.38) renderedCharacter = ""
+        else if (isMark && localProgress < 0.72) attributes |= TextAttributes.DIM
+      } else if (kind === "invert") {
+        if (localProgress < 0.56) attributes |= TextAttributes.INVERSE
+      } else if (kind === "braille") {
+        renderedCharacter = animatedBraille(character, localProgress)
+      } else if (kind === "pack") {
+        renderedCharacter = localProgress < 0.26 ? "·" : localProgress < 0.62 ? "▪" : character
+      } else if (kind === "trace") {
+        renderedCharacter = localProgress < 0.34 ? "•" : character
+        if (localProgress < 0.68) attributes |= TextAttributes.DIM
+      } else if (kind === "density") {
+        renderedCharacter =
+          localProgress < 0.2 ? "░" : localProgress < 0.42 ? "▒" : localProgress < 0.66 ? "▓" : character
+      } else if (character !== " ") {
+        const halfBlock = animatedHalfBlock(character, progress, effectiveColumn, row, width, height)
+        if (halfBlock !== null) {
+          renderedCharacter = halfBlock
+        } else if (localProgress < 0.5) {
+          renderedCharacter = " "
+        }
+      }
+
+      chunks.push(
+        character === " "
+          ? { __isChunk: true as const, text: character }
+          : { ...fg(color)(renderedCharacter), attributes },
+      )
+      if (!isMark) column++
+    }
+    if (row < height - 1) chunks.push({ __isChunk: true as const, text: "\n" })
+  }
+
+  return new StyledText(chunks)
+}
+
+function applyLogoAnimation(item: LogoVariant, progress: number): void {
+  if (rainbowText) rainbowText.content = animatedLogo(item, progress, null)
+  if (lightText) lightText.content = animatedLogo(item, progress, "#000000")
+  if (darkText) darkText.content = animatedLogo(item, progress, "#FFFFFF")
+}
+
+function stopLogoAnimation(): void {
+  if (logoAnimationFrameHandler && rendererInstance) rendererInstance.removeFrameCallback(logoAnimationFrameHandler)
+  logoAnimationFrameHandler = null
+}
+
+function startLogoAnimation(): void {
+  const renderer = rendererInstance
+  if (!renderer || !rainbowText || !lightText || !darkText) return
+  stopLogoAnimation()
+
+  const item = VARIANTS[activeIndex]!
+  const duration = isPlaying
+    ? Math.min(logoAnimationDuration(logoAnimationKind(item)), PLAYBACK_SPEEDS[playbackSpeedIndex]!.interval * 0.8)
+    : logoAnimationDuration(logoAnimationKind(item))
+  let elapsed = 0
+  applyLogoAnimation(item, 0)
+  logoAnimationFrameHandler = async (deltaTime: number) => {
+    elapsed += deltaTime
+    const progress = logoAnimationProgress(elapsed, duration)
+    applyLogoAnimation(item, progress)
+    if (progress === 1) stopLogoAnimation()
+  }
+  renderer.setFrameCallback(logoAnimationFrameHandler)
 }
 
 function createProof(
@@ -918,6 +1182,7 @@ function filterMenu(): string {
 }
 
 function clearStage(): void {
+  stopLogoAnimation()
   if (revealHandler && rendererInstance) rendererInstance.off(CliRenderEvents.FRAME, revealHandler)
   revealHandler = null
   scrollBox = null
@@ -951,6 +1216,11 @@ function createProofRow(renderer: CliRenderer, id: string, item: LogoVariant, co
   rainbowRenderable.content = rainbow(item.content)
   lightRenderable.content = item.content
   darkRenderable.content = item.content
+  if (id === "browse") {
+    rainbowText = rainbowRenderable
+    lightText = lightRenderable
+    darkText = darkRenderable
+  }
   row.add(rainbowProof)
   row.add(lightProof)
   row.add(darkProof)
@@ -960,9 +1230,10 @@ function createProofRow(renderer: CliRenderer, id: string, item: LogoVariant, co
 function renderBrowseStage(renderer: CliRenderer): void {
   const item = VARIANTS[activeIndex]!
   proofLayout = createProofRow(renderer, "browse", item)
-  rainbowText = proofLayout.getRenderable(`logo-copy-proof-browse-rainbow`) as TextRenderable | null
-  lightText = proofLayout.getRenderable(`logo-copy-proof-browse-light`) as TextRenderable | null
-  darkText = proofLayout.getRenderable(`logo-copy-proof-browse-dark`) as TextRenderable | null
+  if (animateNextBrowseRender) {
+    animateNextBrowseRender = false
+    startLogoAnimation()
+  }
   if (renderer.width >= 100) {
     stageHost?.add(proofLayout)
     return
@@ -1179,10 +1450,14 @@ function updateFooter(): void {
   if (controlsText) {
     const speed = PLAYBACK_SPEEDS[playbackSpeedIndex]!
     const playback = `Space ${isPlaying ? "pause" : "play"}  ·  -/+ speed: ${speed.name} (${speed.interval}ms)`
+    const animation = `A animate: ${ANIMATION_LABELS[logoAnimationKind(VARIANTS[activeIndex]!)]}`
+    const canAnimate = !isPlaying && !scrollMode && comparisonSlots.every((slot) => slot === null)
+    const canAutoPlay = isPlaying || (!scrollMode && comparisonSlots.every((slot) => slot === null))
+    const autoPlay = `Shift+A auto: ${autoPlayLogoAnimations ? "ON" : "OFF"}`
     controlsText.content =
       scrollMode && !isPlaying
         ? `J/K select  ·  ↑/↓/PgUp/PgDn scroll  ·  ${playback}  ·  S exit scroll  ·  / filter`
-        : `←/→ browse  ·  ${playback}  ·  1/2/3 compare  ·  S scroll  ·  / filter`
+        : `←/→ browse  ·  ${canAnimate ? `${animation}  ·  ` : ""}${canAutoPlay ? `${autoPlay}  ·  ` : ""}${playback}  ·  1/2/3 compare  ·  S scroll  ·  / filter`
   }
 }
 
@@ -1206,15 +1481,24 @@ function updateHeader(): void {
           ? `COMPARE   ${slots}`
           : item.name
   }
-  if (noteText) noteText.content = `${item.note}   Review ID #${number}`
+  if (noteText) noteText.content = item.note
 }
 
 function showVariant(index: number): void {
   const indices = filteredIndices()
   if (indices.length === 0) return
+  const previousIndex = activeIndex
   const currentPosition = indices.indexOf(activeIndex)
   const requestedPosition = currentPosition === -1 ? index : currentPosition + index
   activeIndex = indices[((requestedPosition % indices.length) + indices.length) % indices.length]!
+  animateNextBrowseRender = shouldAutoPlayLogoAnimation({
+    enabled: autoPlayLogoAnimations,
+    previousIndex,
+    nextIndex: activeIndex,
+    isPlaying,
+    scrollMode,
+    hasComparison: comparisonSlots.some((slot) => slot !== null),
+  })
   updateHeader()
   renderStage()
   updateFooter()
@@ -1279,18 +1563,14 @@ function handleLogoSelection(renderer: CliRenderer, selection: Selection): void 
   if (selected.length === 0 || selected.some((renderable) => !renderable.id.startsWith("logo-copy-"))) return
   const text = selection.getSelectedText()
   if (!text) return
-  const copied = renderer.copyToClipboardOSC52(text)
-  if (copyStatusText) {
-    copyStatusText.content = copied
-      ? `COPIED ${text.split("\n").length} LINE${text.includes("\n") ? "S" : ""} TO CLIPBOARD`
-      : "AUTO-COPY UNAVAILABLE · use Shift-drag for terminal-native selection, then copy"
-    copyStatusText.fg = copied ? palette.success : palette.warning
-  }
+  renderer.copyToClipboardOSC52(text)
 }
 
 export function run(renderer: CliRenderer): void {
   clearPlaybackTimer()
   isPlaying = false
+  autoPlayLogoAnimations = false
+  animateNextBrowseRender = false
   rendererInstance = renderer
   renderer.start()
   palette = renderer.themeMode === "light" ? LIGHT_PALETTE : DARK_PALETTE
@@ -1340,12 +1620,6 @@ export function run(renderer: CliRenderer): void {
     flexShrink: 0,
   })
   noteText = new TextRenderable(renderer, { id: "logo-note", content: "", fg: palette.mutedText, selectable: false })
-  copyStatusText = new TextRenderable(renderer, {
-    id: "logo-copy-status",
-    content: "DRAG ACROSS A LOGO TO COPY ITS GLYPHS",
-    fg: palette.subtleText,
-    selectable: false,
-  })
   filterText = new TextRenderable(renderer, { id: "logo-filter", content: "", fg: palette.accent, selectable: false })
   controlsText = new TextRenderable(renderer, {
     id: "logo-controls",
@@ -1354,7 +1628,6 @@ export function run(renderer: CliRenderer): void {
     selectable: false,
   })
   footer.add(noteText)
-  footer.add(copyStatusText)
   footer.add(filterText)
   footer.add(controlsText)
 
@@ -1392,6 +1665,17 @@ export function run(renderer: CliRenderer): void {
       changePlaybackSpeed(-1)
     } else if (key.sequence === "+" && !key.ctrl && !key.meta && !key.super && !key.hyper) {
       changePlaybackSpeed(1)
+    } else if (key.sequence === "A" && key.shift && !key.ctrl && !key.meta && !key.super && !key.hyper) {
+      autoPlayLogoAnimations = !autoPlayLogoAnimations
+      updateFooter()
+    } else if (
+      key.name === "a" &&
+      isUnmodified(key) &&
+      !isPlaying &&
+      !scrollMode &&
+      comparisonSlots.every((slot) => slot === null)
+    ) {
+      startLogoAnimation()
     } else if (/^[123]$/.test(key.sequence) && isUnmodified(key)) {
       comparisonSlots[Number(key.sequence) - 1] = activeIndex
       if (scrollMode && !isPlaying) {
@@ -1471,7 +1755,6 @@ export function run(renderer: CliRenderer): void {
     if (counterText) counterText.fg = palette.subtleText
     if (titleText) titleText.fg = palette.text
     if (noteText) noteText.fg = palette.mutedText
-    if (copyStatusText) copyStatusText.fg = palette.subtleText
     if (filterText) filterText.fg = palette.accent
     if (controlsText) controlsText.fg = palette.subtleText
     renderStage()
@@ -1481,7 +1764,10 @@ export function run(renderer: CliRenderer): void {
 
 export function destroy(renderer: CliRenderer): void {
   clearPlaybackTimer()
+  stopLogoAnimation()
   isPlaying = false
+  autoPlayLogoAnimations = false
+  animateNextBrowseRender = false
   if (keyHandler) renderer.keyInput.off("keypress", keyHandler)
   if (resizeHandler) renderer.off("resize", resizeHandler)
   if (revealHandler) renderer.off(CliRenderEvents.FRAME, revealHandler)
@@ -1505,7 +1791,6 @@ export function destroy(renderer: CliRenderer): void {
   noteText = null
   controlsText = null
   filterText = null
-  copyStatusText = null
   scrollBox = null
   scrollCards.clear()
   scrollLabels.clear()
@@ -1516,6 +1801,7 @@ if (import.meta.main) {
     exitOnCtrlC: true,
     onDestroy: () => {
       clearPlaybackTimer()
+      stopLogoAnimation()
       isPlaying = false
       view = null
     },

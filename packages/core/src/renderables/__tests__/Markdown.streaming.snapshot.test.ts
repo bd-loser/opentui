@@ -28,7 +28,7 @@ const captureState = (markdown: MarkdownRenderable, frame: string) => ({
   frame: frame.split("\n"),
 })
 
-test("streaming ordered list shows current text while replacement highlighting is pending", async () => {
+test("streaming ordered list does not depend on replacement highlighting to show current text", async () => {
   const setup = await createTestRenderer({ width: 100, height: 16 })
   renderer = setup.renderer
   const treeSitterClient = new MockTreeSitterClient()

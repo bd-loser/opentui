@@ -4,7 +4,6 @@ import { createTestRenderer, MockTreeSitterClient, type TestRenderer } from "../
 import { BoxRenderable } from "../Box.js"
 import { CodeRenderable } from "../Code.js"
 import { MarkdownRenderable } from "../Markdown.js"
-import { ScrollBoxRenderable } from "../ScrollBox.js"
 
 let renderer: TestRenderer | undefined
 
@@ -24,18 +23,16 @@ const pendingHighlights = (markdown: MarkdownRenderable) => {
   return pending
 }
 
-test("streaming ordered list keeps growing text visible while markdown highlighting is pending", async () => {
+const captureState = (markdown: MarkdownRenderable, frame: string) => ({
+  pendingHighlights: pendingHighlights(markdown).length,
+  frame: frame.split("\n"),
+})
+
+test("streaming ordered list shows current text while replacement highlighting is pending", async () => {
   const setup = await createTestRenderer({ width: 100, height: 16 })
   renderer = setup.renderer
   const treeSitterClient = new MockTreeSitterClient()
   treeSitterClient.setMockResult({ highlights: [] })
-  const scrollbox = new ScrollBoxRenderable(renderer, {
-    width: 100,
-    height: 16,
-    viewportCulling: true,
-    stickyScroll: true,
-    stickyStart: "bottom",
-  })
   const container = new BoxRenderable(renderer, {
     width: "100%",
     paddingLeft: 3,
@@ -43,7 +40,9 @@ test("streaming ordered list keeps growing text visible while markdown highlight
     flexShrink: 0,
   })
   const markdown = new MarkdownRenderable(renderer, {
-    content: `1. Trigger the permission prompt: uninstall and
+    content: `Status: response is streaming.
+
+1. Trigger the permission prompt: uninstall and
 2. Create a schedule with a confirm-to-start segment: tap +, name it "Test
 3. Test the foreground
 4. Test the background case: start the schedule again, press the side
@@ -56,30 +55,33 @@ test("streaming ordered list keeps growing text visible while markdown highlight
   })
 
   container.add(markdown)
-  scrollbox.add(container)
-  renderer.root.add(scrollbox)
+  renderer.root.add(container)
 
   await setup.renderOnce()
   const initialHighlights = pendingHighlights(markdown)
   treeSitterClient.resolveAllHighlightOnce()
   await Promise.all(initialHighlights.map((code) => code.highlightingDone))
   await setup.renderOnce()
+  const initialState = captureState(markdown, setup.captureCharFrame())
 
-  markdown.content = `1. Trigger the permission prompt: uninstall and reinstall the app, then relaunch it.
+  markdown.content = `Status: response source is complete.
+
+1. Trigger the permission prompt: uninstall and reinstall the app, then relaunch it.
 2. Create a schedule with a confirm-to-start segment: tap +, name it "Test", and save it.
 3. Test the foreground case: start the schedule and use the in-app Start button.
 4. Test the background case: start the schedule again, then press the side button.
 5. Test the cancel: stay in the app and tap the in-app Start button before the notification appears.
 6. Test app lifecycle edge case: wait for the segment, then send the app to the background.`
   await setup.renderOnce()
-  const frameWhileHighlighting = setup.captureCharFrame().split("\n")
+  const pendingState = captureState(markdown, setup.captureCharFrame())
 
   const updatedHighlights = pendingHighlights(markdown)
   treeSitterClient.resolveAllHighlightOnce()
   await Promise.all(updatedHighlights.map((code) => code.highlightingDone))
   await setup.renderOnce()
-  const settledFrame = setup.captureCharFrame().split("\n")
+  const completedState = captureState(markdown, setup.captureCharFrame())
 
-  expect(settledFrame).toMatchSnapshot("after highlighting settles")
-  expect(frameWhileHighlighting).toMatchSnapshot("while updated highlighting is pending")
+  expect(initialState).toMatchSnapshot("after initial highlight completes")
+  expect(completedState).toMatchSnapshot("after updated highlight completes")
+  expect(pendingState).toMatchSnapshot("while updated highlighting is pending")
 })

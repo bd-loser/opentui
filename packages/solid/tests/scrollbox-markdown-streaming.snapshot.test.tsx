@@ -1,12 +1,23 @@
 import { afterEach, expect, test } from "bun:test"
 import { MockTreeSitterClient } from "@opentui/core/testing"
-import { SyntaxStyle } from "@opentui/core"
+import { CodeRenderable, MarkdownRenderable, SyntaxStyle } from "@opentui/core"
 import { createSignal } from "solid-js"
 import { testRender } from "../index.js"
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined
 
 const snapshotFrame = (frame: string) => frame.split("\n")
+
+const pendingHighlights = (markdown: MarkdownRenderable) => {
+  const children = [...markdown.getChildren()]
+  const pending: CodeRenderable[] = []
+  while (children.length > 0) {
+    const child = children.pop()!
+    if (child instanceof CodeRenderable && child.isHighlighting) pending.push(child)
+    children.push(...child.getChildren())
+  }
+  return pending
+}
 
 afterEach(() => {
   setup?.renderer.destroy()
@@ -16,6 +27,8 @@ afterEach(() => {
 test("streaming ordered list keeps growing text visible while markdown highlighting is pending", async () => {
   const treeSitterClient = new MockTreeSitterClient()
   treeSitterClient.setMockResult({ highlights: [] })
+  const syntaxStyle = SyntaxStyle.fromTheme([])
+  let markdown: MarkdownRenderable | undefined
   const [content, setContent] = createSignal(`1. Trigger the permission prompt: uninstall and
 2. Create a schedule with a confirm-to-start segment: tap +, name it "Test
 3. Test the foreground
@@ -29,7 +42,8 @@ test("streaming ordered list keeps growing text visible while markdown highlight
         <scrollbox viewportCulling stickyScroll stickyStart="bottom" flexGrow={1}>
           <box paddingLeft={3} marginTop={1} flexShrink={0}>
             <markdown
-              syntaxStyle={SyntaxStyle.fromTheme([])}
+              ref={(value) => (markdown = value)}
+              syntaxStyle={syntaxStyle}
               treeSitterClient={treeSitterClient}
               streaming
               internalBlockMode="top-level"
@@ -43,9 +57,9 @@ test("streaming ordered list keeps growing text visible while markdown highlight
   )
 
   await setup.renderOnce()
+  const initialHighlights = pendingHighlights(markdown!)
   treeSitterClient.resolveAllHighlightOnce()
-  await Promise.resolve()
-  await Promise.resolve()
+  await Promise.all(initialHighlights.map((code) => code.highlightingDone))
   await setup.renderOnce()
   expect(setup.captureCharFrame()).toContain("1. Trigger the permission prompt: uninstall and")
 
@@ -58,9 +72,10 @@ test("streaming ordered list keeps growing text visible while markdown highlight
   await setup.renderOnce()
   const frameWhileHighlighting = snapshotFrame(setup.captureCharFrame())
 
+  const updatedHighlights = pendingHighlights(markdown!)
+  expect(updatedHighlights.length).toBeGreaterThan(0)
   treeSitterClient.resolveAllHighlightOnce()
-  await Promise.resolve()
-  await Promise.resolve()
+  await Promise.all(updatedHighlights.map((code) => code.highlightingDone))
   await setup.renderOnce()
   const settledFrame = snapshotFrame(setup.captureCharFrame())
 

@@ -3134,21 +3134,31 @@ for (const view of ["unified", "split"] as const) {
     await renderOnce()
 
     const frame = captureFrame()
-    if (view === "unified") {
-      expect(frame).toContain("@@ -15,4 +15,5 @@ function second()")
-      expect(frame).toContain("@@ -30,3 +31,3 @@ function third()")
-    } else {
-      const leftLines = (diffRenderable as any).leftCodeRenderable.content.split("\n")
-      const rightLines = (diffRenderable as any).rightCodeRenderable.content.split("\n")
-      const secondHunk = leftLines.indexOf("@@ -15,4 +15,5 @@ function second()")
-      const thirdHunk = leftLines.indexOf("@@ -30,3 +31,3 @@ function third()")
-      expect(secondHunk).toBeGreaterThan(-1)
-      expect(thirdHunk).toBeGreaterThan(-1)
-      expect(rightLines[secondHunk]).toBe("")
-      expect(rightLines[thirdHunk]).toBe("")
-    }
+    expect(frame).toContain("@@ -15,4 +15,5 @@ function second()")
+    expect(frame).toContain("@@ -30,3 +31,3 @@ function third()")
   })
 }
+
+test("DiffRenderable - truncates split hunk headers to one full-width row", async () => {
+  const longContext = "export function calculateAdjustedOrderTotalWithRegionalTaxAndCustomerDiscount(value: number) {"
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: threeHunkDiff.replace("function second()", longContext),
+    view: "split",
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
+    wrapMode: "char",
+  })
+
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame.split("\n").filter((line) => line.includes("@@ -15,4 +15,5 @@")).length).toBe(1)
+  expect(frame).toContain("calculateAdjustedOrderTotal")
+  expect(frame).not.toContain("CustomerDiscount")
+})
 
 test("DiffRenderable - getHunkRowOffsets returns the first row of each hunk (unified)", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({ default: { fg: RGBA.fromValues(1, 1, 1, 1) } })
@@ -3231,7 +3241,7 @@ test("DiffRenderable - getHunkRowOffsets uses split-view rows (split)", async ()
   await renderOnce()
 
   // Later hunk offsets point to the visible header inserted between hunks.
-  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 3, 10])
+  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 3, 9])
 })
 
 test("DiffRenderable - getHunkRowOffsets is empty without a diff", async () => {

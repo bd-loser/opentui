@@ -17,7 +17,6 @@ interface LogicalLine {
   sign?: LineSign
   type: "context" | "add" | "remove" | "empty"
   hunkStart?: boolean
-  hunkHeader?: string
 }
 
 function formatHunkHeader(hunk: StructuredPatch["hunks"][number]): string {
@@ -111,8 +110,6 @@ export class DiffRenderable extends Renderable {
 
   private errorTextRenderable: TextRenderable | null = null
   private errorCodeRenderable: CodeRenderable | null = null
-  private hunkHeaderRenderables: TextRenderable[] = []
-  private hunkHeaderSourceLines: number[] = []
 
   private _waitingForHighlight: boolean = false
   private _lineInfoChangeHandler: (() => void) | null = null
@@ -193,7 +190,6 @@ export class DiffRenderable extends Renderable {
   }
 
   private buildView(): void {
-    this.clearHunkHeaderRenderables()
     this._hunkStartLines = []
     this.invalidateHunkRowOffsets()
 
@@ -278,7 +274,6 @@ export class DiffRenderable extends Renderable {
   private handleLineInfoChange = (): void => {
     // Wrapping or async concealment can change the visual row for an existing hunk anchor.
     this.invalidateHunkRowOffsets()
-    this.positionHunkHeaderRenderables()
 
     if (!this._waitingForHighlight) return
     if (!this.leftCodeRenderable || !this.rightCodeRenderable) return
@@ -321,7 +316,6 @@ export class DiffRenderable extends Renderable {
 
   public override destroyRecursively(): void {
     this.detachLineInfoListeners()
-    this.clearHunkHeaderRenderables()
     this.pendingRebuild = false
     this.leftSideAdded = false
     this.rightSideAdded = false
@@ -383,49 +377,6 @@ export class DiffRenderable extends Renderable {
         super.add(this.errorCodeRenderable)
       }
     }
-  }
-
-  private clearHunkHeaderRenderables(): void {
-    for (const renderable of this.hunkHeaderRenderables) {
-      renderable.destroyRecursively()
-    }
-    this.hunkHeaderRenderables = []
-    this.hunkHeaderSourceLines = []
-  }
-
-  private positionHunkHeaderRenderables(): void {
-    const sources = this.leftCodeRenderable?.lineInfo.lineSources
-    if (!sources || sources.length === 0) return
-
-    for (const [index, sourceLine] of this.hunkHeaderSourceLines.entries()) {
-      const visualRow = sources.indexOf(sourceLine)
-      if (visualRow !== -1) this.hunkHeaderRenderables[index].top = visualRow
-    }
-  }
-
-  private buildHunkHeaderRenderables(lines: LogicalLine[]): void {
-    for (const [sourceLine, line] of lines.entries()) {
-      if (!line.hunkHeader) continue
-
-      const renderable = new TextRenderable(this.ctx, {
-        id: this.id ? `${this.id}-hunk-header-${this.hunkHeaderRenderables.length}` : undefined,
-        content: line.hunkHeader,
-        position: "absolute",
-        left: 0,
-        top: sourceLine,
-        width: "100%",
-        height: 1,
-        wrapMode: "none",
-        overflow: "hidden",
-        zIndex: 1,
-        fg: this._lineNumberFg,
-        bg: this._contextContentBg ?? this._contextBg,
-      })
-      this.hunkHeaderRenderables.push(renderable)
-      this.hunkHeaderSourceLines.push(sourceLine)
-      super.add(renderable)
-    }
-    this.positionHunkHeaderRenderables()
   }
 
   private createOrUpdateCodeRenderable(
@@ -686,9 +637,8 @@ export class DiffRenderable extends Renderable {
       hunkFirstLeftLine.push(leftLogicalLines.length)
 
       if (hunkIndex > 0) {
-        const header = this._hunkHeaders[hunkIndex] ?? formatHunkHeader(hunk)
-        leftLogicalLines.push({ content: "", hideLineNumber: true, type: "context", hunkHeader: header })
-        rightLogicalLines.push({ content: "", hideLineNumber: true, type: "context" })
+        leftLogicalLines.push({ content: "⋯", hideLineNumber: true, type: "context" })
+        rightLogicalLines.push({ content: "⋯", hideLineNumber: true, type: "context" })
       }
 
       let oldLineNum = hunk.oldStart
@@ -1000,7 +950,6 @@ export class DiffRenderable extends Renderable {
       rightHideLineNumbers,
       "50%",
     )
-    this.buildHunkHeaderRenderables(finalLeftLines)
   }
 
   public get diff(): string {

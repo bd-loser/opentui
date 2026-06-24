@@ -3119,27 +3119,25 @@ const threeHunkDiff = `--- a/file.js
 +  console.log("new");
  }`
 
-for (const view of ["unified", "split"] as const) {
-  test(`DiffRenderable - renders hunk headers between distant hunks (${view})`, async () => {
-    const diffRenderable = new DiffRenderable(currentRenderer, {
-      id: "test-diff",
-      diff: threeHunkDiff,
-      view,
-      showLineNumbers: true,
-      width: "100%",
-      height: "100%",
-    })
-
-    currentRenderer.root.add(diffRenderable)
-    await renderOnce()
-
-    const frame = captureFrame()
-    expect(frame).toContain("@@ -15,4 +15,5 @@ function second()")
-    expect(frame).toContain("@@ -30,3 +31,3 @@ function third()")
+test("DiffRenderable - renders complete hunk headers between distant hunks in unified view", async () => {
+  const diffRenderable = new DiffRenderable(currentRenderer, {
+    id: "test-diff",
+    diff: threeHunkDiff,
+    view: "unified",
+    showLineNumbers: true,
+    width: "100%",
+    height: "100%",
   })
-}
 
-test("DiffRenderable - truncates split hunk headers to one full-width row", async () => {
+  currentRenderer.root.add(diffRenderable)
+  await renderOnce()
+
+  const frame = captureFrame()
+  expect(frame).toContain("@@ -15,4 +15,5 @@ function second()")
+  expect(frame).toContain("@@ -30,3 +31,3 @@ function third()")
+})
+
+test("DiffRenderable - renders one-row hunk separators in both split panes", async () => {
   const longContext = "export function calculateAdjustedOrderTotalWithRegionalTaxAndCustomerDiscount(value: number) {"
   const diffRenderable = new DiffRenderable(currentRenderer, {
     id: "test-diff",
@@ -3154,10 +3152,12 @@ test("DiffRenderable - truncates split hunk headers to one full-width row", asyn
   currentRenderer.root.add(diffRenderable)
   await renderOnce()
 
-  const frame = captureFrame()
-  expect(frame.split("\n").filter((line) => line.includes("@@ -15,4 +15,5 @@")).length).toBe(1)
-  expect(frame).toContain("calculateAdjustedOrderTotal")
-  expect(frame).not.toContain("CustomerDiscount")
+  const leftLines = (diffRenderable as any).leftCodeRenderable.content.split("\n")
+  const rightLines = (diffRenderable as any).rightCodeRenderable.content.split("\n")
+  expect(leftLines.filter((line: string) => line === "⋯")).toHaveLength(2)
+  expect(rightLines.filter((line: string) => line === "⋯")).toHaveLength(2)
+  expect(leftLines.some((line: string) => line.startsWith("@@"))).toBe(false)
+  expect(rightLines.some((line: string) => line.startsWith("@@"))).toBe(false)
 })
 
 test("DiffRenderable - getHunkRowOffsets returns the first row of each hunk (unified)", async () => {

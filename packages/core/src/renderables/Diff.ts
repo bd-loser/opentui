@@ -19,6 +19,12 @@ interface LogicalLine {
   hunkStart?: boolean
 }
 
+function formatHunkHeader(hunk: StructuredPatch["hunks"][number]): string {
+  const oldStart = hunk.oldLines === 0 ? hunk.oldStart - 1 : hunk.oldStart
+  const newStart = hunk.newLines === 0 ? hunk.newStart - 1 : hunk.newStart
+  return `@@ -${oldStart},${hunk.oldLines} +${newStart},${hunk.newLines} @@`
+}
+
 export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable> {
   diff?: string
   syncScroll?: boolean
@@ -502,12 +508,23 @@ export class DiffRenderable extends Renderable {
     const lineColors = new Map<number, string | RGBA | LineColorConfig>()
     const lineSigns = new Map<number, LineSign>()
     const lineNumbers = new Map<number, number>()
+    const hideLineNumbers = new Set<number>()
 
     let lineIndex = 0
 
-    for (const hunk of this._parsedDiff.hunks) {
+    for (const [hunkIndex, hunk] of this._parsedDiff.hunks.entries()) {
       // Unified view flattens hunks directly into the left CodeRenderable line stream.
       this._hunkStartLines.push(lineIndex)
+
+      if (hunkIndex > 0) {
+        contentLines.push(formatHunkHeader(hunk))
+        lineColors.set(lineIndex, {
+          gutter: this._lineNumberBg,
+          content: this._contextContentBg ?? this._contextBg,
+        })
+        hideLineNumbers.add(lineIndex)
+        lineIndex++
+      }
 
       let oldLineNum = hunk.oldStart
       let newLineNum = hunk.newStart
@@ -576,7 +593,7 @@ export class DiffRenderable extends Renderable {
     const codeRenderable = this.createOrUpdateCodeRenderable("left", content, this._wrapMode)
     this.attachLineInfoListeners()
 
-    this.createOrUpdateSide("left", codeRenderable, lineColors, lineSigns, lineNumbers, new Set<number>(), "100%")
+    this.createOrUpdateSide("left", codeRenderable, lineColors, lineSigns, lineNumbers, hideLineNumbers, "100%")
 
     if (this.rightSide && this.rightSideAdded) {
       super.remove(this.rightSide.id)
@@ -606,9 +623,15 @@ export class DiffRenderable extends Renderable {
     const rightLogicalLines: LogicalLine[] = []
     const hunkFirstLeftLine: number[] = []
 
-    for (const hunk of this._parsedDiff.hunks) {
+    for (const [hunkIndex, hunk] of this._parsedDiff.hunks.entries()) {
       // Split view may insert padding later, so carry hunk starts through LogicalLine metadata.
       hunkFirstLeftLine.push(leftLogicalLines.length)
+
+      if (hunkIndex > 0) {
+        const header = formatHunkHeader(hunk)
+        leftLogicalLines.push({ content: header, hideLineNumber: true, type: "context" })
+        rightLogicalLines.push({ content: "", hideLineNumber: true, type: "context" })
+      }
 
       let oldLineNum = hunk.oldStart
       let newLineNum = hunk.newStart

@@ -3119,6 +3119,26 @@ const threeHunkDiff = `--- a/file.js
 +  console.log("new");
  }`
 
+for (const view of ["unified", "split"] as const) {
+  test(`DiffRenderable - renders hunk headers between distant hunks (${view})`, async () => {
+    const diffRenderable = new DiffRenderable(currentRenderer, {
+      id: "test-diff",
+      diff: threeHunkDiff,
+      view,
+      showLineNumbers: true,
+      width: "100%",
+      height: "100%",
+    })
+
+    currentRenderer.root.add(diffRenderable)
+    await renderOnce()
+
+    const frame = captureFrame()
+    expect(frame).toContain("@@ -15,4 +15,5 @@")
+    expect(frame).toContain("@@ -30,3 +31,3 @@")
+  })
+}
+
 test("DiffRenderable - getHunkRowOffsets returns the first row of each hunk (unified)", async () => {
   const syntaxStyle = SyntaxStyle.fromStyles({ default: { fg: RGBA.fromValues(1, 1, 1, 1) } })
 
@@ -3135,8 +3155,8 @@ test("DiffRenderable - getHunkRowOffsets returns the first row of each hunk (uni
   currentRenderer.root.add(diffRenderable)
   await renderOnce()
 
-  // Hunks flatten into one column: 4 lines, then 5 lines, then 4 lines.
-  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 4, 9])
+  // Later hunk offsets point to the visible header inserted between hunks.
+  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 4, 10])
 })
 
 test("DiffRenderable - getHunkRowOffsets accounts for wrapped lines (unified)", async () => {
@@ -3180,7 +3200,7 @@ test("DiffRenderable - getHunkRowOffsets accounts for wrapped lines (unified)", 
 
   // The wrapped line in the first hunk pushes the later hunks down by extra visual rows.
   expect(sources.length).toBeGreaterThan(12)
-  expect(diffRenderable.getHunkRowOffsets()).toEqual([sources.indexOf(0), sources.indexOf(4), sources.indexOf(8)])
+  expect(diffRenderable.getHunkRowOffsets()).toEqual([sources.indexOf(0), sources.indexOf(4), sources.indexOf(9)])
 })
 
 test("DiffRenderable - getHunkRowOffsets uses split-view rows (split)", async () => {
@@ -3199,9 +3219,8 @@ test("DiffRenderable - getHunkRowOffsets uses split-view rows (split)", async ()
   currentRenderer.root.add(diffRenderable)
   await renderOnce()
 
-  // Split view pairs adds/removes side by side, so the add-only second hunk leaves the
-  // left column one row shorter than the unified flattening.
-  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 3, 8])
+  // Later hunk offsets point to the visible header inserted between hunks.
+  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 3, 9])
 })
 
 test("DiffRenderable - getHunkRowOffsets is empty without a diff", async () => {

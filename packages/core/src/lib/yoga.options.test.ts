@@ -33,7 +33,7 @@ import {
   PositionType,
   Unit,
   Wrap,
-} from "../yoga.js"
+} from "yoga-layout"
 
 describe("parseBoxSizing", () => {
   test("parses border-box", () => {

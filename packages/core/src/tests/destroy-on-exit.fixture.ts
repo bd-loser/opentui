@@ -1,5 +1,5 @@
 import { Readable } from "node:stream"
-import { createTestRenderer } from "../testing.js"
+import { createTestRenderer } from "@opentui/core/testing"
 
 const code = parseInt(process.argv[2] ?? "0", 10)
 const mode = process.argv[3] ?? "idle"

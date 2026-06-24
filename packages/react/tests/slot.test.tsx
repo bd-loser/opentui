@@ -30,27 +30,27 @@ async function setupSlotTest(
   let root: Root | null = null
   setIsReactActEnvironment(true)
 
-  let setup!: Awaited<ReturnType<typeof createTestRenderer>>
-  let registry!: ReturnType<typeof createReactSlotRegistry<AppSlots>>
+  const setup = await createTestRenderer({
+    ...options,
+    onDestroy() {
+      act(() => {
+        if (root) {
+          root.unmount()
+          root = null
+        }
+      })
+      options.onDestroy?.()
+      setIsReactActEnvironment(false)
+    },
+  })
 
-  await act(async () => {
-    setup = await createTestRenderer({
-      ...options,
-      onDestroy() {
-        act(() => {
-          if (root) {
-            root.unmount()
-            root = null
-          }
-        })
-        options.onDestroy?.()
-        setIsReactActEnvironment(false)
-      },
-    })
+  const registry = createReactSlotRegistry<AppSlots>(setup.renderer, hostContext)
+  root = createRoot(setup.renderer)
 
-    registry = createReactSlotRegistry<AppSlots>(setup.renderer, hostContext)
-    root = createRoot(setup.renderer)
-    root.render(createNode(registry))
+  act(() => {
+    if (root) {
+      root.render(createNode(registry))
+    }
   })
 
   return { setup, registry }
@@ -59,17 +59,13 @@ async function setupSlotTest(
 describe("React Slot System", () => {
   beforeEach(() => {
     if (testSetup) {
-      act(() => {
-        testSetup.renderer.destroy()
-      })
+      testSetup.renderer.destroy()
     }
   })
 
   afterEach(() => {
     if (testSetup) {
-      act(() => {
-        testSetup.renderer.destroy()
-      })
+      testSetup.renderer.destroy()
     }
   })
 

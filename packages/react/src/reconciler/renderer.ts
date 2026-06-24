@@ -32,6 +32,7 @@ export function createRoot(renderer: CliRenderer): Root {
   const cleanup = () => {
     if (container) {
       reconciler.updateContainer(null, container, null, () => {})
+      // @ts-expect-error the types for `react-reconciler` are not up to date with the library.
       reconciler.flushSyncWork()
       container = null
     }

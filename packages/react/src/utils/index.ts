@@ -6,7 +6,6 @@ import {
   SelectRenderableEvents,
   TabSelectRenderable,
   TabSelectRenderableEvents,
-  TextareaRenderable,
 } from "@opentui/core"
 import type { Instance, Props, Type } from "../types/host.js"
 
@@ -65,8 +64,6 @@ function setProperty(instance: Instance, type: Type, propKey: string, propValue:
     case "onSubmit":
       if (instance instanceof InputRenderable) {
         initEventListeners(instance, InputRenderableEvents.ENTER, propValue, oldPropValue)
-      } else if (instance instanceof TextareaRenderable) {
-        instance.onSubmit = propValue
       }
       break
     case "onSelect":

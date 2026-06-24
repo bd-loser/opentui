@@ -111,8 +111,6 @@ export interface BoxDrawOptions {
   shouldFill?: boolean
   title?: string
   titleAlignment?: "left" | "center" | "right"
-  bottomTitle?: string
-  bottomTitleAlignment?: "left" | "center" | "right"
 }
 
 export interface BorderSidesConfig {

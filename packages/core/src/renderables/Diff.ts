@@ -16,7 +16,6 @@ interface LogicalLine {
   color?: string | RGBA
   sign?: LineSign
   type: "context" | "add" | "remove" | "empty"
-  hunkStart?: boolean
 }
 
 export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable> {
@@ -58,9 +57,6 @@ export class DiffRenderable extends Renderable {
   private _view: "unified" | "split"
   private _parsedDiff: StructuredPatch | null = null
   private _parseError: Error | null = null
-  // Source-line anchors for hunk starts; native extmarks should eventually own these anchors.
-  private _hunkStartLines: number[] = []
-  private _hunkRowOffsets: number[] | null = null
 
   // CodeRenderable options
   private _fg?: RGBA
@@ -175,9 +171,6 @@ export class DiffRenderable extends Renderable {
   }
 
   private buildView(): void {
-    this._hunkStartLines = []
-    this.invalidateHunkRowOffsets()
-
     if (this._parseError) {
       this.buildErrorView()
       return
@@ -244,10 +237,6 @@ export class DiffRenderable extends Renderable {
     })
   }
 
-  private invalidateHunkRowOffsets(): void {
-    this._hunkRowOffsets = null
-  }
-
   private rebuildView(): void {
     if (this._view === "split") {
       this.requestRebuild()
@@ -257,9 +246,6 @@ export class DiffRenderable extends Renderable {
   }
 
   private handleLineInfoChange = (): void => {
-    // Wrapping or async concealment can change the visual row for an existing hunk anchor.
-    this.invalidateHunkRowOffsets()
-
     if (!this._waitingForHighlight) return
     if (!this.leftCodeRenderable || !this.rightCodeRenderable) return
 
@@ -273,18 +259,12 @@ export class DiffRenderable extends Renderable {
   }
 
   private attachLineInfoListeners(): void {
-    if (!this.leftCodeRenderable && !this.rightCodeRenderable) return
+    if (this._lineInfoChangeHandler) return
+    if (!this.leftCodeRenderable || !this.rightCodeRenderable) return
 
-    // Hunk offsets depend on lineInfo even when syncScroll is off.
-    this._lineInfoChangeHandler ??= this.handleLineInfoChange
-    if (this.leftCodeRenderable) {
-      this.leftCodeRenderable.off("line-info-change", this._lineInfoChangeHandler)
-      this.leftCodeRenderable.on("line-info-change", this._lineInfoChangeHandler)
-    }
-    if (this.rightCodeRenderable) {
-      this.rightCodeRenderable.off("line-info-change", this._lineInfoChangeHandler)
-      this.rightCodeRenderable.on("line-info-change", this._lineInfoChangeHandler)
-    }
+    this._lineInfoChangeHandler = this.handleLineInfoChange
+    this.leftCodeRenderable.on("line-info-change", this._lineInfoChangeHandler)
+    this.rightCodeRenderable.on("line-info-change", this._lineInfoChangeHandler)
   }
 
   private detachLineInfoListeners(): void {
@@ -506,9 +486,6 @@ export class DiffRenderable extends Renderable {
     let lineIndex = 0
 
     for (const hunk of this._parsedDiff.hunks) {
-      // Unified view flattens hunks directly into the left CodeRenderable line stream.
-      this._hunkStartLines.push(lineIndex)
-
       let oldLineNum = hunk.oldStart
       let newLineNum = hunk.newStart
 
@@ -574,7 +551,6 @@ export class DiffRenderable extends Renderable {
     const content = contentLines.join("\n")
 
     const codeRenderable = this.createOrUpdateCodeRenderable("left", content, this._wrapMode)
-    this.attachLineInfoListeners()
 
     this.createOrUpdateSide("left", codeRenderable, lineColors, lineSigns, lineNumbers, new Set<number>(), "100%")
 
@@ -604,12 +580,8 @@ export class DiffRenderable extends Renderable {
 
     const leftLogicalLines: LogicalLine[] = []
     const rightLogicalLines: LogicalLine[] = []
-    const hunkFirstLeftLine: number[] = []
 
     for (const hunk of this._parsedDiff.hunks) {
-      // Split view may insert padding later, so carry hunk starts through LogicalLine metadata.
-      hunkFirstLeftLine.push(leftLogicalLines.length)
-
       let oldLineNum = hunk.oldStart
       let newLineNum = hunk.newStart
 
@@ -706,12 +678,6 @@ export class DiffRenderable extends Renderable {
       }
     }
 
-    // Mark before wrap-alignment so padding does not lose the hunk start.
-    for (const startIndex of hunkFirstLeftLine) {
-      const firstLine = leftLogicalLines[startIndex]
-      if (firstLine) firstLine.hunkStart = true
-    }
-
     const canDoWrapAlignment = this.width > 0 && (this._wrapMode === "word" || this._wrapMode === "char")
 
     const preLeftContent = leftLogicalLines.map((l) => l.content).join("\n")
@@ -732,7 +698,6 @@ export class DiffRenderable extends Renderable {
       this._wrapMode,
       drawUnstyledText,
     )
-    this.attachLineInfoListeners()
 
     let finalLeftLines: LogicalLine[]
     let finalRightLines: LogicalLine[]
@@ -775,9 +740,8 @@ export class DiffRenderable extends Renderable {
         const leftLine = leftLogicalLines[i]
         const rightLine = rightLogicalLines[i]
 
-        // Concealed logical lines have zero visual rows; counting them as one misaligns split panes.
-        const leftVisualCount = leftVisualCounts.get(i) ?? 0
-        const rightVisualCount = rightVisualCounts.get(i) ?? 0
+        const leftVisualCount = leftVisualCounts.get(i) || 1
+        const rightVisualCount = rightVisualCounts.get(i) || 1
 
         if (leftVisualPos < rightVisualPos) {
           const pad = rightVisualPos - leftVisualPos
@@ -826,10 +790,6 @@ export class DiffRenderable extends Renderable {
     const rightLineNumbers = new Map<number, number>()
 
     finalLeftLines.forEach((line, index) => {
-      if (line.hunkStart) {
-        // After padding, this is the line index CodeRenderable.lineInfo can resolve to a row.
-        this._hunkStartLines.push(index)
-      }
       if (line.lineNum !== undefined) {
         leftLineNumbers.set(index, line.lineNum)
       }
@@ -941,6 +901,9 @@ export class DiffRenderable extends Renderable {
   public set syncScroll(value: boolean) {
     if (this._syncScroll !== value) {
       this._syncScroll = value
+      if (!value) {
+        this.detachLineInfoListeners()
+      }
     }
   }
 
@@ -985,7 +948,6 @@ export class DiffRenderable extends Renderable {
   public set wrapMode(value: "word" | "char" | "none" | undefined) {
     if (this._wrapMode !== value) {
       this._wrapMode = value
-      this.invalidateHunkRowOffsets()
 
       if (this._view === "unified" && this.leftCodeRenderable) {
         this.leftCodeRenderable.wrapMode = value ?? "none"
@@ -1245,34 +1207,5 @@ export class DiffRenderable extends Renderable {
   public clearHighlightLines(startLine: number, endLine: number): void {
     this.leftSide?.clearHighlightLines(startLine, endLine)
     this.rightSide?.clearHighlightLines(startLine, endLine)
-  }
-
-  public getHunkRowOffsets(): number[] {
-    if (this._hunkRowOffsets) return [...this._hunkRowOffsets]
-
-    this._hunkRowOffsets = this.computeHunkRowOffsets()
-    return [...this._hunkRowOffsets]
-  }
-
-  private computeHunkRowOffsets(): number[] {
-    if (this._hunkStartLines.length === 0) return []
-
-    // lineInfo composes native wrapping with CodeRenderable's temporary conceal source map.
-    // Native extmark row resolution should replace this scan with direct anchor queries.
-    const sources = this.leftCodeRenderable?.lineInfo.lineSources
-    if (!sources || sources.length === 0) return [...this._hunkStartLines]
-
-    const offsets: number[] = []
-    let visualRow = 0
-
-    for (const hunkStartLine of this._hunkStartLines) {
-      // If the exact hunk line is concealed, navigate to the next visible row.
-      while (visualRow < sources.length && sources[visualRow] < hunkStartLine) {
-        visualRow++
-      }
-      offsets.push(visualRow < sources.length ? visualRow : hunkStartLine)
-    }
-
-    return offsets
   }
 }

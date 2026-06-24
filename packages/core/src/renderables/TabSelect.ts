@@ -6,13 +6,12 @@ import type { RenderContext } from "../types.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
+  getKeyBindingKey,
   buildKeyBindingsMap,
-  getKeyBindingAction,
+  type KeyAliasMap,
   defaultKeyAliases,
   mergeKeyAliases,
-} from "../lib/keybinding.internal.js"
-
-type KeyAliasMap = Record<string, string>
+} from "../lib/keymapping.js"
 
 export interface TabSelectOption {
   name: string
@@ -309,7 +308,16 @@ export class TabSelectRenderable extends Renderable {
   }
 
   public handleKeyPress(key: KeyEvent): boolean {
-    const action = getKeyBindingAction(this._keyBindingsMap, key)
+    const bindingKey = getKeyBindingKey({
+      name: key.name,
+      ctrl: key.ctrl,
+      shift: key.shift,
+      meta: key.meta,
+      super: key.super,
+      action: "move-left" as TabSelectAction,
+    })
+
+    const action = this._keyBindingsMap.get(bindingKey)
 
     if (action) {
       switch (action) {

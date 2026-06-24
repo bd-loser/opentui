@@ -553,8 +553,7 @@ exports[`DiffRenderable - very long lines wrapping multiple times in split view:
 `;
 
 exports[`DiffRenderable - invalid diff format shows error with raw diff: invalid diff format with error 1`] = `
-"Error parsing diff: Hunk at line 3 has more lines than expected (expected 1 old 
-lines and 1 new lines)                                                          
+"Error parsing diff: Unknown line 5 "-  console.log(\\"Hello\\");"                 
                                                                                 
 --- a/test.js                                                                   
 +++ b/test.js                                                                   
@@ -563,6 +562,7 @@ lines and 1 new lines)
 -  console.log("Hello");                                                        
 +  console.log("Hello, World!");                                                
  }                                                                              
+                                                                                
                                                                                 
                                                                                 
                                                                                 

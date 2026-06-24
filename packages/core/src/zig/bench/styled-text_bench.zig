@@ -1,5 +1,4 @@
 const std = @import("std");
-const ansi = @import("../ansi.zig");
 const bench_utils = @import("../bench-utils.zig");
 const text_buffer_mod = @import("../text-buffer.zig");
 const syntax_style_mod = @import("../syntax-style.zig");
@@ -10,19 +9,14 @@ const BenchResult = bench_utils.BenchResult;
 const BenchStats = bench_utils.BenchStats;
 const MemStats = bench_utils.MemStats;
 const TextBuffer = text_buffer_mod.UnifiedTextBuffer;
-const RGBA = text_buffer_mod.RGBA;
 const StyledChunk = text_buffer_mod.StyledChunk; // Use the unified type from text-buffer
 const SyntaxStyle = syntax_style_mod.SyntaxStyle;
 
 pub const benchName = "Styled Text Operations";
 
 // Helper to convert RGBA to pointer for benchmark
-fn rgbaToPtr(color: *const RGBA) [*]const u16 {
-    return @as([*]const u16, @ptrCast(color));
-}
-
-fn rgba(r: f32, g: f32, b: f32, a: f32) RGBA {
-    return ansi.rgbaFromFloats(r, g, b, a);
+fn rgbaToPtr(rgba: *const [4]f32) [*]const f32 {
+    return @ptrCast(rgba);
 }
 
 fn benchSetStyledTextOperations(
@@ -45,10 +39,10 @@ fn benchSetStyledTextOperations(
     {
         const name = "setStyledText - single chunk (55 chars)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats: BenchStats = .{};
+            var stats = BenchStats{};
 
             const text = "Hello, World! This is a test of styled text rendering.";
-            const fg_color = rgba(1.0, 1.0, 1.0, 1.0);
+            const fg_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -71,7 +65,7 @@ fn benchSetStyledTextOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, .{
+            try results.append(allocator, BenchResult{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -87,14 +81,14 @@ fn benchSetStyledTextOperations(
     {
         const name = "setStyledText - 6 small chunks (~6 chars each)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats: BenchStats = .{};
+            var stats = BenchStats{};
 
-            const red = rgba(1.0, 0.0, 0.0, 1.0);
-            const green = rgba(0.0, 1.0, 0.0, 1.0);
-            const blue = rgba(0.0, 0.0, 1.0, 1.0);
-            const yellow = rgba(1.0, 1.0, 0.0, 1.0);
-            const cyan = rgba(0.0, 1.0, 1.0, 1.0);
-            const magenta = rgba(1.0, 0.0, 1.0, 1.0);
+            const red = [4]f32{ 1.0, 0.0, 0.0, 1.0 };
+            const green = [4]f32{ 0.0, 1.0, 0.0, 1.0 };
+            const blue = [4]f32{ 0.0, 0.0, 1.0, 1.0 };
+            const yellow = [4]f32{ 1.0, 1.0, 0.0, 1.0 };
+            const cyan = [4]f32{ 0.0, 1.0, 1.0, 1.0 };
+            const magenta = [4]f32{ 1.0, 0.0, 1.0, 1.0 };
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -125,7 +119,7 @@ fn benchSetStyledTextOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, .{
+            try results.append(allocator, BenchResult{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -141,12 +135,12 @@ fn benchSetStyledTextOperations(
     {
         const name = "setStyledText - 8 chunks (syntax highlighting)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats: BenchStats = .{};
+            var stats = BenchStats{};
 
-            const keyword_color = rgba(0.8, 0.4, 1.0, 1.0);
-            const identifier_color = rgba(0.7, 0.9, 1.0, 1.0);
-            const operator_color = rgba(1.0, 1.0, 1.0, 1.0);
-            const number_color = rgba(0.7, 1.0, 0.7, 1.0);
+            const keyword_color = [4]f32{ 0.8, 0.4, 1.0, 1.0 };
+            const identifier_color = [4]f32{ 0.7, 0.9, 1.0, 1.0 };
+            const operator_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
+            const number_color = [4]f32{ 0.7, 1.0, 0.7, 1.0 };
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -182,7 +176,7 @@ fn benchSetStyledTextOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, .{
+            try results.append(allocator, BenchResult{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -198,7 +192,7 @@ fn benchSetStyledTextOperations(
     {
         const name = "setStyledText - 10 chunks (~120 chars total)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats: BenchStats = .{};
+            var stats = BenchStats{};
 
             const text = "Lorem ipsum ";
 
@@ -211,7 +205,7 @@ fn benchSetStyledTextOperations(
                 tb.setSyntaxStyle(style);
 
                 // Just repeat the same chunk 10 times
-                const color = rgba(1.0, 0.5, 0.5, 1.0);
+                const color = [4]f32{ 1.0, 0.5, 0.5, 1.0 };
                 const chunks = [_]StyledChunk{
                     .{ .text_ptr = text.ptr, .text_len = text.len, .fg_ptr = rgbaToPtr(&color), .bg_ptr = null, .attributes = 0 },
                     .{ .text_ptr = text.ptr, .text_len = text.len, .fg_ptr = rgbaToPtr(&color), .bg_ptr = null, .attributes = 0 },
@@ -230,7 +224,7 @@ fn benchSetStyledTextOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, .{
+            try results.append(allocator, BenchResult{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -246,7 +240,7 @@ fn benchSetStyledTextOperations(
     {
         const name = "setStyledText - 5 chunks with attributes";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats: BenchStats = .{};
+            var stats = BenchStats{};
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -275,7 +269,7 @@ fn benchSetStyledTextOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, .{
+            try results.append(allocator, BenchResult{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -287,7 +281,7 @@ fn benchSetStyledTextOperations(
         }
     }
 
-    return results.toOwnedSlice(allocator);
+    return try results.toOwnedSlice(allocator);
 }
 
 fn benchHighlightOperations(
@@ -310,7 +304,7 @@ fn benchHighlightOperations(
     {
         const name = "addHighlightByCharRange - 1000 calls (unbatched)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats: BenchStats = .{};
+            var stats = BenchStats{};
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -337,7 +331,7 @@ fn benchHighlightOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, .{
+            try results.append(allocator, BenchResult{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -353,7 +347,7 @@ fn benchHighlightOperations(
     {
         const name = "addHighlightByCharRange - 1000 calls (batched)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats: BenchStats = .{};
+            var stats = BenchStats{};
 
             for (0..iterations) |_| {
                 const tb = try TextBuffer.init(allocator, pool, link_pool, .wcwidth);
@@ -384,7 +378,7 @@ fn benchHighlightOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, .{
+            try results.append(allocator, BenchResult{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -400,17 +394,17 @@ fn benchHighlightOperations(
     {
         const name = "setStyledText - 100 chunks (realistic code)";
         if (bench_utils.matchesBenchFilter(name, bench_filter)) {
-            var stats: BenchStats = .{};
+            var stats = BenchStats{};
 
             // Build a realistic multi-line code snippet with 100 chunks
             var chunk_list: std.ArrayListUnmanaged(StyledChunk) = .{};
             defer chunk_list.deinit(allocator);
 
-            const keyword_color = rgba(0.8, 0.4, 1.0, 1.0);
-            const identifier_color = rgba(0.7, 0.9, 1.0, 1.0);
-            const operator_color = rgba(1.0, 1.0, 1.0, 1.0);
-            const number_color = rgba(0.7, 1.0, 0.7, 1.0);
-            const string_color = rgba(0.9, 0.8, 0.5, 1.0);
+            const keyword_color = [4]f32{ 0.8, 0.4, 1.0, 1.0 };
+            const identifier_color = [4]f32{ 0.7, 0.9, 1.0, 1.0 };
+            const operator_color = [4]f32{ 1.0, 1.0, 1.0, 1.0 };
+            const number_color = [4]f32{ 0.7, 1.0, 0.7, 1.0 };
+            const string_color = [4]f32{ 0.9, 0.8, 0.5, 1.0 };
 
             // Repeat a pattern to create 100 chunks
             for (0..10) |_| {
@@ -439,7 +433,7 @@ fn benchHighlightOperations(
                 stats.record(timer.read());
             }
 
-            try results.append(allocator, .{
+            try results.append(allocator, BenchResult{
                 .name = name,
                 .min_ns = stats.min_ns,
                 .avg_ns = stats.avg(),
@@ -451,7 +445,7 @@ fn benchHighlightOperations(
         }
     }
 
-    return results.toOwnedSlice(allocator);
+    return try results.toOwnedSlice(allocator);
 }
 
 pub fn run(
@@ -472,5 +466,5 @@ pub fn run(
     const highlight_results = try benchHighlightOperations(allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, highlight_results);
 
-    return all_results.toOwnedSlice(allocator);
+    return try all_results.toOwnedSlice(allocator);
 }

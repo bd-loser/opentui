@@ -1,21 +1,5 @@
 import type { OptimizedBuffer } from "../buffer.js"
 
-function toU8(value: number): number {
-  return Math.round(Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)) * 255)
-}
-
-function channel(buffer: Uint16Array, index: number): number {
-  return (buffer[index] & 0xff) / 255
-}
-
-function setRgb(buffer: Uint16Array, base: number, r: number, g: number, b: number): void {
-  const a = buffer[base + 3] & 0xff
-  buffer[base] = toU8(r)
-  buffer[base + 1] = toU8(g)
-  buffer[base + 2] = toU8(b)
-  buffer[base + 3] = a
-}
-
 interface ActiveGlitch {
   y: number
   type: "shift" | "flip" | "color"
@@ -97,8 +81,8 @@ export class DistortionEffect {
     if (this.activeGlitches.length > 0) {
       // Create temporary arrays lazily if needed (minor optimization for shift/flip)
       let tempChar: Uint32Array | null = null
-      let tempFg: Uint16Array | null = null
-      let tempBg: Uint16Array | null = null
+      let tempFg: Float32Array | null = null
+      let tempBg: Float32Array | null = null
       let tempAttr: Uint8Array | null = null
 
       for (const glitch of this.activeGlitches) {
@@ -111,8 +95,8 @@ export class DistortionEffect {
           // Lazily create temp buffers only when needed for shift/flip
           if (!tempChar) {
             tempChar = new Uint32Array(width)
-            tempFg = new Uint16Array(width * 4)
-            tempBg = new Uint16Array(width * 4)
+            tempFg = new Float32Array(width * 4)
+            tempBg = new Float32Array(width * 4)
             tempAttr = new Uint8Array(width)
           }
 
@@ -248,8 +232,15 @@ export class DistortionEffect {
               bBg = 1 - bFg
             }
 
-            setRgb(buf.fg, destColorIndex, rFg, gFg, bFg)
-            setRgb(buf.bg, destColorIndex, rBg, gBg, bBg)
+            buf.fg[destColorIndex] = rFg
+            buf.fg[destColorIndex + 1] = gFg
+            buf.fg[destColorIndex + 2] = bFg
+            // Keep alpha buf.fg[destColorIndex + 3]
+
+            buf.bg[destColorIndex] = rBg
+            buf.bg[destColorIndex + 1] = gBg
+            buf.bg[destColorIndex + 2] = bBg
+            // Keep alpha buf.bg[destColorIndex + 3]
           }
         }
       }
@@ -671,13 +662,9 @@ export class FlamesEffect {
           }
 
           // Blend with existing background
-          setRgb(
-            bg,
-            colorIndex,
-            Math.max(channel(bg, colorIndex), r * flameIntensity),
-            Math.max(channel(bg, colorIndex + 1), g * flameIntensity),
-            Math.max(channel(bg, colorIndex + 2), b * flameIntensity),
-          )
+          bg[colorIndex] = Math.max(bg[colorIndex], r * flameIntensity)
+          bg[colorIndex + 1] = Math.max(bg[colorIndex + 1], g * flameIntensity)
+          bg[colorIndex + 2] = Math.max(bg[colorIndex + 2], b * flameIntensity)
         }
       }
     }
@@ -775,22 +762,14 @@ export class CRTRollingBarEffect {
           const colorIndex = (y * width + x) * 4
 
           // Brighten foreground
-          setRgb(
-            fg,
-            colorIndex,
-            Math.min(1, channel(fg, colorIndex) * rowMultiplier),
-            Math.min(1, channel(fg, colorIndex + 1) * rowMultiplier),
-            Math.min(1, channel(fg, colorIndex + 2) * rowMultiplier),
-          )
+          fg[colorIndex] = Math.min(1, fg[colorIndex] * rowMultiplier)
+          fg[colorIndex + 1] = Math.min(1, fg[colorIndex + 1] * rowMultiplier)
+          fg[colorIndex + 2] = Math.min(1, fg[colorIndex + 2] * rowMultiplier)
 
           // Brighten background
-          setRgb(
-            bg,
-            colorIndex,
-            Math.min(1, channel(bg, colorIndex) * rowMultiplier),
-            Math.min(1, channel(bg, colorIndex + 1) * rowMultiplier),
-            Math.min(1, channel(bg, colorIndex + 2) * rowMultiplier),
-          )
+          bg[colorIndex] = Math.min(1, bg[colorIndex] * rowMultiplier)
+          bg[colorIndex + 1] = Math.min(1, bg[colorIndex + 1] * rowMultiplier)
+          bg[colorIndex + 2] = Math.min(1, bg[colorIndex + 2] * rowMultiplier)
         }
       }
     }
@@ -925,9 +904,9 @@ export class RainbowTextEffect {
       for (let x = 0; x < width; x++) {
         const colorIndex = (y * width + x) * 4
 
-        const r = channel(fg, colorIndex)
-        const g = channel(fg, colorIndex + 1)
-        const b = channel(fg, colorIndex + 2)
+        const r = fg[colorIndex]
+        const g = fg[colorIndex + 1]
+        const b = fg[colorIndex + 2]
 
         // Check if foreground is white-ish (all components >= threshold)
         if (r >= whiteThreshold && g >= whiteThreshold && b >= whiteThreshold) {
@@ -940,7 +919,10 @@ export class RainbowTextEffect {
           // Convert HSV to RGB
           const [newR, newG, newB] = this.hsvToRgb(hue, saturation, value)
 
-          setRgb(fg, colorIndex, newR, newG, newB)
+          fg[colorIndex] = newR
+          fg[colorIndex + 1] = newG
+          fg[colorIndex + 2] = newB
+          // Keep alpha unchanged
         }
       }
     }

@@ -1,40 +1,11 @@
-import { afterEach, describe, test, expect } from "bun:test"
-import { createTestRenderer as baseCreateTestRenderer, type TestRenderer } from "../../testing/test-renderer.js"
+import { describe, test, expect } from "bun:test"
+import { createTestRenderer } from "../../testing/test-renderer.js"
 import { TextBufferRenderable } from "../TextBufferRenderable.js"
 import { LineNumberRenderable } from "../LineNumberRenderable.js"
 import { BoxRenderable } from "../Box.js"
 import { TextareaRenderable } from "../Textarea.js"
 import { t, fg, bold, cyan } from "../../lib/styled-text.js"
 import { parseColor } from "../../lib/RGBA.js"
-import type { CodeRenderable } from "../Code.js"
-
-const HIGHLIGHT_TIMEOUT_MS = 5000
-
-async function flushAsync(): Promise<void> {
-  await Promise.resolve()
-  await Promise.resolve()
-}
-
-async function waitForHighlight(codeRenderable: CodeRenderable): Promise<void> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined
-  try {
-    await Promise.race([
-      codeRenderable.highlightingDone,
-      new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(
-          () => reject(new Error("Timed out waiting for CodeRenderable highlighting")),
-          HIGHLIGHT_TIMEOUT_MS,
-        )
-      }),
-    ])
-  } finally {
-    if (timeoutId !== undefined) {
-      clearTimeout(timeoutId)
-    }
-  }
-
-  await flushAsync()
-}
 
 const initialContent = `Welcome to the TextareaRenderable Demo!
 
@@ -93,21 +64,6 @@ class MockTextBuffer extends TextBufferRenderable {
     this.textBuffer.setText(options.text || "")
   }
 }
-
-const activeRenderers = new Set<TestRenderer>()
-
-async function createTestRenderer(...args: Parameters<typeof baseCreateTestRenderer>) {
-  const testRenderer = await baseCreateTestRenderer(...args)
-  activeRenderers.add(testRenderer.renderer)
-  return testRenderer
-}
-
-afterEach(() => {
-  for (const renderer of activeRenderers) {
-    renderer.destroy()
-  }
-  activeRenderers.clear()
-})
 
 describe("LineNumberRenderable", () => {
   test("renders line numbers correctly", async () => {
@@ -216,10 +172,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: (bgBuffer[offset] & 0xff) / 255,
-        g: (bgBuffer[offset + 1] & 0xff) / 255,
-        b: (bgBuffer[offset + 2] & 0xff) / 255,
-        a: (bgBuffer[offset + 3] & 0xff) / 255,
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
       }
     }
 
@@ -289,10 +245,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: (bgBuffer[offset] & 0xff) / 255,
-        g: (bgBuffer[offset + 1] & 0xff) / 255,
-        b: (bgBuffer[offset + 2] & 0xff) / 255,
-        a: (bgBuffer[offset + 3] & 0xff) / 255,
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
       }
     }
 
@@ -405,10 +361,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: (bgBuffer[offset] & 0xff) / 255,
-        g: (bgBuffer[offset + 1] & 0xff) / 255,
-        b: (bgBuffer[offset + 2] & 0xff) / 255,
-        a: (bgBuffer[offset + 3] & 0xff) / 255,
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
       }
     }
 
@@ -488,10 +444,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: (bgBuffer[offset] & 0xff) / 255,
-        g: (bgBuffer[offset + 1] & 0xff) / 255,
-        b: (bgBuffer[offset + 2] & 0xff) / 255,
-        a: (bgBuffer[offset + 3] & 0xff) / 255,
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
       }
     }
 
@@ -587,10 +543,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: (bgBuffer[offset] & 0xff) / 255,
-        g: (bgBuffer[offset + 1] & 0xff) / 255,
-        b: (bgBuffer[offset + 2] & 0xff) / 255,
-        a: (bgBuffer[offset + 3] & 0xff) / 255,
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
       }
     }
 
@@ -703,10 +659,10 @@ describe("LineNumberRenderable", () => {
     const getFgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: (fgBuffer[offset] & 0xff) / 255,
-        g: (fgBuffer[offset + 1] & 0xff) / 255,
-        b: (fgBuffer[offset + 2] & 0xff) / 255,
-        a: (fgBuffer[offset + 3] & 0xff) / 255,
+        r: fgBuffer[offset],
+        g: fgBuffer[offset + 1],
+        b: fgBuffer[offset + 2],
+        a: fgBuffer[offset + 3],
       }
     }
 
@@ -899,10 +855,10 @@ describe("LineNumberRenderable", () => {
       const colorBuffer = channel === "fg" ? buffer.buffers.fg : buffer.buffers.bg
       const offset = (y * buffer.width + x) * 4
       return {
-        r: (colorBuffer[offset] & 0xff) / 255,
-        g: (colorBuffer[offset + 1] & 0xff) / 255,
-        b: (colorBuffer[offset + 2] & 0xff) / 255,
-        a: (colorBuffer[offset + 3] & 0xff) / 255,
+        r: colorBuffer[offset],
+        g: colorBuffer[offset + 1],
+        b: colorBuffer[offset + 2],
+        a: colorBuffer[offset + 3],
       }
     }
 
@@ -1228,7 +1184,10 @@ describe("LineNumberRenderable", () => {
 
     // Wait for render and highlighting
     await renderOnce()
-    await waitForHighlight(codeRenderable)
+    // Give highlighting time to complete (increased for CI)
+    await Bun.sleep(1000)
+    await renderOnce()
+    await Bun.sleep(100)
     await renderOnce()
 
     frame = captureCharFrame()
@@ -1279,7 +1238,7 @@ describe("LineNumberRenderable", () => {
 
     // First render
     await renderOnce()
-    await waitForHighlight(codeRenderable)
+    await Bun.sleep(50)
     await renderOnce()
 
     let frame = captureCharFrame()
@@ -1293,7 +1252,7 @@ describe("LineNumberRenderable", () => {
     codeRenderable.content = "line 1\nline 2\nline 3\nline 4\nline 5"
 
     await renderOnce()
-    await waitForHighlight(codeRenderable)
+    await Bun.sleep(50)
     await renderOnce()
 
     frame = captureCharFrame()
@@ -1353,7 +1312,7 @@ describe("LineNumberRenderable", () => {
     codeRenderable.filetype = "typescript"
 
     await renderOnce()
-    await waitForHighlight(codeRenderable)
+    await Bun.sleep(100)
     await renderOnce()
 
     frame = captureCharFrame()
@@ -1473,10 +1432,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: (bgBuffer[offset] & 0xff) / 255,
-        g: (bgBuffer[offset + 1] & 0xff) / 255,
-        b: (bgBuffer[offset + 2] & 0xff) / 255,
-        a: (bgBuffer[offset + 3] & 0xff) / 255,
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
       }
     }
 
@@ -1530,10 +1489,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: (bgBuffer[offset] & 0xff) / 255,
-        g: (bgBuffer[offset + 1] & 0xff) / 255,
-        b: (bgBuffer[offset + 2] & 0xff) / 255,
-        a: (bgBuffer[offset + 3] & 0xff) / 255,
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
       }
     }
 
@@ -1590,10 +1549,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: (bgBuffer[offset] & 0xff) / 255,
-        g: (bgBuffer[offset + 1] & 0xff) / 255,
-        b: (bgBuffer[offset + 2] & 0xff) / 255,
-        a: (bgBuffer[offset + 3] & 0xff) / 255,
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
       }
     }
 
@@ -1646,10 +1605,10 @@ describe("LineNumberRenderable", () => {
     const getBgColor = (x: number, y: number) => {
       const offset = (y * buffer.width + x) * 4
       return {
-        r: (bgBuffer[offset] & 0xff) / 255,
-        g: (bgBuffer[offset + 1] & 0xff) / 255,
-        b: (bgBuffer[offset + 2] & 0xff) / 255,
-        a: (bgBuffer[offset + 3] & 0xff) / 255,
+        r: bgBuffer[offset],
+        g: bgBuffer[offset + 1],
+        b: bgBuffer[offset + 2],
+        a: bgBuffer[offset + 3],
       }
     }
 
@@ -1734,8 +1693,8 @@ describe("LineNumberRenderable", () => {
     })
 
     const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
-    const textRenderable = new MockTextBuffer(renderer, {
-      text,
+    const textRenderable = new TextBufferRenderable(renderer, {
+      content: text,
       width: "100%",
       height: "100%",
     })
@@ -1771,8 +1730,8 @@ describe("LineNumberRenderable", () => {
     })
 
     const text = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
-    const textRenderable = new MockTextBuffer(renderer, {
-      text,
+    const textRenderable = new TextBufferRenderable(renderer, {
+      content: text,
       width: "100%",
       height: "100%",
     })

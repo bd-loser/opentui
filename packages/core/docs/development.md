@@ -24,16 +24,13 @@ bun run build
 ## Running Examples
 
 ```bash
-cd packages/examples
-bun run dev
+cd packages/core
+bun run src/examples/index.ts
 ```
 
 ## Testing
 
 ```bash
-# Build native dependencies first
-bun run build
-
 # TypeScript tests
 cd packages/core
 bun test
@@ -83,7 +80,7 @@ Link your local OpenTUI to another project:
 The script automatically links:
 
 - Main packages: `@opentui/core`, `@opentui/solid`, `@opentui/react`
-- Peer dependencies: `solid-js`, `react`, `react-dom`, `react-reconciler`
+- Peer dependencies: `yoga-layout`, `solid-js`, `react`, `react-dom`, `react-reconciler`
 - Subdependencies (with `--subdeps`): Packages like `opentui-spinner` that depend on opentui
 
 **Requirements:** Target project must have `node_modules` (run `bun install` first).

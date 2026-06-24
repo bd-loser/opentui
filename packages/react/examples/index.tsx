@@ -11,7 +11,6 @@ import { App as DiffDemo } from "./diff.js"
 import { ExtendExample } from "./extend-example.js"
 import ExternalPluginSlotsDemo from "./external-plugin-slots-demo.js"
 import { App as FlushSyncDemo } from "./flush-sync.js"
-import { App as KeymapDemo } from "./keymap.js"
 import LineNumberDemo from "./line-number.js"
 import OpacityDemo from "./opacity.js"
 import { App as ScrollDemo } from "./scroll.js"
@@ -83,11 +82,6 @@ const EXAMPLES: ExampleDefinition[] = [
     name: "Flush Sync Demo",
     description: "Compare batched updates vs synchronous flushes",
     component: FlushSyncDemo,
-  },
-  {
-    name: "Keymap Demo",
-    description: "Panels plus textareas with global, local, managed bindings, and a centered : prompt",
-    component: KeymapDemo,
   },
   {
     name: "Extend Demo",

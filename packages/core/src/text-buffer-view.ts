@@ -1,14 +1,15 @@
 import { RGBA } from "./lib/RGBA.js"
-import { resolveRenderLib, type LineInfo, type RenderLib, type TextBufferViewHandle } from "./zig.js"
+import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig.js"
+import { type Pointer } from "bun:ffi"
 import type { TextBuffer } from "./text-buffer.js"
 
 export class TextBufferView {
   private lib: RenderLib
-  private viewPtr: TextBufferViewHandle
+  private viewPtr: Pointer
   private textBuffer: TextBuffer
   private _destroyed: boolean = false
 
-  constructor(lib: RenderLib, ptr: TextBufferViewHandle, textBuffer: TextBuffer) {
+  constructor(lib: RenderLib, ptr: Pointer, textBuffer: TextBuffer) {
     this.lib = lib
     this.viewPtr = ptr
     this.textBuffer = textBuffer
@@ -25,7 +26,7 @@ export class TextBufferView {
     if (this._destroyed) throw new Error("TextBufferView is destroyed")
   }
 
-  public get ptr(): TextBufferViewHandle {
+  public get ptr(): Pointer {
     this.guard()
     return this.viewPtr
   }
@@ -108,11 +109,6 @@ export class TextBufferView {
   public setWrapMode(mode: "none" | "char" | "word"): void {
     this.guard()
     this.lib.textBufferViewSetWrapMode(this.viewPtr, mode)
-  }
-
-  public setFirstLineOffset(offset: number): void {
-    this.guard()
-    this.lib.textBufferViewSetFirstLineOffset(this.viewPtr, offset)
   }
 
   public setViewportSize(width: number, height: number): void {

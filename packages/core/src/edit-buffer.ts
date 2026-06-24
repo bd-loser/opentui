@@ -1,10 +1,5 @@
-import {
-  resolveRenderLib,
-  type EditBufferHandle,
-  type LogicalCursor,
-  type RenderLib,
-  type TextBufferHandle,
-} from "./zig.js"
+import { resolveRenderLib, type LogicalCursor, type RenderLib } from "./zig.js"
+import { type Pointer } from "bun:ffi"
 import { type WidthMethod, type Highlight } from "./types.js"
 import { RGBA } from "./lib/RGBA.js"
 import { EventEmitter } from "events"
@@ -21,8 +16,8 @@ export class EditBuffer extends EventEmitter {
   private static nativeEventsSubscribed = false
 
   private lib: RenderLib
-  private bufferPtr: EditBufferHandle
-  private textBufferPtr: TextBufferHandle
+  private bufferPtr: Pointer
+  private textBufferPtr: Pointer
   public readonly id: number
   private _destroyed: boolean = false
   private _textBytes: Uint8Array[] = []
@@ -30,7 +25,7 @@ export class EditBuffer extends EventEmitter {
   private _singleTextMemId: number | null = null
   private _syntaxStyle?: SyntaxStyle
 
-  constructor(lib: RenderLib, ptr: EditBufferHandle) {
+  constructor(lib: RenderLib, ptr: Pointer) {
     super()
     this.lib = lib
     this.bufferPtr = ptr
@@ -72,7 +67,7 @@ export class EditBuffer extends EventEmitter {
     if (this._destroyed) throw new Error("EditBuffer is destroyed")
   }
 
-  public get ptr(): EditBufferHandle {
+  public get ptr(): Pointer {
     this.guard()
     return this.bufferPtr
   }
@@ -362,9 +357,8 @@ export class EditBuffer extends EventEmitter {
 
   public setSyntaxStyle(style: SyntaxStyle | null): void {
     this.guard()
-    if (this.lib.textBufferSetSyntaxStyle(this.textBufferPtr, style?.ptr ?? null)) {
-      this._syntaxStyle = style ?? undefined
-    }
+    this._syntaxStyle = style ?? undefined
+    this.lib.textBufferSetSyntaxStyle(this.textBufferPtr, style?.ptr ?? null)
   }
 
   public getSyntaxStyle(): SyntaxStyle | null {

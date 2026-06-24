@@ -1,7 +1,6 @@
 const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
-const ansi = @import("../ansi.zig");
 const gp = @import("../grapheme.zig");
 const link = @import("../link.zig");
 
@@ -25,7 +24,7 @@ test "Selection - vertical viewport selection without wrapping" {
 
     try tb.setText("Line 0\nLine 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9");
 
-    view.setViewport(.{ .x = 0, .y = 5, .width = 10, .height = 5 });
+    view.setViewport(Viewport{ .x = 0, .y = 5, .width = 10, .height = 5 });
 
     _ = view.setLocalSelection(0, 0, 2, 2, null, null);
 
@@ -53,7 +52,7 @@ test "Selection - horizontal viewport selection without wrapping" {
 
     try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
 
-    view.setViewport(.{ .x = 10, .y = 0, .width = 10, .height = 1 });
+    view.setViewport(Viewport{ .x = 10, .y = 0, .width = 10, .height = 1 });
 
     _ = view.setLocalSelection(0, 0, 5, 0, null, null);
 
@@ -81,7 +80,7 @@ test "Selection - wrapping mode ignores horizontal viewport offset" {
     view.setWrapMode(.char);
     view.setWrapWidth(10);
 
-    view.setViewport(.{ .x = 10, .y = 0, .width = 10, .height = 3 });
+    view.setViewport(Viewport{ .x = 10, .y = 0, .width = 10, .height = 3 });
 
     _ = view.setLocalSelection(0, 0, 5, 0, null, null);
 
@@ -112,7 +111,7 @@ test "Selection - vertical viewport with wrapping" {
     const vline_count = view.getVirtualLineCount();
     try std.testing.expectEqual(@as(u32, 4), vline_count);
 
-    view.setViewport(.{ .x = 0, .y = 1, .width = 10, .height = 2 });
+    view.setViewport(Viewport{ .x = 0, .y = 1, .width = 10, .height = 2 });
 
     _ = view.setLocalSelection(0, 0, 5, 1, null, null);
 
@@ -137,7 +136,7 @@ test "Selection - across empty line with viewport offset" {
 
     try tb.setText("Line0\n\nLine2\nLine3\nLine4");
 
-    view.setViewport(.{ .x = 0, .y = 1, .width = 10, .height = 3 });
+    view.setViewport(Viewport{ .x = 0, .y = 1, .width = 10, .height = 3 });
 
     _ = view.setLocalSelection(0, 0, 3, 2, null, null);
 
@@ -162,7 +161,7 @@ test "Selection - viewport offset with multi-line selection" {
 
     try tb.setText("AAA\nBBB\nCCC\nDDD\nEEE\nFFF\nGGG\nHHH");
 
-    view.setViewport(.{ .x = 0, .y = 2, .width = 10, .height = 4 });
+    view.setViewport(Viewport{ .x = 0, .y = 2, .width = 10, .height = 4 });
 
     _ = view.setLocalSelection(0, 0, 3, 0, null, null);
 
@@ -187,7 +186,7 @@ test "Selection - combined horizontal and vertical viewport offsets" {
 
     try tb.setText("ABCDEFGHIJKLMNOPQRSTUVWXYZ\n0123456789ABCDEFGHIJKLMNOP\nQRSTUVWXYZ0123456789ABCDEF");
 
-    view.setViewport(.{ .x = 5, .y = 1, .width = 10, .height = 2 });
+    view.setViewport(Viewport{ .x = 5, .y = 1, .width = 10, .height = 2 });
 
     _ = view.setLocalSelection(0, 0, 5, 0, null, null);
 
@@ -212,7 +211,7 @@ test "Selection - viewport without offsets behaves as before" {
 
     try tb.setText("Hello World");
 
-    view.setViewport(.{ .x = 0, .y = 0, .width = 20, .height = 5 });
+    view.setViewport(Viewport{ .x = 0, .y = 0, .width = 20, .height = 5 });
 
     _ = view.setLocalSelection(2, 0, 7, 0, null, null);
 
@@ -260,7 +259,7 @@ test "Selection - VALIDATION: verify selection range matches extracted text with
 
     try tb.setText("Line0\nLine1\nLine2\nLine3\nLine4\nLine5\nLine6\nLine7\nLine8\nLine9");
 
-    view.setViewport(.{ .x = 0, .y = 5, .width = 10, .height = 5 });
+    view.setViewport(Viewport{ .x = 0, .y = 5, .width = 10, .height = 5 });
 
     _ = view.setLocalSelection(0, 0, 5, 0, null, null);
 
@@ -294,7 +293,7 @@ test "Selection - VALIDATION: multi-line selection range with viewport" {
 
     try tb.setText("AAA\nBBB\nCCC\nDDD\nEEE\nFFF\nGGG\nHHH");
 
-    view.setViewport(.{ .x = 0, .y = 3, .width = 10, .height = 5 });
+    view.setViewport(Viewport{ .x = 0, .y = 3, .width = 10, .height = 5 });
 
     _ = view.setLocalSelection(0, 0, 3, 2, null, null);
 
@@ -316,6 +315,7 @@ test "Selection - VALIDATION: multi-line selection range with viewport" {
 
 test "Selection - RENDER TEST: selection highlights correct cells with viewport scroll" {
     const buffer_mod = @import("../buffer.zig");
+    const RGBA = buffer_mod.RGBA;
 
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -330,15 +330,15 @@ test "Selection - RENDER TEST: selection highlights correct cells with viewport 
 
     try tb.setText("AAA\nBBB\nCCC\nDDD\nEEE\nFFF\nGGG\nHHH");
 
-    view.setViewport(.{ .x = 0, .y = 3, .width = 10, .height = 5 });
+    view.setViewport(Viewport{ .x = 0, .y = 3, .width = 10, .height = 5 });
 
-    const red_bg = ansi.rgbaFromFloats(1.0, 0.0, 0.0, 1.0);
+    const red_bg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
     _ = view.setLocalSelection(0, 0, 3, 0, red_bg, null);
 
-    var render_buffer = try buffer_mod.OptimizedBuffer.init(std.testing.allocator, 20, 10, .{ .pool = pool, .width_method = .unicode });
+    var render_buffer = try buffer_mod.OptimizedBuffer.init(std.testing.allocator, pool, 20, 10, .unicode);
     defer render_buffer.deinit();
 
-    render_buffer.drawTextBuffer(view, 0, 0);
+    try render_buffer.drawTextBuffer(view, 0, 0);
 
     var x: u32 = 0;
     while (x < 3) : (x += 1) {
@@ -346,9 +346,9 @@ test "Selection - RENDER TEST: selection highlights correct cells with viewport 
         try std.testing.expect(cell != null);
 
         const bg = cell.?.bg;
-        try std.testing.expectEqual(@as(u8, 255), ansi.red(bg));
-        try std.testing.expectEqual(@as(u8, 0), ansi.green(bg));
-        try std.testing.expectEqual(@as(u8, 0), ansi.blue(bg));
+        try std.testing.expectApproxEqAbs(@as(f32, 1.0), bg[0], 0.01); // Red
+        try std.testing.expectApproxEqAbs(@as(f32, 0.0), bg[1], 0.01); // Green
+        try std.testing.expectApproxEqAbs(@as(f32, 0.0), bg[2], 0.01); // Blue
     }
 
     const cell_3 = render_buffer.get(3, 0);

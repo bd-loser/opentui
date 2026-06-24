@@ -1,20 +1,26 @@
 // OSC 52 clipboard support for terminal applications.
 // Delegates to native Zig implementation for ANSI sequence generation.
 
-import type { RendererHandle, RenderLib } from "../zig.js"
+import type { Pointer } from "bun:ffi"
+import type { RenderLib } from "../zig.js"
 
 export enum ClipboardTarget {
   Clipboard = 0,
   Primary = 1,
-  Select = 2,
-  Secondary = 3,
+  Secondary = 2,
+  Query = 3,
+}
+
+export function encodeOsc52Payload(text: string, encoder: TextEncoder = new TextEncoder()): Uint8Array {
+  const base64 = Buffer.from(text).toString("base64")
+  return encoder.encode(base64)
 }
 
 export class Clipboard {
   private lib: RenderLib
-  private rendererPtr: RendererHandle
+  private rendererPtr: Pointer
 
-  constructor(lib: RenderLib, rendererPtr: RendererHandle) {
+  constructor(lib: RenderLib, rendererPtr: Pointer) {
     this.lib = lib
     this.rendererPtr = rendererPtr
   }
@@ -23,8 +29,8 @@ export class Clipboard {
     if (!this.isOsc52Supported()) {
       return false
     }
-    const textUtf8 = this.lib.encoder.encode(text)
-    return this.lib.copyToClipboardOSC52(this.rendererPtr, target, textUtf8)
+    const payload = encodeOsc52Payload(text, this.lib.encoder)
+    return this.lib.copyToClipboardOSC52(this.rendererPtr, target, payload)
   }
 
   public clearClipboardOSC52(target: ClipboardTarget = ClipboardTarget.Clipboard): boolean {
@@ -36,6 +42,6 @@ export class Clipboard {
 
   public isOsc52Supported(): boolean {
     const caps = this.lib.getTerminalCapabilities(this.rendererPtr)
-    return caps?.osc52_support !== "unsupported"
+    return Boolean(caps?.osc52)
   }
 }

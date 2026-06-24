@@ -8,7 +8,6 @@ import { CodeDemo } from "./code-demo.tsx"
 import DiffDemo from "./diff-demo.tsx"
 import ExtendDemo from "./extend-demo.tsx"
 import InputScene from "./input-demo.tsx"
-import KeymapDemo from "./keymap-demo.tsx"
 import LineNumberDemo from "./line-number-demo.tsx"
 import MouseScene from "./mouse-demo.tsx"
 import PluginSlotsDemo from "./plugin-slots-demo.tsx"
@@ -47,11 +46,6 @@ const EXAMPLES = [
     name: "Input Demo",
     description: "Interactive InputElement demo with validation and multiple fields",
     scene: "input-demo",
-  },
-  {
-    name: "Keymap Demo",
-    description: "Global and local bindings with a centered : prompt, ex commands, and a ctrl+x leader extension",
-    scene: "keymap-demo",
   },
   {
     name: "Autocomplete Demo",
@@ -193,9 +187,6 @@ const ExampleSelector = () => {
       </Match>
       <Match when={selectedScene() === "input-demo"}>
         <InputScene />
-      </Match>
-      <Match when={selectedScene() === "keymap-demo"}>
-        <KeymapDemo />
       </Match>
       <Match when={selectedScene() === "autocomplete-demo"}>
         <AutocompleteDemo />

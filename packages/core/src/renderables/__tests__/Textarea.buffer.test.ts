@@ -1,6 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { createTestRenderer, type TestRenderer, type MockInput } from "../../testing/test-renderer.js"
-import { stringWidth } from "../../platform/runtime.js"
 import { createTextareaRenderable } from "./renderable-test-utils.js"
 
 let currentRenderer: TestRenderer
@@ -465,7 +464,7 @@ describe("Textarea - Buffer Tests", () => {
       expect(visualCursor!.logicalCol).toBe(3)
     })
 
-    it("should set cursor to end of content using cursorOffset setter and stringWidth", async () => {
+    it("should set cursor to end of content using cursorOffset setter and Bun.stringWidth", async () => {
       const { textarea: editor } = await createTextareaRenderable(currentRenderer, renderOnce, {
         initialValue: "",
         width: 40,
@@ -476,11 +475,11 @@ describe("Textarea - Buffer Tests", () => {
 
       const content = "Hello World"
       editor.setText(content)
-      editor.cursorOffset = stringWidth(content)
+      editor.cursorOffset = Bun.stringWidth(content)
 
       const visualCursor = editor.visualCursor
       expect(visualCursor).not.toBe(null)
-      expect(visualCursor!.offset).toBe(stringWidth(content))
+      expect(visualCursor!.offset).toBe(Bun.stringWidth(content))
       expect(visualCursor!.logicalRow).toBe(0)
       expect(visualCursor!.logicalCol).toBe(content.length)
       expect(visualCursor!.visualCol).toBe(content.length)

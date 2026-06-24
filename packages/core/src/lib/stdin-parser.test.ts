@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { Buffer } from "node:buffer"
 import { ManualClock } from "../testing/manual-clock.js"
 import type { Clock, TimerHandle } from "./clock.js"
-import type { ScrollInfo } from "./parse.mouse.js"
+import type { ScrollInfo } from "./parse.mouse"
 import { StdinParser, type StdinEvent, type StdinParserOptions } from "./stdin-parser.js"
 
 type KeySnap = {
@@ -544,11 +544,8 @@ describe("StdinParser", () => {
     // CSI codepoint u format
     table([
       ["a key", "\x1b[97u", [k("a", { raw: "\x1b[97u" })]],
-      ["space", "\x1b[32u", [k("space", { raw: "\x1b[32u" })]],
       ["shift+a", "\x1b[97;2u", [k("a", { raw: "\x1b[97;2u", shift: true })]],
-      ["shift+space", "\x1b[32;2u", [k("space", { raw: "\x1b[32;2u", shift: true })]],
       ["ctrl+a", "\x1b[97;5u", [k("a", { raw: "\x1b[97;5u", ctrl: true })]],
-      ["ctrl+space", "\x1b[32;5u", [k("space", { raw: "\x1b[32;5u", ctrl: true })]],
       ["alt+a", "\x1b[97;3u", [k("a", { raw: "\x1b[97;3u", meta: true })]],
       ["ctrl+shift+a", "\x1b[97;6u", [k("a", { raw: "\x1b[97;6u", ctrl: true, shift: true })]],
       ["a release", "\x1b[97;1:3u", [k("a", { raw: "\x1b[97;1:3u", eventType: "release" })]],
@@ -727,7 +724,7 @@ describe("StdinParser", () => {
       }
     })
 
-    test("delayed X10 continuation after timed-out escape becomes a mouse event", () => {
+    test("delayed X10 continuation after timed-out escape stays opaque", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b"))
@@ -738,7 +735,7 @@ describe("StdinParser", () => {
         parser.push(Buffer.from("[M"))
         expect(snap(parser)).toEqual([])
         parser.push(Buffer.from(" !!"))
-        expect(snap(parser)).toEqual([x10m("\x1b[M !!", "down", 0, 0)])
+        expect(snap(parser)).toEqual([resp("unknown", "[M !!")])
       } finally {
         parser.destroy()
       }
@@ -871,7 +868,7 @@ describe("StdinParser", () => {
       // DA (Device Attributes)
       ["DA1", "\x1b[?62;1;2;6;7;8;9;15;22c", [resp("csi", "\x1b[?62;1;2;6;7;8;9;15;22c")]],
       // CPR (Cursor Position Report)
-      ["CPR", "\x1b[24;80R", [resp("cpr", "\x1b[24;80R")]],
+      ["CPR", "\x1b[24;80R", [resp("csi", "\x1b[24;80R")]],
       // Window/cell size
       ["window size", "\x1b[4;600;800t", [resp("csi", "\x1b[4;600;800t")]],
       // Mode report
@@ -996,21 +993,6 @@ describe("StdinParser", () => {
 
         parser.push(Buffer.from("2u"))
         expect(snap(parser)).toEqual([k("a", { shift: true, raw: "\x1b[97;2u" })])
-      } finally {
-        parser.destroy()
-      }
-    })
-
-    test("partial kitty alternate-key CSI stays pending after timeout", () => {
-      const { parser, clock } = createTimedParser({ protocolContext: { kittyKeyboardEnabled: true } })
-      try {
-        parser.push(Buffer.from("\x1b[97:65;"))
-        expect(snap(parser)).toEqual([])
-        clock.advance(10)
-        expect(snap(parser)).toEqual([])
-
-        parser.push(Buffer.from("6:1u"))
-        expect(snap(parser)).toEqual([k("a", { raw: "\x1b[97:65;6:1u", ctrl: true, shift: true })])
       } finally {
         parser.destroy()
       }
@@ -1231,7 +1213,7 @@ describe("StdinParser", () => {
         expect(snap(parser)).toEqual([])
 
         parser.push(Buffer.from("R"))
-        expect(snap(parser)).toEqual([resp("cpr", "\x1b[1;2R")])
+        expect(snap(parser)).toEqual([resp("csi", "\x1b[1;2R")])
       } finally {
         parser.destroy()
       }
@@ -1307,37 +1289,6 @@ describe("StdinParser", () => {
       }
     })
 
-    test("theme mode replies are emitted as CSI responses", () => {
-      const parser = createParser({
-        protocolContext: { privateCapabilityRepliesActive: true },
-      })
-
-      try {
-        parser.push(Buffer.from("\x1b[?997;1n"))
-        expect(snap(parser)).toEqual([resp("csi", "\x1b[?997;1n")])
-      } finally {
-        parser.destroy()
-      }
-    })
-
-    test("partial theme mode reply stays pending after timeout while capability probe is active", () => {
-      const { parser, clock } = createTimedParser({
-        protocolContext: { privateCapabilityRepliesActive: true },
-      })
-
-      try {
-        parser.push(Buffer.from("\x1b[?997;1"))
-        expect(snap(parser)).toEqual([])
-        clock.advance(10)
-        expect(snap(parser)).toEqual([])
-
-        parser.push(Buffer.from("n"))
-        expect(snap(parser)).toEqual([resp("csi", "\x1b[?997;1n")])
-      } finally {
-        parser.destroy()
-      }
-    })
-
     test("timed-out modified CSI key still flushes before later final byte", () => {
       const { parser, clock } = createTimedParser({
         protocolContext: { explicitWidthCprActive: true },
@@ -1369,105 +1320,6 @@ describe("StdinParser", () => {
 
         parser.push(Buffer.from("R"))
         expect(snap(parser)).toEqual([k("r", { raw: "R", shift: true })])
-      } finally {
-        parser.destroy()
-      }
-    })
-
-    test("generic row/col CPR stays pending after timeout while startup cursor probe is active", () => {
-      const { parser, clock } = createTimedParser({
-        protocolContext: { startupCursorCprActive: true },
-      })
-
-      try {
-        parser.push(Buffer.from("\x1b[24;80"))
-        expect(snap(parser)).toEqual([])
-        clock.advance(10)
-        expect(snap(parser)).toEqual([])
-
-        parser.push(Buffer.from("R"))
-        expect(snap(parser)).toEqual([resp("cpr", "\x1b[24;80R")])
-      } finally {
-        parser.destroy()
-      }
-    })
-
-    test("aborting a pending startup cursor CPR swallows a reply that finishes later", () => {
-      const parser = createParser({
-        protocolContext: { startupCursorCprActive: true },
-      })
-
-      try {
-        parser.push(Buffer.from("\x1b[24;80"))
-        expect(snap(parser)).toEqual([])
-
-        parser.abortPendingStartupCursorCpr()
-        parser.updateProtocolContext({ startupCursorCprActive: false })
-
-        expect(snap(parser)).toEqual([])
-
-        parser.push(Buffer.from("R"))
-        expect(snap(parser)).toEqual([])
-      } finally {
-        parser.destroy()
-      }
-    })
-
-    test("aborting a pending startup cursor CPR swallows a reply split after the CSI introducer", () => {
-      const parser = createParser({
-        protocolContext: { startupCursorCprActive: true },
-      })
-
-      try {
-        parser.push(Buffer.from("\x1b["))
-        expect(snap(parser)).toEqual([])
-
-        parser.abortPendingStartupCursorCpr()
-        parser.updateProtocolContext({ startupCursorCprActive: false })
-
-        parser.push(Buffer.from("24;80R"))
-        expect(snap(parser)).toEqual([])
-      } finally {
-        parser.destroy()
-      }
-    })
-
-    test("aborting a pending startup cursor CPR preserves explicit-width CPR replies", () => {
-      const parser = createParser({
-        protocolContext: {
-          startupCursorCprActive: true,
-          explicitWidthCprActive: true,
-        },
-      })
-
-      try {
-        parser.push(Buffer.from("\x1b["))
-        expect(snap(parser)).toEqual([])
-
-        parser.abortPendingStartupCursorCpr()
-        parser.updateProtocolContext({ startupCursorCprActive: false })
-
-        parser.push(Buffer.from("1;2R"))
-        expect(snap(parser)).toEqual([resp("cpr", "\x1b[1;2R")])
-      } finally {
-        parser.destroy()
-      }
-    })
-
-    test("aborting a pending startup cursor CPR preserves later non-CPR input", () => {
-      const parser = createParser({
-        protocolContext: { startupCursorCprActive: true },
-      })
-
-      try {
-        parser.push(Buffer.from("\x1b[24;80"))
-        expect(snap(parser)).toEqual([])
-
-        parser.abortPendingStartupCursorCpr()
-        parser.updateProtocolContext({ startupCursorCprActive: false })
-
-        parser.push(Buffer.from("a"))
-        expect(snap(parser)).toEqual([k("a")])
       } finally {
         parser.destroy()
       }
@@ -1707,23 +1559,7 @@ describe("StdinParser", () => {
   })
 
   describe("ESC-less SGR continuation recovery", () => {
-    test("after timed-out ESC, scroll continuation still becomes a mouse event", () => {
-      const { parser, clock } = createTimedParser()
-      try {
-        parser.push(Buffer.from("\x1b"))
-        clock.advance(10)
-        expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
-
-        parser.push(Buffer.from("[<64;38;15M"))
-        expect(snap(parser)).toEqual([
-          sgr("\x1b[<64;38;15M", "scroll", 37, 14, { scroll: { direction: "up", delta: 1 } }),
-        ])
-      } finally {
-        parser.destroy()
-      }
-    })
-
-    test("after timed-out ESC, continuation is recovered as mouse input", () => {
+    test("after timed-out ESC, continuation is not split into text", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b"))
@@ -1731,13 +1567,13 @@ describe("StdinParser", () => {
         expect(snap(parser)).toEqual([k("escape", { raw: "\x1b" })])
 
         parser.push(Buffer.from("[<35;20;5m"))
-        expect(snap(parser)).toEqual([sgr("\x1b[<35;20;5m", "move", 19, 4)])
+        expect(snap(parser)).toEqual([resp("unknown", "[<35;20;5m")])
       } finally {
         parser.destroy()
       }
     })
 
-    test("after timed-out ESC, split continuation across pushes is recovered as mouse input", () => {
+    test("after timed-out ESC, split continuation across pushes is not split into text", () => {
       const { parser, clock } = createTimedParser()
       try {
         parser.push(Buffer.from("\x1b"))
@@ -1748,7 +1584,7 @@ describe("StdinParser", () => {
         expect(snap(parser)).toEqual([])
 
         parser.push(Buffer.from("<35;20;5m"))
-        expect(snap(parser)).toEqual([sgr("\x1b[<35;20;5m", "move", 19, 4)])
+        expect(snap(parser)).toEqual([resp("unknown", "[<35;20;5m")])
       } finally {
         parser.destroy()
       }

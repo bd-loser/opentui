@@ -1,8 +1,8 @@
 import type { ViewportBounds } from "../types.js"
 
 interface ViewportObject {
-  screenX: number
-  screenY: number
+  x: number
+  y: number
   width: number
   height: number
   zIndex: number
@@ -12,14 +12,14 @@ interface ViewportObject {
  * Returns objects that overlap with the viewport bounds.
  *
  * @param viewport - The viewport bounds to check against
- * @param objects - Array of objects MUST be sorted by screen position (screenY for column, screenX for row direction)
+ * @param objects - Array of objects MUST be sorted by position (y for column, x for row direction)
  * @param direction - Primary scroll direction: "column" (vertical) or "row" (horizontal)
  * @param padding - Extra padding around viewport to include nearby objects
  * @param minTriggerSize - Minimum array size to use binary search optimization
  * @returns Array of visible objects sorted by zIndex
  *
  * @remarks
- * Objects must be pre-sorted by their start screen position (screenY for column direction, screenX for row direction).
+ * Objects must be pre-sorted by their start position (y for column direction, x for row direction).
  * Unsorted input will produce incorrect results.
  */
 export function getObjectsInViewport<T extends ViewportObject>(
@@ -62,8 +62,8 @@ export function getObjectsInViewport<T extends ViewportObject>(
   while (lo <= hi) {
     const mid = (lo + hi) >> 1
     const c = children[mid]
-    const start = isRow ? c.screenX : c.screenY
-    const end = isRow ? c.screenX + c.width : c.screenY + c.height
+    const start = isRow ? c.x : c.y
+    const end = isRow ? c.x + c.width : c.y + c.height
 
     if (end < vpStart) {
       lo = mid + 1
@@ -96,7 +96,7 @@ export function getObjectsInViewport<T extends ViewportObject>(
 
   while (left - 1 >= 0) {
     const prev = children[left - 1]
-    const prevEnd = isRow ? prev.screenX + prev.width : prev.screenY + prev.height
+    const prevEnd = isRow ? prev.x + prev.width : prev.y + prev.height
 
     if (prevEnd <= vpStart) {
       gapCount++
@@ -114,15 +114,15 @@ export function getObjectsInViewport<T extends ViewportObject>(
   let right = candidate + 1
   while (right < totalChildren) {
     const next = children[right]
-    if ((isRow ? next.screenX : next.screenY) >= vpEnd) break
+    if ((isRow ? next.x : next.y) >= vpEnd) break
     right++
   }
 
   // Collect candidates that also overlap on the cross axis
   for (let i = left; i < right; i++) {
     const child = children[i]
-    const start = isRow ? child.screenX : child.screenY
-    const end = isRow ? child.screenX + child.width : child.screenY + child.height
+    const start = isRow ? child.x : child.y
+    const end = isRow ? child.x + child.width : child.y + child.height
 
     // Check primary axis overlap (optimization: skip objects that don't overlap)
     if (end <= vpStart) continue
@@ -130,14 +130,14 @@ export function getObjectsInViewport<T extends ViewportObject>(
 
     // Check cross-axis overlap
     if (isRow) {
-      const childBottom = child.screenY + child.height
+      const childBottom = child.y + child.height
       if (childBottom < viewportTop) continue
-      const childTop = child.screenY
+      const childTop = child.y
       if (childTop > viewportBottom) continue
     } else {
-      const childRight = child.screenX + child.width
+      const childRight = child.x + child.width
       if (childRight < viewportLeft) continue
-      const childLeft = child.screenX
+      const childLeft = child.x
       if (childLeft > viewportRight) continue
     }
 

@@ -3,7 +3,6 @@ import { Lexer, type MarkedToken } from "marked"
 export interface ParseState {
   content: string
   tokens: MarkedToken[]
-  stableTokenCount?: number
 }
 
 /**
@@ -18,13 +17,9 @@ export function parseMarkdownIncremental(
   if (!prevState || prevState.tokens.length === 0) {
     try {
       const tokens = Lexer.lex(newContent, { gfm: true }) as MarkedToken[]
-      return {
-        content: newContent,
-        tokens,
-        stableTokenCount: Math.max(0, tokens.length - trailingUnstable),
-      }
+      return { content: newContent, tokens }
     } catch {
-      return { content: newContent, tokens: [], stableTokenCount: 0 }
+      return { content: newContent, tokens: [] }
     }
   }
 
@@ -54,26 +49,18 @@ export function parseMarkdownIncremental(
   const remainingContent = newContent.slice(offset)
 
   if (!remainingContent) {
-    return {
-      content: newContent,
-      tokens: stableTokens,
-      stableTokenCount: stableTokens.length,
-    }
+    return { content: newContent, tokens: stableTokens }
   }
 
   try {
     const newTokens = Lexer.lex(remainingContent, { gfm: true }) as MarkedToken[]
-    return {
-      content: newContent,
-      tokens: [...stableTokens, ...newTokens],
-      stableTokenCount: trailingUnstable === 0 ? stableTokens.length + newTokens.length : stableTokens.length,
-    }
+    return { content: newContent, tokens: [...stableTokens, ...newTokens] }
   } catch {
     try {
       const fullTokens = Lexer.lex(newContent, { gfm: true }) as MarkedToken[]
-      return { content: newContent, tokens: fullTokens, stableTokenCount: 0 }
+      return { content: newContent, tokens: fullTokens }
     } catch {
-      return { content: newContent, tokens: [], stableTokenCount: 0 }
+      return { content: newContent, tokens: [] }
     }
   }
 }

@@ -115,7 +115,7 @@ describe("TerminalConsole", () => {
 
       terminalConsole.resize(100, 10)
 
-      expect(terminalConsole["consoleHeight"] >= 1).toBe(true)
+      expect(terminalConsole["consoleHeight"]).toBeGreaterThanOrEqual(1)
     })
   })
 
@@ -315,23 +315,6 @@ describe("TerminalConsole", () => {
       expect(onCopy).toHaveBeenCalledWith("Hello")
     })
 
-    test("should use baseCode for Ctrl+Shift+C from alternate layouts", () => {
-      const onCopy = mock(() => {})
-      terminalConsole = new TerminalConsole(mockRenderer as any, {
-        position: ConsolePosition.BOTTOM,
-        sizePercent: 30,
-        onCopySelection: onCopy,
-      })
-
-      terminalConsole["_displayLines"] = [{ text: "Hello World", level: "LOG" as any, indent: false }]
-      terminalConsole["_selectionStart"] = { line: 0, col: 0 }
-      terminalConsole["_selectionEnd"] = { line: 0, col: 5 }
-
-      terminalConsole["handleKeyPress"]({ name: "ㅊ", baseCode: 99, ctrl: true, shift: true, meta: false } as any)
-
-      expect(onCopy).toHaveBeenCalledWith("Hello")
-    })
-
     test("should not trigger when no selection", () => {
       const onCopy = mock(() => {})
       terminalConsole = new TerminalConsole(mockRenderer as any, {
@@ -461,7 +444,7 @@ describe("TerminalConsole", () => {
       clock.advance(100)
 
       // Should have scrolled up
-      expect(terminalConsole["scrollTopIndex"] < 20).toBe(true)
+      expect(terminalConsole["scrollTopIndex"]).toBeLessThan(20)
 
       // Stop selecting
       terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 1, "up", 0))
@@ -505,7 +488,7 @@ describe("TerminalConsole", () => {
       clock.advance(100)
 
       // Should have scrolled down
-      expect(terminalConsole["scrollTopIndex"] > 0).toBe(true)
+      expect(terminalConsole["scrollTopIndex"]).toBeGreaterThan(0)
 
       // Stop selecting
       terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + logAreaHeight, "up", 0))
@@ -576,7 +559,7 @@ describe("TerminalConsole", () => {
 
       // Selection end should have moved with the scroll
       const endLine = terminalConsole["_selectionEnd"]?.line
-      expect(endLine! < initialStartLine!).toBe(true)
+      expect(endLine).toBeLessThan(initialStartLine!)
 
       // Stop selecting
       terminalConsole.handleMouse(createMouseEvent(bounds.x + 1, bounds.y + 1, "up", 0))

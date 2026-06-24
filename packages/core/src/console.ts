@@ -3,8 +3,7 @@ import { Console } from "node:console"
 import fs from "node:fs"
 import path from "node:path"
 import util from "node:util"
-import type { CliRenderer, MouseEvent } from "./renderer.js"
-import type { ColorInput } from "./lib/RGBA.js"
+import type { CliRenderer, ColorInput, MouseEvent } from "./index.js"
 import { OptimizedBuffer } from "./buffer.js"
 import { type Clock, SystemClock } from "./lib/clock.js"
 import { Capture, CapturedWritableStream } from "./lib/output.capture.js"
@@ -15,14 +14,13 @@ import type { KeyEvent } from "./lib/KeyHandler.js"
 import {
   type KeyBinding as BaseKeyBinding,
   mergeKeyBindings,
+  getKeyBindingKey,
   buildKeyBindingsMap,
-  getKeyBindingAction,
+  type KeyAliasMap,
   defaultKeyAliases,
   mergeKeyAliases,
   keyBindingToString,
-} from "./lib/keybinding.internal.js"
-
-type KeyAliasMap = Record<string, string>
+} from "./lib/keymapping.js"
 
 interface CallerInfo {
   functionName: string
@@ -145,13 +143,6 @@ class TerminalConsoleCache extends EventEmitter {
 
     console.debug = (...args: any[]) => {
       this.appendToConsole(LogLevel.DEBUG, ...args)
-    }
-
-    // React 19.2's reconciler calls console.timeStamp with a 6-arg Performance Tracks signature.
-    // The new Console instance from setupConsoleCapture lacks timeStamp, so provide a no-op
-    // unless the runtime already supplies one.
-    if (typeof console.timeStamp !== "function") {
-      console.timeStamp = () => {}
     }
   }
 
@@ -524,7 +515,16 @@ export class TerminalConsole extends EventEmitter {
       return
     }
 
-    const action = getKeyBindingAction(this._keyBindingsMap, event)
+    const bindingKey = getKeyBindingKey({
+      name: event.name,
+      ctrl: event.ctrl,
+      shift: event.shift,
+      meta: event.meta,
+      super: event.super,
+      action: "scroll-up" as ConsoleAction,
+    })
+
+    const action = this._keyBindingsMap.get(bindingKey)
 
     if (action) {
       const handler = this._actionHandlers.get(action)

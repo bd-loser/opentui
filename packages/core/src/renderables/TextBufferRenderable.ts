@@ -5,7 +5,7 @@ import { TextBufferView } from "../text-buffer-view.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
 import { type RenderContext, type LineInfoProvider } from "../types.js"
 import type { OptimizedBuffer } from "../buffer.js"
-import { MeasureMode } from "../yoga.js"
+import { MeasureMode } from "yoga-layout"
 import type { LineInfo } from "../zig.js"
 import { SyntaxStyle } from "../syntax-style.js"
 
@@ -37,7 +37,6 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected _scrollX: number = 0
   protected _scrollY: number = 0
   protected _truncate: boolean = false
-  protected _firstLineOffset: number = 0
 
   protected textBuffer: TextBuffer
   protected textBufferView: TextBufferView
@@ -74,13 +73,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
     this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
     this.textBufferView = TextBufferView.create(this.textBuffer)
-    this._firstLineOffset = ctx.claimFirstLineOffset?.(this) ?? 0
 
     this._textBufferSyntaxStyle = SyntaxStyle.create()
     this.textBuffer.setSyntaxStyle(this._textBufferSyntaxStyle)
 
     this.textBufferView.setWrapMode(this._wrapMode)
-    this.textBufferView.setFirstLineOffset(this._firstLineOffset)
     this.setupMeasureFunc()
 
     this.textBuffer.setDefaultFg(this._defaultFg)
@@ -480,24 +477,20 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
 
   render(buffer: OptimizedBuffer, deltaTime: number): void {
     if (!this.visible) return
-    // Text views do enough per-frame work that avoiding recursive x/y lookups is
-    // measurable; use the layout cache for hit-grid and draw entry points.
-    const screenX = this._screenX
-    const screenY = this._screenY
 
     this.markClean()
-    this._ctx.addToHitGrid(screenX, screenY, this.width, this.height, this.num)
+    this._ctx.addToHitGrid(this.x, this.y, this.width, this.height, this.num)
 
     this.renderSelf(buffer)
 
     if (this.buffered && this.frameBuffer) {
-      buffer.drawFrameBuffer(screenX, screenY, this.frameBuffer)
+      buffer.drawFrameBuffer(this.x, this.y, this.frameBuffer)
     }
   }
 
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this.textBuffer.ptr) {
-      buffer.drawTextBuffer(this.textBufferView, this._screenX, this._screenY)
+      buffer.drawTextBuffer(this.textBufferView, this.x, this.y)
     }
   }
 

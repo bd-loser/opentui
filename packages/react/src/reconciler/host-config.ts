@@ -1,5 +1,5 @@
 import { TextNodeRenderable, TextRenderable, type Renderable } from "@opentui/core"
-import pkgJson from "../../package.json" with { type: "json" }
+import pkgJson from "../../package.json"
 import { createContext } from "react"
 import type { HostConfig, ReactContext } from "react-reconciler"
 import { DefaultEventPriority, NoEventPriority } from "react-reconciler/constants"
@@ -10,15 +10,6 @@ import { getNextId } from "../utils/id.js"
 import { setInitialProperties, updateProperties } from "../utils/index.js"
 
 let currentUpdatePriority = NoEventPriority
-
-// Required by the reconciler at runtime but missing from @types/react-reconciler.
-// Remove this intersection when DefinitelyTyped catches up.
-type ReconcilerExtensions = {
-  maySuspendCommitOnUpdate(type: Type, oldProps: Props, newProps: Props): boolean
-  maySuspendCommitInSyncRender(type: Type, props: Props): boolean
-  rendererPackageName: string
-  rendererVersion: string
-}
 
 // https://github.com/facebook/react/tree/main/packages/react-reconciler#practical-examples
 export const hostConfig: HostConfig<
@@ -36,13 +27,10 @@ export const hostConfig: HostConfig<
   unknown, // TimeoutHandle
   unknown, // NoTimeout
   unknown // TransitionStatus
-> &
-  ReconcilerExtensions = {
+> = {
   supportsMutation: true,
   supportsPersistence: false,
   supportsHydration: false,
-  supportsMicrotasks: true,
-  scheduleMicrotask: queueMicrotask,
 
   // Create instances of opentui components
   createInstance(type: Type, props: Props, rootContainerInstance: Container, hostContext: HostContext) {
@@ -133,8 +121,9 @@ export const hostConfig: HostConfig<
   // No timeout
   noTimeout: -1,
 
+  // Should attempt synchronous flush
   shouldAttemptEagerTransition() {
-    return true
+    return false
   },
 
   // Finalize initial children
@@ -154,14 +143,16 @@ export const hostConfig: HostConfig<
     // We could focus the instance here, but we're handling focus in setInitialProperties
   },
 
-  // No explicit requestRender() needed in commit methods — core's property setters
-  // already call requestRender() internally, and resetAfterCommit handles the frame trigger.
+  // Commit update
   commitUpdate(instance: Instance, type: Type, oldProps: Props, newProps: Props, internalInstanceHandle: any) {
     updateProperties(instance, type, oldProps, newProps)
+    instance.requestRender()
   },
 
+  // Commit text update
   commitTextUpdate(textInstance: TextInstance, oldText: string, newText: string) {
     textInstance.children = [newText]
+    textInstance.requestRender()
   },
 
   // Append child to container
@@ -173,21 +164,28 @@ export const hostConfig: HostConfig<
     parent.add(child)
   },
 
-  // Visibility setters in core call requestRender() internally.
+  // Hide instance
   hideInstance(instance: Instance) {
     instance.visible = false
+    instance.requestRender()
   },
 
+  // Unhide instance
   unhideInstance(instance: Instance, props: Props) {
     instance.visible = true
+    instance.requestRender()
   },
 
+  // Hide text instance
   hideTextInstance(textInstance: TextInstance) {
     textInstance.visible = false
+    textInstance.requestRender()
   },
 
+  // Unhide text instance
   unhideTextInstance(textInstance: TextInstance, text: string) {
     textInstance.visible = true
+    textInstance.requestRender()
   },
 
   // Clear container
@@ -213,14 +211,6 @@ export const hostConfig: HostConfig<
   },
 
   maySuspendCommit() {
-    return false
-  },
-
-  maySuspendCommitOnUpdate() {
-    return false
-  },
-
-  maySuspendCommitInSyncRender() {
     return false
   },
 
@@ -282,6 +272,7 @@ export const hostConfig: HostConfig<
     return null
   },
 
+  // @ts-expect-error DefinitelyTyped is not up to date
   rendererPackageName: "@opentui/react",
   rendererVersion: pkgJson.version,
 }

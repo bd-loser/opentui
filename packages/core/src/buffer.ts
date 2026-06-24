@@ -1,18 +1,17 @@
 import { RGBA } from "./lib/index.js"
-import { resolveRenderLib, type OptimizedBufferHandle, type RenderLib } from "./zig.js"
-import { type Pointer, type PointerInput, toArrayBuffer, toPointer, ptr } from "./platform/ffi.js"
+import { resolveRenderLib, type RenderLib } from "./zig.js"
+import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
 import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib/index.js"
 import { TargetChannel, type WidthMethod, type CapturedSpan, type CapturedLine } from "./types.js"
 import type { TextBufferView } from "./text-buffer-view.js"
 import type { EditorView } from "./editor-view.js"
 
 // Pack drawing options into a single u32
-// bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment, bits 7-8: bottomTitleAlignment
+// bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment
 function packDrawOptions(
   border: boolean | BorderSides[],
   shouldFill: boolean,
   titleAlignment: "left" | "center" | "right",
-  bottomTitleAlignment: "left" | "center" | "right",
 ): number {
   let packed = 0
 
@@ -35,10 +34,7 @@ function packDrawOptions(
     right: 2,
   }
   const alignment = alignmentMap[titleAlignment]
-  const bottomAlignment = alignmentMap[bottomTitleAlignment]
-
   packed |= alignment << 5
-  packed |= bottomAlignment << 7
 
   return packed
 }
@@ -47,20 +43,20 @@ export class OptimizedBuffer {
   private static fbIdCounter = 0
   public id: string
   public lib: RenderLib
-  private bufferPtr: OptimizedBufferHandle
+  private bufferPtr: Pointer
   private _width: number
   private _height: number
   private _widthMethod: WidthMethod
   public respectAlpha: boolean = false
   private _rawBuffers: {
     char: Uint32Array
-    fg: Uint16Array
-    bg: Uint16Array
+    fg: Float32Array
+    bg: Float32Array
     attributes: Uint32Array
   } | null = null
   private _destroyed: boolean = false
 
-  get ptr(): OptimizedBufferHandle {
+  get ptr(): Pointer {
     return this.bufferPtr
   }
 
@@ -71,39 +67,34 @@ export class OptimizedBuffer {
     if (this._destroyed) throw new Error(`Buffer ${this.id} is destroyed`)
   }
 
-  private ensureRawBufferViews(): void {
-    if (this._rawBuffers !== null) {
-      return
-    }
-
-    const size = this._width * this._height
-    const charPtr = this.lib.bufferGetCharPtr(this.bufferPtr)
-    const fgPtr = this.lib.bufferGetFgPtr(this.bufferPtr)
-    const bgPtr = this.lib.bufferGetBgPtr(this.bufferPtr)
-    const attributesPtr = this.lib.bufferGetAttributesPtr(this.bufferPtr)
-
-    this._rawBuffers = {
-      char: new Uint32Array(toArrayBuffer(charPtr, 0, size * 4)),
-      fg: new Uint16Array(toArrayBuffer(fgPtr, 0, size * 4 * 2)),
-      bg: new Uint16Array(toArrayBuffer(bgPtr, 0, size * 4 * 2)),
-      attributes: new Uint32Array(toArrayBuffer(attributesPtr, 0, size * 4)),
-    }
-  }
-
   get buffers(): {
     char: Uint32Array
-    fg: Uint16Array
-    bg: Uint16Array
+    fg: Float32Array
+    bg: Float32Array
     attributes: Uint32Array
   } {
     this.guard()
-    this.ensureRawBufferViews()
-    return this._rawBuffers!
+    if (this._rawBuffers === null) {
+      const size = this._width * this._height
+      const charPtr = this.lib.bufferGetCharPtr(this.bufferPtr)
+      const fgPtr = this.lib.bufferGetFgPtr(this.bufferPtr)
+      const bgPtr = this.lib.bufferGetBgPtr(this.bufferPtr)
+      const attributesPtr = this.lib.bufferGetAttributesPtr(this.bufferPtr)
+
+      this._rawBuffers = {
+        char: new Uint32Array(toArrayBuffer(charPtr, 0, size * 4)),
+        fg: new Float32Array(toArrayBuffer(fgPtr, 0, size * 4 * 4)),
+        bg: new Float32Array(toArrayBuffer(bgPtr, 0, size * 4 * 4)),
+        attributes: new Uint32Array(toArrayBuffer(attributesPtr, 0, size * 4)),
+      }
+    }
+
+    return this._rawBuffers
   }
 
   constructor(
     lib: RenderLib,
-    ptr: OptimizedBufferHandle,
+    ptr: Pointer,
     width: number,
     height: number,
     options: { respectAlpha?: boolean; id?: string; widthMethod?: WidthMethod },
@@ -182,8 +173,8 @@ export class OptimizedBuffer {
       for (let x = 0; x < this._width; x++) {
         const i = y * this._width + x
         const cp = char[i]
-        const cellFg = RGBA.fromArray(fg.slice(i * 4, i * 4 + 4))
-        const cellBg = RGBA.fromArray(bg.slice(i * 4, i * 4 + 4))
+        const cellFg = RGBA.fromValues(fg[i * 4], fg[i * 4 + 1], fg[i * 4 + 2], fg[i * 4 + 3])
+        const cellBg = RGBA.fromValues(bg[i * 4], bg[i * 4 + 1], bg[i * 4 + 2], bg[i * 4 + 3])
         const cellAttrs = attributes[i] & 0xff
 
         // Continuation cells are placeholders for wide characters (emojis, CJK)
@@ -293,7 +284,6 @@ export class OptimizedBuffer {
   }
 
   public fillRect(x: number, y: number, width: number, height: number, bg: RGBA): void {
-    this.guard()
     this.lib.bufferFillRect(this.bufferPtr, x, y, width, height, bg)
   }
 
@@ -337,8 +327,6 @@ export class OptimizedBuffer {
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true
-    // Cached typed arrays alias native memory and are invalid after destroy.
-    this._rawBuffers = null
     this.lib.destroyOptimizedBuffer(this.bufferPtr)
   }
 
@@ -355,7 +343,7 @@ export class OptimizedBuffer {
   public drawSuperSampleBuffer(
     x: number,
     y: number,
-    pixelDataPtr: PointerInput,
+    pixelDataPtr: Pointer,
     pixelDataLength: number,
     format: "bgra8unorm" | "rgba8unorm",
     alignedBytesPerRow: number,
@@ -365,7 +353,7 @@ export class OptimizedBuffer {
       this.bufferPtr,
       x,
       y,
-      toPointer(pixelDataPtr),
+      pixelDataPtr,
       pixelDataLength,
       format,
       alignedBytesPerRow,
@@ -373,7 +361,7 @@ export class OptimizedBuffer {
   }
 
   public drawPackedBuffer(
-    dataPtr: PointerInput,
+    dataPtr: Pointer,
     dataLen: number,
     posX: number,
     posY: number,
@@ -383,7 +371,7 @@ export class OptimizedBuffer {
     this.guard()
     this.lib.bufferDrawPackedBuffer(
       this.bufferPtr,
-      toPointer(dataPtr),
+      dataPtr,
       dataLen,
       posX,
       posY,
@@ -450,21 +438,13 @@ export class OptimizedBuffer {
     backgroundColor: RGBA
     shouldFill?: boolean
     title?: string
-    titleColor?: RGBA
     titleAlignment?: "left" | "center" | "right"
-    bottomTitle?: string
-    bottomTitleAlignment?: "left" | "center" | "right"
   }): void {
     this.guard()
     const style = parseBorderStyle(options.borderStyle, "single")
     const borderChars: Uint32Array = options.customBorderChars ?? BorderCharArrays[style]
 
-    const packedOptions = packDrawOptions(
-      options.border,
-      options.shouldFill ?? false,
-      options.titleAlignment || "left",
-      options.bottomTitleAlignment || "left",
-    )
+    const packedOptions = packDrawOptions(options.border, options.shouldFill ?? false, options.titleAlignment || "left")
 
     this.lib.bufferDrawBox(
       this.bufferPtr,
@@ -476,9 +456,7 @@ export class OptimizedBuffer {
       packedOptions,
       options.borderColor,
       options.backgroundColor,
-      options.titleColor ?? options.borderColor,
       options.title ?? null,
-      options.bottomTitle ?? null,
     )
   }
 

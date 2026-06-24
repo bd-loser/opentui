@@ -7,11 +7,18 @@
     "outDir": "./dist",
     "noEmit": false,
     "rootDir": "./src",
-    "types": ["bun", "node"],
+    "types": ["bun", "node", "three"],
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler"
   },
   "include": ["src/**/*"],
-  "exclude": ["**/*.test.ts", "**/*.spec.ts", "**/*.fixture.ts", "src/benchmark/**/*", "src/zig/**/*"]
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/*.fixture.ts",
+    "src/examples/**/*",
+    "src/benchmark/**/*",
+    "src/zig/**/*"
+  ]
 }

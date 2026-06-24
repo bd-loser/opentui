@@ -25,6 +25,11 @@ function formatHunkHeader(hunk: StructuredPatch["hunks"][number]): string {
   return `@@ -${oldStart},${hunk.oldLines} +${newStart},${hunk.newLines} @@`
 }
 
+function splitHunkHeader(header: string): [string, string] {
+  const match = /^(@@ -\d+(?:,\d+)?) (\+\d+(?:,\d+)? @@.*)$/.exec(header)
+  return match ? [match[1], match[2]] : [header, ""]
+}
+
 export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable> {
   diff?: string
   syncScroll?: boolean
@@ -63,6 +68,7 @@ export class DiffRenderable extends Renderable {
   private _syncScroll: boolean = false
   private _view: "unified" | "split"
   private _parsedDiff: StructuredPatch | null = null
+  private _hunkHeaders: string[] = []
   private _parseError: Error | null = null
   // Source-line anchors for hunk starts; native extmarks should eventually own these anchors.
   private _hunkStartLines: number[] = []
@@ -159,6 +165,7 @@ export class DiffRenderable extends Renderable {
   private parseDiff(): void {
     if (!this._diff) {
       this._parsedDiff = null
+      this._hunkHeaders = []
       this._parseError = null
       return
     }
@@ -168,14 +175,21 @@ export class DiffRenderable extends Renderable {
 
       if (patches.length === 0) {
         this._parsedDiff = null
+        this._hunkHeaders = []
         this._parseError = null
         return
       }
 
       this._parsedDiff = patches[0]
+      this._hunkHeaders = this._diff
+        .split("\n")
+        .filter((line) => /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/.test(line))
+        .slice(0, this._parsedDiff.hunks.length)
+        .map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line))
       this._parseError = null
     } catch (error) {
       this._parsedDiff = null
+      this._hunkHeaders = []
       this._parseError = error instanceof Error ? error : new Error(String(error))
     }
   }
@@ -517,7 +531,7 @@ export class DiffRenderable extends Renderable {
       this._hunkStartLines.push(lineIndex)
 
       if (hunkIndex > 0) {
-        contentLines.push(formatHunkHeader(hunk))
+        contentLines.push(this._hunkHeaders[hunkIndex] ?? formatHunkHeader(hunk))
         lineColors.set(lineIndex, {
           gutter: this._lineNumberBg,
           content: this._contextContentBg ?? this._contextBg,
@@ -628,9 +642,10 @@ export class DiffRenderable extends Renderable {
       hunkFirstLeftLine.push(leftLogicalLines.length)
 
       if (hunkIndex > 0) {
-        const header = formatHunkHeader(hunk)
-        leftLogicalLines.push({ content: header, hideLineNumber: true, type: "context" })
-        rightLogicalLines.push({ content: "", hideLineNumber: true, type: "context" })
+        const header = this._hunkHeaders[hunkIndex] ?? formatHunkHeader(hunk)
+        const [leftHeader, rightHeader] = splitHunkHeader(header)
+        leftLogicalLines.push({ content: leftHeader, hideLineNumber: true, type: "context" })
+        rightLogicalLines.push({ content: rightHeader, hideLineNumber: true, type: "context" })
       }
 
       let oldLineNum = hunk.oldStart

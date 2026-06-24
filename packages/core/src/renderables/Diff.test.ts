@@ -3102,18 +3102,18 @@ test("DiffRenderable - line highlighting works in split view", async () => {
 
 const threeHunkDiff = `--- a/file.js
 +++ b/file.js
-@@ -1,3 +1,3 @@
+@@ -1,3 +1,3 @@ function first()
  function first() {
 -  return 1;
 +  return "one";
  }
-@@ -15,4 +15,5 @@
+@@ -15,4 +15,5 @@ function second()
  function second() {
    var x = 10;
 +  var y = 20;
    return x;
  }
-@@ -30,3 +31,3 @@
+@@ -30,3 +31,3 @@ function third()
  function third() {
 -  console.log("old");
 +  console.log("new");
@@ -3134,8 +3134,15 @@ for (const view of ["unified", "split"] as const) {
     await renderOnce()
 
     const frame = captureFrame()
-    expect(frame).toContain("@@ -15,4 +15,5 @@")
-    expect(frame).toContain("@@ -30,3 +31,3 @@")
+    if (view === "unified") {
+      expect(frame).toContain("@@ -15,4 +15,5 @@ function second()")
+      expect(frame).toContain("@@ -30,3 +31,3 @@ function third()")
+    } else {
+      expect(frame).toContain("@@ -15,4")
+      expect(frame).toContain("+15,5 @@ function second()")
+      expect(frame).toContain("@@ -30,3")
+      expect(frame).toContain("+31,3 @@ function third()")
+    }
   })
 }
 

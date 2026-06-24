@@ -3138,10 +3138,14 @@ for (const view of ["unified", "split"] as const) {
       expect(frame).toContain("@@ -15,4 +15,5 @@ function second()")
       expect(frame).toContain("@@ -30,3 +31,3 @@ function third()")
     } else {
-      expect(frame).toContain("@@ -15,4")
-      expect(frame).toContain("+15,5 @@ function second()")
-      expect(frame).toContain("@@ -30,3")
-      expect(frame).toContain("+31,3 @@ function third()")
+      const leftLines = (diffRenderable as any).leftCodeRenderable.content.split("\n")
+      const rightLines = (diffRenderable as any).rightCodeRenderable.content.split("\n")
+      const secondHunk = leftLines.indexOf("@@ -15,4 +15,5 @@ function second()")
+      const thirdHunk = leftLines.indexOf("@@ -30,3 +31,3 @@ function third()")
+      expect(secondHunk).toBeGreaterThan(-1)
+      expect(thirdHunk).toBeGreaterThan(-1)
+      expect(rightLines[secondHunk]).toBe("")
+      expect(rightLines[thirdHunk]).toBe("")
     }
   })
 }
@@ -3227,7 +3231,7 @@ test("DiffRenderable - getHunkRowOffsets uses split-view rows (split)", async ()
   await renderOnce()
 
   // Later hunk offsets point to the visible header inserted between hunks.
-  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 3, 9])
+  expect(diffRenderable.getHunkRowOffsets()).toEqual([0, 3, 10])
 })
 
 test("DiffRenderable - getHunkRowOffsets is empty without a diff", async () => {

@@ -25,11 +25,6 @@ function formatHunkHeader(hunk: StructuredPatch["hunks"][number]): string {
   return `@@ -${oldStart},${hunk.oldLines} +${newStart},${hunk.newLines} @@`
 }
 
-function splitHunkHeader(header: string): [string, string] {
-  const match = /^(@@ -\d+(?:,\d+)?) (\+\d+(?:,\d+)? @@.*)$/.exec(header)
-  return match ? [match[1], match[2]] : [header, ""]
-}
-
 export interface DiffRenderableOptions extends RenderableOptions<DiffRenderable> {
   diff?: string
   syncScroll?: boolean
@@ -643,9 +638,8 @@ export class DiffRenderable extends Renderable {
 
       if (hunkIndex > 0) {
         const header = this._hunkHeaders[hunkIndex] ?? formatHunkHeader(hunk)
-        const [leftHeader, rightHeader] = splitHunkHeader(header)
-        leftLogicalLines.push({ content: leftHeader, hideLineNumber: true, type: "context" })
-        rightLogicalLines.push({ content: rightHeader, hideLineNumber: true, type: "context" })
+        leftLogicalLines.push({ content: header, hideLineNumber: true, type: "context" })
+        rightLogicalLines.push({ content: "", hideLineNumber: true, type: "context" })
       }
 
       let oldLineNum = hunk.oldStart

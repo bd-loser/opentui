@@ -1158,6 +1158,8 @@ pub const UnifiedTextBufferView = struct {
                         var wrap_idx: usize = 0;
 
                         while (char_offset < chunk.width) {
+                            if (byte_offset >= chunk_bytes.len) break;
+
                             const line_wrap_w = wctx.lineWrapWidth();
                             const remaining_in_chunk = chunk.width - char_offset;
                             const remaining_on_line = if (wctx.line_position < line_wrap_w) line_wrap_w - wctx.line_position else 0;

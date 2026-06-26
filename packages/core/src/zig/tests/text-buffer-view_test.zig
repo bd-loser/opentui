@@ -763,6 +763,31 @@ test "TextBufferView word wrapping - CJK boundary keeps byte and column offsets 
     }
 }
 
+test "TextBufferView word wrapping - tab width decrease terminates after bytes are consumed" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    tb.setTabWidth(4);
+    try tb.setText("\tX");
+    tb.setTabWidth(2);
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(1);
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 2), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 1), vlines[1].width_cols);
+}
+
 test "TextBufferView word wrapping - compare char vs word mode" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

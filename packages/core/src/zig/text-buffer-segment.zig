@@ -39,15 +39,21 @@ pub const TextChunk = struct {
     byte_end: u32,
     width: u16,
     flags: u8 = 0,
+    tab_width: u8 = 0,
     graphemes: ?[]GraphemeInfo = null,
     wrap_offsets: ?[]utf8.WrapBreak = null,
 
     pub const Flags = struct {
         pub const ASCII_ONLY: u8 = 0b00000001; // Printable ASCII only (32..126).
+        pub const HAS_TAB: u8 = 0b00000010;
     };
 
     pub fn isAsciiOnly(self: *const TextChunk) bool {
         return (self.flags & Flags.ASCII_ONLY) != 0;
+    }
+
+    pub fn hasTab(self: *const TextChunk) bool {
+        return (self.flags & Flags.HAS_TAB) != 0;
     }
 
     pub fn empty() TextChunk {
@@ -167,6 +173,9 @@ pub const Segment = union(enum) {
         linestart_count: u32 = 0,
         newline_count: u32 = 0,
         max_line_width: u32 = 0,
+        tab_chunk_count: u32 = 0,
+        tab_width_min: u8 = std.math.maxInt(u8),
+        tab_width_max: u8 = 0,
         /// Whether all text segments in subtree are ASCII-only (for fast wrapping paths)
         ascii_only: bool = true,
 
@@ -177,6 +186,11 @@ pub const Segment = union(enum) {
             self.newline_count += other.newline_count;
 
             self.max_line_width = @max(self.max_line_width, other.max_line_width);
+            self.tab_chunk_count += other.tab_chunk_count;
+            if (other.tab_chunk_count > 0) {
+                self.tab_width_min = @min(self.tab_width_min, other.tab_width_min);
+                self.tab_width_max = @max(self.tab_width_max, other.tab_width_max);
+            }
 
             self.ascii_only = self.ascii_only and other.ascii_only;
         }
@@ -201,6 +215,9 @@ pub const Segment = union(enum) {
                     .linestart_count = 0,
                     .newline_count = 0,
                     .max_line_width = chunk.width,
+                    .tab_chunk_count = @intFromBool(chunk.hasTab()),
+                    .tab_width_min = if (chunk.hasTab()) chunk.tab_width else std.math.maxInt(u8),
+                    .tab_width_max = if (chunk.hasTab()) chunk.tab_width else 0,
                     .ascii_only = is_ascii,
                 };
             },
@@ -280,7 +297,7 @@ pub const Segment = union(enum) {
 
         if (left_chunk.mem_id != right_chunk.mem_id) return false;
         if (left_chunk.byte_end != right_chunk.byte_start) return false;
-        if (left_chunk.flags != right_chunk.flags) return false;
+        if (left_chunk.isAsciiOnly() != right_chunk.isAsciiOnly()) return false;
 
         return true;
     }
@@ -300,7 +317,8 @@ pub const Segment = union(enum) {
                 .byte_start = left_chunk.byte_start,
                 .byte_end = right_chunk.byte_end,
                 .width = left_chunk.width + right_chunk.width,
-                .flags = left_chunk.flags,
+                .flags = left_chunk.flags | right_chunk.flags,
+                .tab_width = if (left_chunk.hasTab()) left_chunk.tab_width else right_chunk.tab_width,
                 .graphemes = null,
                 .wrap_offsets = null,
             },

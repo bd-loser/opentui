@@ -619,6 +619,45 @@ pub fn Rope(comptime T: type) type {
             };
         }
 
+        pub fn transform(
+            self: *Self,
+            ctx: *anyopaque,
+            filter: *const fn (ctx: *anyopaque, metrics: Metrics) bool,
+            map: *const fn (ctx: *anyopaque, data: *const T) T,
+        ) !void {
+            const Transform = struct {
+                const Result = struct { node: *const Node, changed: bool };
+
+                fn apply(
+                    node: *const Node,
+                    allocator: Allocator,
+                    map_ctx: *anyopaque,
+                    subtree_filter: *const fn (ctx: *anyopaque, metrics: Metrics) bool,
+                    mapper: *const fn (ctx: *anyopaque, data: *const T) T,
+                ) !Result {
+                    if (!subtree_filter(map_ctx, node.metrics())) return .{ .node = node, .changed = false };
+
+                    return switch (node.*) {
+                        .branch => |*branch| blk: {
+                            const left = try apply(branch.left, allocator, map_ctx, subtree_filter, mapper);
+                            const right = try apply(branch.right, allocator, map_ctx, subtree_filter, mapper);
+                            if (!left.changed and !right.changed) break :blk .{ .node = node, .changed = false };
+                            break :blk .{ .node = try Node.new_branch(allocator, left.node, right.node), .changed = true };
+                        },
+                        .leaf => |*leaf| .{
+                            .node = try Node.new_leaf(allocator, mapper(map_ctx, &leaf.data)),
+                            .changed = true,
+                        },
+                    };
+                }
+            };
+
+            const result = try Transform.apply(self.root, self.allocator, ctx, filter, map);
+            if (!result.changed) return;
+            self.root = result.node;
+            self.version += 1;
+        }
+
         pub fn rebalance(self: *Self, tmp_allocator: Allocator) !void {
             self.root = try self.root.rebalance(self.allocator, tmp_allocator);
         }
@@ -1103,6 +1142,12 @@ pub fn Rope(comptime T: type) type {
             self.redo_history = null;
             self.curr_history = null;
             self.undo_depth = 0;
+        }
+
+        pub fn syncCurrentHistoryRoot(self: *Self) void {
+            if (self.curr_history) |current| {
+                current.root = self.root;
+            }
         }
 
         pub fn clear(self: *Self) void {

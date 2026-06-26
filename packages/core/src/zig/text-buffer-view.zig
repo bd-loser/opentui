@@ -1210,8 +1210,8 @@ pub const UnifiedTextBufferView = struct {
                                 const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, remaining_on_line, wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
                                 to_add = wrap_result.columns_used;
                                 if (to_add == 0) {
-                                    const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
-                                    to_add = if (single_result.columns_used > 0) single_result.columns_used else 1;
+                                    const force_result = utf8.findPosByWidth(remaining_bytes, 1, wctx.text_buffer.tabWidth(), is_ascii_only, true, wctx.text_buffer.widthMethod());
+                                    to_add = force_result.columns_used;
                                 }
                             } else if (wctx.last_wrap_chunk_count > 0 and
                                 wctx.last_wrap_chunk_count <= wctx.current_vline.chunks.items.len)
@@ -1274,8 +1274,8 @@ pub const UnifiedTextBufferView = struct {
                                 const wrap_result = utf8.findWrapPosByWidth(remaining_bytes, wctx.lineWrapWidth(), wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
                                 to_add = wrap_result.columns_used;
                                 if (to_add == 0) {
-                                    const single_result = utf8.findWrapPosByWidth(remaining_bytes, 1, wctx.text_buffer.tabWidth(), is_ascii_only, wctx.text_buffer.widthMethod());
-                                    to_add = if (single_result.columns_used > 0) single_result.columns_used else 1;
+                                    const force_result = utf8.findPosByWidth(remaining_bytes, 1, wctx.text_buffer.tabWidth(), is_ascii_only, true, wctx.text_buffer.widthMethod());
+                                    to_add = force_result.columns_used;
                                 }
                             }
 

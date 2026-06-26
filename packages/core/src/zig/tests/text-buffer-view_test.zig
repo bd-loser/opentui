@@ -710,6 +710,149 @@ test "TextBufferView word wrapping - CJK boundary width" {
     try std.testing.expectEqual(@as(u32, 2), vlines[1].width_cols);
 }
 
+test "TextBufferView word wrapping - narrow line keeps wide grapheme intact" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("确");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(1);
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 1), vlines.len);
+    try std.testing.expectEqual(@as(u32, 2), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(usize, 1), vlines[0].chunks.items.len);
+    try std.testing.expectEqual(@as(u32, 0), vlines[0].chunks.items[0].grapheme_start);
+    try std.testing.expectEqual(@as(u32, 2), vlines[0].chunks.items[0].width);
+}
+
+test "TextBufferView word wrapping - CJK boundary keeps byte and column offsets aligned" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("在aber (“但”)引入的转折从句前表示让步：虽然，的确");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(15);
+    const vlines = view.getVirtualLines();
+
+    const expected_widths = [_]u32{ 13, 14, 14, 8 };
+    const expected_starts = [_]u32{ 0, 13, 27, 41 };
+    try std.testing.expectEqual(expected_widths.len, vlines.len);
+    for (vlines, expected_widths, expected_starts) |vline, expected_width, expected_start| {
+        try std.testing.expectEqual(expected_width, vline.width_cols);
+        try std.testing.expectEqual(@as(usize, 1), vline.chunks.items.len);
+        try std.testing.expectEqual(expected_start, vline.chunks.items[0].grapheme_start);
+    }
+}
+
+test "TextBufferView word wrapping - tab width change makes progress" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    tb.setTabWidth(4);
+    try tb.setText("\tX");
+    tb.setTabWidth(2);
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(1);
+    const vlines = view.getVirtualLines();
+
+    try std.testing.expectEqual(@as(usize, 2), vlines.len);
+    try std.testing.expectEqual(@as(u32, 2), vlines[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 1), vlines[1].width_cols);
+}
+
+test "TextBufferView tab width increase refreshes chunk and rope metrics" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("\tX\nA\tB");
+    const initial_lines = view.getVirtualLines();
+    _ = try initial_lines[0].chunks.items[0].chunk.getGraphemes(
+        tb.getAllocator(),
+        tb.memRegistry(),
+        tb.tabWidth(),
+        tb.widthMethod(),
+    );
+
+    tb.setTabWidth(4);
+
+    try std.testing.expectEqual(@as(u32, 5), tb.lineWidthAt(0));
+    try std.testing.expectEqual(@as(u32, 6), tb.lineWidthAt(1));
+    try std.testing.expectEqual(@as(u32, 6), tb.lineWidthColsMax());
+
+    const unwrapped = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 2), unwrapped.len);
+    try std.testing.expectEqual(@as(u32, 5), unwrapped[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 6), unwrapped[1].width_cols);
+
+    const measured = try view.measureForDimensions(0, 10);
+    try std.testing.expectEqual(@as(u32, 2), measured.line_count);
+    try std.testing.expectEqual(@as(u32, 6), measured.width_cols_max);
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(1);
+    const wrapped = view.getVirtualLines();
+    try std.testing.expectEqual(@as(usize, 5), wrapped.len);
+    try std.testing.expectEqual(@as(u32, 4), wrapped[0].width_cols);
+    try std.testing.expectEqual(@as(u32, 1), wrapped[1].width_cols);
+    try std.testing.expectEqual(@as(u32, 1), wrapped[2].width_cols);
+    try std.testing.expectEqual(@as(u32, 4), wrapped[3].width_cols);
+    try std.testing.expectEqual(@as(u32, 1), wrapped[4].width_cols);
+}
+
+test "TextBufferView tab width change does not rebuild text without tabs" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+
+    try tb.setText("plain text");
+    const root_before = tb.rope().root;
+
+    tb.setTabWidth(4);
+
+    try std.testing.expectEqual(root_before, tb.rope().root);
+    try std.testing.expectEqual(@as(u32, 10), tb.lineWidthAt(0));
+}
+
 test "TextBufferView word wrapping - compare char vs word mode" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

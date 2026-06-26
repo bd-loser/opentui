@@ -523,6 +523,9 @@ pub const UnifiedTextBuffer = struct {
         if (chunk_bytes.len > 0 and is_ascii) {
             flags |= TextChunk.Flags.ASCII_ONLY;
         }
+        if (std.mem.indexOfScalar(u8, chunk_bytes, '\t') != null) {
+            flags |= TextChunk.Flags.HAS_TAB;
+        }
 
         const chunk_width: u16 = @intCast(@min(65535, utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method)));
 
@@ -532,6 +535,7 @@ pub const UnifiedTextBuffer = struct {
             .byte_end = byte_end,
             .width = chunk_width,
             .flags = flags,
+            .tab_width = if ((flags & TextChunk.Flags.HAS_TAB) != 0) self.tab_width else 0,
         };
     }
 
@@ -1212,13 +1216,55 @@ pub const UnifiedTextBuffer = struct {
         return self.tabWidth();
     }
 
+    fn remeasureTabChunks(self: *Self, tab_width: u8) TextBufferError!void {
+        const Context = struct {
+            buffer: *Self,
+            tab_width: u8,
+
+            fn filter(_: *anyopaque, metrics: UnifiedRope.Metrics) bool {
+                return metrics.custom.tab_chunk_count > 0;
+            }
+
+            fn map(ctx_ptr: *anyopaque, source: *const Segment) Segment {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                var segment = source.*;
+                switch (segment) {
+                    .text => |*chunk| {
+                        if (chunk.hasTab()) {
+                            const bytes = chunk.getBytes(&ctx.buffer.mem_registry);
+                            chunk.width = @intCast(@min(65535, utf8.calculateTextWidth(bytes, ctx.tab_width, false, ctx.buffer.width_method)));
+                            chunk.tab_width = ctx.tab_width;
+                            chunk.graphemes = null;
+                        }
+                    },
+                    else => {},
+                }
+                return segment;
+            }
+        };
+
+        var ctx: Context = .{ .buffer = self, .tab_width = tab_width };
+        self._rope.transform(&ctx, Context.filter, Context.map) catch return TextBufferError.OutOfMemory;
+        self._rope.syncCurrentHistoryRoot();
+    }
+
+    pub fn refreshTabMetrics(self: *Self) TextBufferError!void {
+        const metrics = self._rope.root.metrics().custom;
+        if (metrics.tab_chunk_count == 0) return;
+        if (metrics.tab_width_min == self.tab_width and metrics.tab_width_max == self.tab_width) return;
+        try self.remeasureTabChunks(self.tab_width);
+    }
+
     /// Set tab width, rounding up to nearest multiple of 2 (minimum 2).
-    /// Marks all views dirty if the width actually changes, since tab width
-    /// affects measured line widths and virtual line calculations.
     pub fn setTabWidth(self: *Self, width: u8) void {
         const clamped_width = @max(2, width);
         const new_width = if (clamped_width % 2 == 0) clamped_width else clamped_width + 1;
         if (self.tab_width == new_width) return;
+
+        if (self._rope.root.metrics().custom.tab_chunk_count > 0) {
+            self.remeasureTabChunks(new_width) catch return;
+        }
+
         self.tab_width = new_width;
         self.markAllViewsDirty();
     }

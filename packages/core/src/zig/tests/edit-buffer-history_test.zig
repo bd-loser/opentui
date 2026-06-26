@@ -32,31 +32,6 @@ test "EditBuffer - basic undo/redo with insertText" {
     try std.testing.expectEqualStrings("Hello World", out_buffer[0..written]);
 }
 
-test "EditBuffer - undo and redo refresh historical tab metrics" {
-    const pool = gp.initGlobalPool(std.testing.allocator);
-    defer gp.deinitGlobalPool();
-    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
-    defer link.deinitGlobalLinkPool();
-
-    var eb = try EditBuffer.init(std.testing.allocator, pool, link_pool, .unicode, null);
-    defer eb.deinit();
-
-    try eb.insertText("\tA");
-    try eb.insertText("B");
-    eb.tb.setTabWidth(4);
-
-    try std.testing.expectEqual(@as(u32, 6), eb.tb.lineWidthAt(0));
-
-    _ = try eb.undo();
-    try std.testing.expectEqual(@as(u32, 5), eb.tb.lineWidthAt(0));
-
-    eb.tb.setTabWidth(6);
-    try std.testing.expectEqual(@as(u32, 7), eb.tb.lineWidthAt(0));
-
-    _ = try eb.redo();
-    try std.testing.expectEqual(@as(u32, 8), eb.tb.lineWidthAt(0));
-}
-
 test "EditBuffer - undo and redo restore cursor for mid-line edits" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

@@ -134,6 +134,68 @@ describe("detectLinks", () => {
     )
   })
 
+  test("detects a bare URL inside a label without an explicit destination", () => {
+    const content = "[https://example.com]"
+    const highlights: SimpleHighlight[] = [[1, content.length - 1, "markup.link.label"]]
+
+    const result = detectLinks([chunk(content)], { content, highlights })
+
+    expect(result.find((value) => value.link)?.link?.url).toBe("https://example.com")
+  })
+
+  test("does not override reference links with a bare URL from their label", () => {
+    const content = "[https://shown.example][ref]\n\n[ref]: https://target.example"
+    const shownEnd = content.indexOf("]")
+    const referenceStart = content.indexOf("[ref]")
+    const definitionStart = content.lastIndexOf("[ref]")
+    const destinationStart = content.lastIndexOf("https://")
+    const highlights: SimpleHighlight[] = [
+      [1, shownEnd, "markup.link.label"],
+      [referenceStart + 1, referenceStart + 4, "markup.link.label"],
+      [definitionStart + 1, definitionStart + 4, "markup.link.label"],
+      [destinationStart, content.length, "markup.link.url"],
+    ]
+
+    const result = detectLinks([chunk(content)], { content, highlights })
+
+    expect(result.every((value) => value.link?.url !== "https://shown.example")).toBe(true)
+  })
+
+  test("does not detect bare URLs in link titles or labels with unsupported explicit destinations", () => {
+    const longDestination = `https://target.example/${"a".repeat(512)}`
+    const content = `[https://shown.example]( ${longDestination} "https://title.example")`
+    const destinationStart = content.indexOf(longDestination)
+    const titleStart = content.indexOf('"')
+    const highlights: SimpleHighlight[] = [
+      [1, content.indexOf("]"), "markup.link.label"],
+      [destinationStart, destinationStart + longDestination.length, "markup.link.url"],
+      [titleStart, content.lastIndexOf('"') + 1, "markup.link.label"],
+    ]
+
+    const result = detectLinks([chunk(content)], { content, highlights })
+
+    expect(result.every((value) => value.link === undefined)).toBe(true)
+  })
+
+  test("pairs an explicit destination with its outer label when the label contains an image", () => {
+    const longDestination = `https://target.example/${"a".repeat(512)}`
+    const content = `[prefix ![alt](image.png) https://shown.example]( ${longDestination})`
+    const innerLabelStart = content.indexOf("[alt") + 1
+    const innerDestinationStart = content.indexOf("image.png")
+    const outerLabelEnd = content.lastIndexOf("](")
+    const outerDestinationStart = content.indexOf(longDestination)
+    const highlights: SimpleHighlight[] = [
+      [1, outerLabelEnd, "markup.link.label"],
+      [innerLabelStart, innerLabelStart + 3, "markup.link.label"],
+      [innerDestinationStart, innerDestinationStart + "image.png".length, "markup.link.url"],
+      [outerDestinationStart, outerDestinationStart + longDestination.length, "markup.link.url"],
+    ]
+
+    const result = detectLinks([chunk(content)], { content, highlights })
+
+    expect(result.every((value) => value.link?.url !== "https://shown.example")).toBe(true)
+  })
+
   test("detects case-insensitive schemes and apostrophes inside URL paths", () => {
     const content = "HTTP://EXAMPLE.COM/path https://example.com/O'Brien"
 
@@ -143,6 +205,26 @@ describe("detectLinks", () => {
       "HTTP://EXAMPLE.COM/path",
       "https://example.com/O'Brien",
     ])
+  })
+
+  test("does not include possessive or closing quote apostrophes in bare URLs", () => {
+    const content = "Visit https://example.com's docs, url('https://example.org'), or https://example.net/McDonald's."
+
+    const result = detectLinks([chunk(content)], { content, highlights: [] })
+
+    expect(result.filter((value) => value.link).map((value) => [value.text, value.link?.url])).toEqual([
+      ["https://example.com", "https://example.com"],
+      ["https://example.org", "https://example.org"],
+      ["https://example.net/McDonald's", "https://example.net/McDonald's"],
+    ])
+  })
+
+  test("trims alternating unmatched delimiters from a bare URL", () => {
+    const content = "https://example.com/path])])"
+
+    const result = detectLinks([chunk(content)], { content, highlights: [] })
+
+    expect(result.find((value) => value.link)?.link?.url).toBe("https://example.com/path")
   })
 
   test("does not guess source ranges for transformed chunks", () => {

@@ -14,6 +14,12 @@ interface LinkRange {
   url: string
 }
 
+interface MarkdownDestination {
+  start: number
+  end: number
+  url?: string
+}
+
 export function detectLinks(
   chunks: TextChunk[],
   context: { content: string; highlights: SimpleHighlight[]; sourceRanges?: ReadonlyArray<SourceRange> },
@@ -56,6 +62,7 @@ export function detectLinks(
 function collectLinkRanges(content: string, highlights: SimpleHighlight[]): LinkRange[] {
   const ranges: LinkRange[] = []
   const explicitDestinations: LinkRange[] = []
+  const markdownDestinations: MarkdownDestination[] = []
   const labels: SourceRange[] = []
   const excludedBareRanges: SourceRange[] = []
 
@@ -69,31 +76,50 @@ function collectLinkRanges(content: string, highlights: SimpleHighlight[]): Link
     }
     if (!URL_SCOPES.includes(group)) continue
 
-    const url =
+    const normalized =
       group === "markup.link.url" ? normalizeMarkdownDestination(content.slice(start, end)) : content.slice(start, end)
-    if (isLinkTargetSupported(url)) {
-      explicitDestinations.push({ start, end, url })
-      excludedBareRanges.push([start, end])
-    }
+    const url = isLinkTargetSupported(normalized) ? normalized : undefined
+    if (url) explicitDestinations.push({ start, end, url })
+    if (group === "markup.link.url") markdownDestinations.push({ start, end, url })
+    excludedBareRanges.push([start, end])
   }
 
   labels.sort(compareSourceRanges)
-  explicitDestinations.sort((left, right) => left.start - right.start)
+  const labelsByEnd = [...labels].sort((left, right) => left[1] - right[1] || left[0] - right[0])
+  markdownDestinations.sort((left, right) => left.start - right.start)
+  const pairedLabels = new Set<SourceRange>()
   let labelIndex = 0
   let latestLabel: SourceRange | undefined
-  for (const destination of explicitDestinations) {
-    while (labelIndex < labels.length && labels[labelIndex][1] <= destination.start) {
-      latestLabel = labels[labelIndex++]
+  for (const destination of markdownDestinations) {
+    while (labelIndex < labelsByEnd.length && labelsByEnd[labelIndex][1] <= destination.start) {
+      latestLabel = labelsByEnd[labelIndex++]
     }
-    if (latestLabel && content.slice(latestLabel[1], destination.start) === "](") {
-      ranges.push({ start: latestLabel[0], end: latestLabel[1], url: destination.url })
+    if (latestLabel && /^\]\(\s*$/u.test(content.slice(latestLabel[1], destination.start))) {
+      pairedLabels.add(latestLabel)
+      if (destination.url) ranges.push({ start: latestLabel[0], end: latestLabel[1], url: destination.url })
     }
-    ranges.push(destination)
     latestLabel = undefined
   }
+  ranges.push(...explicitDestinations)
 
   excludedBareRanges.sort(compareSourceRanges)
   collectBareHttpUrls(content, excludedBareRanges, ranges)
+  const referenceDefinitions = new Set(
+    labels
+      .filter((label) => content[label[1]] === "]" && content[label[1] + 1] === ":")
+      .map((label) => labelKey(content, label)),
+  )
+  for (const label of labels) {
+    const isBracketLabel = content[label[0] - 1] === "[" && content[label[1]] === "]"
+    const isImageDescription = content[label[0] - 2] === "!"
+    const isReference = content[label[1] + 1] === "[" || referenceDefinitions.has(labelKey(content, label))
+    if (pairedLabels.has(label) || !isBracketLabel || isImageDescription || isReference) continue
+    const labelRanges: LinkRange[] = []
+    collectBareHttpUrls(content.slice(label[0], label[1]), [], labelRanges)
+    for (const range of labelRanges) {
+      ranges.push({ start: range.start + label[0], end: range.end + label[0], url: range.url })
+    }
+  }
   ranges.sort((left, right) => left.start - right.start || left.end - right.end)
   return ranges
 }
@@ -191,25 +217,55 @@ function previousCodePoint(content: string, end: number): string {
 }
 
 function trimUrlEnd(content: string, start: number, initialEnd: number): number {
-  let end = initialEnd
-  while (end > start && /[.,;:!?']/.test(content[end - 1])) end--
+  const balances = new Map<string, number>([
+    [")", 0],
+    ["]", 0],
+    ["}", 0],
+  ])
+  for (let index = start; index < initialEnd; index++) {
+    const character = content[index]
+    if (character === "(") balances.set(")", balances.get(")")! + 1)
+    else if (character === "[") balances.set("]", balances.get("]")! + 1)
+    else if (character === "{") balances.set("}", balances.get("}")! + 1)
+    else if (balances.has(character)) balances.set(character, balances.get(character)! - 1)
+  }
 
-  for (const [open, close] of [
-    ["(", ")"],
-    ["[", "]"],
-    ["{", "}"],
-  ] as const) {
-    let balance = 0
-    for (let index = start; index < end; index++) {
-      if (content[index] === open) balance++
-      else if (content[index] === close) balance--
-    }
-    while (balance < 0 && content[end - 1] === close) {
+  let end = initialEnd
+  let removedTerminalApostrophe = false
+  while (end > start) {
+    const character = content[end - 1]
+    if (/[.,;:!?']/.test(character)) {
+      removedTerminalApostrophe ||= character === "'"
       end--
-      balance++
+      continue
     }
+    if (
+      !removedTerminalApostrophe &&
+      end - start >= 2 &&
+      content[end - 2] === "'" &&
+      /s/i.test(character) &&
+      isAuthorityPossessive(content, start, end)
+    ) {
+      end -= 2
+      continue
+    }
+    const balance = balances.get(character)
+    if (balance !== undefined && balance < 0) {
+      balances.set(character, balance + 1)
+      end--
+      continue
+    }
+    break
   }
   return end
+}
+
+function isAuthorityPossessive(content: string, start: number, end: number): boolean {
+  const authorityStart = start + getHttpSchemeLength(content, start)
+  for (let index = authorityStart; index < end - 2; index++) {
+    if (content[index] === "/" || content[index] === "?" || content[index] === "#") return false
+  }
+  return true
 }
 
 function isHttpUrl(url: string): boolean {
@@ -280,4 +336,8 @@ function getExactSequentialSourceRanges(chunks: TextChunk[], content: string): S
 
 function compareSourceRanges(left: SourceRange, right: SourceRange): number {
   return left[0] - right[0] || left[1] - right[1]
+}
+
+function labelKey(content: string, range: SourceRange): string {
+  return content.slice(range[0], range[1]).trim().replace(/\s+/gu, " ").toLowerCase()
 }

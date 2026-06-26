@@ -31,9 +31,6 @@
     "./bun-plugin": {
       "import": "./scripts/solid-plugin.ts"
     },
-    "./babel-plugin": {
-      "import": "./scripts/babel-plugin.ts"
-    },
     "./runtime-plugin-support": {
       "types": "./scripts/runtime-plugin-support.ts",
       "import": "./scripts/runtime-plugin-support.ts"

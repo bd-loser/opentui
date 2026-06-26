@@ -987,24 +987,5 @@ describe("SolidJS Renderer - Control Flow Components", () => {
       await testSetup.renderOnce()
       expect(testSetup.captureCharFrame()).toContain(content())
     })
-
-    it("decodes terminated entities in static text properties", async () => {
-      testSetup = await testRender(
-        () => (
-          <box>
-            <text content="&lt;&amp;&gt;" />
-            <ascii_font text="&lt;&amp;&gt;" font="tiny" />
-          </box>
-        ),
-        { width: 60, height: 5 },
-      )
-
-      await testSetup.renderOnce()
-
-      const text = testSetup.renderer.root.getChildren()[0]!.getChildren()[0]!
-      const asciiFont = testSetup.renderer.root.getChildren()[0]!.getChildren()[1]!
-      expect(text.content.chunks.map((chunk) => chunk.text).join("")).toBe("<&>")
-      expect(asciiFont.text).toBe("<&>")
-    })
   })
 })

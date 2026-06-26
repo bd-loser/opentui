@@ -26,7 +26,6 @@
     "jsx-runtime.d.ts",
     "jsx-dev-runtime.d.ts",
     // See the comment below
-    "scripts/babel-plugin.ts",
     "scripts/solid-plugin.ts",
     "scripts/solid-transform.ts",
     "scripts/runtime-plugin-support.ts",

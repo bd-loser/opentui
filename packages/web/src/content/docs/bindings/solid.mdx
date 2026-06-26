@@ -60,11 +60,13 @@ Node support currently targets compiled Solid TSX. Use Solid's universal transfo
 
 ```js
 import ts from "@babel/preset-typescript"
+import opentui from "@opentui/solid/babel-plugin"
 import moduleResolver from "babel-plugin-module-resolver"
 import solid from "babel-preset-solid"
 
 export default {
   plugins: [
+    opentui,
     [
       moduleResolver,
       {

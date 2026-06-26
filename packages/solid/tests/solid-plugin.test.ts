@@ -2,7 +2,11 @@ import { describe, expect, it } from "bun:test"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { transformAsync, types as t, type NodePath } from "@babel/core"
+import ts from "@babel/preset-typescript"
 import { runtimeModuleIdForSpecifier } from "@opentui/core/runtime-plugin"
+import solid from "babel-preset-solid"
+import opentui from "../scripts/babel-plugin.js"
 import { createSolidTransformPlugin } from "../scripts/solid-plugin.js"
 
 type ResolveCallback = (args: { path: string; importer: string }) => unknown | Promise<unknown>
@@ -74,6 +78,55 @@ const createTempTsxFile = (source: string): { path: string; dispose: () => void 
 }
 
 describe("solid transform plugin", () => {
+  it("preserves static and dynamic text property provenance", async () => {
+    const transformed = await transformAsync(
+      [
+        'const staticNode = <text content="&register &lt;&amp;&gt;" />',
+        'const dynamicNode = <text content={"&lt;&amp;&gt;"} />',
+      ].join("\n"),
+      {
+        filename: "fixture.tsx",
+        configFile: false,
+        babelrc: false,
+        plugins: [opentui],
+        presets: [[solid, { moduleName: "@opentui/solid", generate: "universal" }], [ts]],
+      },
+    )
+
+    expect(transformed?.code).toContain('"&register <&>"')
+    expect(transformed?.code).toContain('"&lt;&amp;&gt;"')
+  })
+
+  it("escapes decoded entities in generated string literals", async () => {
+    const transformed = await transformAsync('const node = <text content="&quot; &bsol;n &#10; \\&quot;" />', {
+      filename: "fixture.tsx",
+      configFile: false,
+      babelrc: false,
+      plugins: [opentui],
+      presets: [[solid, { moduleName: "@opentui/solid", generate: "universal" }], [ts]],
+    })
+    const propertyValues: string[] = []
+
+    await transformAsync(transformed?.code, {
+      configFile: false,
+      babelrc: false,
+      plugins: [
+        () => ({
+          visitor: {
+            CallExpression(path: NodePath<t.CallExpression>) {
+              const value = path.node.arguments[2]
+              if (t.isIdentifier(path.node.callee, { name: "_$setProp" }) && t.isStringLiteral(value)) {
+                propertyValues.push(value.value)
+              }
+            },
+          },
+        }),
+      ],
+    })
+
+    expect(propertyValues).toEqual(['" \\n \n "'])
+  })
+
   it("does not register runtime module resolvers by default", () => {
     const { build, resolveFilters, modules } = createMockBuild()
     createSolidTransformPlugin().setup(build as any)

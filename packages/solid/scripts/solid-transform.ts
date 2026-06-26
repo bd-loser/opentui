@@ -1,10 +1,11 @@
-import { transformAsync } from "@babel/core"
+import { transformAsync, type PluginItem } from "@babel/core"
 // @ts-expect-error - Types not important.
 import ts from "@babel/preset-typescript"
 // @ts-expect-error - Types not important.
 import moduleResolver from "babel-plugin-module-resolver"
 // @ts-expect-error - Types not important.
 import solid from "babel-preset-solid"
+import decodeStaticTextProperties from "./babel-plugin.js"
 
 export type ResolveImportPath = (specifier: string) => string | null
 
@@ -42,18 +43,18 @@ export function resolveNodeSolidRuntimeImport(specifier: string): string | null 
 
 export async function transformSolidSource(code: string, options: TransformSolidSourceOptions): Promise<string> {
   const filename = stripQueryAndHash(options.filename)
-  const plugins = options.resolvePath
-    ? [
-        [
-          moduleResolver,
-          {
-            resolvePath(specifier: string) {
-              return options.resolvePath?.(specifier) ?? specifier
-            },
-          },
-        ],
-      ]
-    : []
+  const plugins: PluginItem[] = jsxPattern.test(filename) ? [decodeStaticTextProperties] : []
+
+  if (options.resolvePath) {
+    plugins.push([
+      moduleResolver,
+      {
+        resolvePath(specifier: string) {
+          return options.resolvePath?.(specifier) ?? specifier
+        },
+      },
+    ])
+  }
 
   const presets = []
 

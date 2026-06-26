@@ -231,6 +231,7 @@ transpileEntryPoint("jsx-dev-runtime.ts", "jsx-dev-runtime.js")
 mkdirSync(join(distDir, "scripts"), { recursive: true })
 
 transpileEntryPoint("scripts/solid-plugin.ts", "scripts/solid-plugin.js")
+transpileEntryPoint("scripts/babel-plugin.ts", "scripts/babel-plugin.js")
 transpileEntryPoint("scripts/solid-transform.ts", "scripts/solid-transform.js")
 transpileEntryPoint("scripts/preload.ts", "scripts/preload.js")
 transpileEntryPoint("scripts/runtime-plugin-support.ts", "scripts/runtime-plugin-support.js")
@@ -269,6 +270,11 @@ const exports = {
     bun: "./scripts/solid-plugin.js",
     node: "./scripts/solid-plugin.node.js",
     default: "./scripts/solid-plugin.node.js",
+  },
+  "./babel-plugin": {
+    types: "./scripts/babel-plugin.d.ts",
+    import: "./scripts/babel-plugin.js",
+    default: "./scripts/babel-plugin.js",
   },
   "./runtime-plugin-support": {
     types: "./scripts/runtime-plugin-support.d.ts",

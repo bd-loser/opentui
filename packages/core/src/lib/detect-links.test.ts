@@ -120,6 +120,45 @@ describe("detectLinks", () => {
     expect(result.every((value) => value.link === undefined)).toBe(true)
   })
 
+  test("gives an explicit link label precedence over a bare URL inside it", () => {
+    const content = "[https://shown.example extra](https://target.example)"
+    const destinationStart = content.lastIndexOf("https://")
+    const highlights: SimpleHighlight[] = [
+      [1, content.indexOf("]"), "markup.link.label"],
+      [destinationStart, content.length - 1, "markup.link.url"],
+    ]
+
+    const result = detectLinks([chunk(content)], { content, highlights })
+    expect(result.find((value) => value.text === "https://shown.example extra")?.link?.url).toBe(
+      "https://target.example",
+    )
+  })
+
+  test("detects case-insensitive schemes and apostrophes inside URL paths", () => {
+    const content = "HTTP://EXAMPLE.COM/path https://example.com/O'Brien"
+
+    const result = detectLinks([chunk(content)], { content, highlights: [] })
+
+    expect(result.filter((value) => value.link).map((value) => value.text)).toEqual([
+      "HTTP://EXAMPLE.COM/path",
+      "https://example.com/O'Brien",
+    ])
+  })
+
+  test("does not guess source ranges for transformed chunks", () => {
+    const content = "[label](https://example.com)"
+    const highlights: SimpleHighlight[] = [
+      [1, 6, "markup.link.label"],
+      [8, 27, "markup.link.url"],
+    ]
+    const transformed = [chunk("label"), chunk(" "), chunk("https://example.com")]
+
+    const result = detectLinks(transformed, { content, highlights })
+
+    expect(result).toBe(transformed)
+    expect(result.every((value) => value.link === undefined)).toBe(true)
+  })
+
   test("should set link on markup.link.url chunks", () => {
     const content = "[Click here](https://example.com)"
     const highlights: SimpleHighlight[] = [
@@ -199,7 +238,17 @@ describe("detectLinks", () => {
       chunk(""), // concealed `)`
     ]
 
-    const result = detectLinks(chunks, { content, highlights })
+    const result = detectLinks(chunks, {
+      content,
+      highlights,
+      sourceRanges: [
+        [0, 1],
+        [1, 11],
+        [11, 13],
+        [13, 32],
+        [32, 33],
+      ],
+    })
 
     // The URL chunk should still get its link despite concealed offsets
     expect(result.find((c) => c.text === "https://example.com")!.link).toEqual({ url: "https://example.com" })

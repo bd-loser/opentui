@@ -4,6 +4,7 @@ import type { SimpleHighlight } from "./tree-sitter/types.js"
 const URL_SCOPES = ["markup.link.url", "string.special.url"]
 const RAW_SCOPES = ["markup.raw", "markup.raw.block"]
 const MAX_LINK_TARGET_BYTES = 512
+const textEncoder = new TextEncoder()
 
 type SourceRange = readonly [start: number, end: number]
 
@@ -20,7 +21,8 @@ export function detectLinks(
   const ranges = collectLinkRanges(context.content, context.highlights)
   if (ranges.length === 0) return chunks
 
-  const sourceRanges = context.sourceRanges ?? getSequentialSourceRanges(chunks)
+  const sourceRanges = context.sourceRanges ?? getExactSequentialSourceRanges(chunks, context.content)
+  if (!sourceRanges) return chunks
   const result: TextChunk[] = []
   let linkIndex = 0
 
@@ -55,16 +57,24 @@ function collectLinkRanges(content: string, highlights: SimpleHighlight[]): Link
   const ranges: LinkRange[] = []
   const explicitDestinations: LinkRange[] = []
   const labels: SourceRange[] = []
-  const rawRanges: SourceRange[] = []
+  const excludedBareRanges: SourceRange[] = []
 
   for (const [start, end, group] of highlights) {
-    if (group === "markup.link.label") labels.push([start, end])
-    if (RAW_SCOPES.some((scope) => group === scope || group.startsWith(`${scope}.`))) rawRanges.push([start, end])
+    if (group === "markup.link.label") {
+      labels.push([start, end])
+      excludedBareRanges.push([start, end])
+    }
+    if (RAW_SCOPES.some((scope) => group === scope || group.startsWith(`${scope}.`))) {
+      excludedBareRanges.push([start, end])
+    }
     if (!URL_SCOPES.includes(group)) continue
 
     const url =
       group === "markup.link.url" ? normalizeMarkdownDestination(content.slice(start, end)) : content.slice(start, end)
-    if (isLinkTargetSupported(url)) explicitDestinations.push({ start, end, url })
+    if (isLinkTargetSupported(url)) {
+      explicitDestinations.push({ start, end, url })
+      excludedBareRanges.push([start, end])
+    }
   }
 
   labels.sort(compareSourceRanges)
@@ -82,8 +92,8 @@ function collectLinkRanges(content: string, highlights: SimpleHighlight[]): Link
     latestLabel = undefined
   }
 
-  rawRanges.sort(compareSourceRanges)
-  collectBareHttpUrls(content, rawRanges, explicitDestinations, ranges)
+  excludedBareRanges.sort(compareSourceRanges)
+  collectBareHttpUrls(content, excludedBareRanges, ranges)
   ranges.sort((left, right) => left.start - right.start || left.end - right.end)
   return ranges
 }
@@ -108,47 +118,53 @@ function normalizeMarkdownDestination(destination: string): string {
   }
 }
 
-function collectBareHttpUrls(
-  content: string,
-  rawRanges: SourceRange[],
-  explicitDestinations: LinkRange[],
-  ranges: LinkRange[],
-): void {
-  let rawIndex = 0
-  let explicitIndex = 0
+function collectBareHttpUrls(content: string, excludedRanges: SourceRange[], ranges: LinkRange[]): void {
+  let excludedIndex = 0
   let index = 0
 
   while (index < content.length) {
-    const hasScheme = content.startsWith("http://", index) || content.startsWith("https://", index)
+    const schemeLength = getHttpSchemeLength(content, index)
     const hasStartBoundary = index === 0 || !/[\p{L}\p{N}_@]/u.test(previousCodePoint(content, index))
-    if (!hasScheme || !hasStartBoundary) {
+    if (schemeLength === 0 || !hasStartBoundary) {
       index++
       continue
     }
 
-    while (rawIndex < rawRanges.length && rawRanges[rawIndex][1] <= index) rawIndex++
-    while (explicitIndex < explicitDestinations.length && explicitDestinations[explicitIndex].end <= index)
-      explicitIndex++
+    while (excludedIndex < excludedRanges.length && excludedRanges[excludedIndex][1] <= index) excludedIndex++
 
-    let end = index
+    let end = index + schemeLength
     let hasControl = false
-    const nextRawStart = rawIndex < rawRanges.length ? rawRanges[rawIndex][0] : content.length
-    while (end < content.length && end < nextRawStart && !isUrlBoundary(content.charCodeAt(end), content[end])) {
+    const nextExcludedStart = excludedIndex < excludedRanges.length ? excludedRanges[excludedIndex][0] : content.length
+    while (end < content.length && end < nextExcludedStart && !isUrlBoundary(content.charCodeAt(end), content[end])) {
       if (content.charCodeAt(end) < 0x20 || content.charCodeAt(end) === 0x7f) hasControl = true
       end++
     }
 
-    const insideRaw = rawIndex < rawRanges.length && rawRanges[rawIndex][0] <= index && index < rawRanges[rawIndex][1]
-    const insideExplicit =
-      explicitIndex < explicitDestinations.length &&
-      explicitDestinations[explicitIndex].start <= index &&
-      index < explicitDestinations[explicitIndex].end
+    const insideExcluded =
+      excludedIndex < excludedRanges.length &&
+      excludedRanges[excludedIndex][0] <= index &&
+      index < excludedRanges[excludedIndex][1]
     const trimmedEnd = trimUrlEnd(content, index, end)
     const url = content.slice(index, trimmedEnd)
-    if (!hasControl && !insideRaw && !insideExplicit && isHttpUrl(url))
-      ranges.push({ start: index, end: trimmedEnd, url })
+    if (!hasControl && !insideExcluded && isHttpUrl(url)) ranges.push({ start: index, end: trimmedEnd, url })
     index = Math.max(end, index + 1)
   }
+}
+
+function getHttpSchemeLength(content: string, start: number): number {
+  if (matchesAsciiCaseInsensitive(content, start, "https://")) return 8
+  if (matchesAsciiCaseInsensitive(content, start, "http://")) return 7
+  return 0
+}
+
+function matchesAsciiCaseInsensitive(content: string, start: number, expected: string): boolean {
+  if (start + expected.length > content.length) return false
+  for (let offset = 0; offset < expected.length; offset++) {
+    const code = content.charCodeAt(start + offset)
+    const lowerCode = code >= 0x41 && code <= 0x5a ? code + 0x20 : code
+    if (lowerCode !== expected.charCodeAt(offset)) return false
+  }
+  return true
 }
 
 function isUrlBoundary(code: number, character: string): boolean {
@@ -159,8 +175,7 @@ function isUrlBoundary(code: number, character: string): boolean {
     code === 0x0d ||
     character === "<" ||
     character === ">" ||
-    character === '"' ||
-    character === "'"
+    character === '"'
   )
 }
 
@@ -177,7 +192,7 @@ function previousCodePoint(content: string, end: number): string {
 
 function trimUrlEnd(content: string, start: number, initialEnd: number): number {
   let end = initialEnd
-  while (end > start && /[.,;:!?]/.test(content[end - 1])) end--
+  while (end > start && /[.,;:!?']/.test(content[end - 1])) end--
 
   for (const [open, close] of [
     ["(", ")"],
@@ -212,7 +227,7 @@ function isSafeLinkTarget(url: string): boolean {
 }
 
 export function isLinkTargetSupported(url: string): boolean {
-  return isSafeLinkTarget(url) && new TextEncoder().encode(url).length <= MAX_LINK_TARGET_BYTES
+  return isSafeLinkTarget(url) && textEncoder.encode(url).length <= MAX_LINK_TARGET_BYTES
 }
 
 export function normalizeMarkdownLinkTarget(destination: string): string {
@@ -251,14 +266,16 @@ function splitChunkAtLinks(
   }
 }
 
-function getSequentialSourceRanges(chunks: TextChunk[]): SourceRange[] {
+function getExactSequentialSourceRanges(chunks: TextChunk[], content: string): SourceRange[] | undefined {
   const ranges: SourceRange[] = []
   let offset = 0
   for (const chunk of chunks) {
     ranges.push([offset, offset + chunk.text.length])
     offset += chunk.text.length
   }
-  return ranges
+  return offset === content.length && chunks.every((chunk, index) => chunk.text === content.slice(...ranges[index]))
+    ? ranges
+    : undefined
 }
 
 function compareSourceRanges(left: SourceRange, right: SourceRange): number {

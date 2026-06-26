@@ -178,7 +178,7 @@ describe("SelectRenderable", () => {
       })
 
       expect(select.showSelectionIndicator).toBe(false)
-      expect(captureCharFrame().split("\n")[0]).toStartWith(" Option 1")
+      expect(captureCharFrame().split("\n")[0].startsWith(" Option 1")).toBe(true)
     })
 
     test("should restore the default when reset", async () => {
@@ -194,7 +194,7 @@ describe("SelectRenderable", () => {
       await renderOnce()
 
       expect(select.showSelectionIndicator).toBe(true)
-      expect(captureCharFrame().split("\n")[0]).toStartWith(" ▶ Option 1")
+      expect(captureCharFrame().split("\n")[0].startsWith(" ▶ Option 1")).toBe(true)
     })
   })
 

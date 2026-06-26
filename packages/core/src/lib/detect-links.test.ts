@@ -9,6 +9,117 @@ function chunk(text: string): TextChunk {
 }
 
 describe("detectLinks", () => {
+  test("detects bare HTTP URLs and splits surrounding text", () => {
+    const content = "See https://example.com/docs, then continue"
+    const chunks = [chunk(content)]
+
+    const result = detectLinks(chunks, { content, highlights: [], sourceRanges: [[0, content.length]] })
+
+    expect(result.map(({ text, link }) => [text, link?.url])).toEqual([
+      ["See ", undefined],
+      ["https://example.com/docs", "https://example.com/docs"],
+      [", then continue", undefined],
+    ])
+  })
+
+  test("keeps balanced URL parentheses and trims unmatched punctuation", () => {
+    const content = 'See https://example.com/a((b)). Then "https://example.org/x".'
+    const chunks = [chunk(content)]
+
+    const result = detectLinks(chunks, { content, highlights: [], sourceRanges: [[0, content.length]] })
+    const links = result.filter((value) => value.link).map((value) => value.link!.url)
+
+    expect(links).toEqual(["https://example.com/a((b))", "https://example.org/x"])
+  })
+
+  test("does not detect URLs in raw Markdown ranges or across control characters", () => {
+    const content = "`https://code.example` https://bad.example\u0007suffix"
+    const highlights: SimpleHighlight[] = [[0, 22, "markup.raw"]]
+    const chunks = [chunk(content)]
+
+    const result = detectLinks(chunks, { content, highlights, sourceRanges: [[0, content.length]] })
+
+    expect(result.every((value) => value.link === undefined)).toBe(true)
+  })
+
+  test("normalizes angle-bracket destinations and Markdown escapes", () => {
+    const content = String.raw`[label](<https://example.com/a\(b\)>)`
+    const destinationStart = content.indexOf("<")
+    const destinationEnd = content.lastIndexOf(">") + 1
+    const highlights: SimpleHighlight[] = [
+      [1, 6, "markup.link.label"],
+      [destinationStart, destinationEnd, "markup.link.url"],
+    ]
+    const chunks = [chunk(content)]
+
+    const result = detectLinks(chunks, { content, highlights, sourceRanges: [[0, content.length]] })
+    const linked = result.filter((value) => value.link)
+
+    expect(linked.length).toBeGreaterThan(0)
+    expect(linked.every((value) => value.link?.url === "https://example.com/a(b)")).toBe(true)
+  })
+
+  test("does not associate an unrelated label with a later autolink", () => {
+    const content = "[shortcut] then <https://example.com>"
+    const urlStart = content.indexOf("<")
+    const highlights: SimpleHighlight[] = [
+      [1, 9, "markup.link.label"],
+      [urlStart, content.length, "markup.link.url"],
+    ]
+    const chunks = [chunk(content)]
+
+    const result = detectLinks(chunks, { content, highlights, sourceRanges: [[0, content.length]] })
+    const shortcut = result.find((value) => value.text.includes("shortcut"))
+
+    expect(shortcut?.link).toBeUndefined()
+  })
+
+  test("percent-encodes spaces in angle-bracket destinations", () => {
+    const content = "[label](<https://example.com/a b>)"
+    const start = content.indexOf("<")
+    const highlights: SimpleHighlight[] = [
+      [1, 6, "markup.link.label"],
+      [start, content.indexOf(">") + 1, "markup.link.url"],
+    ]
+
+    const result = detectLinks([chunk(content)], { content, highlights, sourceRanges: [[0, content.length]] })
+
+    expect(result.find((value) => value.link)?.link?.url).toBe("https://example.com/a%20b")
+  })
+
+  test("preserves valid percent escapes in Markdown destinations", () => {
+    const content = "[label](https://example.com/a%20b)"
+    const start = content.indexOf("https://")
+    const highlights: SimpleHighlight[] = [
+      [1, 6, "markup.link.label"],
+      [start, content.indexOf(")"), "markup.link.url"],
+    ]
+
+    const result = detectLinks([chunk(content)], { content, highlights, sourceRanges: [[0, content.length]] })
+
+    expect(result.find((value) => value.link)?.link?.url).toBe("https://example.com/a%20b")
+  })
+
+  test("stops a bare URL before an adjacent raw Markdown range", () => {
+    const content = "https://outside.example`https://inside.example`"
+    const rawStart = content.indexOf("`")
+    const highlights: SimpleHighlight[] = [[rawStart, content.length, "markup.raw"]]
+
+    const result = detectLinks([chunk(content)], { content, highlights, sourceRanges: [[0, content.length]] })
+    const linked = result.filter((value) => value.link)
+
+    expect(linked.map((value) => value.text).join("")).toBe("https://outside.example")
+    expect(linked.every((value) => value.link?.url === "https://outside.example")).toBe(true)
+  })
+
+  test("does not detect a URL joined to an astral Unicode letter", () => {
+    const content = "𐐀https://example.com"
+
+    const result = detectLinks([chunk(content)], { content, highlights: [], sourceRanges: [[0, content.length]] })
+
+    expect(result.every((value) => value.link === undefined)).toBe(true)
+  })
+
   test("should set link on markup.link.url chunks", () => {
     const content = "[Click here](https://example.com)"
     const highlights: SimpleHighlight[] = [

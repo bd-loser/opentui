@@ -174,6 +174,47 @@ describe("BoxRenderable - borderStyle validation", () => {
   })
 })
 
+describe("BoxRenderable - clearing borderStyle", () => {
+  test.each([null, undefined])("setting borderStyle to %p removes an existing border", async (value) => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "clear-border-box",
+      borderStyle: "single",
+      border: true,
+      width: 10,
+      height: 5,
+    })
+
+    testRenderer.root.add(box)
+    await renderOnce()
+
+    expect(getCellChar(0, 0)).toBe("┌")
+
+    box.borderStyle = value
+    await renderOnce()
+
+    expect(box.border).toBe(false)
+    expect(getCellChar(0, 0)).not.toBe("┌")
+  })
+
+  test.each([null, undefined])("setting borderStyle to %p on a borderless box does not add a border", async (value) => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "still-borderless-box",
+      border: false,
+      width: 10,
+      height: 5,
+    })
+
+    testRenderer.root.add(box)
+    await renderOnce()
+
+    box.borderStyle = value
+    await renderOnce()
+
+    expect(box.border).toBe(false)
+    expect(getCellChar(0, 0)).not.toBe("┌")
+  })
+})
+
 describe("BoxRenderable - border titles (top and bottom)", () => {
   test("renders top and bottom titles on their respective borders", async () => {
     const box = new BoxRenderable(testRenderer, {

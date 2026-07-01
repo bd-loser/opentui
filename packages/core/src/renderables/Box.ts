@@ -158,7 +158,13 @@ export class BoxRenderable extends Renderable {
     return this._borderStyle
   }
 
-  public set borderStyle(value: BorderStyle) {
+  public set borderStyle(value: BorderStyle | null | undefined) {
+    // Clearing the style (null/undefined) removes the border instead of falling
+    // back to the default style and force-enabling it through initializeBorder().
+    if (value == null) {
+      this.border = false
+      return
+    }
     const _value = parseBorderStyle(value, this._defaultOptions.borderStyle)
     if (this._borderStyle !== _value || !this._border) {
       this._borderStyle = _value

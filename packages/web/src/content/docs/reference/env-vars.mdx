@@ -31,6 +31,7 @@ OpenTUI reads environment variables at runtime. Bun loads `.env` automatically, 
 | `OPENTUI_FORCE_EXPLICIT_WIDTH`  | `string`  | -       | Force explicit width detection (`true`/`1` or `false`/`0`)      |
 | `OPENTUI_NOTIFICATION_PROTOCOL` | `string`  | `auto`  | Force notification protocol (`osc9`, `osc777`, `osc99`, `none`) |
 | `OPENTUI_NOTIFICATIONS`         | `boolean` | `true`  | Disable terminal notification detection when false              |
+| `OPENTUI_TMUX_CLIPBOARD_MODE`   | `string`  | `passthrough` | tmux OSC 52 clipboard transport (`passthrough`, `raw`, `off`) |
 | `OTUI_USE_CONSOLE`              | `boolean` | `true`  | Enable global `console.*` capture for the built-in overlay      |
 | `SHOW_CONSOLE`                  | `boolean` | `false` | Open the built-in console overlay at startup                    |
 | `OTUI_DUMP_CAPTURES`            | `boolean` | `false` | Dump captured stdout and console caches from the exit handler   |
@@ -45,6 +46,7 @@ OpenTUI reads environment variables at runtime. Bun loads `.env` automatically, 
 - Linux uses the glibc native package by default. Set `OPENTUI_LIBC=musl` before importing OpenTUI, or define `process.env.OPENTUI_LIBC` as `"musl"` at standalone build time, to use the musl native package. See [Standalone Executables](/docs/reference/standalone-executables).
 - `OPENTUI_NOTIFICATION_PROTOCOL=none` disables notifications. Protocol overrides should only be used when terminal detection cannot identify a supported notification protocol.
 - `OPENTUI_NOTIFICATIONS=0`, `false`, or `off` disables notifications without changing other terminal capability detection.
+- `OPENTUI_TMUX_CLIPBOARD_MODE=raw` emits raw OSC 52 inside tmux for `set -g set-clipboard on`; `passthrough` preserves the default DCS passthrough behavior, and `off` disables OSC 52 while inside tmux.
 - `OTUI_PALETTE_IDLE_TIMEOUT_MS` bounds palette detection when a terminal reports OSC support but does not answer follow-up color queries.
 - Disable global `console.*` capture with `OTUI_USE_CONSOLE=false`. `consoleMode` only changes the overlay surface.
 - `OTUI_USE_ALTERNATE_SCREEN=false` forces `"main-screen"`; `true` forces `"alternate-screen"`. When set, it overrides `screenMode`.

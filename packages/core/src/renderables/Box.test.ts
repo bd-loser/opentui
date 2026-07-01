@@ -215,6 +215,47 @@ describe("BoxRenderable - clearing borderStyle", () => {
   })
 })
 
+describe("BoxRenderable - clearing border colors", () => {
+  test.each([null, undefined])("setting borderColor to %p on a borderless box does not add a border", async (value) => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "border-color-box",
+      border: false,
+      width: 10,
+      height: 5,
+    })
+
+    testRenderer.root.add(box)
+    await renderOnce()
+
+    box.borderColor = value
+    await renderOnce()
+
+    expect(box.border).toBe(false)
+    expect(getCellChar(0, 0)).not.toBe("┌")
+  })
+
+  test.each([null, undefined])(
+    "setting focusedBorderColor to %p on a borderless box does not add a border",
+    async (value) => {
+      const box = new BoxRenderable(testRenderer, {
+        id: "focused-border-color-box",
+        border: false,
+        width: 10,
+        height: 5,
+      })
+
+      testRenderer.root.add(box)
+      await renderOnce()
+
+      box.focusedBorderColor = value
+      await renderOnce()
+
+      expect(box.border).toBe(false)
+      expect(getCellChar(0, 0)).not.toBe("┌")
+    },
+  )
+})
+
 describe("BoxRenderable - border titles (top and bottom)", () => {
   test("renders top and bottom titles on their respective borders", async () => {
     const box = new BoxRenderable(testRenderer, {

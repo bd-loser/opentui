@@ -178,11 +178,15 @@ export class BoxRenderable extends Renderable {
     return this._borderColor
   }
 
-  public set borderColor(value: RGBA | string) {
+  public set borderColor(value: RGBA | string | null | undefined) {
     const newColor = parseColor(value ?? this._defaultOptions.borderColor)
     if (this._borderColor !== newColor) {
       this._borderColor = newColor
-      this.initializeBorder()
+      // Clearing the color (null/undefined) resets it to the default without
+      // force-enabling a border on an otherwise borderless box.
+      if (value != null) {
+        this.initializeBorder()
+      }
       this.requestRender()
     }
   }
@@ -191,11 +195,15 @@ export class BoxRenderable extends Renderable {
     return this._focusedBorderColor
   }
 
-  public set focusedBorderColor(value: RGBA | string) {
+  public set focusedBorderColor(value: RGBA | string | null | undefined) {
     const newColor = parseColor(value ?? this._defaultOptions.focusedBorderColor)
     if (this._focusedBorderColor !== newColor) {
       this._focusedBorderColor = newColor
-      this.initializeBorder()
+      // Clearing the color (null/undefined) resets it to the default without
+      // force-enabling a border on an otherwise borderless box.
+      if (value != null) {
+        this.initializeBorder()
+      }
       if (this._focused) {
         this.requestRender()
       }

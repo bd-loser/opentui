@@ -175,11 +175,10 @@ describe("BoxRenderable - borderStyle validation", () => {
 })
 
 describe("BoxRenderable - clearing borderStyle", () => {
-  test.each([null, undefined])("setting borderStyle to %p removes an existing border", async (value) => {
+  test.each([null, undefined])("setting borderStyle to %p removes an implicitly enabled border", async (value) => {
     const box = new BoxRenderable(testRenderer, {
       id: "clear-border-box",
       borderStyle: "single",
-      border: true,
       width: 10,
       height: 5,
     })
@@ -194,6 +193,77 @@ describe("BoxRenderable - clearing borderStyle", () => {
 
     expect(box.border).toBe(false)
     expect(getCellChar(0, 0)).not.toBe("┌")
+  })
+
+  test.each([null, undefined])(
+    "setting borderStyle to %p keeps an explicit border with the default style",
+    async (value) => {
+      const box = new BoxRenderable(testRenderer, {
+        id: "explicit-border-box",
+        borderStyle: "double",
+        border: true,
+        width: 10,
+        height: 5,
+      })
+
+      testRenderer.root.add(box)
+      await renderOnce()
+
+      expect(getCellChar(0, 0)).toBe("╔")
+
+      box.borderStyle = value
+      await renderOnce()
+
+      expect(box.border).toBe(true)
+      expect(box.borderStyle).toBe("single")
+      expect(getCellChar(0, 0)).toBe("┌")
+    },
+  )
+
+  test.each([null, undefined])(
+    "setting borderStyle to %p keeps a border enabled through the border setter",
+    async (value) => {
+      const box = new BoxRenderable(testRenderer, {
+        id: "setter-border-box",
+        width: 10,
+        height: 5,
+      })
+
+      testRenderer.root.add(box)
+      await renderOnce()
+
+      box.borderStyle = "double"
+      box.border = true
+      box.borderStyle = value
+      await renderOnce()
+
+      expect(box.border).toBe(true)
+      expect(getCellChar(0, 0)).toBe("┌")
+    },
+  )
+
+  test("borderStyle toggles an implicit border on, off, and on again", async () => {
+    const box = new BoxRenderable(testRenderer, {
+      id: "toggle-border-box",
+      width: 10,
+      height: 5,
+    })
+
+    testRenderer.root.add(box)
+    await renderOnce()
+
+    box.borderStyle = "double"
+    await renderOnce()
+    expect(getCellChar(0, 0)).toBe("╔")
+
+    box.borderStyle = undefined
+    await renderOnce()
+    expect(box.border).toBe(false)
+    expect(getCellChar(0, 0)).not.toBe("╔")
+
+    box.borderStyle = "double"
+    await renderOnce()
+    expect(getCellChar(0, 0)).toBe("╔")
   })
 
   test.each([null, undefined])("setting borderStyle to %p on a borderless box does not add a border", async (value) => {

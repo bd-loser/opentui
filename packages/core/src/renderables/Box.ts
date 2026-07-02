@@ -46,6 +46,7 @@ function isGapType(value: any): value is number | undefined {
 export class BoxRenderable extends Renderable {
   protected _backgroundColor: RGBA
   protected _border: boolean | BorderSides[]
+  private _implicitBorder = false
   protected _borderStyle: BorderStyle
   protected _borderColor: RGBA
   protected _focusedBorderColor: RGBA
@@ -84,6 +85,7 @@ export class BoxRenderable extends Renderable {
       (options.borderStyle || options.borderColor || options.focusedBorderColor || options.customBorderChars)
     ) {
       this._border = true
+      this._implicitBorder = true
     }
     this._borderStyle = parseBorderStyle(options.borderStyle, this._defaultOptions.borderStyle)
     this._borderColor = parseColor(options.borderColor || this._defaultOptions.borderColor)
@@ -114,6 +116,7 @@ export class BoxRenderable extends Renderable {
     // borderStyle, borderColor, focusedBorderColor
     if (this._border === false) {
       this._border = true
+      this._implicitBorder = true
       this.borderSides = getBorderSides(this._border)
       this.applyYogaBorders()
     }
@@ -146,6 +149,7 @@ export class BoxRenderable extends Renderable {
   }
 
   public set border(value: boolean | BorderSides[]) {
+    this._implicitBorder = false
     if (this._border !== value) {
       this._border = value
       this.borderSides = getBorderSides(value)
@@ -159,10 +163,23 @@ export class BoxRenderable extends Renderable {
   }
 
   public set borderStyle(value: BorderStyle | null | undefined) {
-    // Clearing the style (null/undefined) removes the border instead of falling
-    // back to the default style and force-enabling it through initializeBorder().
+    // Clearing the style (null/undefined) resets it to the default style and
+    // removes the border only when the border was implicitly enabled through
+    // initializeBorder(). An explicit border option keeps a default-styled
+    // border, so prop application order cannot clobber it.
     if (value == null) {
-      this.border = false
+      if (this._implicitBorder && this._border !== false) {
+        this._implicitBorder = false
+        this._border = false
+        this.borderSides = getBorderSides(this._border)
+        this.applyYogaBorders()
+      }
+      const fallback = parseBorderStyle(value, this._defaultOptions.borderStyle)
+      if (this._borderStyle !== fallback) {
+        this._borderStyle = fallback
+        this._customBorderChars = undefined
+      }
+      this.requestRender()
       return
     }
     const _value = parseBorderStyle(value, this._defaultOptions.borderStyle)

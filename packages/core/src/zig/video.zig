@@ -1,6 +1,7 @@
 const std = @import("std");
 const audio = @import("audio.zig");
 const image = @import("image.zig");
+const png = @import("png-encode.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -96,6 +97,8 @@ const ProduceRequest = struct {
     target_us: i64,
     known_frame_serial: u64,
     known_prepared_serial: u64,
+    png_enabled: bool,
+    png_options: png.Options,
 };
 
 const ProduceOutcome = struct {
@@ -116,8 +119,6 @@ extern fn ot_video_close(decoder: *?*Decoder) void;
 extern fn ot_video_seek(decoder: *Decoder, target_us: i64) c_int;
 extern fn ot_video_seek_video(decoder: *Decoder, target_us: i64) c_int;
 extern fn ot_video_set_output_size(decoder: *Decoder, width: u32, height: u32, cover: u32) c_int;
-extern fn ot_video_set_png_options(decoder: *Decoder, compression_level: u32, predictor: u32, color_mode: u32) c_int;
-extern fn ot_video_set_png_enabled(decoder: *Decoder, enabled: u32) c_int;
 extern fn ot_video_decode_frame(
     decoder: *Decoder,
     target_us: i64,
@@ -127,8 +128,6 @@ extern fn ot_video_decode_frame(
     out_stride: *u32,
     out_pts_us: *i64,
     out_serial: *u64,
-    out_png: *?[*]const u8,
-    out_png_len: *u64,
 ) c_int;
 extern fn ot_video_read_audio(decoder: *Decoder, out_samples: ?[*]f32, capacity_frames: u32, out_frames: *u32) c_int;
 extern fn ot_video_last_error(decoder: *const Decoder) [*:0]const u8;
@@ -182,6 +181,9 @@ pub const Video = struct {
     worker_result: ?ProduceOutcome = null,
     last_error_buf: [256]u8 = [_]u8{0} ** 256,
     last_error_len: usize = 0,
+    png_enabled: bool = true,
+    png_options: png.Options = .{},
+    png_pool: ?*std.Thread.Pool = null,
 
     // With external_audio the caller owns the audio stream: no engine or device
     // is created and decoded PCM is pulled manually through readAudio.
@@ -222,6 +224,10 @@ pub const Video = struct {
         self.worker_wake.broadcast();
         self.worker_mutex.unlock();
         if (self.worker) |thread| thread.join();
+        if (self.png_pool) |pool| {
+            pool.deinit();
+            self.allocator.destroy(pool);
+        }
         if (self.audio_start_thread) |thread| thread.join();
         if (self.audio_engine) |engine| audio.destroy(engine);
         if (self.audio_buffer) |buffer| self.allocator.free(buffer);
@@ -253,12 +259,13 @@ pub const Video = struct {
     // skip the encoder entirely.
     pub fn setPngEnabled(self: *Video, enabled: bool) void {
         self.quiesceWorker();
-        _ = ot_video_set_png_enabled(self.decoder, @intFromBool(enabled));
+        self.png_enabled = enabled;
     }
 
     pub fn configurePng(self: *Video, compression_level: u32, predictor: u32, color_mode: u32) !void {
+        if (compression_level > 9 or predictor > 5 or color_mode > 8) return error.InvalidArgument;
         self.quiesceWorker();
-        if (ot_video_set_png_options(self.decoder, compression_level, predictor, color_mode) != 0) return error.InvalidArgument;
+        self.png_options = .{ .level = compression_level, .predictor = predictor, .color_mode = color_mode };
         // Keep the current frame visible; resetting the serial forces the next
         // decode to replace it with the new PNG settings.
         self.state.frame_serial = 0;
@@ -343,6 +350,8 @@ pub const Video = struct {
             .target_us = frame_target,
             .known_frame_serial = self.state.frame_serial,
             .known_prepared_serial = self.prepared_serial,
+            .png_enabled = self.png_enabled,
+            .png_options = self.png_options,
         };
         self.worker_wake.signal();
         return true;
@@ -357,6 +366,14 @@ pub const Video = struct {
     }
 
     fn ensureWorkerLocked(self: *Video) !void {
+        if (self.png_pool == null) {
+            const pool = self.allocator.create(std.Thread.Pool) catch return error.OutOfMemory;
+            pool.init(.{ .allocator = self.allocator }) catch {
+                self.allocator.destroy(pool);
+                return error.OutOfMemory;
+            };
+            self.png_pool = pool;
+        }
         if (self.worker != null) return;
         self.worker = std.Thread.spawn(.{}, workerMain, .{self}) catch return error.OutOfMemory;
     }
@@ -398,8 +415,6 @@ pub const Video = struct {
         var stride: u32 = 0;
         var pts_us: i64 = -1;
         var serial: u64 = 0;
-        var png: ?[*]const u8 = null;
-        var png_len: u64 = 0;
         const result = ot_video_decode_frame(
             self.decoder,
             request.target_us,
@@ -409,8 +424,6 @@ pub const Video = struct {
             &stride,
             &pts_us,
             &serial,
-            &png,
-            &png_len,
         );
         if (result == 1) return .{ .reached_end = true };
         if (result != 0 or pixels == null) return .{ .failed = error.DecodeFailed };
@@ -418,13 +431,35 @@ pub const Video = struct {
         const required = @as(usize, stride) * height;
         const next = image.createFromRgba(self.allocator, pixels.?[0..required], width, height, stride) catch |err|
             return .{ .failed = err };
-        if (png != null and png_len <= std.math.maxInt(usize)) {
-            next.encoded_png = self.allocator.dupe(u8, png.?[0..@intCast(png_len)]) catch |err| {
+        if (request.png_enabled) {
+            const png_started = std.time.microTimestamp();
+            next.encoded_png = png.encode(
+                self.allocator,
+                self.png_pool.?,
+                pixels.?[0..required],
+                width,
+                height,
+                request.png_options,
+            ) catch |err| {
                 next.deinit();
                 return .{ .failed = err };
             };
+            if (timingEnabled()) {
+                std.debug.print("OTVT png={d:.3}\n", .{@as(f64, @floatFromInt(std.time.microTimestamp() - png_started)) / 1000.0});
+            }
         }
         return .{ .frame = .{ .value = next, .pts_us = pts_us, .serial = serial } };
+    }
+
+    fn timingEnabled() bool {
+        const state = struct {
+            var cached: ?bool = null;
+        };
+        if (state.cached == null) {
+            const value = std.posix.getenv("OPENTUI_VIDEO_TIMING");
+            state.cached = value != null and std.mem.eql(u8, value.?, "1");
+        }
+        return state.cached.?;
     }
 
     // Blocks the caller while the worker produces one frame; used by the
@@ -446,6 +481,8 @@ pub const Video = struct {
             .target_us = target_us,
             .known_frame_serial = if (self.current_image != null) self.state.frame_serial else std.math.maxInt(u64),
             .known_prepared_serial = self.prepared_serial,
+            .png_enabled = self.png_enabled,
+            .png_options = self.png_options,
         };
         self.worker_wake.signal();
         while (self.worker_busy or self.worker_pending != null) self.worker_done.wait(&self.worker_mutex);

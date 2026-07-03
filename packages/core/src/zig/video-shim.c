@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <zlib.h>
 
 // Stage timing diagnostics, enabled with OPENTUI_VIDEO_TIMING=1.
 static int ot_video_timing_enabled(void) {
@@ -63,6 +64,7 @@ struct ot_video_decoder {
     uint32_t output_height;
     int output_cover;
     struct SwsContext *sws;
+    AVFrame *sws_dst;
     struct SwrContext *swr;
     uint8_t *rgba;
     size_t rgba_size;
@@ -70,16 +72,6 @@ struct ot_video_decoder {
     size_t scaled_rgba_size;
     AVFrame *video_lookahead;
     AVFrame *video_selected;
-    AVCodecContext *png_encoder;
-    AVFrame *png_frame;
-    AVPacket *png_packet;
-    uint32_t png_width;
-    uint32_t png_height;
-    uint64_t png_serial;
-    uint32_t png_compression_level;
-    uint32_t png_predictor;
-    uint32_t png_color_mode;
-    int png_enabled;
     int64_t frame_pts_us;
     uint64_t frame_serial;
     float *audio_pending;
@@ -302,10 +294,6 @@ int ot_video_open(const char *path, ot_video_decoder **out_decoder, ot_video_inf
     decoder->video.stream_index = -1;
     decoder->audio.stream_index = -1;
     decoder->frame_pts_us = AV_NOPTS_VALUE;
-    decoder->png_compression_level = 1;
-    decoder->png_predictor = 2;
-    decoder->png_color_mode = 1;
-    decoder->png_enabled = 1;
 
     if (open_stream(decoder, path, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_H264, &decoder->video) != OT_VIDEO_OK) {
         copy_open_error(decoder, error_out, error_cap);
@@ -356,12 +344,10 @@ void ot_video_close(ot_video_decoder **decoder_ptr) {
     av_channel_layout_uninit(&decoder->audio_source_layout);
     av_frame_free(&decoder->video_selected);
     av_frame_free(&decoder->video_lookahead);
-    av_packet_free(&decoder->png_packet);
-    av_frame_free(&decoder->png_frame);
-    avcodec_free_context(&decoder->png_encoder);
     free(decoder->scaled_rgba);
     free(decoder->rgba);
     swr_free(&decoder->swr);
+    av_frame_free(&decoder->sws_dst);
     sws_freeContext(decoder->sws);
     close_stream(&decoder->audio);
     close_stream(&decoder->video);
@@ -382,29 +368,6 @@ int ot_video_set_output_size(ot_video_decoder *decoder, uint32_t width, uint32_t
     decoder->frame_pts_us = AV_NOPTS_VALUE;
     av_frame_unref(decoder->video_lookahead);
     av_frame_unref(decoder->video_selected);
-    return OT_VIDEO_OK;
-}
-
-int ot_video_set_png_enabled(ot_video_decoder *decoder, uint32_t enabled) {
-    if (!decoder) return OT_VIDEO_ERROR;
-    decoder->png_enabled = enabled != 0;
-    return OT_VIDEO_OK;
-}
-
-int ot_video_set_png_options(ot_video_decoder *decoder, uint32_t compression_level, uint32_t predictor,
-                             uint32_t color_mode) {
-    if (!decoder || compression_level > 9 || predictor > 5 || color_mode > 8) return OT_VIDEO_ERROR;
-    if (decoder->png_compression_level == compression_level && decoder->png_predictor == predictor &&
-        decoder->png_color_mode == color_mode) return OT_VIDEO_OK;
-    decoder->png_compression_level = compression_level;
-    decoder->png_predictor = predictor;
-    decoder->png_color_mode = color_mode;
-    av_packet_free(&decoder->png_packet);
-    av_frame_free(&decoder->png_frame);
-    avcodec_free_context(&decoder->png_encoder);
-    decoder->png_width = 0;
-    decoder->png_height = 0;
-    decoder->png_serial = 0;
     return OT_VIDEO_OK;
 }
 
@@ -462,6 +425,11 @@ static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, 
         av_frame_unref(decoder->hw_transfer_frame);
         int transfer = av_hwframe_transfer_data(decoder->hw_transfer_frame, frame, 0);
         if (transfer < 0) return fail_video(decoder, transfer, "av_hwframe_transfer_data");
+        // The data transfer does not carry color metadata; scaling reads the
+        // colorspace from the frame, so hardware and software paths must be
+        // tagged identically to stay bit-exact.
+        transfer = av_frame_copy_props(decoder->hw_transfer_frame, frame);
+        if (transfer < 0) return fail_video(decoder, transfer, "av_frame_copy_props");
         frame = decoder->hw_transfer_frame;
     }
     double t_sws_start = 0;
@@ -479,10 +447,18 @@ static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, 
         else
             scaled_height = (uint32_t)(decoder->output_width / source_aspect + 0.999999);
     }
-    decoder->sws = sws_getCachedContext(decoder->sws, frame->width, frame->height,
-                                        (enum AVPixelFormat)frame->format, scaled_width, scaled_height,
-                                        AV_PIX_FMT_RGBA, SWS_BILINEAR, NULL, NULL, NULL);
-    if (!decoder->sws) return fail_video(decoder, AVERROR(ENOMEM), "sws_getCachedContext");
+    // Dynamic-mode swscale with automatic slice threading; it reconfigures
+    // itself when source dimensions or pixel formats change between frames.
+    if (!decoder->sws) {
+        decoder->sws = sws_alloc_context();
+        if (!decoder->sws) return fail_video(decoder, AVERROR(ENOMEM), "sws_alloc_context");
+        decoder->sws->threads = 0;
+        decoder->sws->flags = SWS_BILINEAR;
+    }
+    if (!decoder->sws_dst) {
+        decoder->sws_dst = av_frame_alloc();
+        if (!decoder->sws_dst) return fail_video(decoder, AVERROR(ENOMEM), "sws frame allocation");
+    }
     const size_t required = (size_t)decoder->output_width * decoder->output_height * 4;
     if (required != decoder->rgba_size) {
         uint8_t *next = realloc(decoder->rgba, required);
@@ -501,11 +477,15 @@ static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, 
         }
         scale_target = decoder->scaled_rgba;
     }
-    uint8_t *dest[4] = {scale_target, NULL, NULL, NULL};
-    int dest_linesize[4] = {(int)scaled_width * 4, 0, 0, 0};
-    int scaled = sws_scale(decoder->sws, (const uint8_t *const *)frame->data, frame->linesize,
-                           0, frame->height, dest, dest_linesize);
-    if (scaled != (int)scaled_height) return fail_video(decoder, AVERROR_INVALIDDATA, "sws_scale");
+    AVFrame *scale_frame = decoder->sws_dst;
+    scale_frame->format = AV_PIX_FMT_RGBA;
+    scale_frame->width = (int)scaled_width;
+    scale_frame->height = (int)scaled_height;
+    scale_frame->data[0] = scale_target;
+    scale_frame->linesize[0] = (int)(scaled_width * 4);
+    int scaled = sws_scale_frame(decoder->sws, scale_frame, frame);
+    scale_frame->data[0] = NULL;
+    if (scaled < 0) return fail_video(decoder, scaled, "sws_scale_frame");
     if (scale_target != decoder->rgba) {
         const uint32_t crop_x = (scaled_width - decoder->output_width) / 2;
         const uint32_t crop_y = (scaled_height - decoder->output_height) / 2;
@@ -520,122 +500,10 @@ static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, 
     return OT_VIDEO_OK;
 }
 
-static int configure_png_encoder(ot_video_decoder *decoder) {
-    if (decoder->png_encoder && decoder->png_width == decoder->output_width && decoder->png_height == decoder->output_height)
-        return OT_VIDEO_OK;
-    av_packet_free(&decoder->png_packet);
-    av_frame_free(&decoder->png_frame);
-    avcodec_free_context(&decoder->png_encoder);
-
-    const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_PNG);
-    if (!codec) return fail_video(decoder, AVERROR_ENCODER_NOT_FOUND, "PNG encoder unavailable");
-    decoder->png_encoder = avcodec_alloc_context3(codec);
-    decoder->png_frame = av_frame_alloc();
-    decoder->png_packet = av_packet_alloc();
-    if (!decoder->png_encoder || !decoder->png_frame || !decoder->png_packet)
-        return fail_video(decoder, AVERROR(ENOMEM), "allocate PNG encoder");
-    decoder->png_encoder->width = decoder->output_width;
-    decoder->png_encoder->height = decoder->output_height;
-    decoder->png_encoder->pix_fmt = decoder->png_color_mode == 4 ? AV_PIX_FMT_PAL8 : AV_PIX_FMT_RGB24;
-    decoder->png_encoder->time_base = (AVRational){1, 1000000};
-    decoder->png_encoder->compression_level = (int)decoder->png_compression_level;
-    static const char *predictors[] = {"none", "sub", "up", "avg", "paeth", "mixed"};
-    int option_result = av_opt_set(decoder->png_encoder->priv_data, "pred", predictors[decoder->png_predictor], 0);
-    if (option_result < 0) return fail_video(decoder, option_result, "set PNG predictor");
-    int result = avcodec_open2(decoder->png_encoder, codec, NULL);
-    if (result < 0) return fail_video(decoder, result, "avcodec_open2 PNG");
-    decoder->png_frame->format = decoder->png_encoder->pix_fmt;
-    decoder->png_frame->width = decoder->output_width;
-    decoder->png_frame->height = decoder->output_height;
-    result = av_frame_get_buffer(decoder->png_frame, 32);
-    if (result < 0) return fail_video(decoder, result, "av_frame_get_buffer PNG");
-    decoder->png_width = decoder->output_width;
-    decoder->png_height = decoder->output_height;
-    decoder->png_serial = 0;
-    return OT_VIDEO_OK;
-}
-
-static int encode_png(ot_video_decoder *decoder, const uint8_t **out_png, uint64_t *out_png_len) {
-    *out_png = NULL;
-    *out_png_len = 0;
-    if (configure_png_encoder(decoder) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
-    int result = av_frame_make_writable(decoder->png_frame);
-    if (result < 0) return fail_video(decoder, result, "av_frame_make_writable PNG");
-    if (decoder->png_color_mode == 4) {
-        uint32_t *palette = (uint32_t *)decoder->png_frame->data[1];
-        for (uint32_t index = 0; index < 256; index++) {
-            const uint32_t r = (index >> 5) & 7;
-            const uint32_t g = (index >> 2) & 7;
-            const uint32_t b = index & 3;
-            palette[index] = 0xff000000u | (((r * 255u + 3u) / 7u) << 16) |
-                             (((g * 255u + 3u) / 7u) << 8) | ((b * 255u + 1u) / 3u);
-        }
-        for (uint32_t y = 0; y < decoder->output_height; y++) {
-            uint8_t *indices = decoder->png_frame->data[0] + (size_t)y * decoder->png_frame->linesize[0];
-            const uint8_t *rgba = decoder->rgba + (size_t)y * decoder->output_width * 4;
-            for (uint32_t x = 0; x < decoder->output_width; x++)
-                indices[x] = (uint8_t)((rgba[x * 4] & 0xe0) | ((rgba[x * 4 + 1] >> 3) & 0x1c) | (rgba[x * 4 + 2] >> 6));
-        }
-    } else {
-        for (uint32_t y = 0; y < decoder->output_height; y++) {
-            uint8_t *rgb = decoder->png_frame->data[0] + (size_t)y * decoder->png_frame->linesize[0];
-            const uint8_t *rgba = decoder->rgba + (size_t)y * decoder->output_width * 4;
-            for (uint32_t x = 0; x < decoder->output_width; x++) {
-                const uint8_t source_r = rgba[x * 4];
-                const uint8_t source_g = rgba[x * 4 + 1];
-                const uint8_t source_b = rgba[x * 4 + 2];
-                if (decoder->png_color_mode == 1) {
-                    rgb[x * 3] = source_r;
-                    rgb[x * 3 + 1] = source_g;
-                    rgb[x * 3 + 2] = source_b;
-                } else if (decoder->png_color_mode == 5) {
-                    rgb[x * 3] = (uint8_t)(((source_r >> 2) * 255u + 31u) / 63u);
-                    rgb[x * 3 + 1] = (uint8_t)(((source_g >> 2) * 255u + 31u) / 63u);
-                    rgb[x * 3 + 2] = (uint8_t)(((source_b >> 2) * 255u + 31u) / 63u);
-                } else if (decoder->png_color_mode == 6) {
-                    rgb[x * 3] = (uint8_t)(((source_r >> 1) * 255u + 63u) / 127u);
-                    rgb[x * 3 + 1] = (uint8_t)(((source_g >> 1) * 255u + 63u) / 127u);
-                    rgb[x * 3 + 2] = (uint8_t)(((source_b >> 1) * 255u + 63u) / 127u);
-                } else if (decoder->png_color_mode == 7) {
-                    rgb[x * 3] = (uint8_t)(((source_r >> 3) * 255u + 15u) / 31u);
-                    rgb[x * 3 + 1] = (uint8_t)(((source_g >> 3) * 255u + 15u) / 31u);
-                    rgb[x * 3 + 2] = (uint8_t)(((source_b >> 3) * 255u + 15u) / 31u);
-                } else if (decoder->png_color_mode == 8) {
-                    rgb[x * 3] = (uint8_t)(((source_r >> 4) * 255u + 7u) / 15u);
-                    rgb[x * 3 + 1] = (uint8_t)(((source_g >> 3) * 255u + 15u) / 31u);
-                    rgb[x * 3 + 2] = (uint8_t)(((source_b >> 4) * 255u + 7u) / 15u);
-                } else if (decoder->png_color_mode == 2) {
-                    rgb[x * 3] = (uint8_t)(((source_r >> 4) * 255u + 7u) / 15u);
-                    rgb[x * 3 + 1] = (uint8_t)(((source_g >> 4) * 255u + 7u) / 15u);
-                    rgb[x * 3 + 2] = (uint8_t)(((source_b >> 4) * 255u + 7u) / 15u);
-                } else if (decoder->png_color_mode == 3) {
-                    rgb[x * 3] = (uint8_t)(((source_r >> 5) * 255u + 3u) / 7u);
-                    rgb[x * 3 + 1] = (uint8_t)(((source_g >> 5) * 255u + 3u) / 7u);
-                    rgb[x * 3 + 2] = (uint8_t)(((source_b >> 6) * 255u + 1u) / 3u);
-                } else {
-                    rgb[x * 3] = (uint8_t)(((source_r >> 5) * 255u + 3u) / 7u);
-                    rgb[x * 3 + 1] = (uint8_t)((source_g >> 4) * 17u);
-                    rgb[x * 3 + 2] = (uint8_t)(((source_b >> 5) * 255u + 3u) / 7u);
-                }
-            }
-        }
-    }
-    decoder->png_frame->pts = decoder->frame_pts_us;
-    av_packet_unref(decoder->png_packet);
-    result = avcodec_send_frame(decoder->png_encoder, decoder->png_frame);
-    if (result < 0) return fail_video(decoder, result, "avcodec_send_frame PNG");
-    result = avcodec_receive_packet(decoder->png_encoder, decoder->png_packet);
-    if (result < 0) return fail_video(decoder, result, "avcodec_receive_packet PNG");
-    *out_png = decoder->png_packet->data;
-    *out_png_len = decoder->png_packet->size;
-    return OT_VIDEO_OK;
-}
-
 int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const uint8_t **out_rgba,
                           uint32_t *out_width, uint32_t *out_height, uint32_t *out_stride,
-                          int64_t *out_pts_us, uint64_t *out_serial,
-                          const uint8_t **out_png, uint64_t *out_png_len) {
-    if (!decoder || !out_rgba || !out_width || !out_height || !out_stride || !out_pts_us || !out_serial || !out_png || !out_png_len)
+                          int64_t *out_pts_us, uint64_t *out_serial) {
+    if (!decoder || !out_rgba || !out_width || !out_height || !out_stride || !out_pts_us || !out_serial)
         return OT_VIDEO_ERROR;
     int reached_eof = 0;
     int64_t selected_pts = AV_NOPTS_VALUE;
@@ -681,21 +549,6 @@ int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const ui
     *out_stride = decoder->output_width * 4;
     *out_pts_us = decoder->frame_pts_us;
     *out_serial = decoder->frame_serial;
-    if (!decoder->png_enabled) {
-        *out_png = NULL;
-        *out_png_len = 0;
-    } else if (decoder->png_serial != decoder->frame_serial) {
-        double t_png_start = ot_video_timing_enabled() ? ot_video_now_ms() : 0;
-        if (encode_png(decoder, out_png, out_png_len) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
-        if (ot_video_timing_enabled()) fprintf(stderr, "OTVT png=%.3f\n", ot_video_now_ms() - t_png_start);
-        decoder->png_serial = decoder->frame_serial;
-    } else if (decoder->png_packet && decoder->png_packet->data) {
-        *out_png = decoder->png_packet->data;
-        *out_png_len = decoder->png_packet->size;
-    } else {
-        *out_png = NULL;
-        *out_png_len = 0;
-    }
     return OT_VIDEO_OK;
 }
 
@@ -763,6 +616,43 @@ int ot_video_read_audio(ot_video_decoder *decoder, float *out_samples, uint32_t 
         decoder->audio_pending_frames = (uint32_t)produced;
     }
     return OT_VIDEO_OK;
+}
+
+size_t ot_png_deflate_bound(size_t input_len) {
+    z_stream stream;
+    memset(&stream, 0, sizeof(stream));
+    if (deflateInit2(&stream, 1, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK) return 0;
+    // Full flushes add up to ~5 bytes per emitted block; deflateBound already
+    // accounts for stored-block worst cases, add slack for the flush marker.
+    size_t bound = deflateBound(&stream, (uLong)input_len) + 16;
+    deflateEnd(&stream);
+    return bound;
+}
+
+int ot_png_deflate_chunk(const uint8_t *input, size_t input_len, uint32_t level, uint32_t last,
+                         uint8_t *output, size_t output_cap, size_t *output_len) {
+    if (!input || !output || !output_len || level > 9) return 1;
+    z_stream stream;
+    memset(&stream, 0, sizeof(stream));
+    if (deflateInit2(&stream, (int)level, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK) return 1;
+    stream.next_in = (Bytef *)input;
+    stream.avail_in = (uInt)input_len;
+    stream.next_out = output;
+    stream.avail_out = (uInt)output_cap;
+    int status = deflate(&stream, last ? Z_FINISH : Z_FULL_FLUSH);
+    int ok = last ? status == Z_STREAM_END : status == Z_OK;
+    ok = ok && stream.avail_in == 0;
+    *output_len = (size_t)(output_cap - stream.avail_out);
+    deflateEnd(&stream);
+    return ok ? 0 : 1;
+}
+
+uint32_t ot_png_adler32(uint32_t adler, const uint8_t *data, size_t len) {
+    return (uint32_t)adler32((uLong)adler, (const Bytef *)data, (uInt)len);
+}
+
+uint32_t ot_png_adler32_combine(uint32_t first, uint32_t second, size_t second_len) {
+    return (uint32_t)adler32_combine((uLong)first, (uLong)second, (z_off_t)second_len);
 }
 
 const char *ot_video_last_error(const ot_video_decoder *decoder) {

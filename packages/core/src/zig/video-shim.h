@@ -1,6 +1,7 @@
 #ifndef OPENTUI_VIDEO_SHIM_H
 #define OPENTUI_VIDEO_SHIM_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct ot_video_decoder ot_video_decoder;
@@ -28,13 +29,14 @@ void ot_video_close(ot_video_decoder **decoder);
 int ot_video_seek(ot_video_decoder *decoder, int64_t target_us);
 int ot_video_seek_video(ot_video_decoder *decoder, int64_t target_us);
 int ot_video_set_output_size(ot_video_decoder *decoder, uint32_t width, uint32_t height, uint32_t cover);
-int ot_video_set_png_options(ot_video_decoder *decoder, uint32_t compression_level, uint32_t predictor,
-                             uint32_t color_mode);
-int ot_video_set_png_enabled(ot_video_decoder *decoder, uint32_t enabled);
 int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const uint8_t **out_rgba,
                           uint32_t *out_width, uint32_t *out_height, uint32_t *out_stride,
-                          int64_t *out_pts_us, uint64_t *out_serial,
-                          const uint8_t **out_png, uint64_t *out_png_len);
+                          int64_t *out_pts_us, uint64_t *out_serial);
+size_t ot_png_deflate_bound(size_t input_len);
+int ot_png_deflate_chunk(const uint8_t *input, size_t input_len, uint32_t level, uint32_t last,
+                         uint8_t *output, size_t output_cap, size_t *output_len);
+uint32_t ot_png_adler32(uint32_t adler, const uint8_t *data, size_t len);
+uint32_t ot_png_adler32_combine(uint32_t first, uint32_t second, size_t second_len);
 int ot_video_read_audio(ot_video_decoder *decoder, float *out_samples, uint32_t capacity_frames,
                         uint32_t *out_frames);
 const char *ot_video_last_error(const ot_video_decoder *decoder);

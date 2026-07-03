@@ -137,7 +137,9 @@ pub const Video = struct {
     audio_gain_dirty: bool = true,
     av_sync_offset_us: i64 = 0,
 
-    pub fn open(allocator: Allocator, path: []const u8) !*Video {
+    // With external_audio the caller owns the audio stream: no engine or device
+    // is created and decoded PCM is pulled manually through readAudio.
+    pub fn open(allocator: Allocator, path: []const u8, external_audio: bool) !*Video {
         if (path.len == 0 or std.mem.indexOfScalar(u8, path, 0) != null) return error.InvalidArgument;
         const path_z = try allocator.dupeZ(u8, path);
         defer allocator.free(path_z);
@@ -154,7 +156,7 @@ pub const Video = struct {
             .output_width = info.width,
             .output_height = info.height,
         };
-        if (info.has_audio != 0) {
+        if (info.has_audio != 0 and !external_audio) {
             const engine = audio.create(allocator, &.{ .sample_rate = 48_000, .playback_channels = 2 }) orelse return error.OutOfMemory;
             errdefer audio.destroy(engine);
             if (audio.enablePcmStream(engine, true, audio_capacity_frames, 2) != audio.Status.ok) return error.OutOfMemory;

@@ -7,7 +7,12 @@ const asset = "../tests/fixtures/video/dragon.mp4";
 
 fn openVideo() !*video.Video {
     std.fs.cwd().access(asset, .{}) catch return error.SkipZigTest;
-    return video.Video.open(std.testing.allocator, asset);
+    return video.Video.open(std.testing.allocator, asset, false);
+}
+
+fn openVideoExternalAudio() !*video.Video {
+    std.fs.cwd().access(asset, .{}) catch return error.SkipZigTest;
+    return video.Video.open(std.testing.allocator, asset, true);
 }
 
 fn quantize6(value: u8) u8 {
@@ -421,3 +426,69 @@ test "video manual PCM reads are rejected while native playback owns audio" {
     var samples: [512]f32 = undefined;
     try std.testing.expectError(error.InvalidArgument, value.readAudio(&samples, 256));
 }
+
+test "video external audio open decodes PCM through manual reads" {
+    const value = try openVideoExternalAudio();
+    defer value.deinit();
+    try std.testing.expect(value.info.has_audio != 0);
+    try std.testing.expectEqual(@as(u32, 48_000), value.info.audio_sample_rate);
+    try std.testing.expectEqual(@as(u32, 2), value.info.audio_channels);
+
+    var samples: [512]f32 = undefined;
+    const first = try value.readAudio(&samples, 256);
+    try std.testing.expect(first > 0);
+    const second = try value.readAudio(&samples, 256);
+    try std.testing.expect(second > 0);
+
+    var has_signal = false;
+    var total: u64 = first + second;
+    while (total < 96_000) {
+        const frames = try value.readAudio(&samples, 256);
+        if (frames == 0) break;
+        total += frames;
+        for (samples[0 .. frames * 2]) |sample| {
+            if (@abs(sample) > 0.01) has_signal = true;
+        }
+    }
+    try std.testing.expect(has_signal);
+}
+
+test "video external audio manual reads honor seek targets" {
+    const value = try openVideoExternalAudio();
+    defer value.deinit();
+    var samples: [512]f32 = undefined;
+    const before = try value.readAudio(&samples, 256);
+    try std.testing.expect(before > 0);
+
+    // Seek near the end and drain: the remaining PCM must be bounded by the
+    // remaining media time rather than restarting from the file beginning.
+    const duration = value.info.duration_us;
+    try std.testing.expect(duration > 1_000_000);
+    try value.seek(duration - 500_000);
+    var remaining: u64 = 0;
+    while (true) {
+        const frames = try value.readAudio(&samples, 256);
+        if (frames == 0) break;
+        remaining += frames;
+        if (remaining > 96_000) break;
+    }
+    try std.testing.expect(remaining > 0);
+    // 0.5s at 48kHz is 24000 frames; allow one decode chunk of slack.
+    try std.testing.expect(remaining <= 24_000 + 4_096);
+}
+
+test "video external audio open keeps playback silent but functional" {
+    const value = try openVideoExternalAudio();
+    defer value.deinit();
+    value.play();
+    const updated = try value.update(0);
+    try std.testing.expect(updated);
+    const state = value.getState();
+    try std.testing.expectEqual(@as(u32, 1), state.playing);
+    try std.testing.expectEqual(@as(u32, 0), state.audio_active);
+    try std.testing.expectEqual(@as(u32, 1), state.has_frame);
+    // Manual reads stay available while video frames advance.
+    var samples: [512]f32 = undefined;
+    try std.testing.expect(try value.readAudio(&samples, 256) > 0);
+}
+

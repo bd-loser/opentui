@@ -495,11 +495,15 @@ export fn audioGetStats(engine_handle: NativeHandle, out_stats: ?*native_audio.S
     return native_audio.getStats(object_ptr, out_stats);
 }
 
-export fn videoOpen(path_ptr: ?[*]const u8, path_len: u32, out_handle: ?*NativeHandle) u32 {
+export fn videoOpen(path_ptr: ?[*]const u8, path_len: u32, external_audio: u32, out_handle: ?*NativeHandle) u32 {
     const output = out_handle orelse return @intFromEnum(native_video.Status.invalid_argument);
     output.* = INVALID_HANDLE;
     if (path_len > 0 and path_ptr == null) return @intFromEnum(native_video.Status.invalid_argument);
-    const value = native_video.Video.open(globalAllocator, if (path_len == 0) "" else path_ptr.?[0..path_len]) catch |err| {
+    const value = native_video.Video.open(
+        globalAllocator,
+        if (path_len == 0) "" else path_ptr.?[0..path_len],
+        external_audio != 0,
+    ) catch |err| {
         return @intFromEnum(native_video.statusFromError(err));
     };
     output.* = handles.insert(.video, erasePtr(value)) catch {

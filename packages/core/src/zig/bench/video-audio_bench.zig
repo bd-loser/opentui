@@ -31,7 +31,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         var stats: bench_utils.BenchStats = .{};
         for (0..10) |_| {
             var timer = try std.time.Timer.start();
-            const value = try video.Video.open(allocator, asset);
+            const value = try video.Video.open(allocator, asset, false);
             stats.record(timer.read());
             value.deinit();
         }
@@ -51,7 +51,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
     }
 
     if (bench_utils.matchesBenchFilter("Native AAC refill 4096 frames", bench_filter)) {
-        const value = try video.Video.open(allocator, asset);
+        const value = try video.Video.open(allocator, asset, false);
         defer value.deinit();
         try std.testing.expectEqual(audio.Status.ok, audio.startMixer(value.audio_engine.?));
         var stats: bench_utils.BenchStats = .{};
@@ -70,7 +70,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         var stats: bench_utils.BenchStats = .{};
         var queued: usize = 0;
         for (0..10) |_| {
-            const value = try video.Video.open(allocator, asset);
+            const value = try video.Video.open(allocator, asset, false);
             defer value.deinit();
             value.setAudioOffline(true);
             value.play();
@@ -90,7 +90,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
     }
 
     if (bench_utils.matchesBenchFilter("Steady native audio video update", bench_filter)) {
-        const value = try video.Video.open(allocator, asset);
+        const value = try video.Video.open(allocator, asset, false);
         defer value.deinit();
         value.setAudioOffline(true);
         value.play();
@@ -107,7 +107,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
     }
 
     if (bench_utils.matchesBenchFilter("Steady prepared video frame", bench_filter)) {
-        const value = try video.Video.open(allocator, asset);
+        const value = try video.Video.open(allocator, asset, false);
         defer value.deinit();
         _ = try value.update(0);
         value.frameSubmitted(0);
@@ -122,7 +122,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
     }
 
     if (bench_utils.matchesBenchFilter("Seek and incremental audio restart", bench_filter)) {
-        const value = try video.Video.open(allocator, asset);
+        const value = try video.Video.open(allocator, asset, false);
         defer value.deinit();
         value.setAudioOffline(true);
         value.play();
@@ -138,7 +138,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
     }
 
     if (bench_utils.matchesBenchFilter("Native seek command only", bench_filter)) {
-        const value = try video.Video.open(allocator, asset);
+        const value = try video.Video.open(allocator, asset, false);
         defer value.deinit();
         var stats: bench_utils.BenchStats = .{};
         for ([_]i64{ 125_000, 1_375_000, 3_250_000, 5_125_000 }) |target| {
@@ -150,7 +150,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
     }
 
     if (bench_utils.matchesBenchFilter("Underrun recovery updates", bench_filter)) {
-        const value = try video.Video.open(allocator, asset);
+        const value = try video.Video.open(allocator, asset, false);
         defer value.deinit();
         value.setAudioOffline(true);
         value.play();

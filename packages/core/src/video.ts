@@ -37,37 +37,53 @@ function videoError(lib: RenderLib, handle: VideoHandle | null, status: number):
   return new Error(detail ? `Native video failed (${status}): ${detail}` : `Native video failed (${status})`)
 }
 
+export interface VideoOpenOptions {
+  /**
+   * Skip creating the internal audio engine so the caller owns the audio
+   * stream and pulls decoded 48kHz stereo PCM through readAudio().
+   */
+  externalAudio?: boolean
+}
+
 export class NativeVideo {
-  public static open(path: string): NativeVideo {
+  public static open(path: string, options: VideoOpenOptions = {}): NativeVideo {
     if (typeof path !== "string" || path.length === 0) throw new TypeError("video path must be a non-empty string")
     const lib = resolveRenderLib()
-    const result = lib.videoOpen(path)
+    const result = lib.videoOpen(path, options.externalAudio === true)
     if (result.status !== 0 || !result.handle) throw videoError(lib, result.handle, result.status)
     const info = lib.videoGetInfo(result.handle)
     if (info.status !== 0) {
       lib.videoDestroy(result.handle)
       throw videoError(lib, result.handle, info.status)
     }
-    return new NativeVideo(lib, result.handle, {
-      duration: Number(info.info.durationUs) / 1_000_000,
-      width: info.info.width,
-      height: info.info.height,
-      fps: info.info.fpsDen > 0 ? info.info.fpsNum / info.info.fpsDen : 0,
-      hasAudio: info.info.hasAudio !== 0,
-      audioSampleRate: info.info.audioSampleRate,
-      audioChannels: info.info.audioChannels,
-    })
+    return new NativeVideo(
+      lib,
+      result.handle,
+      {
+        duration: Number(info.info.durationUs) / 1_000_000,
+        width: info.info.width,
+        height: info.info.height,
+        fps: info.info.fpsDen > 0 ? info.info.fpsNum / info.info.fpsDen : 0,
+        hasAudio: info.info.hasAudio !== 0,
+        audioSampleRate: info.info.audioSampleRate,
+        audioChannels: info.info.audioChannels,
+      },
+      options.externalAudio === true,
+    )
   }
 
   private handle: VideoHandle | null
   private frameSerial = 0n
+  private readonly externalAudio: boolean
 
   private constructor(
     private readonly lib: RenderLib,
     handle: VideoHandle,
     public readonly info: NativeVideoInfo,
+    externalAudio: boolean,
   ) {
     this.handle = handle
+    this.externalAudio = externalAudio
   }
 
   private guard(): VideoHandle {
@@ -233,6 +249,9 @@ export class NativeVideo {
 
   public readAudio(output: Float32Array): number {
     if (!(output instanceof Float32Array)) throw new TypeError("audio output must be a Float32Array")
+    if (this.info.hasAudio && !this.externalAudio) {
+      throw new Error("readAudio requires opening the video with externalAudio: playback owns the audio stream")
+    }
     const channels = this.info.audioChannels
     if (channels === 0) return 0
     if (output.length % channels !== 0) throw new RangeError("audio output must contain complete frames")

@@ -1276,7 +1276,7 @@ function getOpenTUILib(libPath?: string) {
     imageExtend: { args: ["u32", "u32", "u32", "u32", "u32", "ptr", "ptr"], returns: "u32" },
     imageTransform: { args: ["u32", "u32", "ptr"], returns: "u32" },
     imageComposite: { args: ["u32", "u32", "i32", "i32", "u32", "u8", "ptr"], returns: "u32" },
-    videoOpen: { args: ["ptr", "u32", "ptr"], returns: "u32" },
+    videoOpen: { args: ["ptr", "u32", "u32", "ptr"], returns: "u32" },
     videoDestroy: { args: ["u32"], returns: "void" },
     videoGetInfo: { args: ["u32", "ptr"], returns: "u32" },
     videoGetState: { args: ["u32", "ptr"], returns: "u32" },
@@ -2643,7 +2643,7 @@ export interface RenderLib extends AudioEngineLib {
     blend: number,
     opacity: number,
   ) => { status: number; handle: ImageHandle | null }
-  videoOpen: (path: string) => { status: number; handle: VideoHandle | null }
+  videoOpen: (path: string, externalAudio: boolean) => { status: number; handle: VideoHandle | null }
   videoDestroy: (video: VideoHandle) => void
   videoGetInfo: (video: VideoHandle) => { status: number; info: NativeVideoInfo }
   videoGetState: (video: VideoHandle) => { status: number; state: NativeVideoState }
@@ -5519,12 +5519,13 @@ class FFIRenderLib implements RenderLib {
     )
   }
 
-  public videoOpen(path: string): { status: number; handle: VideoHandle | null } {
+  public videoOpen(path: string, externalAudio: boolean): { status: number; handle: VideoHandle | null } {
     const bytes = this.encoder.encode(path)
     const output = new Uint32Array(1)
     const status = this.opentui.symbols.videoOpen(
       ptrOrNull(bytes),
       toSafeFFIU32Length(bytes.byteLength, "video path"),
+      externalAudio ? 1 : 0,
       ptr(output),
     )
     return { status, handle: status === 0 && output[0] !== 0 ? (output[0] as VideoHandle) : null }

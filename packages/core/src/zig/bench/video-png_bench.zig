@@ -43,7 +43,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
     var results: std.ArrayListUnmanaged(bench_utils.BenchResult) = .{};
     for (scenarios) |scenario| {
         if (!bench_utils.matchesBenchFilter(scenario.name, bench_filter)) continue;
-        const decoder = try video.Video.open(allocator, "../tests/fixtures/video/dragon.mp4");
+        const decoder = try video.Video.open(allocator, "../tests/fixtures/video/dragon.mp4", false);
         defer decoder.deinit();
         try decoder.configureOutput(765, 1168, false);
         try decoder.configurePng(scenario.level, scenario.predictor, scenario.color_mode);

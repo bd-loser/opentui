@@ -181,6 +181,7 @@ try {
 
   if (exitCode === 0) {
     cpSync(resolve(packageRoot, treeSitterAssetsDir), resolve(outDir, treeSitterAssetsDir), { recursive: true })
+    cpSync(resolve(packageRoot, "src/tests/fixtures"), resolve(outDir, "src/tests/fixtures"), { recursive: true })
     for (const dataPath of treeSitterTestDataPaths) {
       mkdirSync(dataPath, { recursive: true })
     }

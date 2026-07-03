@@ -4,7 +4,7 @@ const bench_utils = @import("../bench-utils.zig");
 const video = @import("../video.zig");
 
 pub const benchName = "Video Audio";
-const asset = "../../../examples/src/assets/dragon.mp4";
+const asset = "../tests/fixtures/video/dragon.mp4";
 
 fn appendResult(
     allocator: std.mem.Allocator,

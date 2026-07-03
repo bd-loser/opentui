@@ -3,7 +3,7 @@ const audio = @import("../audio.zig");
 const image = @import("../image.zig");
 const video = @import("../video.zig");
 
-const asset = "../../../examples/src/assets/dragon.mp4";
+const asset = "../tests/fixtures/video/dragon.mp4";
 
 fn openVideo() !*video.Video {
     std.fs.cwd().access(asset, .{}) catch return error.SkipZigTest;

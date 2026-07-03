@@ -584,19 +584,26 @@ test "video hardware and software decode produce identical frames" {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
+    // Hardware decoding is opt-in; force it for the first decoder. Platforms
+    // without a device fall back to software and compare trivially.
+    const setenv_fn = @extern(*const fn ([*:0]const u8, [*:0]const u8, c_int) callconv(.c) c_int, .{ .name = "setenv" });
+    const unsetenv_fn = @extern(*const fn ([*:0]const u8) callconv(.c) c_int, .{ .name = "unsetenv" });
+    _ = setenv_fn("OPENTUI_VIDEO_HWACCEL", "1", 1);
     const hardware = try openVideo();
     try hardware.configureOutput(64, 96, false);
-    try std.testing.expect(try hardware.update(500_000));
+    const decoded = hardware.update(500_000) catch |err| {
+        _ = unsetenv_fn("OPENTUI_VIDEO_HWACCEL");
+        hardware.deinit();
+        return err;
+    };
+    try std.testing.expect(decoded);
     const hardware_pixels = try std.testing.allocator.dupe(u8, hardware.current_image.?.pixels);
     defer std.testing.allocator.free(hardware_pixels);
     hardware.deinit();
+    _ = unsetenv_fn("OPENTUI_VIDEO_HWACCEL");
 
     // H.264 reconstruction is bit-exact by specification, so the VideoToolbox
     // path (when active on this platform) must match the software decoder.
-    const setenv_fn = @extern(*const fn ([*:0]const u8, [*:0]const u8, c_int) callconv(.c) c_int, .{ .name = "setenv" });
-    const unsetenv_fn = @extern(*const fn ([*:0]const u8) callconv(.c) c_int, .{ .name = "unsetenv" });
-    _ = setenv_fn("OPENTUI_VIDEO_HWACCEL", "0", 1);
-    defer _ = unsetenv_fn("OPENTUI_VIDEO_HWACCEL");
     const software = try openVideo();
     defer software.deinit();
     try software.configureOutput(64, 96, false);

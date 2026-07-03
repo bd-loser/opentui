@@ -104,16 +104,22 @@ static enum AVPixelFormat ot_video_select_pixel_format(AVCodecContext *codec, co
     return formats[0];
 }
 
-static int ot_video_hwaccel_disabled(void) {
+// Hardware decoding is opt-in: it reduces CPU use several-fold but the
+// synchronous decode path pays the device's session latency and the
+// GPU-to-CPU frame readback, which measures slower in wall time than
+// multi-threaded software decoding on all hardware tested so far. The
+// adaptive video quality controller budgets wall time, so defaulting to
+// hardware would trade visible quality for idle CPU cores.
+static int ot_video_hwaccel_enabled(void) {
     const char *value = getenv("OPENTUI_VIDEO_HWACCEL");
-    return value && (strcmp(value, "0") == 0 || strcmp(value, "false") == 0);
+    return value && (strcmp(value, "1") == 0 || strcmp(value, "true") == 0);
 }
 
 // Attaches a hardware decode device when one is available. Failure of any
 // kind leaves the decoder on the software path; H.264 output is bit-exact
 // either way.
 static void ot_video_attach_hw_device(ot_video_decoder *decoder, ot_stream_decoder *stream) {
-    if (ot_video_hwaccel_disabled()) return;
+    if (!ot_video_hwaccel_enabled()) return;
     if (av_hwdevice_ctx_create(&decoder->hw_device, AV_HWDEVICE_TYPE_VIDEOTOOLBOX, NULL, NULL, 0) < 0) {
         decoder->hw_device = NULL;
         return;

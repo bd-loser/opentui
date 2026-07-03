@@ -15,6 +15,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+// Stage timing diagnostics, enabled with OPENTUI_VIDEO_TIMING=1.
+static int ot_video_timing_enabled(void) {
+    static int enabled = -1;
+    if (enabled < 0) {
+        const char *value = getenv("OPENTUI_VIDEO_TIMING");
+        enabled = value && strcmp(value, "1") == 0;
+    }
+    return enabled;
+}
+
+static double ot_video_now_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1000000.0;
+}
 
 typedef struct {
     AVFormatContext *format;
@@ -119,12 +136,14 @@ static enum AVPixelFormat ot_video_select_pixel_format(AVCodecContext *codec, co
     return formats[0];
 }
 
-// Hardware decoding is opt-in: it reduces CPU use several-fold but the
-// synchronous decode path pays the device's session latency and the
-// GPU-to-CPU frame readback, which measures slower in wall time than
-// multi-threaded software decoding on all hardware tested so far. The
-// adaptive video quality controller budgets wall time, so defaulting to
-// hardware would trade visible quality for idle CPU cores.
+// Hardware decoding is opt-in: it reduces CPU use several-fold, but FFmpeg's
+// VideoToolbox integration decodes strictly synchronously (decodeFlags=0 plus
+// WaitForAsynchronousFrames per frame), so the caller pays ~4-5ms of session
+// wall time per 4K frame while software frame-threading delivers finished
+// frames in microseconds. The GPU-to-CPU readback itself is cheap (~0.3ms,
+// measurable with OPENTUI_VIDEO_TIMING=1). The adaptive quality controller
+// budgets wall time, so defaulting to hardware would trade visible quality
+// for idle CPU cores.
 static int ot_video_hwaccel_enabled(void) {
     const char *value = getenv("OPENTUI_VIDEO_HWACCEL");
     return value && (strcmp(value, "1") == 0 || strcmp(value, "true") == 0);
@@ -434,6 +453,7 @@ int ot_video_seek_video(ot_video_decoder *decoder, int64_t target_us) {
 }
 
 static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, int64_t pts) {
+    double t_transfer_start = ot_video_timing_enabled() ? ot_video_now_ms() : 0;
     if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
         if (!decoder->hw_transfer_frame) {
             decoder->hw_transfer_frame = av_frame_alloc();
@@ -443,6 +463,11 @@ static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, 
         int transfer = av_hwframe_transfer_data(decoder->hw_transfer_frame, frame, 0);
         if (transfer < 0) return fail_video(decoder, transfer, "av_hwframe_transfer_data");
         frame = decoder->hw_transfer_frame;
+    }
+    double t_sws_start = 0;
+    if (ot_video_timing_enabled()) {
+        t_sws_start = ot_video_now_ms();
+        fprintf(stderr, "OTVT transfer=%.3f fmt=%d\n", t_sws_start - t_transfer_start, frame->format);
     }
     uint32_t scaled_width = decoder->output_width;
     uint32_t scaled_height = decoder->output_height;
@@ -491,6 +516,7 @@ static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, 
                    output_row);
     }
     decoder->frame_pts_us = pts;
+    if (ot_video_timing_enabled()) fprintf(stderr, "OTVT sws=%.3f\n", ot_video_now_ms() - t_sws_start);
     return OT_VIDEO_OK;
 }
 
@@ -613,6 +639,7 @@ int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const ui
         return OT_VIDEO_ERROR;
     int reached_eof = 0;
     int64_t selected_pts = AV_NOPTS_VALUE;
+    double t_decode_start = ot_video_timing_enabled() ? ot_video_now_ms() : 0;
     av_frame_unref(decoder->video_selected);
     for (;;) {
         AVFrame *candidate = decoder->video_lookahead;
@@ -643,6 +670,7 @@ int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const ui
         if (candidate == decoder->video_lookahead) av_frame_unref(decoder->video_lookahead);
         if (pts >= target_us) break;
     }
+    if (ot_video_timing_enabled()) fprintf(stderr, "OTVT decode=%.3f\n", ot_video_now_ms() - t_decode_start);
     if (reached_eof && decoder->duration_us > 0 && target_us >= decoder->duration_us) return OT_VIDEO_EOF;
     if (decoder->video_selected->buf[0] &&
         convert_video_frame(decoder, decoder->video_selected, selected_pts) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
@@ -657,7 +685,9 @@ int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const ui
         *out_png = NULL;
         *out_png_len = 0;
     } else if (decoder->png_serial != decoder->frame_serial) {
+        double t_png_start = ot_video_timing_enabled() ? ot_video_now_ms() : 0;
         if (encode_png(decoder, out_png, out_png_len) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
+        if (ot_video_timing_enabled()) fprintf(stderr, "OTVT png=%.3f\n", ot_video_now_ms() - t_png_start);
         decoder->png_serial = decoder->frame_serial;
     } else if (decoder->png_packet && decoder->png_packet->data) {
         *out_png = decoder->png_packet->data;

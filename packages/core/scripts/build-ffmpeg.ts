@@ -122,7 +122,7 @@ function hostTarget(): Target {
 
 function buildTarget(target: Target): void {
   const prefix = join(cache, "prefix", target.name)
-  const marker = join(prefix, ".opentui-build")
+  const marker = join(prefix, "opentui-build")
   if (
     existsSync(join(prefix, "lib", "libavcodec.a")) &&
     existsSync(marker) &&
@@ -222,7 +222,7 @@ const selectedTargets = process.argv.includes("--all")
     : [hostTarget()]
 const targetIsBuilt = (target: Target): boolean => {
   const prefix = join(cache, "prefix", target.name)
-  const marker = join(prefix, ".opentui-build")
+  const marker = join(prefix, "opentui-build")
   return (
     existsSync(join(prefix, "lib", "libavcodec.a")) &&
     existsSync(marker) &&

@@ -11,7 +11,10 @@ const URL = `https://ffmpeg.org/releases/ffmpeg-${VERSION}.tar.xz`
 const ZLIB_VERSION = "1.3.1"
 const ZLIB_SHA256 = "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
 const ZLIB_URL = `https://zlib.net/fossils/zlib-${ZLIB_VERSION}.tar.gz`
-const BUILD_REVISION = "4"
+const BUILD_REVISION = "5"
+// Must match the zig-built dylib's minos so the statically linked FFmpeg
+// objects never carry a newer availability floor than the final link.
+const MACOS_VERSION_MIN = "13.0"
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const cache = join(root, ".cache", "ffmpeg")
 const archive = join(cache, "downloads", `ffmpeg-${VERSION}.tar.xz`)
@@ -141,7 +144,7 @@ function buildTarget(target: Target): void {
   writeFileSync(
     cc,
     target.os === "darwin"
-      ? `#!/bin/sh\nexec xcrun --sdk macosx clang -arch ${target.arch === "aarch64" ? "arm64" : "x86_64"} -isysroot "${sdk}" "$@"\n`
+      ? `#!/bin/sh\nexec xcrun --sdk macosx clang -arch ${target.arch === "aarch64" ? "arm64" : "x86_64"} -isysroot "${sdk}" -mmacosx-version-min=${MACOS_VERSION_MIN} "$@"\n`
       : target.os === "mingw32"
         ? `#!/bin/bash\nargs=()\nfor arg in "$@"; do\n  if [[ "$arg" == "-Wl,--pic-executable,-e,mainCRTStartup" ]]; then arg="-Wl,-e,mainCRTStartup"; fi\n  args+=("$arg")\ndone\nexec zig cc -target ${target.zig} "\${args[@]}"\n`
         : `#!/bin/sh\nexec zig cc -target ${target.zig} "$@"\n`,
@@ -206,6 +209,12 @@ function buildTarget(target: Target): void {
   }
   run("make", [`-j${Math.max(1, availableParallelism())}`], build)
   run("make", ["install"], build)
+  // Ship the license texts with the artifacts they cover: packaging must not
+  // depend on the extracted source tree still being around.
+  const licenses = join(prefix, "share", "opentui")
+  mkdirSync(licenses, { recursive: true })
+  copyFileSync(join(source, "COPYING.LGPLv2.1"), join(licenses, "LICENSE-FFMPEG"))
+  copyFileSync(join(zlibSource, "README"), join(licenses, "LICENSE-ZLIB"))
   writeFileSync(marker, BUILD_REVISION)
 }
 

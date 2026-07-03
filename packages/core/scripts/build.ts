@@ -252,16 +252,35 @@ export default module.default
     )
 
     if (existsSync(licensePath)) copyFileSync(licensePath, join(nativeDir, "LICENSE"))
+    // The prebuilt binaries statically link these projects; publishing them
+    // without their license texts would violate the licenses, so a missing
+    // file fails the build instead of silently shipping without it. The
+    // FFmpeg/zlib texts are installed into the build prefix next to the
+    // archives they cover.
+    const ffmpegLicenses = join(
+      rootDir,
+      ".cache",
+      "ffmpeg",
+      "prefix",
+      getZigTarget(platform, arch, abi),
+      "share",
+      "opentui",
+    )
     for (const [source, destination] of [
       [join(rootDir, "src", "zig", "vendor", "wuffs", "LICENSE"), "LICENSE-WUFFS"],
       [join(rootDir, "src", "zig", "vendor", "stb", "LICENSE"), "LICENSE-STB"],
       [join(rootDir, "src", "zig", "vendor", "libwebp", "COPYING"), "LICENSE-LIBWEBP"],
       [join(rootDir, "src", "zig", "vendor", "libwebp", "PATENTS"), "PATENTS-LIBWEBP"],
-      [join(rootDir, ".cache", "ffmpeg", "sources", "ffmpeg-8.1.1", "COPYING.LGPLv2.1"), "LICENSE-FFMPEG"],
+      [join(ffmpegLicenses, "LICENSE-FFMPEG"), "LICENSE-FFMPEG"],
       [join(rootDir, "src", "zig", "vendor", "ffmpeg", "README.md"), "FFMPEG-SOURCE.md"],
-      [join(rootDir, ".cache", "ffmpeg", "sources", "zlib-1.3.1", "README"), "LICENSE-ZLIB"],
+      [join(ffmpegLicenses, "LICENSE-ZLIB"), "LICENSE-ZLIB"],
     ] as const) {
-      if (existsSync(source)) copyFileSync(source, join(nativeDir, destination))
+      if (!existsSync(source)) {
+        console.error(`Error: required license file is missing: ${source}`)
+        console.error("Run 'bun scripts/build-ffmpeg.ts' first if the FFmpeg prefixes were cleaned.")
+        process.exit(1)
+      }
+      copyFileSync(source, join(nativeDir, destination))
     }
     console.log("Built:", nativeName)
   }

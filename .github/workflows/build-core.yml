@@ -44,6 +44,17 @@ jobs:
           key: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-${{ github.run_id }}-${{ github.job }}
           restore-keys: zig-v1-${{ runner.os }}-${{ env.ZIG_VERSION }}-
 
+      # The FFmpeg prefixes are fully determined by the build script (pinned
+      # versions, checksums, and revision marker), so an exact key hit skips
+      # the multi-target source build entirely.
+      - name: Restore FFmpeg build cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            packages/core/.cache/ffmpeg/prefix
+            packages/core/.cache/ffmpeg/downloads
+          key: ffmpeg-v1-${{ runner.os }}-${{ hashFiles('packages/core/scripts/build-ffmpeg.ts') }}
+
       - name: Install dependencies
         run: bun install
 

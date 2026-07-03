@@ -519,3 +519,63 @@ test "video png encoding is skipped when disabled" {
     try std.testing.expect(value.current_image.?.encoded_png != null);
     try std.testing.expect(value.current_image.?.encoded_png.?.len > 0);
 }
+
+test "video frames draw into buffers natively without object handles" {
+    const gp = @import("../grapheme.zig");
+    const link = @import("../link.zig");
+    const buffer_mod = @import("../buffer.zig");
+    const value = try openVideo();
+    defer value.deinit();
+    try value.configureOutput(8, 4, false);
+
+    var pool = gp.GraphemePool.init(std.testing.allocator);
+    defer pool.deinit();
+    var link_pool = link.LinkPool.init(std.testing.allocator);
+    defer link_pool.deinit();
+    const target = try buffer_mod.OptimizedBuffer.init(std.testing.allocator, 8, 4, .{ .pool = &pool, .link_pool = &link_pool });
+    defer target.deinit();
+
+    // No frame decoded yet: drawing is a no-op.
+    try std.testing.expect(value.current_image == null);
+
+    try std.testing.expect(try value.update(0));
+    const first_frame = value.current_image.?;
+    const first_serial = value.state.frame_serial;
+    const first_content = (@as(u64, 7777) << 32) | @as(u32, @truncate(first_serial));
+    try std.testing.expect(try target.drawImage(first_frame, first_content, 0, 0, 4, 2, 8, 4, 0, 0, 8, 4, .auto));
+    try std.testing.expectEqual(@as(usize, 1), target.image_placements.items.len);
+    try std.testing.expectEqual(first_content, target.image_placements.items[0].content_id);
+
+    // The placement holds its own reference: replacing the frame keeps the
+    // drawn pixels alive until the buffer clears.
+    try std.testing.expect(try value.update(500_000));
+    try std.testing.expect(value.state.frame_serial != first_serial);
+    try std.testing.expect(value.current_image.? != first_frame);
+    try std.testing.expectEqual(first_frame, target.image_placements.items[0].image);
+    try std.testing.expect(first_frame.pixels.len > 0);
+
+    // A new frame draws under a new content identity.
+    const second_content = (@as(u64, 7777) << 32) | @as(u32, @truncate(value.state.frame_serial));
+    try std.testing.expect(second_content != first_content);
+    try std.testing.expect(try target.drawImage(value.current_image.?, second_content, 4, 2, 4, 2, 8, 4, 0, 0, 8, 4, .auto));
+    try std.testing.expectEqual(@as(usize, 2), target.image_placements.items.len);
+    try std.testing.expectEqual(second_content, target.image_placements.items[1].content_id);
+}
+
+test "video keeps the current frame presentable across reconfiguration" {
+    const value = try openVideo();
+    defer value.deinit();
+    try value.configureOutput(8, 4, false);
+    try std.testing.expect(try value.update(0));
+    try std.testing.expect(value.current_image != null);
+
+    // Adaptive quality changes must not blank the placement.
+    try value.configurePng(2, 2, 5);
+    try std.testing.expect(value.current_image != null);
+
+    // Nor do output size changes; the replacement arrives with the next decode.
+    try value.configureOutput(16, 8, false);
+    try std.testing.expect(value.current_image != null);
+    try std.testing.expect(try value.update(100_000));
+    try std.testing.expectEqual(@as(u32, 16), value.current_image.?.width());
+}

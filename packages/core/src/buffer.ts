@@ -2,6 +2,7 @@ import { RGBA } from "./lib/index.js"
 import { resolveRenderLib, type OptimizedBufferHandle, type RenderLib } from "./zig.js"
 import { type Pointer, type PointerInput, toArrayBuffer, toPointer, ptr } from "./platform/ffi.js"
 import type { NativeImage } from "./image.js"
+import type { NativeVideo } from "./video.js"
 import type { ImageRenderProtocol } from "./types.js"
 
 function requireInteger(value: number, name: string, min: number, max: number): void {
@@ -423,6 +424,29 @@ export class OptimizedBuffer {
       sourceHeight,
       protocol,
     )
+  }
+
+  public drawVideo(
+    video: NativeVideo,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    pixelWidth: number = 0,
+    pixelHeight: number = 0,
+    protocol: ImageRenderProtocol = "auto",
+  ): boolean {
+    this.guard()
+    requireInteger(x, "x", -0x80000000, 0x7fffffff)
+    requireInteger(y, "y", -0x80000000, 0x7fffffff)
+    requireInteger(width, "width", 1, 0x7fffffff)
+    requireInteger(height, "height", 1, 0x7fffffff)
+    requireInteger(pixelWidth, "pixelWidth", 0, 0x7fffffff)
+    requireInteger(pixelHeight, "pixelHeight", 0, 0x7fffffff)
+    if (x + width > 0x7fffffff || y + height > 0x7fffffff) {
+      throw new RangeError("video destination coordinates and dimensions exceed i32 bounds")
+    }
+    return this.lib.bufferDrawVideo(this.bufferPtr, video.ptr, x, y, width, height, pixelWidth, pixelHeight, protocol)
   }
 
   public drawPackedBuffer(

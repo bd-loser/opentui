@@ -1,5 +1,4 @@
 import type { OptimizedBuffer } from "../buffer.js"
-import { NativeImage } from "../image.js"
 import { Renderable, type RenderableOptions } from "../Renderable.js"
 import type { ImageRenderProtocol, RenderContext } from "../types.js"
 import { NativeVideo, type NativeVideoState } from "../video.js"
@@ -302,7 +301,7 @@ export class VideoRenderable extends Renderable {
   private avSyncOffsetValue: number
   private native: NativeVideo | null = null
   private metadata: VideoMetadata | null = null
-  private currentImage: NativeImage | null = null
+  private presentedSerial = -1n
   private geometry: VideoOutputGeometry | null = null
   private wallClock = false
   private positionSeconds = 0
@@ -386,8 +385,7 @@ export class VideoRenderable extends Renderable {
     this.playbackEnded = false
     this.metadata = null
     this.geometry = null
-    this.currentImage?.dispose()
-    this.currentImage = null
+    this.presentedSerial = -1n
     this.native?.dispose()
     this.native = null
     this.pngEnabled = true
@@ -593,25 +591,30 @@ export class VideoRenderable extends Renderable {
     if (!this.ensureNative()) return
     this.syncPngEnabled()
     this.ensureGeometry()
-    if (!this.currentImage) this.updateFrame(this.positionSeconds)
-    if (!this.currentImage || !this.geometry) return
+    if (this.presentedSerial < 0n) this.updateFrame(this.positionSeconds)
+    if (this.presentedSerial < 0n || !this.geometry) return
 
     const x = (this.buffered ? 0 : this._screenX) + Math.floor((this.width - this.geometry.cellWidth) / 2)
     const y = (this.buffered ? 0 : this._screenY) + Math.floor((this.height - this.geometry.cellHeight) / 2)
-    buffer.drawImage(
-      this.currentImage,
+    // The frame stays native: this draws the video's current frame directly.
+    buffer.drawVideo(
+      this.native!,
       x,
       y,
       this.geometry.cellWidth,
       this.geometry.cellHeight,
       this.geometry.pixelWidth,
       this.geometry.pixelHeight,
-      0,
-      0,
-      this.currentImage.width,
-      this.currentImage.height,
       this.renderProtocol,
     )
+  }
+
+  private presentIfNewFrame(state: NativeVideoState, outputFrameCount: number): boolean {
+    if (!state.hasFrame || state.frameSerial === this.presentedSerial) return false
+    this.presentedSerial = state.frameSerial
+    this.requestRender()
+    this.native!.frameSubmitted(outputFrameCount)
+    return true
   }
 
   private ensureNative(): boolean {
@@ -737,14 +740,7 @@ export class VideoRenderable extends Renderable {
       }
       const output = this._ctx.getOutputWriteSample?.() ?? { frameCount: 0 }
       const state = this.native.schedule(time, 1 / this.presentationFps, output)
-      const next = this.native.takeFrame()
-      if (next) {
-        const previous = this.currentImage
-        this.currentImage = next
-        previous?.dispose()
-        this.requestRender()
-        this.native.frameSubmitted(output.frameCount)
-      }
+      this.presentIfNewFrame(state, output.frameCount)
       if (state.preparedPts < 0) this.schedulePreparation()
       const mediaTime = nativeAudioClock ? state.currentTime : time
       if (this.duration > 0 && mediaTime >= this.duration) {
@@ -784,13 +780,7 @@ export class VideoRenderable extends Renderable {
     const started = performance.now()
     const state = this.native.update(time)
     const updateTime = performance.now() - started
-    const next = this.native.takeFrame()
-    if (!next) return state
-    const previous = this.currentImage
-    this.currentImage = next
-    previous?.dispose()
-    this.requestRender()
-    this.native.frameSubmitted(this._ctx.getOutputWriteSample?.().frameCount ?? 0)
+    if (!this.presentIfNewFrame(state, this._ctx.getOutputWriteSample?.().frameCount ?? 0)) return state
     this.updateAdaptiveQuality(updateTime, state, 1000 / this.presentationFps)
     return state
   }
@@ -874,8 +864,6 @@ export class VideoRenderable extends Renderable {
     this.stopTicker()
     this.cancelPreparation()
     this.wallClock = false
-    this.currentImage?.dispose()
-    this.currentImage = null
     this.native?.dispose()
     this.native = null
     super.destroySelf()

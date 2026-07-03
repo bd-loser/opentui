@@ -204,13 +204,12 @@ pub const Video = struct {
         self.output_height = height;
         self.output_cover = cover;
         if (ot_video_seek_video(self.decoder, self.state.current_time_us) != 0) return error.SeekFailed;
-        if (self.current_image) |value| value.deinit();
-        self.current_image = null;
+        // The stale-sized frame stays presentable until its replacement is
+        // decoded, so reconfiguring does not blank the placement.
         self.clearPrepared();
         self.resetScheduler();
         self.state.frame_serial = 0;
         self.state.frame_pts_us = -1;
-        self.state.has_frame = 0;
     }
 
     // Kitty is the only consumer of the per-frame PNG stream; other protocols
@@ -221,11 +220,10 @@ pub const Video = struct {
 
     pub fn configurePng(self: *Video, compression_level: u32, predictor: u32, color_mode: u32) !void {
         if (ot_video_set_png_options(self.decoder, compression_level, predictor, color_mode) != 0) return error.InvalidArgument;
+        // Keep the current frame visible; resetting the serial forces the next
+        // decode to replace it with the new PNG settings.
         self.state.frame_serial = 0;
         self.state.frame_pts_us = -1;
-        self.state.has_frame = 0;
-        if (self.current_image) |value| value.deinit();
-        self.current_image = null;
         self.clearPrepared();
         self.preparation_latency.reset();
     }

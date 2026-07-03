@@ -113,7 +113,7 @@ const SplitFooterTransition = struct {
 
 const CommittedImage = struct {
     placement_id: u32,
-    image_handle: u32,
+    content_id: u64,
     x: i32,
     y: i32,
     width: u32,
@@ -142,7 +142,7 @@ const ImageDirty = struct {
 const ImageProtocol = enum { fallback, sixel, kitty };
 
 const SixelCacheKey = struct {
-    image_handle: u32,
+    content_id: u64,
     source_x: u32,
     source_y: u32,
     source_width: u32,
@@ -522,7 +522,7 @@ pub const CliRenderer = struct {
                 var delete_stream = std.io.fixedBufferStream(&delete_buf);
                 terminal_image.writeKittyDelete(
                     delete_stream.writer(),
-                    self.kittyImageId(current.image_handle, current.placement_id),
+                    self.kittyImageId(current.placement_id),
                     null,
                     true,
                     self.terminal.isInTmux(),
@@ -1417,7 +1417,7 @@ pub const CliRenderer = struct {
         const next = self.nextRenderBuffer.image_placements.items;
         if (next.len != self.currentImages.items.len) return true;
         for (next, self.currentImages.items) |a, b| {
-            if (a.placement_id != b.placement_id or a.image_handle != b.image_handle or a.x != b.x or a.y != b.y or a.width != b.width or a.height != b.height or
+            if (a.placement_id != b.placement_id or a.content_id != b.content_id or a.x != b.x or a.y != b.y or a.width != b.width or a.height != b.height or
                 a.pixel_width != b.pixel_width or a.pixel_height != b.pixel_height) return true;
             if (a.source_x != b.source_x or a.source_y != b.source_y or a.source_width != b.source_width or a.source_height != b.source_height or a.opacity != b.opacity) return true;
             if (self.nextPlacementProtocol(a) != b.protocol) return true;
@@ -1499,7 +1499,7 @@ pub const CliRenderer = struct {
             // Kitty replaces image data server side, so content changes do not
             // require clearing cells. Sixel pixels are the cells, so content and
             // blended-background changes repaint the rectangle.
-            if (protocol == .sixel and (committed.image_handle != placement.image_handle or
+            if (protocol == .sixel and (committed.content_id != placement.content_id or
                 committed.background_hash != background_hash)) continue;
             matched = true;
             break;
@@ -1565,7 +1565,7 @@ pub const CliRenderer = struct {
         };
         for (self.nextRenderBuffer.image_placements.items, 0..) |placement, index| {
             self.pendingImages.appendAssumeCapacity(.{
-                .image_handle = placement.image_handle,
+                .content_id = placement.content_id,
                 .placement_id = placement.placement_id,
                 .x = placement.x,
                 .y = placement.y,
@@ -1593,8 +1593,7 @@ pub const CliRenderer = struct {
         self.pendingImages.clearRetainingCapacity();
     }
 
-    fn kittyImageId(self: *CliRenderer, image_handle: u32, placement_id: u32) u32 {
-        _ = image_handle;
+    fn kittyImageId(self: *CliRenderer, placement_id: u32) u32 {
         return self.imageIdSalt + placement_id;
     }
 
@@ -1655,11 +1654,11 @@ pub const CliRenderer = struct {
             if (current.protocol != .kitty) continue;
             var placement_found = false;
             for (next) |placement| {
-                if (self.nextPlacementProtocol(placement) == .kitty and placement.placement_id == current.placement_id and placement.image_handle == current.image_handle) placement_found = true;
+                if (self.nextPlacementProtocol(placement) == .kitty and placement.placement_id == current.placement_id and placement.content_id == current.content_id) placement_found = true;
             }
             if (!placement_found) try terminal_image.writeKittyDelete(
                 writer,
-                self.kittyImageId(current.image_handle, current.placement_id),
+                self.kittyImageId(current.placement_id),
                 null,
                 true,
                 tmux,
@@ -1669,12 +1668,12 @@ pub const CliRenderer = struct {
             if (self.nextPlacementProtocol(placement) != .kitty) continue;
             var previous: ?CommittedImage = null;
             for (self.currentImages.items) |current| {
-                if (current.protocol == .kitty and current.placement_id == placement.placement_id and current.image_handle == placement.image_handle) {
+                if (current.protocol == .kitty and current.placement_id == placement.placement_id and current.content_id == placement.content_id) {
                     previous = current;
                     break;
                 }
             }
-            const image_id = self.kittyImageId(placement.image_handle, placement.placement_id);
+            const image_id = self.kittyImageId(placement.placement_id);
             // Downscaled transmissions are tied to the pixel size and crop, so
             // changing either invalidates the transmitted pixels.
             const retransmit = previous != null and (previous.?.opacity != placement.opacity or
@@ -1718,7 +1717,7 @@ pub const CliRenderer = struct {
             if (self.nextPlacementProtocol(placement) != .sixel or !self.placementDirty(placement.placement_id)) continue;
             if (placement.pixel_width == 0 or placement.pixel_height == 0 or placement.x < 0 or placement.y < 0) continue;
             const cache_key = SixelCacheKey{
-                .image_handle = placement.image_handle,
+                .content_id = placement.content_id,
                 .source_x = placement.source_x,
                 .source_y = placement.source_y,
                 .source_width = placement.source_width,
@@ -2273,7 +2272,7 @@ pub const CliRenderer = struct {
                 var stream = std.io.fixedBufferStream(&delete_buf);
                 terminal_image.writeKittyDelete(
                     stream.writer(),
-                    self.kittyImageId(current.image_handle, current.placement_id),
+                    self.kittyImageId(current.placement_id),
                     null,
                     true,
                     self.terminal.isInTmux(),

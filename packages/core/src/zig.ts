@@ -52,6 +52,7 @@ import {
   NativeRenderStatsStruct,
   NativeImageInfoStruct,
   ImageDrawOptionsStruct,
+  VideoDrawOptionsStruct,
   NativeVideoInfoStruct,
   NativeVideoStateStruct,
 } from "./zig-structs.js"
@@ -541,6 +542,7 @@ function getOpenTUILib(libPath?: string) {
       args: ["u32", "u32", "u32", "ptr", "u32", "u8", "u32"],
       returns: "void",
     },
+    bufferDrawVideo: { args: ["u32", "u32", "ptr"], returns: "bool" },
     bufferDrawImage: {
       args: ["u32", "u32", "ptr"],
       returns: "bool",
@@ -2176,6 +2178,17 @@ export interface RenderLib extends AudioEngineLib {
     sourceHeight: number,
     protocol: ImageRenderProtocol,
   ) => boolean
+  bufferDrawVideo: (
+    buffer: OptimizedBufferHandle,
+    video: VideoHandle,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    pixelWidth: number,
+    pixelHeight: number,
+    protocol: ImageRenderProtocol,
+  ) => boolean
   bufferDrawPackedBuffer: (
     buffer: OptimizedBufferHandle,
     dataPtr: Pointer,
@@ -3281,6 +3294,30 @@ class FFIRenderLib implements RenderLib {
       protocol: protocolId,
     })
     return this.opentui.symbols.bufferDrawImage(buffer, image, ptr(options))
+  }
+
+  public bufferDrawVideo(
+    buffer: OptimizedBufferHandle,
+    video: VideoHandle,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    pixelWidth: number,
+    pixelHeight: number,
+    protocol: ImageRenderProtocol,
+  ): boolean {
+    const protocolId = { auto: 0, kitty: 1, sixel: 2, blocks: 3 }[protocol]
+    const options = VideoDrawOptionsStruct.pack({
+      x,
+      y,
+      width,
+      height,
+      pixelWidth,
+      pixelHeight,
+      protocol: protocolId,
+    })
+    return this.opentui.symbols.bufferDrawVideo(buffer, video, ptr(options))
   }
 
   public bufferDrawPackedBuffer(

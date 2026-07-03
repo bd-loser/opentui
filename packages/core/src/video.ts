@@ -91,6 +91,10 @@ export class NativeVideo {
     return this.handle
   }
 
+  public get ptr(): VideoHandle {
+    return this.guard()
+  }
+
   private unpackState(result: ReturnType<RenderLib["videoGetState"]>): NativeVideoState {
     if (result.status !== 0) throw videoError(this.lib, this.handle, result.status)
     return {

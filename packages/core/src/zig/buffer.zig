@@ -160,7 +160,10 @@ fn applyOpacity(color: RGBA, opacity: u8) RGBA {
 pub const OptimizedBuffer = struct {
     pub const ImagePlacement = struct {
         placement_id: u32,
-        image_handle: u32,
+        // Identity of the drawn content for renderer diffing and payload
+        // caches: the image handle for stills, or a video handle combined
+        // with the frame serial for video frames.
+        content_id: u64,
         image: *native_image.Image,
         x: i32,
         y: i32,
@@ -1243,7 +1246,7 @@ pub const OptimizedBuffer = struct {
             const visible_height: u32 = @intCast(y1 - y0);
             self.image_placements.appendAssumeCapacity(.{
                 .placement_id = @intCast(self.image_placements.items.len + 1),
-                .image_handle = placement.image_handle,
+                .content_id = placement.content_id,
                 .image = placement.image,
                 .x = x0,
                 .y = y0,
@@ -2198,7 +2201,7 @@ pub const OptimizedBuffer = struct {
     pub fn drawImage(
         self: *OptimizedBuffer,
         image: *const native_image.Image,
-        image_handle: u32,
+        content_id: u64,
         pos_x: i32,
         pos_y: i32,
         width: u32,
@@ -2241,7 +2244,7 @@ pub const OptimizedBuffer = struct {
         const placement_id: u32 = @intCast(self.image_placements.items.len + 1);
         try self.image_placements.append(self.allocator, .{
             .placement_id = placement_id,
-            .image_handle = image_handle,
+            .content_id = content_id,
             .image = @constCast(image),
             .x = clip_x0,
             .y = clip_y0,

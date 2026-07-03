@@ -3049,11 +3049,11 @@ test "OptimizedBuffer merges frame buffer placements with clipping scissor and o
     try std.testing.expectEqual(@as(usize, 2), target.image_placements.items.len);
     const direct = target.image_placements.items[0];
     try std.testing.expectEqual(@as(u32, 1), direct.placement_id);
-    try std.testing.expectEqual(@as(u32, 43), direct.image_handle);
+    try std.testing.expectEqual(@as(u64, 43), direct.content_id);
 
     const merged = target.image_placements.items[1];
     try std.testing.expectEqual(@as(u32, 2), merged.placement_id);
-    try std.testing.expectEqual(@as(u32, 41), merged.image_handle);
+    try std.testing.expectEqual(@as(u64, 41), merged.content_id);
     try std.testing.expectEqual(@as(i32, 3), merged.x);
     try std.testing.expectEqual(@as(i32, 1), merged.y);
     try std.testing.expectEqual(@as(u32, 1), merged.width);
@@ -3074,7 +3074,7 @@ test "OptimizedBuffer merges frame buffer placements with clipping scissor and o
 
     // Placement B was clipped away entirely.
     for (target.image_placements.items) |placement| {
-        try std.testing.expect(placement.image_handle != 42);
+        try std.testing.expect(placement.content_id != 42);
     }
 }
 

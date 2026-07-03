@@ -163,6 +163,16 @@ export const ImageDrawOptionsStruct = defineStruct([
   ["protocol", "u32"],
 ])
 
+export const VideoDrawOptionsStruct = defineStruct([
+  ["x", "i32"],
+  ["y", "i32"],
+  ["width", "u32"],
+  ["height", "u32"],
+  ["pixelWidth", "u32"],
+  ["pixelHeight", "u32"],
+  ["protocol", "u32"],
+])
+
 export const LineInfoStruct = defineStruct([
   ["startCols", ["u32"]],
   ["startColsLen", "u32", { lengthOf: "startCols" }],

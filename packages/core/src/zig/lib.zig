@@ -1445,6 +1445,46 @@ export fn bufferDrawImage(
     ) catch false;
 }
 
+pub const ExternalVideoDrawOptions = extern struct {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    pixel_width: u32,
+    pixel_height: u32,
+    protocol: u32,
+};
+
+// Draws the video's current frame without surfacing it to the caller: the
+// frame stays native and the placement identity combines the video handle
+// with the frame serial, so no per-frame object handles are created.
+export fn bufferDrawVideo(
+    buffer_handle: NativeHandle,
+    video_handle: NativeHandle,
+    options: *const ExternalVideoDrawOptions,
+) bool {
+    const buffer_ptr = acquireBuffer(buffer_handle) orelse return false;
+    const video_ptr = acquireVideo(video_handle) orelse return false;
+    const frame = video_ptr.current_image orelse return false;
+    const protocol = std.meta.intToEnum(native_image.RenderProtocol, options.protocol) catch return false;
+    const content_id = (@as(u64, video_handle) << 32) | @as(u32, @truncate(video_ptr.state.frame_serial));
+    return buffer_ptr.drawImage(
+        frame,
+        content_id,
+        options.x,
+        options.y,
+        options.width,
+        options.height,
+        options.pixel_width,
+        options.pixel_height,
+        0,
+        0,
+        frame.width(),
+        frame.height(),
+        protocol,
+    ) catch false;
+}
+
 export fn linkAlloc(urlPtr: ?[*]const u8, urlLen: u32) u32 {
     const url = sliceFromPtrLen(urlPtr, urlLen);
     const link_pool = link.initGlobalLinkPool(globalArena);

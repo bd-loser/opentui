@@ -1289,12 +1289,10 @@ function getOpenTUILib(libPath?: string) {
     videoConfigurePng: { args: ["u32", "u32", "u32", "u32"], returns: "u32" },
     videoSeek: { args: ["u32", "i64", "ptr"], returns: "u32" },
     videoUpdate: { args: ["u32", "i64", "ptr"], returns: "u32" },
-    videoPrepare: { args: ["u32", "i64", "ptr"], returns: "u32" },
     videoSchedule: { args: ["u32", "i64", "u32", "u64", "u32", "ptr"], returns: "u32" },
     videoPrepareNext: { args: ["u32", "u32", "u64", "u32", "ptr"], returns: "u32" },
     videoFrameSubmitted: { args: ["u32", "u64"], returns: "u32" },
     videoResetOutputTiming: { args: ["u32"], returns: "u32" },
-    videoService: { args: ["u32", "i64", "ptr"], returns: "u32" },
     videoGetCurrentFrame: { args: ["u32", "u64", "ptr", "ptr"], returns: "u32" },
     videoReadAudio: { args: ["u32", "ptr", "u32", "u32", "ptr"], returns: "u32" },
     videoGetError: { args: ["u32", "ptr", "u32"], returns: "u32" },
@@ -2657,7 +2655,6 @@ export interface RenderLib extends AudioEngineLib {
   videoConfigurePng: (video: VideoHandle, compressionLevel: number, predictor: number, colorMode: number) => number
   videoSeek: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
   videoUpdate: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
-  videoPrepare: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
   videoSchedule: (
     video: VideoHandle,
     targetUs: bigint,
@@ -2673,7 +2670,6 @@ export interface RenderLib extends AudioEngineLib {
   ) => { status: number; state: NativeVideoState }
   videoFrameSubmitted: (video: VideoHandle, outputFrame: bigint) => number
   videoResetOutputTiming: (video: VideoHandle) => number
-  videoService: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
   videoGetCurrentFrame: (
     video: VideoHandle,
     knownSerial: bigint,
@@ -5599,7 +5595,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   private videoStateCall(
-    symbol: "videoSeek" | "videoUpdate" | "videoPrepare" | "videoService",
+    symbol: "videoSeek" | "videoUpdate",
     video: VideoHandle,
     targetUs: bigint,
   ) {
@@ -5635,10 +5631,6 @@ class FFIRenderLib implements RenderLib {
 
   public videoUpdate(video: VideoHandle, targetUs: bigint) {
     return this.videoStateCall("videoUpdate", video, targetUs)
-  }
-
-  public videoPrepare(video: VideoHandle, targetUs: bigint) {
-    return this.videoStateCall("videoPrepare", video, targetUs)
   }
 
   public videoSchedule(
@@ -5683,10 +5675,6 @@ class FFIRenderLib implements RenderLib {
 
   public videoResetOutputTiming(video: VideoHandle): number {
     return this.opentui.symbols.videoResetOutputTiming(video)
-  }
-
-  public videoService(video: VideoHandle, targetUs: bigint) {
-    return this.videoStateCall("videoService", video, targetUs)
   }
 
   public videoGetCurrentFrame(video: VideoHandle, knownSerial: bigint) {

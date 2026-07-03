@@ -188,12 +188,6 @@ export class NativeVideo {
     return this.unpackState(this.lib.videoUpdate(this.guard(), BigInt(Math.round(time * 1_000_000))))
   }
 
-  public prepare(time: number): NativeVideoState {
-    if (!Number.isFinite(time) || time < 0)
-      throw new RangeError("video preparation time must be finite and non-negative")
-    return this.unpackState(this.lib.videoPrepare(this.guard(), BigInt(Math.round(time * 1_000_000))))
-  }
-
   public schedule(
     time: number,
     presentationInterval: number,
@@ -232,11 +226,6 @@ export class NativeVideo {
   public resetOutputTiming(): void {
     const status = this.lib.videoResetOutputTiming(this.guard())
     if (status !== 0) throw videoError(this.lib, this.handle, status)
-  }
-
-  public service(time: number): NativeVideoState {
-    if (!Number.isFinite(time) || time < 0) throw new RangeError("Video service time must be finite and non-negative")
-    return this.unpackState(this.lib.videoService(this.guard(), BigInt(Math.round(time * 1_000_000))))
   }
 
   public takeFrame(): NativeImage | null {

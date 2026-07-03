@@ -654,3 +654,42 @@ test "video seek discards in flight preparation" {
     try std.testing.expect(try value.update(1_000_000));
     try std.testing.expect(value.state.frame_pts_us >= 900_000);
 }
+
+test "video production steps through consecutive source frames" {
+    const value = try openVideo();
+    defer value.deinit();
+    try value.configureOutput(8, 4, false);
+    try std.testing.expect(try value.update(0));
+
+    // Stepping is deterministic and independent of the scheduling clock: each
+    // preparation yields exactly the next source frame.
+    var expected_pts: i64 = 0;
+    for (0..5) |_| {
+        try std.testing.expect(try value.prepareNext(41_667, 0, 0));
+        value.drainPreparation();
+        const prepared = value.state.prepared_pts_us;
+        try std.testing.expect(prepared > expected_pts);
+        try std.testing.expect(prepared - expected_pts < 43_000);
+        expected_pts = prepared;
+        // Consume the slot the way schedule() would.
+        value.clearPrepared();
+    }
+}
+
+test "video dropping a stale frame resynchronizes production to the clock" {
+    const value = try openVideo();
+    defer value.deinit();
+    try value.configureOutput(8, 4, false);
+    try std.testing.expect(try value.update(0));
+    try std.testing.expect(try value.prepareNext(41_667, 0, 0));
+    value.drainPreparation();
+    try std.testing.expect(value.state.prepared_pts_us < 100_000);
+
+    // The clock has moved far past the prepared frame: schedule drops it and
+    // the next preparation re-anchors near the clock instead of stepping.
+    try value.schedule(2_000_000, 41_667, 0, 0);
+    try std.testing.expectEqual(@as(i64, -1), value.state.prepared_pts_us);
+    try std.testing.expect(try value.prepareNext(41_667, 0, 0));
+    value.drainPreparation();
+    try std.testing.expect(value.state.prepared_pts_us > 1_900_000);
+}

@@ -142,6 +142,11 @@ pub const Video = struct {
     prepared_image: ?*image.Image = null,
     prepared_serial: u64 = 0,
     last_presented_pts_us: i64 = -1,
+    last_produced_pts_us: i64 = -1,
+    // Set when the media position no longer follows production stepping
+    // (start, seek, reconfiguration, or a dropped stale frame); the next
+    // preparation then re-anchors to the clock instead of stepping.
+    resync_pending: bool = true,
     preparation_latency: LatencyWindow = .{},
     output_latency: LatencyWindow = .{},
     output_start_frame: ?u64 = null,
@@ -303,6 +308,8 @@ pub const Video = struct {
         self.current_image = null;
         self.clearPrepared();
         self.last_presented_pts_us = -1;
+        self.last_produced_pts_us = -1;
+        self.resync_pending = true;
     }
 
     pub fn update(self: *Video, target_us: i64) !bool {
@@ -330,6 +337,8 @@ pub const Video = struct {
         }
         self.state.ended = 0;
         const decoded = outcome.frame orelse return false;
+        self.last_produced_pts_us = decoded.pts_us;
+        self.resync_pending = false;
         self.publish(decoded);
         return true;
     }
@@ -368,7 +377,9 @@ pub const Video = struct {
     fn ensureWorkerLocked(self: *Video) !void {
         if (self.png_pool == null) {
             const pool = self.allocator.create(std.Thread.Pool) catch return error.OutOfMemory;
-            pool.init(.{ .allocator = self.allocator }) catch {
+            // Deflate parallelism has diminishing returns past a few chunks;
+            // the worker also participates while waiting.
+            pool.init(.{ .allocator = self.allocator, .n_jobs = @min(4, std.Thread.getCpuCount() catch 4) }) catch {
                 self.allocator.destroy(pool);
                 return error.OutOfMemory;
             };
@@ -425,6 +436,11 @@ pub const Video = struct {
             &pts_us,
             &serial,
         );
+        if (timingEnabled()) {
+            std.debug.print("OTVT produce target={d} pts={d} serial={d} known={d}/{d} result={d}\n", .{
+                request.target_us, pts_us, serial, request.known_frame_serial, request.known_prepared_serial, result,
+            });
+        }
         if (result == 1) return .{ .reached_end = true };
         if (result != 0 or pixels == null) return .{ .failed = error.DecodeFailed };
         if (serial == request.known_frame_serial or serial == request.known_prepared_serial) return .{};
@@ -511,6 +527,7 @@ pub const Video = struct {
         self.prepared_image = frame.value;
         self.prepared_serial = frame.serial;
         self.state.prepared_pts_us = frame.pts_us;
+        self.last_produced_pts_us = frame.pts_us;
     }
 
     // Cancels pending work and waits out in-flight production; the caller may
@@ -543,6 +560,7 @@ pub const Video = struct {
         const prepared_pts = self.state.prepared_pts_us;
         if (prepared_pts < self.state.current_time_us - presentation_interval_us) {
             self.clearPrepared();
+            self.resync_pending = true;
             return;
         }
         const deadline = prepared_pts - @as(i64, self.output_latency.maximum()) - self.av_sync_offset_us;
@@ -559,16 +577,22 @@ pub const Video = struct {
         self.collectPrepared();
         if (self.prepared_image != null) return false;
         self.updateSyncLead();
-        const source_interval_us: i64 = if (self.info.fps_num > 0)
+        // Production marches through the source deterministically: one
+        // presentation step per produced frame, independent of scheduling
+        // jitter. The half-step margin makes the at-or-before frame selection
+        // reach the next frame across timestamp rounding. Only a resync
+        // (start, seek, reconfiguration, dropped frame) consults the clock.
+        const interval: i64 = presentation_interval_us;
+        const source_interval: i64 = if (self.info.fps_num > 0)
             @intCast((@as(u64, 1_000_000) * self.info.fps_den + self.info.fps_num - 1) / self.info.fps_num)
         else
-            presentation_interval_us;
-        const measured_target = self.state.current_time_us + @as(i64, self.state.sync_lead_us) + source_interval_us + self.av_sync_offset_us;
-        const cadence_target = if (self.last_presented_pts_us >= 0)
-            self.last_presented_pts_us + presentation_interval_us
+            interval;
+        const target = if (self.resync_pending or self.last_produced_pts_us < 0)
+            self.state.current_time_us + @as(i64, self.state.sync_lead_us) + interval + self.av_sync_offset_us
         else
-            0;
-        return self.prepare(@max(measured_target, cadence_target));
+            self.last_produced_pts_us + @max(interval, source_interval) + @divTrunc(source_interval, 2);
+        self.resync_pending = false;
+        return self.prepare(@max(0, target));
     }
 
     fn publish(self: *Video, decoded: PreparedFrame) void {
@@ -580,7 +604,7 @@ pub const Video = struct {
         self.last_presented_pts_us = decoded.pts_us;
     }
 
-    fn clearPrepared(self: *Video) void {
+    pub fn clearPrepared(self: *Video) void {
         if (self.prepared_image) |value| value.deinit();
         self.prepared_image = null;
         self.prepared_serial = 0;
@@ -614,6 +638,8 @@ pub const Video = struct {
     fn resetScheduler(self: *Video) void {
         self.clearPrepared();
         self.last_presented_pts_us = -1;
+        self.last_produced_pts_us = -1;
+        self.resync_pending = true;
         self.preparation_latency.reset();
         self.output_latency.reset();
         self.output_start_frame = null;
@@ -818,6 +844,7 @@ pub const Video = struct {
         self.av_sync_offset_us = offset_us;
         self.quiesceWorker();
         self.clearPrepared();
+        self.resync_pending = true;
     }
 
     pub fn setAudioOffline(self: *Video, offline: bool) void {

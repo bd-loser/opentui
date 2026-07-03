@@ -3,6 +3,7 @@
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/cpu.h>
 #include <libavutil/error.h>
 #include <libavutil/hwcontext.h>
 #include <libavutil/imgutils.h>
@@ -188,7 +189,10 @@ static int open_stream(ot_video_decoder *decoder, const char *path, enum AVMedia
     result = avcodec_parameters_to_context(out->codec, out->stream->codecpar);
     if (result < 0) return fail(decoder, result, "avcodec_parameters_to_context");
     out->codec->pkt_timebase = out->stream->time_base;
-    out->codec->thread_count = 0;
+    // Enough threads to pipeline 4K decoding without drowning the process;
+    // uncapped auto detection spawns one per logical core.
+    int cpu_count = av_cpu_count();
+    out->codec->thread_count = type == AVMEDIA_TYPE_VIDEO ? (cpu_count > 8 ? 8 : cpu_count) : 1;
     if (type == AVMEDIA_TYPE_VIDEO) ot_video_attach_hw_device(decoder, out);
     result = avcodec_open2(out->codec, codec, NULL);
     if (result < 0) return fail(decoder, result, "avcodec_open2");
@@ -452,7 +456,10 @@ static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, 
     if (!decoder->sws) {
         decoder->sws = sws_alloc_context();
         if (!decoder->sws) return fail_video(decoder, AVERROR(ENOMEM), "sws_alloc_context");
-        decoder->sws->threads = 0;
+        // Terminal-sized outputs saturate quickly; more slices only add
+        // wakeup churn.
+        int sws_cpu = av_cpu_count();
+        decoder->sws->threads = sws_cpu > 4 ? 4 : sws_cpu;
         decoder->sws->flags = SWS_BILINEAR;
     }
     if (!decoder->sws_dst) {

@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
+import { fileURLToPath } from "node:url"
 
 import {
   calculateVideoGeometry,
@@ -11,7 +12,7 @@ import {
   updateAdaptiveVideoQuality,
   VideoRenderable,
 } from "../renderables/Video.js"
-import { createTestRenderer } from "../testing/test-renderer.js"
+import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
 import { setRendererCapabilities } from "../testing/terminal-capabilities.js"
 
 describe("VideoRenderable geometry", () => {
@@ -551,5 +552,192 @@ describe("VideoRenderable adaptive quality", () => {
     }
     expect(state.tier).toBe(0)
     expect(state.overloadSamples).toBe(0)
+  })
+})
+
+describe("VideoRenderable playback (integration)", () => {
+  const VIDEO_FIXTURE = fileURLToPath(new URL("./fixtures/video/dragon.mp4", import.meta.url))
+
+  async function waitFor(condition: () => boolean, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      if (condition()) return true
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    }
+    return condition()
+  }
+
+  function countImageCells(renderer: TestRenderer): number {
+    const chars = renderer.currentRenderBuffer.buffers.char
+    let count = 0
+    for (let index = 0; index < chars.length; index++) {
+      if (chars[index] >>> 30 === 1) count++
+    }
+    return count
+  }
+
+  test("decodes real video and renders image placement cells", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({ width: 24, height: 10 })
+    const ready = mock(() => {})
+    const failed = mock(() => {})
+    const video = new VideoRenderable(renderer, {
+      source: VIDEO_FIXTURE,
+      width: 24,
+      height: 10,
+      muted: true,
+      onReady: ready,
+      onError: failed,
+    })
+    renderer.root.add(video)
+    try {
+      await renderOnce()
+      expect(failed).not.toHaveBeenCalled()
+      expect(ready).toHaveBeenCalledTimes(1)
+      expect(video.ready).toBe(true)
+      expect(video.videoMetadata?.width).toBe(768)
+      expect(video.videoMetadata?.height).toBe(1168)
+      expect(video.videoMetadata?.fps).toBe(24)
+      expect(video.videoMetadata?.hasAudio).toBe(true)
+      expect(video.duration).toBeGreaterThan(5)
+      expect(countImageCells(renderer)).toBeGreaterThan(0)
+    } finally {
+      video.destroy()
+      renderer.destroy()
+    }
+  })
+
+  test("fires onEnd and stops once playback reaches the end", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({ width: 16, height: 8 })
+    const ended = mock(() => {})
+    const failed = mock(() => {})
+    const video = new VideoRenderable(renderer, {
+      source: VIDEO_FIXTURE,
+      width: 16,
+      height: 8,
+      muted: true,
+      onEnd: ended,
+      onError: failed,
+    })
+    renderer.root.add(video)
+    try {
+      await renderOnce()
+      video.seek(video.duration - 0.25)
+      video.play()
+      expect(video.playing).toBe(true)
+      const finished = await waitFor(() => ended.mock.calls.length > 0, 8000)
+      expect(failed).not.toHaveBeenCalled()
+      expect(finished).toBe(true)
+      expect(ended).toHaveBeenCalledTimes(1)
+      expect(video.ended).toBe(true)
+      expect(video.playing).toBe(false)
+      expect(video.paused).toBe(true)
+      expect(video.currentTime).toBeCloseTo(video.duration, 1)
+    } finally {
+      video.destroy()
+      renderer.destroy()
+    }
+  })
+
+  test("loops seamlessly instead of ending when loop is enabled", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({ width: 16, height: 8 })
+    const ended = mock(() => {})
+    const failed = mock(() => {})
+    const times: number[] = []
+    const video = new VideoRenderable(renderer, {
+      source: VIDEO_FIXTURE,
+      width: 16,
+      height: 8,
+      muted: true,
+      loop: true,
+      onEnd: ended,
+      onError: failed,
+      onTimeUpdate: (time) => times.push(time),
+    })
+    renderer.root.add(video)
+    try {
+      await renderOnce()
+      video.seek(video.duration - 0.25)
+      video.play()
+      const wrapped = await waitFor(() => times.some((time) => time < 1), 8000)
+      expect(failed).not.toHaveBeenCalled()
+      expect(wrapped).toBe(true)
+      expect(ended).not.toHaveBeenCalled()
+      expect(video.playing).toBe(true)
+      expect(video.ended).toBe(false)
+      video.pause()
+      expect(video.paused).toBe(true)
+    } finally {
+      video.destroy()
+      renderer.destroy()
+    }
+  })
+
+  test("seeking while playing continues from the target position", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({ width: 16, height: 8 })
+    const failed = mock(() => {})
+    const seeks: number[] = []
+    const video = new VideoRenderable(renderer, {
+      source: VIDEO_FIXTURE,
+      width: 16,
+      height: 8,
+      muted: true,
+      onError: failed,
+      onSeek: (time) => seeks.push(time),
+    })
+    renderer.root.add(video)
+    try {
+      await renderOnce()
+      video.play()
+      await waitFor(() => video.currentTime > 0.05, 4000)
+      video.seek(3)
+      expect(seeks).toEqual([3])
+      expect(video.currentTime).toBeGreaterThanOrEqual(2.9)
+      const advanced = await waitFor(() => video.currentTime > 3.05, 4000)
+      expect(failed).not.toHaveBeenCalled()
+      expect(advanced).toBe(true)
+      expect(video.currentTime).toBeLessThan(video.duration)
+      expect(video.playing).toBe(true)
+      video.pause()
+      const positionAfterPause = video.currentTime
+      expect(positionAfterPause).toBeGreaterThanOrEqual(3)
+      await new Promise((resolve) => setTimeout(resolve, 120))
+      expect(video.currentTime).toBeCloseTo(positionAfterPause, 2)
+    } finally {
+      video.destroy()
+      renderer.destroy()
+    }
+  })
+
+  test("pausing and resuming preserves the playback position", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({ width: 16, height: 8 })
+    const played = mock(() => {})
+    const paused = mock(() => {})
+    const video = new VideoRenderable(renderer, {
+      source: VIDEO_FIXTURE,
+      width: 16,
+      height: 8,
+      muted: true,
+      onPlay: played,
+      onPause: paused,
+    })
+    renderer.root.add(video)
+    try {
+      await renderOnce()
+      video.play()
+      expect(played).toHaveBeenCalledTimes(1)
+      await waitFor(() => video.currentTime > 0.05, 4000)
+      video.pause()
+      expect(paused).toHaveBeenCalledTimes(1)
+      const position = video.currentTime
+      expect(position).toBeGreaterThan(0)
+      video.play()
+      expect(played).toHaveBeenCalledTimes(2)
+      const advanced = await waitFor(() => video.currentTime > position + 0.05, 4000)
+      expect(advanced).toBe(true)
+      video.pause()
+    } finally {
+      video.destroy()
+      renderer.destroy()
+    }
   })
 })

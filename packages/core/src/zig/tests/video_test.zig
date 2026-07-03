@@ -145,6 +145,7 @@ test "video frame preparation does not advance audio or media time" {
     const queued = before.audio_queued_frames;
 
     try std.testing.expect(try value.prepare(500_000));
+    value.drainPreparation();
     const after = value.getState();
 
     try std.testing.expectEqual(before.current_time_us, after.current_time_us);
@@ -159,6 +160,7 @@ test "video frame preparation clamps ahead of EOF without ending playback" {
     defer value.deinit();
 
     _ = try value.prepare(value.info.duration_us + 1_000_000);
+    value.drainPreparation();
 
     const state = value.getState();
     try std.testing.expectEqual(@as(u32, 0), state.ended);
@@ -171,6 +173,7 @@ test "native video scheduler waits presents and drops one prepared frame" {
     _ = try value.update(0);
 
     try std.testing.expect(try value.prepare(500_000));
+    value.drainPreparation();
     value.frameSubmitted(0);
     try value.schedule(400_000, 33_333, 2, 30_000);
     try std.testing.expectEqual(@as(i64, 500_000), value.getState().prepared_pts_us);
@@ -180,6 +183,7 @@ test "native video scheduler waits presents and drops one prepared frame" {
     try std.testing.expectEqual(@as(i64, -1), value.getState().prepared_pts_us);
 
     try std.testing.expect(try value.prepare(550_000));
+    value.drainPreparation();
     try value.schedule(600_000, 33_333, 4, 30_000);
     try std.testing.expectEqual(@as(i64, -1), value.getState().prepared_pts_us);
     try std.testing.expectEqual(@as(i64, 500_000), value.getState().frame_pts_us);
@@ -193,6 +197,7 @@ test "native video scheduler derives future targets from native latency windows"
     value.frameSubmitted(0);
     try value.schedule(1_000_000, 33_333, 2, 34_000);
     try std.testing.expect(try value.prepareNext(33_333, 3, 34_000));
+    value.drainPreparation();
     const state = value.getState();
 
     try std.testing.expect(state.sync_lead_us >= 34_000);
@@ -205,6 +210,7 @@ test "native video scheduler owns one prepared slot and seek clears it" {
     _ = try value.update(0);
 
     try std.testing.expect(try value.prepareNext(33_333, 0, 20_000));
+    value.drainPreparation();
     const prepared = value.getState().prepared_pts_us;
     try std.testing.expect(prepared > 0);
     try std.testing.expect(!(try value.prepareNext(33_333, 0, 40_000)));
@@ -609,4 +615,42 @@ test "video hardware and software decode produce identical frames" {
     try software.configureOutput(64, 96, false);
     try std.testing.expect(try software.update(500_000));
     try std.testing.expectEqualSlices(u8, hardware_pixels, software.current_image.?.pixels);
+}
+
+test "video frame preparation runs asynchronously" {
+    const value = try openVideo();
+    defer value.deinit();
+    try value.configureOutput(8, 4, false);
+    try std.testing.expect(try value.update(0));
+
+    // The post returns without a produced frame; production happens on the
+    // worker and is collected later.
+    try std.testing.expect(try value.prepare(500_000));
+    try std.testing.expectEqual(@as(i64, -1), value.state.prepared_pts_us);
+    value.drainPreparation();
+    const first_prepared = value.state.prepared_pts_us;
+    try std.testing.expect(first_prepared >= 0);
+    try std.testing.expect(value.state.prepare_time_us > 0);
+
+    // A raw prepare replaces the prepared slot, matching the synchronous
+    // semantics; prepareNext() is the entry point that respects a full slot.
+    try std.testing.expect(try value.prepare(600_000));
+    value.drainPreparation();
+    try std.testing.expect(value.state.prepared_pts_us > first_prepared);
+}
+
+test "video seek discards in flight preparation" {
+    const value = try openVideo();
+    defer value.deinit();
+    try value.configureOutput(8, 4, false);
+    try std.testing.expect(try value.update(0));
+    try std.testing.expect(try value.prepare(500_000));
+
+    try value.seek(1_000_000);
+    value.drainPreparation();
+    try std.testing.expectEqual(@as(i64, -1), value.state.prepared_pts_us);
+
+    // The decoder is coherent after the cancelled preparation.
+    try std.testing.expect(try value.update(1_000_000));
+    try std.testing.expect(value.state.frame_pts_us >= 900_000);
 }

@@ -38,5 +38,6 @@ int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const ui
 int ot_video_read_audio(ot_video_decoder *decoder, float *out_samples, uint32_t capacity_frames,
                         uint32_t *out_frames);
 const char *ot_video_last_error(const ot_video_decoder *decoder);
+const char *ot_video_stream_error(const ot_video_decoder *decoder, uint32_t audio_stream);
 
 #endif

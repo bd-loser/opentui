@@ -26,6 +26,9 @@ typedef struct {
     int packet_pending;
     int demux_eof;
     int drain_sent;
+    // Written only by the thread driving this stream: the decode worker for
+    // video, the caller for audio.
+    char error[256];
 } ot_stream_decoder;
 
 struct ot_video_decoder {
@@ -73,11 +76,23 @@ struct ot_video_decoder {
     char error[256];
 };
 
-static int fail(ot_video_decoder *decoder, int error, const char *operation) {
+static int fail_to(char *buffer, size_t capacity, int error, const char *operation) {
     char detail[AV_ERROR_MAX_STRING_SIZE] = {0};
     av_strerror(error, detail, sizeof(detail));
-    snprintf(decoder->error, sizeof(decoder->error), "%s: %s (%d)", operation, detail, error);
+    snprintf(buffer, capacity, "%s: %s (%d)", operation, detail, error);
     return OT_VIDEO_ERROR;
+}
+
+static int fail(ot_video_decoder *decoder, int error, const char *operation) {
+    return fail_to(decoder->error, sizeof(decoder->error), error, operation);
+}
+
+static int fail_video(ot_video_decoder *decoder, int error, const char *operation) {
+    return fail_to(decoder->video.error, sizeof(decoder->video.error), error, operation);
+}
+
+static int fail_audio(ot_video_decoder *decoder, int error, const char *operation) {
+    return fail_to(decoder->audio.error, sizeof(decoder->audio.error), error, operation);
 }
 
 static void close_stream(ot_stream_decoder *stream) {
@@ -186,13 +201,13 @@ static int receive_or_read(ot_video_decoder *decoder, ot_stream_decoder *stream)
         int result = avcodec_receive_frame(stream->codec, stream->frame);
         if (result == 0) return OT_VIDEO_OK;
         if (result == AVERROR_EOF) return OT_VIDEO_EOF;
-        if (result != AVERROR(EAGAIN)) return fail(decoder, result, "avcodec_receive_frame");
+        if (result != AVERROR(EAGAIN)) return fail_to(stream->error, sizeof(stream->error), result, "avcodec_receive_frame");
 
         if (stream->demux_eof) {
             if (!stream->drain_sent) {
                 result = avcodec_send_packet(stream->codec, NULL);
                 if (result == AVERROR(EAGAIN)) continue;
-                if (result < 0 && result != AVERROR_EOF) return fail(decoder, result, "decoder drain");
+                if (result < 0 && result != AVERROR_EOF) return fail_to(stream->error, sizeof(stream->error), result, "decoder drain");
                 stream->drain_sent = 1;
                 continue;
             }
@@ -207,7 +222,7 @@ static int receive_or_read(ot_video_decoder *decoder, ot_stream_decoder *stream)
                     stream->demux_eof = 1;
                     break;
                 }
-                if (result < 0) return fail(decoder, result, "av_read_frame");
+                if (result < 0) return fail_to(stream->error, sizeof(stream->error), result, "av_read_frame");
             } while (stream->packet->stream_index != stream->stream_index);
             if (stream->demux_eof) continue;
             stream->packet_pending = 1;
@@ -217,7 +232,7 @@ static int receive_or_read(ot_video_decoder *decoder, ot_stream_decoder *stream)
         if (result == AVERROR(EAGAIN)) continue;
         av_packet_unref(stream->packet);
         stream->packet_pending = 0;
-        if (result < 0) return fail(decoder, result, "avcodec_send_packet");
+        if (result < 0) return fail_to(stream->error, sizeof(stream->error), result, "avcodec_send_packet");
     }
 }
 
@@ -228,13 +243,13 @@ static int configure_swr(ot_video_decoder *decoder, const AVFrame *frame) {
     int result = swr_alloc_set_opts2(&decoder->swr, &stereo, AV_SAMPLE_FMT_FLT, 48000,
                                      &frame->ch_layout, (enum AVSampleFormat)frame->format,
                                      frame->sample_rate, 0, NULL);
-    if (result < 0) return fail(decoder, result, "swr_alloc_set_opts2");
+    if (result < 0) return fail_audio(decoder, result, "swr_alloc_set_opts2");
     result = swr_init(decoder->swr);
-    if (result < 0) return fail(decoder, result, "swr_init");
+    if (result < 0) return fail_audio(decoder, result, "swr_init");
     decoder->audio_source_format = (enum AVSampleFormat)frame->format;
     decoder->audio_source_rate = frame->sample_rate;
     result = av_channel_layout_copy(&decoder->audio_source_layout, &frame->ch_layout);
-    if (result < 0) return fail(decoder, result, "av_channel_layout_copy");
+    if (result < 0) return fail_audio(decoder, result, "av_channel_layout_copy");
     decoder->audio_swr_drained = 0;
     return OT_VIDEO_OK;
 }
@@ -242,7 +257,7 @@ static int configure_swr(ot_video_decoder *decoder, const AVFrame *frame) {
 static int ensure_audio_capacity(ot_video_decoder *decoder, size_t frames) {
     if (frames <= decoder->audio_pending_capacity) return OT_VIDEO_OK;
     float *next = realloc(decoder->audio_pending, frames * 2 * sizeof(float));
-    if (!next) return fail(decoder, AVERROR(ENOMEM), "audio allocation");
+    if (!next) return fail_audio(decoder, AVERROR(ENOMEM), "audio allocation");
     decoder->audio_pending = next;
     decoder->audio_pending_capacity = frames;
     return OT_VIDEO_OK;
@@ -422,11 +437,11 @@ static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, 
     if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
         if (!decoder->hw_transfer_frame) {
             decoder->hw_transfer_frame = av_frame_alloc();
-            if (!decoder->hw_transfer_frame) return fail(decoder, AVERROR(ENOMEM), "hw transfer allocation");
+            if (!decoder->hw_transfer_frame) return fail_video(decoder, AVERROR(ENOMEM), "hw transfer allocation");
         }
         av_frame_unref(decoder->hw_transfer_frame);
         int transfer = av_hwframe_transfer_data(decoder->hw_transfer_frame, frame, 0);
-        if (transfer < 0) return fail(decoder, transfer, "av_hwframe_transfer_data");
+        if (transfer < 0) return fail_video(decoder, transfer, "av_hwframe_transfer_data");
         frame = decoder->hw_transfer_frame;
     }
     uint32_t scaled_width = decoder->output_width;
@@ -442,11 +457,11 @@ static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, 
     decoder->sws = sws_getCachedContext(decoder->sws, frame->width, frame->height,
                                         (enum AVPixelFormat)frame->format, scaled_width, scaled_height,
                                         AV_PIX_FMT_RGBA, SWS_BILINEAR, NULL, NULL, NULL);
-    if (!decoder->sws) return fail(decoder, AVERROR(ENOMEM), "sws_getCachedContext");
+    if (!decoder->sws) return fail_video(decoder, AVERROR(ENOMEM), "sws_getCachedContext");
     const size_t required = (size_t)decoder->output_width * decoder->output_height * 4;
     if (required != decoder->rgba_size) {
         uint8_t *next = realloc(decoder->rgba, required);
-        if (!next) return fail(decoder, AVERROR(ENOMEM), "RGBA allocation");
+        if (!next) return fail_video(decoder, AVERROR(ENOMEM), "RGBA allocation");
         decoder->rgba = next;
         decoder->rgba_size = required;
     }
@@ -455,7 +470,7 @@ static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, 
     if (decoder->output_cover && (scaled_width != decoder->output_width || scaled_height != decoder->output_height)) {
         if (scaled_size != decoder->scaled_rgba_size) {
             uint8_t *next = realloc(decoder->scaled_rgba, scaled_size);
-            if (!next) return fail(decoder, AVERROR(ENOMEM), "cover allocation");
+            if (!next) return fail_video(decoder, AVERROR(ENOMEM), "cover allocation");
             decoder->scaled_rgba = next;
             decoder->scaled_rgba_size = scaled_size;
         }
@@ -465,7 +480,7 @@ static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, 
     int dest_linesize[4] = {(int)scaled_width * 4, 0, 0, 0};
     int scaled = sws_scale(decoder->sws, (const uint8_t *const *)frame->data, frame->linesize,
                            0, frame->height, dest, dest_linesize);
-    if (scaled != (int)scaled_height) return fail(decoder, AVERROR_INVALIDDATA, "sws_scale");
+    if (scaled != (int)scaled_height) return fail_video(decoder, AVERROR_INVALIDDATA, "sws_scale");
     if (scale_target != decoder->rgba) {
         const uint32_t crop_x = (scaled_width - decoder->output_width) / 2;
         const uint32_t crop_y = (scaled_height - decoder->output_height) / 2;
@@ -487,12 +502,12 @@ static int configure_png_encoder(ot_video_decoder *decoder) {
     avcodec_free_context(&decoder->png_encoder);
 
     const AVCodec *codec = avcodec_find_encoder(AV_CODEC_ID_PNG);
-    if (!codec) return fail(decoder, AVERROR_ENCODER_NOT_FOUND, "PNG encoder unavailable");
+    if (!codec) return fail_video(decoder, AVERROR_ENCODER_NOT_FOUND, "PNG encoder unavailable");
     decoder->png_encoder = avcodec_alloc_context3(codec);
     decoder->png_frame = av_frame_alloc();
     decoder->png_packet = av_packet_alloc();
     if (!decoder->png_encoder || !decoder->png_frame || !decoder->png_packet)
-        return fail(decoder, AVERROR(ENOMEM), "allocate PNG encoder");
+        return fail_video(decoder, AVERROR(ENOMEM), "allocate PNG encoder");
     decoder->png_encoder->width = decoder->output_width;
     decoder->png_encoder->height = decoder->output_height;
     decoder->png_encoder->pix_fmt = decoder->png_color_mode == 4 ? AV_PIX_FMT_PAL8 : AV_PIX_FMT_RGB24;
@@ -500,14 +515,14 @@ static int configure_png_encoder(ot_video_decoder *decoder) {
     decoder->png_encoder->compression_level = (int)decoder->png_compression_level;
     static const char *predictors[] = {"none", "sub", "up", "avg", "paeth", "mixed"};
     int option_result = av_opt_set(decoder->png_encoder->priv_data, "pred", predictors[decoder->png_predictor], 0);
-    if (option_result < 0) return fail(decoder, option_result, "set PNG predictor");
+    if (option_result < 0) return fail_video(decoder, option_result, "set PNG predictor");
     int result = avcodec_open2(decoder->png_encoder, codec, NULL);
-    if (result < 0) return fail(decoder, result, "avcodec_open2 PNG");
+    if (result < 0) return fail_video(decoder, result, "avcodec_open2 PNG");
     decoder->png_frame->format = decoder->png_encoder->pix_fmt;
     decoder->png_frame->width = decoder->output_width;
     decoder->png_frame->height = decoder->output_height;
     result = av_frame_get_buffer(decoder->png_frame, 32);
-    if (result < 0) return fail(decoder, result, "av_frame_get_buffer PNG");
+    if (result < 0) return fail_video(decoder, result, "av_frame_get_buffer PNG");
     decoder->png_width = decoder->output_width;
     decoder->png_height = decoder->output_height;
     decoder->png_serial = 0;
@@ -519,7 +534,7 @@ static int encode_png(ot_video_decoder *decoder, const uint8_t **out_png, uint64
     *out_png_len = 0;
     if (configure_png_encoder(decoder) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
     int result = av_frame_make_writable(decoder->png_frame);
-    if (result < 0) return fail(decoder, result, "av_frame_make_writable PNG");
+    if (result < 0) return fail_video(decoder, result, "av_frame_make_writable PNG");
     if (decoder->png_color_mode == 4) {
         uint32_t *palette = (uint32_t *)decoder->png_frame->data[1];
         for (uint32_t index = 0; index < 256; index++) {
@@ -582,9 +597,9 @@ static int encode_png(ot_video_decoder *decoder, const uint8_t **out_png, uint64
     decoder->png_frame->pts = decoder->frame_pts_us;
     av_packet_unref(decoder->png_packet);
     result = avcodec_send_frame(decoder->png_encoder, decoder->png_frame);
-    if (result < 0) return fail(decoder, result, "avcodec_send_frame PNG");
+    if (result < 0) return fail_video(decoder, result, "avcodec_send_frame PNG");
     result = avcodec_receive_packet(decoder->png_encoder, decoder->png_packet);
-    if (result < 0) return fail(decoder, result, "avcodec_receive_packet PNG");
+    if (result < 0) return fail_video(decoder, result, "avcodec_receive_packet PNG");
     *out_png = decoder->png_packet->data;
     *out_png_len = decoder->png_packet->size;
     return OT_VIDEO_OK;
@@ -616,13 +631,13 @@ int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const ui
             if (candidate != decoder->video_lookahead) {
                 av_frame_unref(decoder->video_lookahead);
                 if (av_frame_ref(decoder->video_lookahead, candidate) < 0)
-                    return fail(decoder, AVERROR(ENOMEM), "av_frame_ref");
+                    return fail_video(decoder, AVERROR(ENOMEM), "av_frame_ref");
             }
             break;
         }
         av_frame_unref(decoder->video_selected);
         if (av_frame_ref(decoder->video_selected, candidate) < 0)
-            return fail(decoder, AVERROR(ENOMEM), "av_frame_ref selected");
+            return fail_video(decoder, AVERROR(ENOMEM), "av_frame_ref selected");
         selected_pts = pts;
         decoder->frame_serial++;
         if (candidate == decoder->video_lookahead) av_frame_unref(decoder->video_lookahead);
@@ -676,11 +691,11 @@ int ot_video_read_audio(ot_video_decoder *decoder, float *out_samples, uint32_t 
         if (result == OT_VIDEO_EOF) {
             if (decoder->swr && !decoder->audio_swr_drained) {
                 int capacity = swr_get_out_samples(decoder->swr, 0);
-                if (capacity < 0) return fail(decoder, capacity, "swr_get_out_samples drain");
+                if (capacity < 0) return fail_audio(decoder, capacity, "swr_get_out_samples drain");
                 if (ensure_audio_capacity(decoder, (size_t)capacity) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
                 uint8_t *output[1] = {(uint8_t *)decoder->audio_pending};
                 int produced = swr_convert(decoder->swr, output, capacity, NULL, 0);
-                if (produced < 0) return fail(decoder, produced, "swr_convert drain");
+                if (produced < 0) return fail_audio(decoder, produced, "swr_convert drain");
                 decoder->audio_swr_drained = 1;
                 decoder->audio_pending_frames = (uint32_t)produced;
                 if (produced > 0) continue;
@@ -699,13 +714,13 @@ int ot_video_read_audio(ot_video_decoder *decoder, float *out_samples, uint32_t 
             if (configure_swr(decoder, decoder->audio.frame) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
         }
         int capacity = swr_get_out_samples(decoder->swr, decoder->audio.frame->nb_samples);
-        if (capacity < 0) return fail(decoder, capacity, "swr_get_out_samples");
+        if (capacity < 0) return fail_audio(decoder, capacity, "swr_get_out_samples");
         if (ensure_audio_capacity(decoder, (size_t)capacity) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
         uint8_t *output[1] = {(uint8_t *)decoder->audio_pending};
         int produced = swr_convert(decoder->swr, output, capacity,
                                    (const uint8_t *const *)decoder->audio.frame->extended_data,
                                    decoder->audio.frame->nb_samples);
-        if (produced < 0) return fail(decoder, produced, "swr_convert");
+        if (produced < 0) return fail_audio(decoder, produced, "swr_convert");
         if (pts != AV_NOPTS_VALUE && pts < decoder->seek_us && produced > 0) {
             int64_t trim = av_rescale_rnd(decoder->seek_us - pts, 48000, AV_TIME_BASE, AV_ROUND_UP);
             if (trim > produced) trim = produced;
@@ -722,4 +737,9 @@ int ot_video_read_audio(ot_video_decoder *decoder, float *out_samples, uint32_t 
 
 const char *ot_video_last_error(const ot_video_decoder *decoder) {
     return decoder ? decoder->error : "invalid video decoder";
+}
+
+const char *ot_video_stream_error(const ot_video_decoder *decoder, uint32_t audio_stream) {
+    if (!decoder) return "invalid video decoder";
+    return audio_stream ? decoder->audio.error : decoder->video.error;
 }

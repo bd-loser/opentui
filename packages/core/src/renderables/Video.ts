@@ -309,10 +309,7 @@ export class VideoRenderable extends Renderable {
   private wantsPlayback: boolean
   private playbackEnded = false
   private ticker: ReturnType<typeof setTimeout> | null = null
-  private prepareTimer: ReturnType<typeof setTimeout> | null = null
-  private prepareGeneration = 0
   private updating = false
-  private preparing = false
   private pngEnabled = true
   private adaptiveQuality: AdaptiveVideoQualityState
 
@@ -379,7 +376,6 @@ export class VideoRenderable extends Renderable {
   // Playback intent survives: a playing video keeps playing the replacement.
   private resetMedia(): void {
     this.stopTicker()
-    this.cancelPreparation()
     this.wallClock = false
     this.positionSeconds = 0
     this.playbackEnded = false
@@ -467,7 +463,7 @@ export class VideoRenderable extends Renderable {
     if (this.avSyncOffsetValue === value) return
     this.avSyncOffsetValue = value
     this.native?.setAvSyncOffsetMs(value)
-    if (this.wantsPlayback) this.schedulePreparation()
+    if (this.wantsPlayback) this.requestPreparation()
   }
 
   public get playing(): boolean {
@@ -522,7 +518,7 @@ export class VideoRenderable extends Renderable {
     this.native!.play()
     this.startClock()
     this.startTicker()
-    this.schedulePreparation()
+    this.requestPreparation()
     this.onPlay?.()
   }
 
@@ -535,7 +531,6 @@ export class VideoRenderable extends Renderable {
     this.positionSeconds = this.currentTime
     this.wantsPlayback = false
     this.stopTicker()
-    this.cancelPreparation()
     this.native?.pause()
     this.wallClock = false
     this.onPause?.()
@@ -553,12 +548,11 @@ export class VideoRenderable extends Renderable {
     this.playbackEnded = false
     if (!this.ensureNative()) return
     try {
-      this.cancelPreparation()
       this.native!.seek(target)
       this.resetAdaptiveQualitySamples()
       this.updateFrame(target)
       if (this.wantsPlayback) this.startClock()
-      if (this.wantsPlayback) this.schedulePreparation()
+      if (this.wantsPlayback) this.requestPreparation()
       this.onSeek?.(target)
       this.onTimeUpdate?.(target)
     } catch (error) {
@@ -639,7 +633,7 @@ export class VideoRenderable extends Renderable {
       if (this.wantsPlayback) {
         this.startClock()
         this.startTicker()
-        this.schedulePreparation()
+        this.requestPreparation()
       }
       return true
     } catch (error) {
@@ -671,12 +665,11 @@ export class VideoRenderable extends Renderable {
     )
       return
     const position = this.currentTime
-    this.cancelPreparation()
     this.geometry = next
     this.native.configureOutput(next.decodeWidth, next.decodeHeight, this.fitMode === "cover")
     this.resetAdaptiveQualitySamples()
     this.updateFrame(position)
-    if (this.wantsPlayback) this.schedulePreparation()
+    if (this.wantsPlayback) this.requestPreparation()
   }
 
   private startClock(): void {
@@ -723,7 +716,7 @@ export class VideoRenderable extends Renderable {
         this.resetAdaptiveQualitySamples()
         this.startClock()
         this.updateFrame(time)
-        this.schedulePreparation()
+        this.requestPreparation()
         this.onTimeUpdate?.(time)
         return
       }
@@ -740,24 +733,24 @@ export class VideoRenderable extends Renderable {
       }
       const output = this._ctx.getOutputWriteSample?.() ?? { frameCount: 0 }
       const state = this.native.schedule(time, 1 / this.presentationFps, output)
-      this.presentIfNewFrame(state, output.frameCount)
-      if (state.preparedPts < 0) this.schedulePreparation()
+      if (this.presentIfNewFrame(state, output.frameCount) && state.prepareTimeMs > 0) {
+        this.updateAdaptiveQuality(state.prepareTimeMs, state, 1000 / this.presentationFps)
+      }
+      if (state.preparedPts < 0) this.requestPreparation()
       const mediaTime = nativeAudioClock ? state.currentTime : time
       if (this.duration > 0 && mediaTime >= this.duration) {
         if (this.loopPlayback) {
           this.positionSeconds = 0
-          this.cancelPreparation()
           this.native.seek(0)
           this.resetAdaptiveQualitySamples()
           this.startClock()
           this.updateFrame(0)
-          this.schedulePreparation()
+          this.requestPreparation()
         } else {
           this.positionSeconds = this.duration
           this.wantsPlayback = false
           this.playbackEnded = true
           this.stopTicker()
-          this.cancelPreparation()
           this.native.pause()
           this.onTimeUpdate?.(this.positionSeconds)
           this.onEnd?.()
@@ -777,43 +770,22 @@ export class VideoRenderable extends Renderable {
 
   private updateFrame(time: number) {
     if (!this.native) return null
-    const started = performance.now()
     const state = this.native.update(time)
-    const updateTime = performance.now() - started
     if (!this.presentIfNewFrame(state, this._ctx.getOutputWriteSample?.().frameCount ?? 0)) return state
-    this.updateAdaptiveQuality(updateTime, state, 1000 / this.presentationFps)
+    if (state.prepareTimeMs > 0) this.updateAdaptiveQuality(state.prepareTimeMs, state, 1000 / this.presentationFps)
     return state
   }
 
-  private schedulePreparation(): void {
-    if (this.prepareTimer || this.preparing || !this.wantsPlayback || !this.native) return
-    const generation = this.prepareGeneration
-    this.prepareTimer = setTimeout(() => {
-      this.prepareTimer = null
-      if (generation !== this.prepareGeneration || !this.wantsPlayback || !this.native || this.isDestroyed) return
-      this.prepareNextFrame(generation)
-    }, 0)
-  }
-
-  private prepareNextFrame(generation: number): void {
-    if (!this.native || this.preparing || generation !== this.prepareGeneration) return
-    this.preparing = true
+  // Posts asynchronous frame production to the native worker; returns
+  // immediately. Production cost is reported back through state.prepareTimeMs.
+  private requestPreparation(): void {
+    if (!this.wantsPlayback || !this.native || this.isDestroyed) return
     try {
-      const started = performance.now()
       const output = this._ctx.getOutputWriteSample?.() ?? { frameCount: 0 }
-      const state = this.native.prepareNext(1 / this.presentationFps, output)
-      const preparationTime = performance.now() - started
-      if (generation !== this.prepareGeneration || !this.wantsPlayback) return
-      this.updateAdaptiveQuality(preparationTime, state, 1000 / this.presentationFps)
-    } finally {
-      this.preparing = false
+      this.native.prepareNext(1 / this.presentationFps, output)
+    } catch (error) {
+      this.reportError(error)
     }
-  }
-
-  private cancelPreparation(): void {
-    this.prepareGeneration++
-    if (this.prepareTimer) clearTimeout(this.prepareTimer)
-    this.prepareTimer = null
   }
 
   private updateAdaptiveQuality(updateTimeMs: number, state: NativeVideoState, frameBudgetMs: number): void {
@@ -862,7 +834,6 @@ export class VideoRenderable extends Renderable {
   protected destroySelf(): void {
     this.wantsPlayback = false
     this.stopTicker()
-    this.cancelPreparation()
     this.wallClock = false
     this.native?.dispose()
     this.native = null

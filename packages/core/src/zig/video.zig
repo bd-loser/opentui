@@ -50,6 +50,7 @@ pub const State = extern struct {
     audio_underrun_frames: u64 = 0,
     prepared_pts_us: i64 = -1,
     sync_lead_us: u32 = 0,
+    prepare_time_us: u32 = 0,
 };
 
 // Native core entry is serialized by contract; the buffer holds the failure
@@ -91,6 +92,19 @@ const PreparedFrame = struct {
     serial: u64,
 };
 
+const ProduceRequest = struct {
+    target_us: i64,
+    known_frame_serial: u64,
+    known_prepared_serial: u64,
+};
+
+const ProduceOutcome = struct {
+    frame: ?PreparedFrame = null,
+    reached_end: bool = false,
+    failed: ?anyerror = null,
+    elapsed_us: u32 = 0,
+};
+
 extern fn ot_video_open(
     path: [*:0]const u8,
     out_decoder: *?*Decoder,
@@ -118,6 +132,7 @@ extern fn ot_video_decode_frame(
 ) c_int;
 extern fn ot_video_read_audio(decoder: *Decoder, out_samples: ?[*]f32, capacity_frames: u32, out_frames: *u32) c_int;
 extern fn ot_video_last_error(decoder: *const Decoder) [*:0]const u8;
+extern fn ot_video_stream_error(decoder: *const Decoder, audio_stream: u32) [*:0]const u8;
 
 pub const Video = struct {
     allocator: Allocator,
@@ -152,6 +167,21 @@ pub const Video = struct {
     audio_produced_frames: u64 = 0,
     audio_gain_dirty: bool = true,
     av_sync_offset_us: i64 = 0,
+    // Frame production runs on a dedicated worker so decode, hardware
+    // readback, scaling, and PNG encoding overlap with rendering. The worker
+    // is the only thread touching the decoder's video stream; the caller
+    // keeps audio, seeking, and reconfiguration, which quiesce the worker
+    // first. Results hand over fully built frames under the mutex.
+    worker: ?std.Thread = null,
+    worker_mutex: std.Thread.Mutex = .{},
+    worker_wake: std.Thread.Condition = .{},
+    worker_done: std.Thread.Condition = .{},
+    worker_pending: ?ProduceRequest = null,
+    worker_busy: bool = false,
+    worker_quit: bool = false,
+    worker_result: ?ProduceOutcome = null,
+    last_error_buf: [256]u8 = [_]u8{0} ** 256,
+    last_error_len: usize = 0,
 
     // With external_audio the caller owns the audio stream: no engine or device
     // is created and decoded PCM is pulled manually through readAudio.
@@ -186,6 +216,12 @@ pub const Video = struct {
     }
 
     pub fn deinit(self: *Video) void {
+        self.quiesceWorker();
+        self.worker_mutex.lock();
+        self.worker_quit = true;
+        self.worker_wake.broadcast();
+        self.worker_mutex.unlock();
+        if (self.worker) |thread| thread.join();
         if (self.audio_start_thread) |thread| thread.join();
         if (self.audio_engine) |engine| audio.destroy(engine);
         if (self.audio_buffer) |buffer| self.allocator.free(buffer);
@@ -199,6 +235,7 @@ pub const Video = struct {
     pub fn configureOutput(self: *Video, width: u32, height: u32, cover: bool) !void {
         if (width == 0 or height == 0) return error.InvalidArgument;
         if (width == self.output_width and height == self.output_height and cover == self.output_cover) return;
+        self.quiesceWorker();
         if (ot_video_set_output_size(self.decoder, width, height, @intFromBool(cover)) != 0) return error.DecodeFailed;
         self.output_width = width;
         self.output_height = height;
@@ -215,10 +252,12 @@ pub const Video = struct {
     // Kitty is the only consumer of the per-frame PNG stream; other protocols
     // skip the encoder entirely.
     pub fn setPngEnabled(self: *Video, enabled: bool) void {
+        self.quiesceWorker();
         _ = ot_video_set_png_enabled(self.decoder, @intFromBool(enabled));
     }
 
     pub fn configurePng(self: *Video, compression_level: u32, predictor: u32, color_mode: u32) !void {
+        self.quiesceWorker();
         if (ot_video_set_png_options(self.decoder, compression_level, predictor, color_mode) != 0) return error.InvalidArgument;
         // Keep the current frame visible; resetting the serial forces the next
         // decode to replace it with the new PNG settings.
@@ -230,6 +269,7 @@ pub const Video = struct {
 
     pub fn seek(self: *Video, target_us: i64) !void {
         if (target_us < 0) return error.InvalidArgument;
+        self.quiesceWorker();
         const was_started = self.audio_started;
         if (was_started) audio.suspendMixer(self.audio_engine.?);
         if (ot_video_seek(self.decoder, target_us) != 0) {
@@ -271,28 +311,87 @@ pub const Video = struct {
                 @min(frame_target, self.info.duration_us - 1);
         }
         self.state.current_time_us = effective_target;
-        const decoded = try self.decodeFrame(frame_target, true) orelse return false;
+        const outcome = self.produceBlocking(frame_target);
+        self.state.prepare_time_us = outcome.elapsed_us;
+        if (outcome.failed) |err| {
+            self.captureVideoError();
+            return err;
+        }
+        if (outcome.reached_end) {
+            self.state.ended = 1;
+            return false;
+        }
+        self.state.ended = 0;
+        const decoded = outcome.frame orelse return false;
         self.publish(decoded);
         return true;
     }
 
+    // Posts asynchronous frame production; the result is collected by
+    // schedule(), prepareNext(), or drainPreparation(). Never blocks.
     pub fn prepare(self: *Video, target_us: i64) !bool {
         if (target_us < 0) return error.InvalidArgument;
         const frame_target = if (self.info.duration_us > 0)
             @min(target_us, self.info.duration_us - 1)
         else
             target_us;
-        const started = std.time.microTimestamp();
-        const decoded = try self.decodeFrame(frame_target, false) orelse return false;
-        self.preparation_latency.add(@intCast(@min(std.time.microTimestamp() - started, std.math.maxInt(u32))));
-        self.clearPrepared();
-        self.prepared_image = decoded.value;
-        self.prepared_serial = decoded.serial;
-        self.state.prepared_pts_us = decoded.pts_us;
+        self.worker_mutex.lock();
+        defer self.worker_mutex.unlock();
+        if (self.worker_busy or self.worker_pending != null or self.worker_result != null) return false;
+        try self.ensureWorkerLocked();
+        self.worker_pending = .{
+            .target_us = frame_target,
+            .known_frame_serial = self.state.frame_serial,
+            .known_prepared_serial = self.prepared_serial,
+        };
+        self.worker_wake.signal();
         return true;
     }
 
-    fn decodeFrame(self: *Video, target_us: i64, mark_ended: bool) !?PreparedFrame {
+    // Test and shutdown helper: waits for in-flight production and collects it.
+    pub fn drainPreparation(self: *Video) void {
+        self.worker_mutex.lock();
+        while (self.worker_busy or self.worker_pending != null) self.worker_done.wait(&self.worker_mutex);
+        self.worker_mutex.unlock();
+        self.collectPrepared();
+    }
+
+    fn ensureWorkerLocked(self: *Video) !void {
+        if (self.worker != null) return;
+        self.worker = std.Thread.spawn(.{}, workerMain, .{self}) catch return error.OutOfMemory;
+    }
+
+    fn workerMain(self: *Video) void {
+        while (true) {
+            self.worker_mutex.lock();
+            while (self.worker_pending == null and !self.worker_quit) self.worker_wake.wait(&self.worker_mutex);
+            if (self.worker_quit) {
+                self.worker_mutex.unlock();
+                return;
+            }
+            const request = self.worker_pending.?;
+            self.worker_pending = null;
+            self.worker_busy = true;
+            self.worker_mutex.unlock();
+
+            const started = std.time.microTimestamp();
+            var outcome = self.produceFrame(request);
+            outcome.elapsed_us = @intCast(@min(std.time.microTimestamp() - started, std.math.maxInt(u32)));
+
+            self.worker_mutex.lock();
+            if (self.worker_result) |previous| {
+                if (previous.frame) |frame| frame.value.deinit();
+            }
+            self.worker_result = outcome;
+            self.worker_busy = false;
+            self.worker_done.broadcast();
+            self.worker_mutex.unlock();
+        }
+    }
+
+    // Runs on the worker thread. Touches only the decoder's video stream and
+    // the thread-safe allocator; every input is snapshotted in the request.
+    fn produceFrame(self: *Video, request: ProduceRequest) ProduceOutcome {
         var pixels: ?[*]const u8 = null;
         var width: u32 = 0;
         var height: u32 = 0;
@@ -303,7 +402,7 @@ pub const Video = struct {
         var png_len: u64 = 0;
         const result = ot_video_decode_frame(
             self.decoder,
-            target_us,
+            request.target_us,
             &pixels,
             &width,
             &height,
@@ -313,26 +412,95 @@ pub const Video = struct {
             &png,
             &png_len,
         );
-        if (result == 1) {
-            if (mark_ended) self.state.ended = 1;
-            return null;
-        }
-        if (result != 0 or pixels == null) return error.DecodeFailed;
-        if (mark_ended) self.state.ended = 0;
-        if ((serial == self.state.frame_serial and self.current_image != null) or serial == self.prepared_serial) return null;
+        if (result == 1) return .{ .reached_end = true };
+        if (result != 0 or pixels == null) return .{ .failed = error.DecodeFailed };
+        if (serial == request.known_frame_serial or serial == request.known_prepared_serial) return .{};
         const required = @as(usize, stride) * height;
-        const next = try image.createFromRgba(self.allocator, pixels.?[0..required], width, height, stride);
-        errdefer next.deinit();
+        const next = image.createFromRgba(self.allocator, pixels.?[0..required], width, height, stride) catch |err|
+            return .{ .failed = err };
         if (png != null and png_len <= std.math.maxInt(usize)) {
-            next.encoded_png = try self.allocator.dupe(u8, png.?[0..@intCast(png_len)]);
+            next.encoded_png = self.allocator.dupe(u8, png.?[0..@intCast(png_len)]) catch |err| {
+                next.deinit();
+                return .{ .failed = err };
+            };
         }
-        return .{ .value = next, .pts_us = pts_us, .serial = serial };
+        return .{ .frame = .{ .value = next, .pts_us = pts_us, .serial = serial } };
+    }
+
+    // Blocks the caller while the worker produces one frame; used by the
+    // synchronous update() path (first frame, seek preview).
+    fn produceBlocking(self: *Video, target_us: i64) ProduceOutcome {
+        self.worker_mutex.lock();
+        // Discard any stale in-flight preparation first.
+        self.worker_pending = null;
+        while (self.worker_busy) self.worker_done.wait(&self.worker_mutex);
+        if (self.worker_result) |previous| {
+            if (previous.frame) |frame| frame.value.deinit();
+            self.worker_result = null;
+        }
+        self.ensureWorkerLocked() catch {
+            self.worker_mutex.unlock();
+            return .{ .failed = error.OutOfMemory };
+        };
+        self.worker_pending = .{
+            .target_us = target_us,
+            .known_frame_serial = if (self.current_image != null) self.state.frame_serial else std.math.maxInt(u64),
+            .known_prepared_serial = self.prepared_serial,
+        };
+        self.worker_wake.signal();
+        while (self.worker_busy or self.worker_pending != null) self.worker_done.wait(&self.worker_mutex);
+        const outcome = self.worker_result orelse ProduceOutcome{};
+        self.worker_result = null;
+        self.worker_mutex.unlock();
+        return outcome;
+    }
+
+    // Moves a finished worker result into the prepared slot on the caller.
+    fn collectPrepared(self: *Video) void {
+        self.worker_mutex.lock();
+        const outcome = self.worker_result;
+        self.worker_result = null;
+        self.worker_mutex.unlock();
+        const value = outcome orelse return;
+        self.state.prepare_time_us = value.elapsed_us;
+        if (value.failed != null) {
+            self.captureVideoError();
+            return;
+        }
+        const frame = value.frame orelse return;
+        self.preparation_latency.add(value.elapsed_us);
+        self.updateSyncLead();
+        self.clearPrepared();
+        self.prepared_image = frame.value;
+        self.prepared_serial = frame.serial;
+        self.state.prepared_pts_us = frame.pts_us;
+    }
+
+    // Cancels pending work and waits out in-flight production; the caller may
+    // then mutate the decoder's video stream safely.
+    fn quiesceWorker(self: *Video) void {
+        self.worker_mutex.lock();
+        self.worker_pending = null;
+        while (self.worker_busy) self.worker_done.wait(&self.worker_mutex);
+        if (self.worker_result) |previous| {
+            if (previous.frame) |frame| frame.value.deinit();
+            self.worker_result = null;
+        }
+        self.worker_mutex.unlock();
+    }
+
+    fn captureVideoError(self: *Video) void {
+        const message = std.mem.span(ot_video_stream_error(self.decoder, 0));
+        const length = @min(message.len, self.last_error_buf.len);
+        @memcpy(self.last_error_buf[0..length], message[0..length]);
+        self.last_error_len = length;
     }
 
     pub fn schedule(self: *Video, fallback_time_us: i64, presentation_interval_us: u32, output_frame: u64, output_write_us: u32) !void {
         if (fallback_time_us < 0 or presentation_interval_us == 0) return error.InvalidArgument;
         self.state.current_time_us = try self.updateAudio(fallback_time_us);
         self.observeOutput(output_frame, output_write_us);
+        self.collectPrepared();
         self.updateSyncLead();
         const prepared = self.prepared_image orelse return;
         const prepared_pts = self.state.prepared_pts_us;
@@ -351,6 +519,7 @@ pub const Video = struct {
     pub fn prepareNext(self: *Video, presentation_interval_us: u32, output_frame: u64, output_write_us: u32) !bool {
         if (presentation_interval_us == 0) return error.InvalidArgument;
         self.observeOutput(output_frame, output_write_us);
+        self.collectPrepared();
         if (self.prepared_image != null) return false;
         self.updateSyncLead();
         const source_interval_us: i64 = if (self.info.fps_num > 0)
@@ -390,6 +559,7 @@ pub const Video = struct {
     }
 
     pub fn resetOutputTiming(self: *Video) void {
+        self.quiesceWorker();
         self.output_latency.reset();
         self.output_start_frame = null;
         self.last_output_frame = 0;
@@ -609,6 +779,7 @@ pub const Video = struct {
 
     pub fn setAvSyncOffset(self: *Video, offset_us: i64) void {
         self.av_sync_offset_us = offset_us;
+        self.quiesceWorker();
         self.clearPrepared();
     }
 
@@ -617,6 +788,7 @@ pub const Video = struct {
     }
 
     pub fn lastError(self: *const Video) []const u8 {
+        if (self.last_error_len > 0) return self.last_error_buf[0..self.last_error_len];
         return std.mem.span(ot_video_last_error(self.decoder));
     }
 };

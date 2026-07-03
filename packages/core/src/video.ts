@@ -30,6 +30,8 @@ export interface NativeVideoState {
   audioUnderrunFrames: bigint
   preparedPts: number
   syncLead: number
+  /** Worker-side production cost of the most recent frame (decode, readback, scale, PNG). */
+  prepareTimeMs: number
 }
 
 function videoError(lib: RenderLib, handle: VideoHandle | null, status: number): Error {
@@ -116,6 +118,7 @@ export class NativeVideo {
       audioUnderrunFrames: result.state.audioUnderrunFrames,
       preparedPts: Number(result.state.preparedPtsUs) / 1_000_000,
       syncLead: result.state.syncLeadUs / 1_000_000,
+      prepareTimeMs: result.state.prepareTimeUs / 1_000,
     }
   }
 

@@ -55,6 +55,7 @@ struct ot_video_decoder {
     uint32_t png_compression_level;
     uint32_t png_predictor;
     uint32_t png_color_mode;
+    int png_enabled;
     int64_t frame_pts_us;
     uint64_t frame_serial;
     float *audio_pending;
@@ -222,6 +223,7 @@ int ot_video_open(const char *path, ot_video_decoder **out_decoder, ot_video_inf
     decoder->png_compression_level = 1;
     decoder->png_predictor = 2;
     decoder->png_color_mode = 1;
+    decoder->png_enabled = 1;
 
     if (open_stream(decoder, path, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_H264, &decoder->video) != OT_VIDEO_OK) {
         copy_open_error(decoder, error_out, error_cap);
@@ -296,6 +298,12 @@ int ot_video_set_output_size(ot_video_decoder *decoder, uint32_t width, uint32_t
     decoder->frame_pts_us = AV_NOPTS_VALUE;
     av_frame_unref(decoder->video_lookahead);
     av_frame_unref(decoder->video_selected);
+    return OT_VIDEO_OK;
+}
+
+int ot_video_set_png_enabled(ot_video_decoder *decoder, uint32_t enabled) {
+    if (!decoder) return OT_VIDEO_ERROR;
+    decoder->png_enabled = enabled != 0;
     return OT_VIDEO_OK;
 }
 
@@ -570,7 +578,10 @@ int ot_video_decode_frame(ot_video_decoder *decoder, int64_t target_us, const ui
     *out_stride = decoder->output_width * 4;
     *out_pts_us = decoder->frame_pts_us;
     *out_serial = decoder->frame_serial;
-    if (decoder->png_serial != decoder->frame_serial) {
+    if (!decoder->png_enabled) {
+        *out_png = NULL;
+        *out_png_len = 0;
+    } else if (decoder->png_serial != decoder->frame_serial) {
         if (encode_png(decoder, out_png, out_png_len) != OT_VIDEO_OK) return OT_VIDEO_ERROR;
         decoder->png_serial = decoder->frame_serial;
     } else if (decoder->png_packet && decoder->png_packet->data) {

@@ -10,9 +10,11 @@ const Scenario = struct {
     predictor: u32,
     color_mode: u32,
     bits: ?[3]u3,
+    png: bool = true,
 };
 
 const scenarios = [_]Scenario{
+    .{ .name = "PNG disabled (decode only)", .level = 1, .predictor = 2, .color_mode = 1, .bits = null, .png = false },
     .{ .name = "RGB888 level 1 up", .level = 1, .predictor = 2, .color_mode = 1, .bits = null },
     .{ .name = "RGB888 level 1 paeth", .level = 1, .predictor = 4, .color_mode = 1, .bits = null },
     .{ .name = "RGB888 level 1 mixed", .level = 1, .predictor = 5, .color_mode = 1, .bits = null },
@@ -47,6 +49,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
         defer decoder.deinit();
         try decoder.configureOutput(765, 1168, false);
         try decoder.configurePng(scenario.level, scenario.predictor, scenario.color_mode);
+        decoder.setPngEnabled(scenario.png);
         try decoder.seek(0);
 
         var stats: bench_utils.BenchStats = .{};
@@ -60,7 +63,7 @@ pub fn run(allocator: std.mem.Allocator, show_mem: bool, bench_filter: ?[]const 
             var timer = try std.time.Timer.start();
             _ = try decoder.update(@intCast(index * 1_000_000 / 24));
             stats.record(timer.read());
-            const png_len = decoder.current_image.?.encoded_png.?.len;
+            const png_len = if (decoder.current_image.?.encoded_png) |png| png.len else 0;
             png_total += png_len;
             png_min = @min(png_min, png_len);
             png_max = @max(png_max, png_len);

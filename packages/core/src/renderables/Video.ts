@@ -314,6 +314,7 @@ export class VideoRenderable extends Renderable {
   private prepareGeneration = 0
   private updating = false
   private preparing = false
+  private pngEnabled = true
   private adaptiveQuality: AdaptiveVideoQualityState
 
   constructor(ctx: RenderContext, options: VideoRenderableOptions) {
@@ -526,9 +527,20 @@ export class VideoRenderable extends Renderable {
     this.seek(milliseconds / 1000)
   }
 
+  // The per-frame PNG stream only feeds the kitty transport; other protocols
+  // skip the native encoder entirely.
+  private syncPngEnabled(): void {
+    if (!this.native) return
+    const wanted = this.effectiveProtocol === "kitty"
+    if (wanted === this.pngEnabled) return
+    this.pngEnabled = wanted
+    this.native.setPngEnabled(wanted)
+  }
+
   protected renderSelf(buffer: OptimizedBuffer): void {
     if (this.width <= 0 || this.height <= 0) return
     if (!this.ensureNative()) return
+    this.syncPngEnabled()
     this.ensureGeometry()
     if (!this.currentImage) this.updateFrame(this.positionSeconds)
     if (!this.currentImage || !this.geometry) return
@@ -567,6 +579,7 @@ export class VideoRenderable extends Renderable {
       this.native.setMuted(this.mutedPlayback)
       this.native.setVolume(this.volumeLevel)
       this.native.setAvSyncOffsetMs(this.avSyncOffsetValue)
+      this.syncPngEnabled()
       if (this.wantsPlayback) this.native.play()
       this.onReady?.(this.metadata)
       if (this.wantsPlayback) {

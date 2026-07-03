@@ -569,6 +569,12 @@ export fn videoConfigureOutput(video_handle: NativeHandle, width: u32, height: u
     return @intFromEnum(native_video.Status.ok);
 }
 
+export fn videoSetPngEnabled(video_handle: NativeHandle, enabled: u32) u32 {
+    const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
+    value.setPngEnabled(enabled != 0);
+    return @intFromEnum(native_video.Status.ok);
+}
+
 export fn videoConfigurePng(video_handle: NativeHandle, compression_level: u32, predictor: u32, color_mode: u32) u32 {
     const value = acquireVideo(video_handle) orelse return @intFromEnum(native_video.Status.invalid_handle);
     value.configurePng(compression_level, predictor, color_mode) catch |err| return @intFromEnum(native_video.statusFromError(err));

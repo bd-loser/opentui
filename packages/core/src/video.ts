@@ -161,6 +161,11 @@ export class NativeVideo {
     this.frameSerial = 0n
   }
 
+  public setPngEnabled(enabled: boolean): void {
+    const status = this.lib.videoSetPngEnabled(this.guard(), enabled)
+    if (status !== 0) throw videoError(this.lib, this.handle, status)
+  }
+
   public configurePng(compressionLevel: number, predictor: number, colorMode: number): void {
     for (const [value, name, maximum] of [
       [compressionLevel, "compression level", 9],

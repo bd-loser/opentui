@@ -1287,6 +1287,7 @@ function getOpenTUILib(libPath?: string) {
     videoSetAvSyncOffset: { args: ["u32", "i64"], returns: "u32" },
     videoConfigureOutput: { args: ["u32", "u32", "u32", "u32"], returns: "u32" },
     videoConfigurePng: { args: ["u32", "u32", "u32", "u32"], returns: "u32" },
+    videoSetPngEnabled: { args: ["u32", "u32"], returns: "u32" },
     videoSeek: { args: ["u32", "i64", "ptr"], returns: "u32" },
     videoUpdate: { args: ["u32", "i64", "ptr"], returns: "u32" },
     videoSchedule: { args: ["u32", "i64", "u32", "u64", "u32", "ptr"], returns: "u32" },
@@ -2653,6 +2654,7 @@ export interface RenderLib extends AudioEngineLib {
   videoSetAvSyncOffset: (video: VideoHandle, offsetUs: bigint) => number
   videoConfigureOutput: (video: VideoHandle, width: number, height: number, cover: boolean) => number
   videoConfigurePng: (video: VideoHandle, compressionLevel: number, predictor: number, colorMode: number) => number
+  videoSetPngEnabled: (video: VideoHandle, enabled: boolean) => number
   videoSeek: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
   videoUpdate: (video: VideoHandle, targetUs: bigint) => { status: number; state: NativeVideoState }
   videoSchedule: (
@@ -5594,11 +5596,11 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.videoConfigurePng(video, compressionLevel, predictor, colorMode)
   }
 
-  private videoStateCall(
-    symbol: "videoSeek" | "videoUpdate",
-    video: VideoHandle,
-    targetUs: bigint,
-  ) {
+  public videoSetPngEnabled(video: VideoHandle, enabled: boolean): number {
+    return this.opentui.symbols.videoSetPngEnabled(video, enabled ? 1 : 0)
+  }
+
+  private videoStateCall(symbol: "videoSeek" | "videoUpdate", video: VideoHandle, targetUs: bigint) {
     const output = new ArrayBuffer(NativeVideoStateStruct.size)
     const status = this.opentui.symbols[symbol](video, targetUs, ptr(output))
     return this.unpackVideoStateResult(status, output)

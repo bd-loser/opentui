@@ -103,6 +103,7 @@ extern fn ot_video_seek(decoder: *Decoder, target_us: i64) c_int;
 extern fn ot_video_seek_video(decoder: *Decoder, target_us: i64) c_int;
 extern fn ot_video_set_output_size(decoder: *Decoder, width: u32, height: u32, cover: u32) c_int;
 extern fn ot_video_set_png_options(decoder: *Decoder, compression_level: u32, predictor: u32, color_mode: u32) c_int;
+extern fn ot_video_set_png_enabled(decoder: *Decoder, enabled: u32) c_int;
 extern fn ot_video_decode_frame(
     decoder: *Decoder,
     target_us: i64,
@@ -210,6 +211,12 @@ pub const Video = struct {
         self.state.frame_serial = 0;
         self.state.frame_pts_us = -1;
         self.state.has_frame = 0;
+    }
+
+    // Kitty is the only consumer of the per-frame PNG stream; other protocols
+    // skip the encoder entirely.
+    pub fn setPngEnabled(self: *Video, enabled: bool) void {
+        _ = ot_video_set_png_enabled(self.decoder, @intFromBool(enabled));
     }
 
     pub fn configurePng(self: *Video, compression_level: u32, predictor: u32, color_mode: u32) !void {

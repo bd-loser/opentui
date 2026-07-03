@@ -505,3 +505,17 @@ test "video open failures expose the native error detail" {
     );
     try std.testing.expect(std.ascii.indexOfIgnoreCase(video.lastOpenError(), "no such file") != null);
 }
+
+test "video png encoding is skipped when disabled" {
+    const value = try openVideo();
+    defer value.deinit();
+    value.setPngEnabled(false);
+    try std.testing.expect(try value.update(0));
+    try std.testing.expect(value.current_image.?.encoded_png == null);
+
+    // Re-enabling produces a PNG for the next decoded frame.
+    value.setPngEnabled(true);
+    try std.testing.expect(try value.update(500_000));
+    try std.testing.expect(value.current_image.?.encoded_png != null);
+    try std.testing.expect(value.current_image.?.encoded_png.?.len > 0);
+}

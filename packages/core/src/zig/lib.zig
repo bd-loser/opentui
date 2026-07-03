@@ -663,6 +663,14 @@ export fn videoGetError(video_handle: NativeHandle, out_ptr: ?[*]u8, max_len: u3
     return length;
 }
 
+export fn videoGetOpenError(out_ptr: ?[*]u8, max_len: u32) u32 {
+    if (out_ptr == null or max_len == 0) return 0;
+    const message = native_video.lastOpenError();
+    const length: u32 = @intCast(@min(message.len, max_len));
+    @memcpy(out_ptr.?[0..length], message[0..length]);
+    return length;
+}
+
 export fn getArenaAllocatedBytes() u64 {
     return @intCast(arena.queryCapacity());
 }

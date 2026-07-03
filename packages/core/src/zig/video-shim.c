@@ -199,13 +199,23 @@ static int ensure_audio_capacity(ot_video_decoder *decoder, size_t frames) {
     return OT_VIDEO_OK;
 }
 
-int ot_video_open(const char *path, ot_video_decoder **out_decoder, ot_video_info *out_info) {
+static void copy_open_error(const ot_video_decoder *decoder, char *error_out, uint32_t error_cap) {
+    if (!error_out || error_cap == 0) return;
+    snprintf(error_out, error_cap, "%s", decoder ? decoder->error : "video decoder allocation failed");
+}
+
+int ot_video_open(const char *path, ot_video_decoder **out_decoder, ot_video_info *out_info,
+                  char *error_out, uint32_t error_cap) {
     if (!path || !out_decoder || !out_info) return OT_VIDEO_ERROR;
     *out_decoder = NULL;
+    if (error_out && error_cap > 0) error_out[0] = '\0';
     av_log_set_level(AV_LOG_ERROR);
     memset(out_info, 0, sizeof(*out_info));
     ot_video_decoder *decoder = calloc(1, sizeof(*decoder));
-    if (!decoder) return OT_VIDEO_ERROR;
+    if (!decoder) {
+        copy_open_error(NULL, error_out, error_cap);
+        return OT_VIDEO_ERROR;
+    }
     decoder->video.stream_index = -1;
     decoder->audio.stream_index = -1;
     decoder->frame_pts_us = AV_NOPTS_VALUE;
@@ -214,11 +224,13 @@ int ot_video_open(const char *path, ot_video_decoder **out_decoder, ot_video_inf
     decoder->png_color_mode = 1;
 
     if (open_stream(decoder, path, AVMEDIA_TYPE_VIDEO, AV_CODEC_ID_H264, &decoder->video) != OT_VIDEO_OK) {
+        copy_open_error(decoder, error_out, error_cap);
         ot_video_close(&decoder);
         return OT_VIDEO_ERROR;
     }
     int audio_result = open_stream(decoder, path, AVMEDIA_TYPE_AUDIO, AV_CODEC_ID_AAC, &decoder->audio);
     if (audio_result == OT_VIDEO_ERROR) {
+        copy_open_error(decoder, error_out, error_cap);
         ot_video_close(&decoder);
         return OT_VIDEO_ERROR;
     }
@@ -232,6 +244,8 @@ int ot_video_open(const char *path, ot_video_decoder **out_decoder, ot_video_inf
     decoder->video_lookahead = av_frame_alloc();
     decoder->video_selected = av_frame_alloc();
     if (!decoder->video_lookahead || !decoder->video_selected) {
+        snprintf(decoder->error, sizeof(decoder->error), "video frame allocation failed");
+        copy_open_error(decoder, error_out, error_cap);
         ot_video_close(&decoder);
         return OT_VIDEO_ERROR;
     }

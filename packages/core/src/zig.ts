@@ -1298,6 +1298,7 @@ function getOpenTUILib(libPath?: string) {
     videoGetCurrentFrame: { args: ["u32", "u64", "ptr", "ptr"], returns: "u32" },
     videoReadAudio: { args: ["u32", "ptr", "u32", "u32", "ptr"], returns: "u32" },
     videoGetError: { args: ["u32", "ptr", "u32"], returns: "u32" },
+    videoGetOpenError: { args: ["ptr", "u32"], returns: "u32" },
 
     // Terminal capability functions
     getTerminalCapabilities: {
@@ -2683,6 +2684,7 @@ export interface RenderLib extends AudioEngineLib {
     capacityFrames: number,
   ) => { status: number; frames: number }
   videoGetError: (video: VideoHandle) => string
+  videoGetOpenError: () => string
 
   getTerminalCapabilities: (renderer: RendererHandle) => TerminalCapabilities
   processCapabilityResponse: (renderer: RendererHandle, response: string) => void
@@ -5713,6 +5715,12 @@ class FFIRenderLib implements RenderLib {
   public videoGetError(video: VideoHandle): string {
     const output = new Uint8Array(512)
     const length = this.opentui.symbols.videoGetError(video, ptr(output), output.byteLength)
+    return this.decoder.decode(output.subarray(0, length))
+  }
+
+  public videoGetOpenError(): string {
+    const output = new Uint8Array(512)
+    const length = this.opentui.symbols.videoGetOpenError(ptr(output), output.byteLength)
     return this.decoder.decode(output.subarray(0, length))
   }
 

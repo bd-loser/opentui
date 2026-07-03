@@ -52,6 +52,15 @@ pub const State = extern struct {
     sync_lead_us: u32 = 0,
 };
 
+// Native core entry is serialized by contract; the buffer holds the failure
+// detail from the most recent open attempt, which frees its decoder before
+// returning and therefore cannot expose the error through a handle.
+var open_error: [256]u8 = [_]u8{0} ** 256;
+
+pub fn lastOpenError() []const u8 {
+    return std.mem.sliceTo(&open_error, 0);
+}
+
 const latency_window_size = 30;
 
 pub const LatencyWindow = struct {
@@ -82,7 +91,13 @@ const PreparedFrame = struct {
     serial: u64,
 };
 
-extern fn ot_video_open(path: [*:0]const u8, out_decoder: *?*Decoder, out_info: *Info) c_int;
+extern fn ot_video_open(
+    path: [*:0]const u8,
+    out_decoder: *?*Decoder,
+    out_info: *Info,
+    error_out: [*]u8,
+    error_cap: u32,
+) c_int;
 extern fn ot_video_close(decoder: *?*Decoder) void;
 extern fn ot_video_seek(decoder: *Decoder, target_us: i64) c_int;
 extern fn ot_video_seek_video(decoder: *Decoder, target_us: i64) c_int;
@@ -145,7 +160,10 @@ pub const Video = struct {
         defer allocator.free(path_z);
         var decoder: ?*Decoder = null;
         var info = Info{};
-        if (ot_video_open(path_z.ptr, &decoder, &info) != 0 or decoder == null) return error.OpenFailed;
+        open_error[0] = 0;
+        if (ot_video_open(path_z.ptr, &decoder, &info, &open_error, open_error.len) != 0 or decoder == null) {
+            return error.OpenFailed;
+        }
         errdefer ot_video_close(&decoder);
         const video = try allocator.create(Video);
         errdefer allocator.destroy(video);

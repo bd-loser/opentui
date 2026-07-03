@@ -33,7 +33,7 @@ export interface NativeVideoState {
 }
 
 function videoError(lib: RenderLib, handle: VideoHandle | null, status: number): Error {
-  const detail = handle ? lib.videoGetError(handle) : ""
+  const detail = handle ? lib.videoGetError(handle) : lib.videoGetOpenError()
   return new Error(detail ? `Native video failed (${status}): ${detail}` : `Native video failed (${status})`)
 }
 

@@ -22,7 +22,8 @@ enum {
     OT_VIDEO_ERROR = -1,
 };
 
-int ot_video_open(const char *path, ot_video_decoder **out_decoder, ot_video_info *out_info);
+int ot_video_open(const char *path, ot_video_decoder **out_decoder, ot_video_info *out_info,
+                  char *error_out, uint32_t error_cap);
 void ot_video_close(ot_video_decoder **decoder);
 int ot_video_seek(ot_video_decoder *decoder, int64_t target_us);
 int ot_video_seek_video(ot_video_decoder *decoder, int64_t target_us);

@@ -22,6 +22,32 @@ describe("NativeVideo", () => {
     }
   })
 
+  test("open failures carry the native error detail", () => {
+    let message = ""
+    try {
+      NativeVideo.open(PNG_FIXTURE)
+      throw new Error("expected open to fail for a non-video file")
+    } catch (error) {
+      message = (error as Error).message
+    }
+    // The failure reason from the demuxer/decoder must survive, not just a
+    // bare status code.
+    expect(message).toMatch(/Native video failed/)
+    expect(message.length).toBeGreaterThan("Native video failed (3)".length)
+    expect(message).toMatch(/avformat|codec|Invalid|moov|stream/i)
+  })
+
+  test("open failures for missing files carry the native error detail", () => {
+    let message = ""
+    try {
+      NativeVideo.open("/nonexistent/opentui-missing.mp4")
+      throw new Error("expected open to fail for a missing file")
+    } catch (error) {
+      message = (error as Error).message
+    }
+    expect(message).toMatch(/no such file/i)
+  })
+
   test("decodes frames and exposes them as native images", () => {
     const video = NativeVideo.open(VIDEO_FIXTURE)
     try {

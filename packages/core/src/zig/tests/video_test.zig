@@ -492,3 +492,16 @@ test "video external audio open keeps playback silent but functional" {
     try std.testing.expect(try value.readAudio(&samples, 256) > 0);
 }
 
+test "video open failures expose the native error detail" {
+    try std.testing.expectError(
+        error.OpenFailed,
+        video.Video.open(std.testing.allocator, "../tests/fixtures/images/rgba.png", false),
+    );
+    try std.testing.expect(video.lastOpenError().len > 0);
+
+    try std.testing.expectError(
+        error.OpenFailed,
+        video.Video.open(std.testing.allocator, "../tests/fixtures/video/missing.mp4", false),
+    );
+    try std.testing.expect(std.ascii.indexOfIgnoreCase(video.lastOpenError(), "no such file") != null);
+}

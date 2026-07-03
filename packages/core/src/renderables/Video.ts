@@ -285,16 +285,16 @@ export function calculateVideoGeometry(options: VideoGeometryOptions): VideoOutp
 }
 
 export class VideoRenderable extends Renderable {
-  private readonly source: string
-  private readonly loopPlayback: boolean
-  private readonly maxFps: number
-  private readonly onReady?: (metadata: VideoMetadata) => void
-  private readonly onError?: (error: Error) => void
-  private readonly onEnd?: () => void
-  private readonly onPlay?: () => void
-  private readonly onPause?: () => void
-  private readonly onSeek?: (time: number) => void
-  private readonly onTimeUpdate?: (time: number) => void
+  private _source: string | undefined
+  private loopPlayback: boolean
+  private maxFpsLimit: number
+  public onReady?: (metadata: VideoMetadata) => void
+  public onError?: (error: Error) => void
+  public onEnd?: () => void
+  public onPlay?: () => void
+  public onPause?: () => void
+  public onSeek?: (time: number) => void
+  public onTimeUpdate?: (time: number) => void
   private fitMode: ImageFit
   private renderProtocol: ImageRenderProtocol
   private mutedPlayback: boolean
@@ -319,7 +319,7 @@ export class VideoRenderable extends Renderable {
 
   constructor(ctx: RenderContext, options: VideoRenderableOptions) {
     super(ctx, options)
-    this.source = options.source
+    this._source = options.source
     this.fitMode = options.fit ?? "fit"
     this.renderProtocol = options.protocol ?? "auto"
     this.loopPlayback = options.loop ?? false
@@ -331,7 +331,7 @@ export class VideoRenderable extends Renderable {
     this.validateAvSyncOffset(this.avSyncOffsetValue)
     const maxFps = options.maxFps ?? 30
     if (!Number.isFinite(maxFps) || maxFps <= 0) throw new RangeError("maxFps must be a positive finite number")
-    this.maxFps = maxFps
+    this.maxFpsLimit = maxFps
     this.onReady = options.onReady
     this.onError = options.onError
     this.onEnd = options.onEnd
@@ -341,6 +341,57 @@ export class VideoRenderable extends Renderable {
     this.onTimeUpdate = options.onTimeUpdate
     this.wantsPlayback = options.autoplay ?? false
     this.adaptiveQuality = createAdaptiveVideoQualityState(ctx.renderBackpressureCount ?? 0)
+  }
+
+  public get source(): string | undefined {
+    return this._source
+  }
+
+  public set source(value: string | undefined) {
+    if (this._source === value) return
+    this._source = value
+    this.resetMedia()
+    this.requestRender()
+  }
+
+  public get loop(): boolean {
+    return this.loopPlayback
+  }
+
+  public set loop(value: boolean) {
+    this.loopPlayback = value
+  }
+
+  public get maxFps(): number {
+    return this.maxFpsLimit
+  }
+
+  public set maxFps(value: number) {
+    if (!Number.isFinite(value) || value <= 0) throw new RangeError("maxFps must be a positive finite number")
+    if (this.maxFpsLimit === value) return
+    this.maxFpsLimit = value
+    if (this.ticker) {
+      this.stopTicker()
+      this.startTicker()
+    }
+  }
+
+  // Tears down the current media so the next render opens the new source.
+  // Playback intent survives: a playing video keeps playing the replacement.
+  private resetMedia(): void {
+    this.stopTicker()
+    this.cancelPreparation()
+    this.wallClock = false
+    this.positionSeconds = 0
+    this.playbackEnded = false
+    this.metadata = null
+    this.geometry = null
+    this.currentImage?.dispose()
+    this.currentImage = null
+    this.native?.dispose()
+    this.native = null
+    this.pngEnabled = true
+    this.resetAdaptiveQualitySamples()
   }
 
   public get fit(): ImageFit {
@@ -370,7 +421,7 @@ export class VideoRenderable extends Renderable {
   public get presentationFps(): number {
     return calculateAdaptiveVideoPlaybackFps(
       this.metadata?.fps ?? 0,
-      this.maxFps,
+      this.maxFpsLimit,
       this.adaptiveQuality.presentationRateTier,
     )
   }
@@ -565,9 +616,9 @@ export class VideoRenderable extends Renderable {
 
   private ensureNative(): boolean {
     if (this.native) return true
-    if (this.isDestroyed) return false
+    if (this.isDestroyed || this._source === undefined) return false
     try {
-      this.native = NativeVideo.open(this.source)
+      this.native = NativeVideo.open(this._source)
       const info = this.native.info
       this.metadata = {
         width: info.width,
@@ -632,7 +683,7 @@ export class VideoRenderable extends Renderable {
 
   private startTicker(): void {
     if (this.ticker) return
-    const fps = calculateVideoTickFps(this.metadata?.fps ?? 0, this.maxFps, this.metadata?.hasAudio ?? false)
+    const fps = calculateVideoTickFps(this.metadata?.fps ?? 0, this.maxFpsLimit, this.metadata?.hasAudio ?? false)
     const frameTime = 1000 / fps
     const schedule = (): void => {
       if (!this.wantsPlayback || this.isDestroyed) {

@@ -741,3 +741,84 @@ describe("VideoRenderable playback (integration)", () => {
     }
   })
 })
+
+describe("VideoRenderable mutable properties", () => {
+  const VIDEO_FIXTURE = fileURLToPath(new URL("./fixtures/video/dragon.mp4", import.meta.url))
+
+  test("swapping the source replaces the media", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({ width: 16, height: 8 })
+    const video = new VideoRenderable(renderer, {
+      source: "/nonexistent/opentui-missing.mp4",
+      width: 16,
+      height: 8,
+      muted: true,
+    })
+    const errors: string[] = []
+    video.onError = (error) => errors.push(error.message)
+    const readies: number[] = []
+    video.onReady = (metadata) => readies.push(metadata.duration)
+    renderer.root.add(video)
+    try {
+      await renderOnce()
+      expect(errors.length).toBe(1)
+      expect(errors[0]).toMatch(/no such file/i)
+      expect(video.ready).toBe(false)
+
+      video.source = VIDEO_FIXTURE
+      expect(video.source).toBe(VIDEO_FIXTURE)
+      await renderOnce()
+      expect(video.ready).toBe(true)
+      expect(readies.length).toBe(1)
+      expect(video.videoMetadata?.width).toBe(768)
+      expect(video.currentTime).toBe(0)
+
+      // Swapping away tears the old media down immediately.
+      video.seek(2)
+      video.source = "/nonexistent/opentui-other.mp4"
+      expect(video.ready).toBe(false)
+      expect(video.currentTime).toBe(0)
+    } finally {
+      video.destroy()
+      renderer.destroy()
+    }
+  })
+
+  test("loop and maxFps are mutable after construction", async () => {
+    const { renderer, renderOnce } = await createTestRenderer({ width: 16, height: 8 })
+    const video = new VideoRenderable(renderer, {
+      source: VIDEO_FIXTURE,
+      width: 16,
+      height: 8,
+      muted: true,
+    })
+    renderer.root.add(video)
+    try {
+      await renderOnce()
+      expect(video.loop).toBe(false)
+      video.loop = true
+      expect(video.loop).toBe(true)
+
+      expect(video.maxFps).toBe(30)
+      video.play()
+      video.maxFps = 10
+      expect(video.maxFps).toBe(10)
+      expect(() => {
+        video.maxFps = 0
+      }).toThrow(RangeError)
+      const advanced = await new Promise<boolean>((resolve) => {
+        const deadline = Date.now() + 4000
+        const poll = () => {
+          if (video.currentTime > 0.05) return resolve(true)
+          if (Date.now() > deadline) return resolve(false)
+          setTimeout(poll, 25)
+        }
+        poll()
+      })
+      expect(advanced).toBe(true)
+      video.pause()
+    } finally {
+      video.destroy()
+      renderer.destroy()
+    }
+  })
+})

@@ -11,7 +11,7 @@ const URL = `https://ffmpeg.org/releases/ffmpeg-${VERSION}.tar.xz`
 const ZLIB_VERSION = "1.3.1"
 const ZLIB_SHA256 = "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
 const ZLIB_URL = `https://zlib.net/fossils/zlib-${ZLIB_VERSION}.tar.gz`
-const BUILD_REVISION = "5"
+const BUILD_REVISION = "6"
 // Must match the zig-built dylib's minos so the statically linked FFmpeg
 // objects never carry a newer availability floor than the final link.
 const MACOS_VERSION_MIN = "13.0"
@@ -194,6 +194,10 @@ function buildTarget(target: Target): void {
     `--extra-cflags=-Os -ffunction-sections -fdata-sections -fvisibility=hidden -I${join(prefix, "include")}`,
     `--extra-ldflags=-L${join(prefix, "lib")}`,
     "--extra-libs=-lz",
+    // Hardware decoding: VideoToolbox ships with the OS and needs no extra
+    // runtime dependencies. Windows (d3d11va) and Linux (vaapi, external
+    // libva) require dedicated shim integration and platform testing first.
+    ...(target.os === "darwin" ? ["--enable-videotoolbox", "--enable-hwaccel=h264_videotoolbox"] : []),
     ...(target.arch === "x86_64" ? ["--disable-x86asm"] : []),
     ...(target.os === "mingw32" ? ["--disable-pic"] : ["--enable-pic"]),
     ...(target.os === "mingw32" ? ["--disable-pthreads", "--enable-w32threads"] : ["--enable-pthreads"]),

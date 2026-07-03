@@ -579,3 +579,27 @@ test "video keeps the current frame presentable across reconfiguration" {
     try std.testing.expect(try value.update(100_000));
     try std.testing.expectEqual(@as(u32, 16), value.current_image.?.width());
 }
+
+test "video hardware and software decode produce identical frames" {
+    const builtin = @import("builtin");
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    const hardware = try openVideo();
+    try hardware.configureOutput(64, 96, false);
+    try std.testing.expect(try hardware.update(500_000));
+    const hardware_pixels = try std.testing.allocator.dupe(u8, hardware.current_image.?.pixels);
+    defer std.testing.allocator.free(hardware_pixels);
+    hardware.deinit();
+
+    // H.264 reconstruction is bit-exact by specification, so the VideoToolbox
+    // path (when active on this platform) must match the software decoder.
+    const setenv_fn = @extern(*const fn ([*:0]const u8, [*:0]const u8, c_int) callconv(.c) c_int, .{ .name = "setenv" });
+    const unsetenv_fn = @extern(*const fn ([*:0]const u8) callconv(.c) c_int, .{ .name = "unsetenv" });
+    _ = setenv_fn("OPENTUI_VIDEO_HWACCEL", "0", 1);
+    defer _ = unsetenv_fn("OPENTUI_VIDEO_HWACCEL");
+    const software = try openVideo();
+    defer software.deinit();
+    try software.configureOutput(64, 96, false);
+    try std.testing.expect(try software.update(500_000));
+    try std.testing.expectEqualSlices(u8, hardware_pixels, software.current_image.?.pixels);
+}

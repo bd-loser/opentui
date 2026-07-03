@@ -4,7 +4,9 @@
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/error.h>
+#include <libavutil/hwcontext.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/pixdesc.h>
 #include <libavutil/log.h>
 #include <libavutil/opt.h>
 #include <libswresample/swresample.h>
@@ -29,6 +31,8 @@ typedef struct {
 struct ot_video_decoder {
     ot_stream_decoder video;
     ot_stream_decoder audio;
+    AVBufferRef *hw_device;
+    AVFrame *hw_transfer_frame;
     int has_audio;
     int64_t duration_us;
     int64_t origin_us;
@@ -85,6 +89,43 @@ static void close_stream(ot_stream_decoder *stream) {
     stream->stream_index = -1;
 }
 
+// Prefers the hardware pixel format when a device is attached; otherwise the
+// first software format keeps the decoder on the normal path.
+static enum AVPixelFormat ot_video_select_pixel_format(AVCodecContext *codec, const enum AVPixelFormat *formats) {
+    if (codec->hw_device_ctx) {
+        for (const enum AVPixelFormat *format = formats; *format != AV_PIX_FMT_NONE; format++) {
+            if (*format == AV_PIX_FMT_VIDEOTOOLBOX) return *format;
+        }
+    }
+    for (const enum AVPixelFormat *format = formats; *format != AV_PIX_FMT_NONE; format++) {
+        const AVPixFmtDescriptor *descriptor = av_pix_fmt_desc_get(*format);
+        if (descriptor && !(descriptor->flags & AV_PIX_FMT_FLAG_HWACCEL)) return *format;
+    }
+    return formats[0];
+}
+
+static int ot_video_hwaccel_disabled(void) {
+    const char *value = getenv("OPENTUI_VIDEO_HWACCEL");
+    return value && (strcmp(value, "0") == 0 || strcmp(value, "false") == 0);
+}
+
+// Attaches a hardware decode device when one is available. Failure of any
+// kind leaves the decoder on the software path; H.264 output is bit-exact
+// either way.
+static void ot_video_attach_hw_device(ot_video_decoder *decoder, ot_stream_decoder *stream) {
+    if (ot_video_hwaccel_disabled()) return;
+    if (av_hwdevice_ctx_create(&decoder->hw_device, AV_HWDEVICE_TYPE_VIDEOTOOLBOX, NULL, NULL, 0) < 0) {
+        decoder->hw_device = NULL;
+        return;
+    }
+    stream->codec->hw_device_ctx = av_buffer_ref(decoder->hw_device);
+    if (!stream->codec->hw_device_ctx) {
+        av_buffer_unref(&decoder->hw_device);
+        return;
+    }
+    stream->codec->get_format = ot_video_select_pixel_format;
+}
+
 static int open_stream(ot_video_decoder *decoder, const char *path, enum AVMediaType type,
                        enum AVCodecID required_codec, ot_stream_decoder *out) {
     memset(out, 0, sizeof(*out));
@@ -116,6 +157,7 @@ static int open_stream(ot_video_decoder *decoder, const char *path, enum AVMedia
     if (result < 0) return fail(decoder, result, "avcodec_parameters_to_context");
     out->codec->pkt_timebase = out->stream->time_base;
     out->codec->thread_count = 0;
+    if (type == AVMEDIA_TYPE_VIDEO) ot_video_attach_hw_device(decoder, out);
     result = avcodec_open2(out->codec, codec, NULL);
     if (result < 0) return fail(decoder, result, "avcodec_open2");
     out->packet = av_packet_alloc();
@@ -269,6 +311,8 @@ void ot_video_close(ot_video_decoder **decoder_ptr) {
     if (!decoder_ptr || !*decoder_ptr) return;
     ot_video_decoder *decoder = *decoder_ptr;
     free(decoder->audio_pending);
+    av_frame_free(&decoder->hw_transfer_frame);
+    av_buffer_unref(&decoder->hw_device);
     av_channel_layout_uninit(&decoder->audio_source_layout);
     av_frame_free(&decoder->video_selected);
     av_frame_free(&decoder->video_lookahead);
@@ -369,6 +413,16 @@ int ot_video_seek_video(ot_video_decoder *decoder, int64_t target_us) {
 }
 
 static int convert_video_frame(ot_video_decoder *decoder, const AVFrame *frame, int64_t pts) {
+    if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
+        if (!decoder->hw_transfer_frame) {
+            decoder->hw_transfer_frame = av_frame_alloc();
+            if (!decoder->hw_transfer_frame) return fail(decoder, AVERROR(ENOMEM), "hw transfer allocation");
+        }
+        av_frame_unref(decoder->hw_transfer_frame);
+        int transfer = av_hwframe_transfer_data(decoder->hw_transfer_frame, frame, 0);
+        if (transfer < 0) return fail(decoder, transfer, "av_hwframe_transfer_data");
+        frame = decoder->hw_transfer_frame;
+    }
     uint32_t scaled_width = decoder->output_width;
     uint32_t scaled_height = decoder->output_height;
     if (decoder->output_cover) {

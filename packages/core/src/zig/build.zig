@@ -293,6 +293,12 @@ fn addMacOSSystemLibraries(b: *std.Build, artifact: *std.Build.Step.Compile, sdk
     artifact.linkFramework("CoreFoundation");
     artifact.linkFramework("CoreAudio");
     artifact.linkFramework("AudioToolbox");
+    // VideoToolbox hardware decoding for the FFmpeg build.
+    artifact.linkFramework("VideoToolbox");
+    artifact.linkFramework("CoreMedia");
+    artifact.linkFramework("CoreVideo");
+    artifact.linkFramework("CoreServices");
+    artifact.linkFramework("QuartzCore");
     artifact.linkSystemLibrary("pthread");
     addMacOSSDKSearchPaths(b, artifact, sdk_path);
 }

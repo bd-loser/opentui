@@ -290,7 +290,10 @@ export XINCLI_ANDROID_LIB_SEARCH_PATHS="$TERMUX_LIB:$LINKER_STUBS_DIR"
 export XINCLI_ANDROID_LIBC_PATH="$SYSTEM_LIBC_REAL"
 export XINCLI_ANDROID_LIBM_PATH="$SYSTEM_LIBM_REAL"
 export XINCLI_ANDROID_LIBDL_PATH="$SYSTEM_LIBDL_REAL"
+# libc++_shared.so lives in Termux's $PREFIX/lib (from the libc++ package)
+export XINCLI_ANDROID_LIBCXX_PATH="$TERMUX_LIB/libc++_shared.so"
 echo "✓ Bionic libs (resolved): $SYSTEM_LIBC_REAL"
+echo "✓ libc++: $XINCLI_ANDROID_LIBCXX_PATH"
 
 zig build \
   -Dtarget=aarch64-linux-android \

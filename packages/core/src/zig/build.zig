@@ -162,7 +162,15 @@ fn addMiniaudioShim(
     };
 
     artifact.addIncludePath(b.path("."));
-    artifact.linkLibC();
+    // ── XINCLI: skip linkLibC() for android ───────────────────────────
+    // linkLibC() emits -lm -lc -ldl that Zig tries to resolve via its own
+    // libc resolution. On Termux/Android, Zig can't find Bionic properly
+    // (it falls back to glibc defaults), so -lm -lc -ldl fail.
+    // For android, we link the .so files directly via addObjectFile in
+    // buildTarget() instead. For all other targets, linkLibC() works fine.
+    if (target.result.abi != .android) {
+        artifact.linkLibC();
+    }
     artifact.addCSourceFile(.{
         .file = b.path("miniaudio_shim.c"),
         .flags = c_flags,
@@ -222,10 +230,20 @@ fn addNativeAudioDependencies(
     }
 }
 
-fn addYogaDependencies(b: *std.Build, artifact: *std.Build.Step.Compile) void {
+fn addYogaDependencies(
+    b: *std.Build,
+    artifact: *std.Build.Step.Compile,
+    target: std.Build.ResolvedTarget,
+) void {
     const yoga_dep = b.dependency("yoga", .{});
 
-    artifact.linkLibCpp();
+    // ── XINCLI: skip linkLibCpp() for android ─────────────────────────
+    // linkLibCpp() emits -lc++ which fails on Termux (only libc++_shared.so
+    // exists, not libc++.so). For android, we link libc++_shared.so directly
+    // via addObjectFile in buildTarget(). For other targets, linkLibCpp() works.
+    if (target.result.abi != .android) {
+        artifact.linkLibCpp();
+    }
     artifact.addIncludePath(yoga_dep.path(""));
     artifact.addCSourceFiles(.{
         .root = yoga_dep.path(""),
@@ -528,7 +546,7 @@ fn buildTarget(
     // build system reach the linker.
 
     addNativeAudioDependencies(b, lib, target, macos_sdk_path);
-    addYogaDependencies(b, lib);
+    addYogaDependencies(b, lib, target);
 
     // Add Termux lib search paths so ld.lld finds libc/libm/libdl
     if (target.result.abi == .android) {
@@ -541,23 +559,21 @@ fn buildTarget(
             }
         }
 
-        // ── XINCLI: link Bionic libs directly by absolute path ─────────
-        // Termux does NOT ship libc.so/libm.so/libdl.so in $PREFIX/lib/ —
-        // they only exist at /system/lib64/ as symlinks to the Bionic APEX.
-        // The -l flags from linkLibC() search $PREFIX/lib and fail with
-        // 'unable to find library -lm -lc -ldl'.
-        //
-        // Fix: link the three system .so files directly via addObjectFile,
-        // bypassing the search entirely. This is the same approach we use
-        // for libOpenSLES.so. The paths are read from env vars set by
-        // build-native-termux.sh so they're not hardcoded.
-        const bionic_libs = [_]struct { env: []const u8, fallback: []const u8 }{
+        // ── XINCLI: link Bionic + libc++ directly by absolute path ─────
+        // We skipped linkLibC() and linkLibCpp() for android (they emit
+        // -lm -lc -ldl -lc++ that fail on Termux). Instead, link the .so
+        // files directly via addObjectFile. Paths read from env vars set
+        // by build-native-termux.sh, with /system/lib64 + $PREFIX/lib
+        // fallbacks.
+        const android_libs = [_]struct { env: []const u8, fallback: []const u8 }{
             .{ .env = "XINCLI_ANDROID_LIBC_PATH", .fallback = "/system/lib64/libc.so" },
             .{ .env = "XINCLI_ANDROID_LIBM_PATH", .fallback = "/system/lib64/libm.so" },
             .{ .env = "XINCLI_ANDROID_LIBDL_PATH", .fallback = "/system/lib64/libdl.so" },
+            // libc++_shared.so is at $PREFIX/lib/libc++_shared.so on Termux
+            .{ .env = "XINCLI_ANDROID_LIBCXX_PATH", .fallback = "/data/data/com.termux/files/usr/lib/libc++_shared.so" },
         };
-        for (bionic_libs) |bl| {
-            const path = std.posix.getenv(bl.env) orelse bl.fallback;
+        for (android_libs) |al| {
+            const path = std.posix.getenv(al.env) orelse al.fallback;
             lib.addObjectFile(.{ .cwd_relative = path });
         }
     }

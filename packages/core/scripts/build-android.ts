@@ -105,6 +105,14 @@ function buildOneArch(arch: AndroidArch): void {
     "build",
     `-Dtarget=${zigTarget}`,
     `-Doptimize=ReleaseFast`,
+    // Critical: --sysroot is a GLOBAL zig build flag (not -D) that
+    // propagates to every compiler/linker invocation in the build graph.
+    // Without this, Zig tries to provide its own Bionic libc (which it
+    // doesn't have) and fails with 'unable to provide libc for target
+    // aarch64-linux-android'. This is the Zig-blessed way to cross-compile
+    // against a foreign libc — cleaner than patching build.zig.
+    `--sysroot`,
+    sysroot,
   ]
 
   // ── Zig + Android NDK cross-compilation ────────────────────────────

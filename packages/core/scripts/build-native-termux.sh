@@ -101,6 +101,45 @@ if [ ! -d "$ASM_DIR" ]; then
 fi
 echo "✓ asm headers found at $ASM_DIR"
 
+# ── Find crt objects (crtbegin_so.o, crtend_so.o) ───────────────
+# These are compile-time artifacts needed by ld.lld to produce a valid
+# .so. On Termux they come from the ndk-sysroot or clang package. Without
+# them, Zig falls back to glibc defaults and emits -lm -lc -ldl that fail.
+CRT_DIR=""
+for search_dir in \
+  "$PREFIX/lib" \
+  "$PREFIX/lib/aarch64-linux-android" \
+  "$PREFIX/lib64/clang"/*/lib/linux \
+  "$PREFIX/lib/clang"/*/lib/linux; do
+  if ls $search_dir/crtbegin_so.o >/dev/null 2>&1; then
+    CRT_DIR=$(dirname $(ls $search_dir/crtbegin_so.o 2>/dev/null | head -1))
+    break
+  fi
+done
+
+if [ -z "$CRT_DIR" ]; then
+  echo "📦 crt objects not found — installing ndk-sysroot + clang..."
+  pkg install -y ndk-sysroot clang 2>&1 | tail -5 || true
+  for search_dir in \
+    "$PREFIX/lib" \
+    "$PREFIX/lib/aarch64-linux-android" \
+    "$PREFIX/lib64/clang"/*/lib/linux \
+    "$PREFIX/lib/clang"/*/lib/linux; do
+    if ls $search_dir/crtbegin_so.o >/dev/null 2>&1; then
+      CRT_DIR=$(dirname $(ls $search_dir/crtbegin_so.o 2>/dev/null | head -1))
+      break
+    fi
+  done
+fi
+
+if [ -z "$CRT_DIR" ]; then
+  echo "❌ Cannot find crtbegin_so.o anywhere on the system."
+  echo "   Try: pkg install ndk-sysroot clang"
+  echo "   Then re-run this script."
+  exit 1
+fi
+echo "✓ crt objects found at: $CRT_DIR"
+
 # ── Generate a Zig libc file pointing at Termux's Bionic ────────
 # CRITICAL: Without this, Zig detects the host as 'aarch64-linux-musl'
 # (wrong!) and produces a .so that won't load on Termux. The libc file
@@ -135,14 +174,14 @@ LIBC_FILE="$REPO_ROOT/packages/core/src/zig/libc-termux.txt"
 cat > "$LIBC_FILE" << EOF
 include_dir=$MERGED_INCLUDE
 sys_include_dir=$MERGED_INCLUDE
-crt_dir=$TERMUX_LIB
+crt_dir=$CRT_DIR
 msvc_lib_dir=
 kernel32_lib_dir=
 gcc_dir=
 EOF
 echo "✓ Generated libc file: $LIBC_FILE"
 echo "  → include_dir=$MERGED_INCLUDE (merged: Termux + arch asm/)"
-echo "  → crt_dir=$TERMUX_LIB"
+echo "  → crt_dir=$CRT_DIR"
 
 # ── Verify Bionic libs exist (DO NOT create stubs — they break Termux) ─
 # Zig's linkLibC() adds -lm -lc -ldl. On Termux/Bionic, libc.so IS the
@@ -176,7 +215,6 @@ fi
 echo "✓ Real libc found: $REAL_LIBC"
 
 # Detect the system Bionic path (used for symlinks + direct linking).
-# On standard Android this is /system/lib64/libc.so. On 32-bit: /system/lib/.
 SYSTEM_LIB_DIR="/system/lib64"
 if [ ! -f "$SYSTEM_LIB_DIR/libc.so" ]; then
   SYSTEM_LIB_DIR="/system/lib"

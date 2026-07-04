@@ -204,17 +204,15 @@ fn addNativeAudioDependencies(
             // via the NDK sysroot; OpenSLES is Android's native audio
             // backend (used by miniaudio). For non-android linux, use the
             // standard dl + pthread system libraries.
+            //
+            // NOTE: We do NOT call addLibraryPath here — when --sysroot is
+            // set (via `zig build --sysroot <path>` in build-android.ts),
+            // addLibraryPath paths get the sysroot prepended, producing
+            // doubled paths like /sysroot/sysroot/usr/lib/... that don't
+            // exist. Instead, the library search paths are passed via
+            // LDFLAGS in build-android.ts, which doesn't suffer from the
+            // doubling issue.
             if (target.result.abi == .android) {
-                // The build-android.ts script passes the NDK sysroot's lib
-                // path via XINCLI_ANDROID_LIB_PATH env var. If set, add it
-                // as a library search path so linkSystemLibrary("OpenSLES")
-                // can find libOpenSLES.so inside the NDK sysroot.
-                if (std.posix.getenv("XINCLI_ANDROID_LIB_PATH")) |lib_path| {
-                    artifact.addLibraryPath(.{ .cwd_relative = lib_path });
-                }
-                if (std.posix.getenv("XINCLI_ANDROID_LIB_PATH_GENERIC")) |lib_path| {
-                    artifact.addLibraryPath(.{ .cwd_relative = lib_path });
-                }
                 artifact.linkSystemLibrary("OpenSLES");
             } else {
                 artifact.linkSystemLibrary("dl");

@@ -134,20 +134,15 @@ function buildOneArch(arch: AndroidArch): void {
     ...process.env,
     ANDROID_NDK_HOME: NDK_HOME,
     ANDROID_NDK_ROOT: NDK_HOME,
-    // XINCLI-specific env vars read by build.zig's addNativeAudioDependencies
-    // to find libOpenSLES.so inside the NDK sysroot.
-    XINCLI_ANDROID_LIB_PATH: sysrootLibApiSpecific,
-    XINCLI_ANDROID_LIB_PATH_GENERIC: sysrootLibGeneric,
-    // Critical: pass the NDK sysroot to build.zig's buildTarget() so it
-    // can set lib.linker_sysroot. Without this, Zig tries to provide its
-    // own Bionic libc (which it doesn't have) and fails with
-    // 'unable to provide libc for target aarch64-linux-android'.
-    XINCLI_ANDROID_SYSROOT: sysroot,
     // Point Zig at the NDK's clang so any C/C++ compilation (yoga, miniaudio)
-    // uses NDK headers + libs.
+    // uses NDK headers + libs. The NDK clang wrapper has --sysroot baked in.
     CC: join(ndkToolchainBin, `${arch.ndkTriple}${NDK_API_LEVEL}-clang`),
     CXX: join(ndkToolchainBin, `${arch.ndkTriple}${NDK_API_LEVEL}-clang++`),
-    LDFLAGS: `--sysroot=${sysroot}`,
+    // LDFLAGS: pass --sysroot AND the -L library search paths. We can't use
+    // addLibraryPath in build.zig because --sysroot makes Zig double the
+    // paths. LDFLAGS is picked up by Zig's linker invocation directly and
+    // doesn't suffer from the doubling issue.
+    LDFLAGS: `--sysroot=${sysroot} -L${sysrootLibApiSpecific} -L${sysrootLibGeneric} -L${sysroot}/usr/lib`,
     CFLAGS: `--sysroot=${sysroot}`,
     LIBRARY_PATH: `${sysrootLibApiSpecific}:${sysrootLibGeneric}`,
   }

@@ -516,14 +516,31 @@ fn buildTarget(
         .linkage = .dynamic,
     });
 
-    // ── XINCLI: Android sysroot ─────────────────────────────────────────
-    // Zig doesn't bundle Android's Bionic libc. We pass the NDK sysroot via
-    // `zig build --sysroot=<path>` (a global flag that propagates to every
-    // compiler/linker invocation in the build graph). No build.zig patch
-    // needed — the flag is handled by build-android.ts.
+    // ── XINCLI: Android native build (Termux) ───────────────────────────
+    // On Termux, Zig's --sysroot flag makes ld.lld look at <sysroot>/usr/lib/
+    // which doesn't exist (Termux's libs are at <sysroot>/lib/). We add the
+    // real lib paths explicitly via addLibraryPath, reading them from the
+    // XINCLI_ANDROID_LIB_SEARCH_PATHS env var (colon-separated) set by
+    // build-native-termux.sh.
+    //
+    // This is done in build.zig (not via LDFLAGS) because Zig's ld.lld
+    // doesn't respect the LDFLAGS env var — only flags passed through the
+    // build system reach the linker.
 
     addNativeAudioDependencies(b, lib, target, macos_sdk_path);
     addYogaDependencies(b, lib);
+
+    // Add Termux lib search paths so ld.lld finds libc/libm/libdl
+    if (target.result.abi == .android) {
+        if (std.posix.getenv("XINCLI_ANDROID_LIB_SEARCH_PATHS")) |paths| {
+            var it = std.mem.splitScalar(u8, paths, ':');
+            while (it.next()) |path| {
+                if (path.len > 0) {
+                    lib.addLibraryPath(.{ .cwd_relative = path });
+                }
+            }
+        }
+    }
 
     const install_dir = b.addInstallArtifact(lib, .{
         .dest_dir = .{

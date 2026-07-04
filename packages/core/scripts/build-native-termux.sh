@@ -205,19 +205,17 @@ echo "   Lib search: $TERMUX_LIB + $LINKER_STUBS_DIR"
 echo ""
 
 # Explicit -Dtarget=aarch64-linux-android so Zig doesn't misdetect as musl.
-# --sysroot points at Termux's PREFIX so Zig finds Bionic headers + libs.
-# ZIG_LIBC env var makes Zig read our generated libc file.
-# LDFLAGS adds -L for both the real Termux lib dir AND our linker-stubs
-# dir (which has redirects for libm/libdl if they're not separate files).
+# ZIG_LIBC env var makes Zig read our generated libc file (Bionic paths).
+# XINCLI_ANDROID_LIB_SEARCH_PATHS is read by build.zig's addLibraryPath calls
+# so ld.lld finds libc/libm/libdl in $PREFIX/lib + the linker-stubs dir.
+# We do NOT pass --sysroot because it causes path doubling with addLibraryPath.
 export ZIG_LIBC="$LIBC_FILE"
 export XINCLI_ANDROID_LIB_PATH="$TERMUX_LIB"
-export LDFLAGS="-L$TERMUX_LIB -L$LINKER_STUBS_DIR"
-export LIBRARY_PATH="$TERMUX_LIB:$LINKER_STUBS_DIR"
+export XINCLI_ANDROID_LIB_SEARCH_PATHS="$TERMUX_LIB:$LINKER_STUBS_DIR"
 
 zig build \
   -Dtarget=aarch64-linux-android \
   -Doptimize=ReleaseFast \
-  --sysroot "$PREFIX" \
   2>&1 | tail -30
 
 # ── Locate the produced .so ─────────────────────────────────────

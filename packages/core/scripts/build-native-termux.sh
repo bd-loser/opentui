@@ -175,23 +175,36 @@ if [ -z "$REAL_LIBC" ]; then
 fi
 echo "✓ Real libc found: $REAL_LIBC"
 
-# Bionic on Termux: libm and libdl symbols are inside libc.so. If the
-# separate .so files don't exist, create linker scripts in our temp dir
-# that redirect -lm/-ldl to the real libc.so. These are LINKER scripts
-# (only read by ld.lld at link time), not runtime .so files, so they
-# don't interfere with Termux's runtime.
+# Detect the system Bionic path (used for symlinks + direct linking).
+# On standard Android this is /system/lib64/libc.so. On 32-bit: /system/lib/.
+SYSTEM_LIB_DIR="/system/lib64"
+if [ ! -f "$SYSTEM_LIB_DIR/libc.so" ]; then
+  SYSTEM_LIB_DIR="/system/lib"
+fi
+if [ ! -f "$SYSTEM_LIB_DIR/libc.so" ]; then
+  echo "❌ Cannot find libc.so in /system/lib64 or /system/lib"
+  echo "   Android system is broken — this should never happen."
+  exit 1
+fi
+SYSTEM_LIBC="$SYSTEM_LIB_DIR/libc.so"
+echo "✓ System Bionic: $SYSTEM_LIBC"
+
+# Bionic on Termux: libm and libdl symbols are inside libc.so. Termux
+# doesn't ship separate libm.so/libdl.so in $PREFIX/lib. We create
+# SYMLINKS in our temp stubs dir pointing at the system Bionic. Symlinks
+# (not linker scripts) because ld.lld's -l flag resolution needs to find
+# an actual .so file. The stubs dir is already in the -L search path.
 NEED_EXTRA_L_PATH=""
-for libname in libm libdl; do
-  if [ ! -f "$TERMUX_LIB/${libname}.so" ]; then
-    echo "ℹ️  $TERMUX_LIB/${libname}.so not separate — creating linker-script redirect"
-    # Linker script syntax: tell ld.lld to use libc.so for -lm / -ldl.
-    # ld.lld reads this at link time; the runtime loader never sees it.
-    echo "GROUP ( $REAL_LIBC )" > "$LINKER_STUBS_DIR/${libname}.so"
+for libname in libc libm libdl; do
+  if [ ! -f "$TERMUX_LIB/${libname}.so" ] && [ ! -L "$TERMUX_LIB/${libname}.so" ]; then
+    echo "ℹ️  Creating $LINKER_STUBS_DIR/${libname}.so → $SYSTEM_LIBC"
+    ln -sf "$SYSTEM_LIBC" "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || true
     NEED_EXTRA_L_PATH=1
   fi
 done
 if [ "$NEED_EXTRA_L_PATH" = "1" ]; then
-  echo "✓ Linker redirects created in $LINKER_STUBS_DIR"
+  echo "✓ Bionic symlinks created in $LINKER_STUBS_DIR"
+  ls -la "$LINKER_STUBS_DIR"/ 2>&1
 fi
 
 # ── Build ───────────────────────────────────────────────────────
@@ -216,17 +229,7 @@ export ZIG_LIBC="$LIBC_FILE"
 export XINCLI_ANDROID_LIB_PATH="$TERMUX_LIB"
 export XINCLI_ANDROID_LIB_SEARCH_PATHS="$TERMUX_LIB:$LINKER_STUBS_DIR"
 
-# Detect system Bionic paths. On standard Android these are at /system/lib64/.
-# On 32-bit devices they'd be at /system/lib/. We check both.
-SYSTEM_LIB_DIR="/system/lib64"
-if [ ! -f "$SYSTEM_LIB_DIR/libc.so" ]; then
-  SYSTEM_LIB_DIR="/system/lib"
-fi
-if [ ! -f "$SYSTEM_LIB_DIR/libc.so" ]; then
-  echo "❌ Cannot find libc.so in /system/lib64 or /system/lib"
-  echo "   Android system is broken — this should never happen."
-  exit 1
-fi
+# Export the system Bionic paths for build.zig's addObjectFile calls
 export XINCLI_ANDROID_LIBC_PATH="$SYSTEM_LIB_DIR/libc.so"
 export XINCLI_ANDROID_LIBM_PATH="$SYSTEM_LIB_DIR/libm.so"
 export XINCLI_ANDROID_LIBDL_PATH="$SYSTEM_LIB_DIR/libdl.so"

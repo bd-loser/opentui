@@ -76,21 +76,72 @@ if [ ! -d "$TERMUX_INCLUDE" ]; then
   echo "   This script is meant for Termux. Proceeding anyway..."
 fi
 
+# ── Verify arch-specific asm headers exist ──────────────────────
+# opentui's audio.zig does @cImport of <signal.h> → <asm/sigcontext.h>.
+# Termux's base linux-headers doesn't include arch-specific asm headers;
+# they come from the `ndk-sysroot` package. Without it, the build fails
+# with 'asm/sigcontext.h' file not found.
+ASM_DIR="$TERMUX_INCLUDE/aarch64-linux-android/asm"
+if [ ! -d "$ASM_DIR" ]; then
+  echo "📦 Arch-specific asm headers missing. Installing ndk-sysroot..."
+  # ndk-sysroot provides aarch64-linux-android/asm/ + arch-specific headers
+  pkg install -y ndk-sysroot 2>&1 | tail -5 || {
+    echo "⚠️  pkg install ndk-sysroot failed. Try manually:"
+    echo "   pkg install ndk-sysroot"
+    echo "   Then re-run this script."
+  }
+fi
+
+# Re-check after install attempt
+if [ ! -d "$ASM_DIR" ]; then
+  echo "❌ Arch-specific asm headers still missing at $ASM_DIR"
+  echo "   Run: pkg install ndk-sysroot"
+  echo "   Then re-run this script."
+  exit 1
+fi
+echo "✓ asm headers found at $ASM_DIR"
+
 # ── Generate a Zig libc file pointing at Termux's Bionic ────────
 # CRITICAL: Without this, Zig detects the host as 'aarch64-linux-musl'
 # (wrong!) and produces a .so that won't load on Termux. The libc file
 # explicitly tells Zig where Termux's Bionic headers + libs live.
+#
+# Zig's libc file only accepts ONE sys_include_dir, but opentui needs
+# BOTH $PREFIX/include (for signal.h, time.h) AND the arch-specific
+# $PREFIX/include/aarch64-linux-android (for <asm/sigcontext.h>).
+# Workaround: create a merged include dir with symlinks to both.
+MERGED_INCLUDE="$REPO_ROOT/.zig-merged-include"
+mkdir -p "$MERGED_INCLUDE"
+# Symlink everything from $PREFIX/include into the merged dir
+for entry in "$TERMUX_INCLUDE"/*; do
+  name=$(basename "$entry")
+  if [ ! -e "$MERGED_INCLUDE/$name" ]; then
+    ln -sf "$entry" "$MERGED_INCLUDE/$name" 2>/dev/null || true
+  fi
+done
+# Also symlink the arch-specific asm/ headers at the top level so
+# #include <asm/sigcontext.h> resolves through $MERGED_INCLUDE/asm/
+if [ -d "$ASM_DIR" ]; then
+  for entry in "$ASM_DIR"/*; do
+    name=$(basename "$entry")
+    if [ ! -e "$MERGED_INCLUDE/asm/$name" ]; then
+      mkdir -p "$MERGED_INCLUDE/asm"
+      ln -sf "$entry" "$MERGED_INCLUDE/asm/$name" 2>/dev/null || true
+    fi
+  done
+fi
+
 LIBC_FILE="$REPO_ROOT/packages/core/src/zig/libc-termux.txt"
 cat > "$LIBC_FILE" << EOF
-include_dir=$TERMUX_INCLUDE
-sys_include_dir=$TERMUX_INCLUDE
+include_dir=$MERGED_INCLUDE
+sys_include_dir=$MERGED_INCLUDE
 crt_dir=$TERMUX_LIB
 msvc_lib_dir=
 kernel32_lib_dir=
 gcc_dir=
 EOF
 echo "✓ Generated libc file: $LIBC_FILE"
-echo "  → include_dir=$TERMUX_INCLUDE"
+echo "  → include_dir=$MERGED_INCLUDE (merged: Termux + arch asm/)"
 echo "  → crt_dir=$TERMUX_LIB"
 
 # ── Build ───────────────────────────────────────────────────────

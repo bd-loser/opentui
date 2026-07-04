@@ -144,22 +144,55 @@ echo "✓ Generated libc file: $LIBC_FILE"
 echo "  → include_dir=$MERGED_INCLUDE (merged: Termux + arch asm/)"
 echo "  → crt_dir=$TERMUX_LIB"
 
-# ── Verify Bionic libs exist + create any missing stubs ─────────
-# Zig's linkLibC() adds -lm -lc -ldl. On Termux/Bionic these should be
-# at $PREFIX/lib/. If any are missing, create empty stub .so files so
-# the linker is satisfied — Bionic provides these symbols via libc.so
-# at runtime, so the stubs just satisfy the link-time dependency.
-for libname in libc libm libdl; do
-  if [ ! -f "$TERMUX_LIB/${libname}.so" ]; then
-    echo "⚠️  $TERMUX_LIB/${libname}.so missing — creating stub"
-    # Create an empty shared object as a linker stub. Bionic's libc.so
-    # provides all the math/dl symbols at runtime, so an empty .so at
-    # link time is sufficient.
-    echo "INPUT($TERMUX_LIB/libc.so)" > "$TERMUX_LIB/${libname}.so" 2>/dev/null || true
+# ── Verify Bionic libs exist (DO NOT create stubs — they break Termux) ─
+# Zig's linkLibC() adds -lm -lc -ldl. On Termux/Bionic, libc.so IS the
+# real Bionic — but it's often a linker script (text file) that points
+# at the real binary. We must NOT overwrite it.
+#
+# If libm.so or libdl.so are missing (some minimal Termux installs don't
+# ship them as separate files — Bionic folds them into libc.so), we
+# create SEPARATE stub files in a temp dir (NOT $PREFIX/lib) and add
+# that temp dir to the linker search path. This keeps Termux's real
+# libs untouched.
+LINKER_STUBS_DIR="$REPO_ROOT/.zig-linker-stubs"
+mkdir -p "$LINKER_STUBS_DIR"
+
+REAL_LIBC=""
+for candidate in \
+  "$TERMUX_LIB/libc.so" \
+  "$TERMUX_LIB/libc-*.so" \
+  "$TERMUX_LIB/libandroid-support.so"; do
+  if ls $candidate >/dev/null 2>&1; then
+    REAL_LIBC=$(ls $candidate 2>/dev/null | head -1)
+    break
   fi
 done
-echo "✓ Bionic libs verified at $TERMUX_LIB"
-ls -la "$TERMUX_LIB"/libc.so "$TERMUX_LIB"/libm.so "$TERMUX_LIB"/libdl.so 2>/dev/null || true
+
+if [ -z "$REAL_LIBC" ]; then
+  echo "❌ No libc.so found in $TERMUX_LIB — Termux install is broken."
+  echo "   Fix: pkg reinstall libc"
+  exit 1
+fi
+echo "✓ Real libc found: $REAL_LIBC"
+
+# Bionic on Termux: libm and libdl symbols are inside libc.so. If the
+# separate .so files don't exist, create linker scripts in our temp dir
+# that redirect -lm/-ldl to the real libc.so. These are LINKER scripts
+# (only read by ld.lld at link time), not runtime .so files, so they
+# don't interfere with Termux's runtime.
+NEED_EXTRA_L_PATH=""
+for libname in libm libdl; do
+  if [ ! -f "$TERMUX_LIB/${libname}.so" ]; then
+    echo "ℹ️  $TERMUX_LIB/${libname}.so not separate — creating linker-script redirect"
+    # Linker script syntax: tell ld.lld to use libc.so for -lm / -ldl.
+    # ld.lld reads this at link time; the runtime loader never sees it.
+    echo "GROUP ( $REAL_LIBC )" > "$LINKER_STUBS_DIR/${libname}.so"
+    NEED_EXTRA_L_PATH=1
+  fi
+done
+if [ "$NEED_EXTRA_L_PATH" = "1" ]; then
+  echo "✓ Linker redirects created in $LINKER_STUBS_DIR"
+fi
 
 # ── Build ───────────────────────────────────────────────────────
 cd "$REPO_ROOT/packages/core/src/zig"
@@ -168,19 +201,18 @@ echo ""
 echo "🔧 Building libopentui.so natively..."
 echo "   Target: aarch64-linux-android (explicit — avoids musl misdetection)"
 echo "   Sysroot: $PREFIX (Termux's Bionic)"
-echo "   Lib search: $TERMUX_LIB"
+echo "   Lib search: $TERMUX_LIB + $LINKER_STUBS_DIR"
 echo ""
 
 # Explicit -Dtarget=aarch64-linux-android so Zig doesn't misdetect as musl.
 # --sysroot points at Termux's PREFIX so Zig finds Bionic headers + libs.
 # ZIG_LIBC env var makes Zig read our generated libc file.
-# LDFLAGS adds -L$PREFIX/lib explicitly because Zig's --sysroot looks at
-# <sysroot>/usr/lib (which is $PREFIX/usr/lib — doesn't exist on Termux)
-# instead of <sysroot>/lib (which is $PREFIX/lib — where libs actually are).
+# LDFLAGS adds -L for both the real Termux lib dir AND our linker-stubs
+# dir (which has redirects for libm/libdl if they're not separate files).
 export ZIG_LIBC="$LIBC_FILE"
 export XINCLI_ANDROID_LIB_PATH="$TERMUX_LIB"
-export LDFLAGS="-L$TERMUX_LIB"
-export LIBRARY_PATH="$TERMUX_LIB"
+export LDFLAGS="-L$TERMUX_LIB -L$LINKER_STUBS_DIR"
+export LIBRARY_PATH="$TERMUX_LIB:$LINKER_STUBS_DIR"
 
 zig build \
   -Dtarget=aarch64-linux-android \

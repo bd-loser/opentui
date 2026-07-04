@@ -111,10 +111,16 @@ function buildOneArch(arch: AndroidArch): void {
   // Zig 0.15+ respects these for cross-compilation:
   //   - ZIG_*_LINKER_ARGS / ZIG_*_CFLAGS for additional flags
   //   - CC / CXX / LDFLAGS for system-library resolution
+  const sysrootLibApiSpecific = join(sysroot, "usr", "lib", arch.ndkTriple, NDK_API_LEVEL)
+  const sysrootLibGeneric = join(sysroot, "usr", "lib", arch.ndkTriple)
   const env = {
     ...process.env,
     ANDROID_NDK_HOME: NDK_HOME,
     ANDROID_NDK_ROOT: NDK_HOME,
+    // XINCLI-specific env vars read by build.zig's addNativeAudioDependencies
+    // to find libOpenSLES.so inside the NDK sysroot.
+    XINCLI_ANDROID_LIB_PATH: sysrootLibApiSpecific,
+    XINCLI_ANDROID_LIB_PATH_GENERIC: sysrootLibGeneric,
     // Point Zig at the NDK's clang so linkSystemLibrary("OpenSLES") can
     // find libOpenSLES.so in the NDK sysroot.
     CC: join(ndkToolchainBin, `${arch.ndkTriple}${NDK_API_LEVEL}-clang`),
@@ -123,7 +129,7 @@ function buildOneArch(arch: AndroidArch): void {
     CFLAGS: `--sysroot=${sysroot}`,
     // Make sure Zig's own linker (ld.lld) can find the NDK libs.
     // Zig 0.15 respects this for -Llibrary-search-paths.
-    LIBRARY_PATH: join(sysroot, "usr", "lib", arch.ndkTriple, NDK_API_LEVEL),
+    LIBRARY_PATH: `${sysrootLibApiSpecific}:${sysrootLibGeneric}`,
   }
 
   console.log(`  zig ${zigArgs.join(" ")}`)

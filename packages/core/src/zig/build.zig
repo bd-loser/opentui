@@ -276,23 +276,28 @@ fn addYogaDependencies(
     // which conflict with C++ std::isinf/std::isnan in yoga's <cmath>.
     // Fix: undefine the C macros and provide inline wrappers that call
     // std::isinf/std::isnan, so std::isinf works in C++ context.
-    var cxx_flags: std.ArrayList([]const u8) = std.ArrayList([]const u8).init(b.allocator);
-    for (YOGA_CXX_FLAGS) |flag| {
-        cxx_flags.append(flag) catch {};
-    }
     if (target.result.abi == .android) {
-        // Override the C macros with C++-safe versions
-        cxx_flags.append("-Disinf(x)=std::isinf(x)") catch {};
-        cxx_flags.append("-Disnan(x)=std::isnan(x)") catch {};
-        cxx_flags.append("-Dfabs(x)=std::fabs(x)") catch {};
-        cxx_flags.append("-Dabs(x)=std::abs(x)") catch {};
+        const android_cxx_flags = [_][]const u8{
+            "-std=c++20",
+            "-fexceptions",
+            "-frtti",
+            "-Disinf(x)=std::isinf(x)",
+            "-Disnan(x)=std::isnan(x)",
+            "-Dfabs(x)=std::fabs(x)",
+            "-Dabs(x)=std::abs(x)",
+        };
+        artifact.addCSourceFiles(.{
+            .root = yoga_dep.path(""),
+            .files = &YOGA_CXX_SOURCES,
+            .flags = &android_cxx_flags,
+        });
+    } else {
+        artifact.addCSourceFiles(.{
+            .root = yoga_dep.path(""),
+            .files = &YOGA_CXX_SOURCES,
+            .flags = &YOGA_CXX_FLAGS,
+        });
     }
-
-    artifact.addCSourceFiles(.{
-        .root = yoga_dep.path(""),
-        .files = &YOGA_CXX_SOURCES,
-        .flags = cxx_flags.items,
-    });
 }
 
 /// Apply dependencies to a module

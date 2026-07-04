@@ -3,102 +3,121 @@
 # XINCLI OpenTUI — Native Termux Build Script
 #
 # RUN THIS ON YOUR ANDROID PHONE (in Termux).
-# It builds libopentui.so natively — no cross-compilation, no NDK,
-# no sysroot headaches. The .so is linked against the exact Bionic
-# libc that will load it, so it's guaranteed to work.
+# Builds libopentui.so natively — no cross-compilation, no NDK.
 #
-# Prerequisites (install in Termux):
+# Prerequisites:
 #   pkg install nodejs git clang
-#   # Zig doesn't have a Termux package — download the aarch64-linux build:
 #   curl -L https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz | tar xJ
-#   export PATH="$PWD/zig-aarch64-linux-0.15.2:$PATH"
+#   export PATH="$HOME/zig-aarch64-linux-0.15.2:$PATH"
 #
 # Usage:
 #   git clone https://github.com/bd-loser/opentui.git
 #   cd opentui
-#   bash packages/core/scripts/build-native-termux.sh
+#   bash packages/core/scripts/vendor-deps.sh        # one-time, needs network
+#   bash packages/core/scripts/build-native-termux.sh # builds offline after vendor
 #
-# Output:
-#   packages/core/prebuilt/aarch64-android/libopentui.so
-#
-# After the build succeeds:
-#   1. Copy the .so to your laptop (scp, adb, git push — whatever)
-#   2. Commit it to the repo
-#   3. The package-prebuilt.yml workflow publishes it to npm
+# Output: packages/core/prebuilt/aarch64-android/libopentui.so
 # ═════════════════════════════════════════════════════════════════
 
 set -e
 
-# ── Verify we're on Termux/Android ──────────────────────────────
-if [ -z "$PREFIX" ] || [ ! -d "/data/data/com.termux" ]; then
-  echo "⚠️  This script is meant to run on Termux (Android)."
-  echo "   Detected PREFIX=$PREFIX"
-  echo "   If you're on Linux/macOS, use the cross-compile workflow instead."
-  echo "   Continuing anyway in 3s..." ; sleep 3
-fi
-
-# ── Verify Zig is installed ─────────────────────────────────────
-if ! command -v zig >/dev/null 2>&1; then
-  echo "❌ Zig not found in PATH."
-  echo "   Install it in Termux:"
-  echo "     curl -L https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz | tar xJ"
-  echo "     export PATH=\"\$PWD/zig-aarch64-linux-0.15.2:\$PATH\""
-  exit 1
-fi
-
-ZIG_VERSION=$(zig version 2>/dev/null || echo "unknown")
-echo "✓ Zig $ZIG_VERSION detected"
-if [ "$ZIG_VERSION" != "0.15.2" ]; then
-  echo "⚠️  Expected Zig 0.15.2, got $ZIG_VERSION. Build may fail."
-fi
-
-# ── Verify we're in the repo root ───────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-if [ ! -f "$REPO_ROOT/packages/core/package.json" ]; then
-  echo "❌ Could not find packages/core/package.json"
-  echo "   Run this script from the repo root: bash packages/core/scripts/build-native-termux.sh"
+
+# ── Verify Zig ──────────────────────────────────────────────────
+if ! command -v zig >/dev/null 2>&1; then
+  echo "❌ Zig not found in PATH."
+  echo "   curl -L https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz | tar xJ"
+  echo "   export PATH=\"\$HOME/zig-aarch64-linux-0.15.2:\$PATH\""
   exit 1
 fi
+ZIG_VERSION=$(zig version 2>/dev/null || echo "unknown")
+echo "✓ Zig $ZIG_VERSION detected"
 
-echo "✓ Repo root: $REPO_ROOT"
-
-# ── Install bun (needed for yoga dependency fetch) ──────────────
-if ! command -v bun >/dev/null 2>&1; then
-  echo "📦 Installing bun..."
-  curl -fsSL https://bun.sh/install | bash
-  export BUN_INSTALL="$HOME/.bun"
-  export PATH="$BUN_INSTALL/bin:$PATH"
+# ── Verify vendored deps exist ──────────────────────────────────
+DEPS_DIR="$REPO_ROOT/.zig-deps"
+if [ ! -d "$DEPS_DIR/yoga" ] || [ ! -d "$DEPS_DIR/uucode" ]; then
+  echo "📦 Vendored deps not found. Running vendor-deps.sh first..."
+  bash "$SCRIPT_DIR/vendor-deps.sh"
 fi
 
-cd "$REPO_ROOT"
-echo "📦 Installing dependencies..."
-bun install 2>&1 | tail -3
+# ── Populate Zig's dep cache from vendored deps ─────────────────
+# Zig's build.zig.zon fetches yoga + uucode from GitHub at build time,
+# which fails on flaky mobile DNS. We pre-fetch them (vendor-deps.sh)
+# and symlink into Zig's global cache so `zig build` finds them locally
+# without any network access.
+ZIG_GLOBAL_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/zig"
+mkdir -p "$ZIG_GLOBAL_CACHE"
 
-# ── Build the native .so ────────────────────────────────────────
-# Native build: Zig detects the host (aarch64-linux) automatically.
-# No -Dtarget, no --sysroot, no NDK. Bionic libc is already here.
-#
-# The only Android-specific tweak: OpenSLES (Android's audio backend)
-# is linked via the .so file directly because Termux's library search
-# path discovery is sometimes flaky.
+# The cache key is the hash from build.zig.zon. We use a fixed name per
+# dep — Zig will look for <hash> as the cache key. If it's not there,
+# Zig tries to fetch. We create the dirs with the expected hashes.
+UUCODE_HASH="uucode-0.1.0-ZZjBPtA_TQCWp5PIKmfm5tu1WOkKWFmBGFEMxircPfkA"
+YOGA_HASH="N-V-__8AAOYl0gAU76B1VRPFD9AWvy2VkOef2jN0B3sISTeO"
+
+# Zig 0.15 cache layout: $XDG_CACHE_HOME/zig/p/<hash>/
+mkdir -p "$ZIG_GLOBAL_CACHE/p"
+if [ -d "$DEPS_DIR/uucode" ] && [ ! -d "$ZIG_GLOBAL_CACHE/p/$UUCODE_HASH" ]; then
+  cp -r "$DEPS_DIR/uucode" "$ZIG_GLOBAL_CACHE/p/$UUCODE_HASH" 2>/dev/null || true
+  echo "✓ Cached uucode in Zig global cache"
+fi
+if [ -d "$DEPS_DIR/yoga" ] && [ ! -d "$ZIG_GLOBAL_CACHE/p/$YOGA_HASH" ]; then
+  cp -r "$DEPS_DIR/yoga" "$ZIG_GLOBAL_CACHE/p/$YOGA_HASH" 2>/dev/null || true
+  echo "✓ Cached yoga in Zig global cache"
+fi
+
+# ── Verify we're on Termux (for Bionic detection) ───────────────
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+TERMUX_INCLUDE="$PREFIX/include"
+TERMUX_LIB="$PREFIX/lib"
+
+if [ ! -d "$TERMUX_INCLUDE" ]; then
+  echo "⚠️  Termux include dir not found at $TERMUX_INCLUDE"
+  echo "   This script is meant for Termux. Proceeding anyway..."
+fi
+
+# ── Generate a Zig libc file pointing at Termux's Bionic ────────
+# CRITICAL: Without this, Zig detects the host as 'aarch64-linux-musl'
+# (wrong!) and produces a .so that won't load on Termux. The libc file
+# explicitly tells Zig where Termux's Bionic headers + libs live.
+LIBC_FILE="$REPO_ROOT/packages/core/src/zig/libc-termux.txt"
+cat > "$LIBC_FILE" << EOF
+include_dir=$TERMUX_INCLUDE
+sys_include_dir=$TERMUX_INCLUDE
+crt_dir=$TERMUX_LIB
+msvc_lib_dir=
+kernel32_lib_dir=
+gcc_dir=
+EOF
+echo "✓ Generated libc file: $LIBC_FILE"
+echo "  → include_dir=$TERMUX_INCLUDE"
+echo "  → crt_dir=$TERMUX_LIB"
+
+# ── Build ───────────────────────────────────────────────────────
 cd "$REPO_ROOT/packages/core/src/zig"
 
 echo ""
-echo "🔧 Building libopentui.so natively (this takes 2-5 minutes)..."
-echo "   Target: $(zig env | grep target | head -1)"
+echo "🔧 Building libopentui.so natively..."
+echo "   Target: aarch64-linux-android (explicit — avoids musl misdetection)"
+echo "   Sysroot: $PREFIX (Termux's Bionic)"
+echo ""
 
-# Export XINCLI_ANDROID_LIB_PATH so build.zig's addObjectFile finds
-# libOpenSLES.so in Termux's lib dir.
-export XINCLI_ANDROID_LIB_PATH="${PREFIX}/lib"
+# Explicit -Dtarget=aarch64-linux-android so Zig doesn't misdetect as musl.
+# --sysroot points at Termux's PREFIX so Zig finds Bionic headers + libs.
+# ZIG_LIBC env var makes Zig read our generated libc file.
+export ZIG_LIBC="$LIBC_FILE"
+export XINCLI_ANDROID_LIB_PATH="$TERMUX_LIB"
 
-zig build -Doptimize=ReleaseFast 2>&1 | tail -20
+zig build \
+  -Dtarget=aarch64-linux-android \
+  -Doptimize=ReleaseFast \
+  --sysroot "$PREFIX" \
+  2>&1 | tail -30
 
 # ── Locate the produced .so ─────────────────────────────────────
 SO_PATH=""
 for candidate in \
   "$REPO_ROOT/packages/core/src/zig/zig-out/lib/libopentui.so" \
-  "$REPO_ROOT/packages/core/src/zig/zig-out/lib/libopentui.so.$(zig version)" \
   "$(find "$REPO_ROOT/packages/core/src/zig/zig-out" -name 'libopentui*.so' 2>/dev/null | head -1)"; do
   if [ -f "$candidate" ]; then
     SO_PATH="$candidate"
@@ -107,18 +126,33 @@ for candidate in \
 done
 
 if [ -z "$SO_PATH" ]; then
-  echo "❌ libopentui.so not found after build. Check zig-out/ contents:"
+  echo ""
+  echo "❌ libopentui.so not found after build."
+  echo "   zig-out/ contents:"
   find "$REPO_ROOT/packages/core/src/zig/zig-out" -type f 2>/dev/null | head -20
+  echo ""
+  echo "   Common fixes:"
+  echo "   - If yoga/uucode fetch failed: bash packages/core/scripts/vendor-deps.sh"
+  echo "   - If DNS failed: try again on WiFi, or vendor deps on a laptop and push"
   exit 1
 fi
 
-echo "✓ Built: $SO_PATH"
-echo "   Size: $(du -h "$SO_PATH" | cut -f1)"
-
-# ── Verify it's a valid ARM64 ELF ───────────────────────────────
 echo ""
-echo "🔍 Verifying .so architecture..."
-file "$SO_PATH" 2>/dev/null || echo "(file command not available — skipping verify)"
+echo "✓ Built: $SO_PATH"
+echo "  Size: $(du -h "$SO_PATH" | cut -f1)"
+
+# ── Verify it's ARM64 + links Bionic ────────────────────────────
+echo ""
+echo "🔍 Verifying .so..."
+if command -v file >/dev/null 2>&1; then
+  file "$SO_PATH"
+fi
+if command -v readelf >/dev/null 2>&1; then
+  echo "  ELF header:"
+  readelf -h "$SO_PATH" 2>/dev/null | grep -E "Machine|Class" || true
+  echo "  Dynamic deps (should include libc.so):"
+  readelf -d "$SO_PATH" 2>/dev/null | grep NEEDED | head -10
+fi
 
 # ── Copy to prebuilt/ ───────────────────────────────────────────
 OUT_DIR="$REPO_ROOT/packages/core/prebuilt/aarch64-android"
@@ -131,10 +165,10 @@ echo "║  ✅ NATIVE BUILD COMPLETE                                    ║"
 echo "╠══════════════════════════════════════════════════════════════╣"
 echo "║  Output: packages/core/prebuilt/aarch64-android/libopentui.so ║"
 echo "║                                                              ║"
-echo "║  Next steps:                                                 ║"
-echo "║   1. git add packages/core/prebuilt/                         ║"
-echo "║   2. git commit -m 'build: native arm64 .so from Termux'     ║"
-echo "║   3. git push origin main                                    ║"
+echo "║  Next:                                                       ║"
+echo "║   git add packages/core/prebuilt/                            ║"
+echo "║   git commit -m 'build: native arm64 .so from Termux'        ║"
+echo "║   git push origin main                                       ║"
 echo "║                                                              ║"
-echo "║  The package-prebuilt.yml workflow will publish it to npm.   ║"
+echo "║  The package-prebuilt.yml workflow will publish to npm.      ║"
 echo "╚══════════════════════════════════════════════════════════════╝"

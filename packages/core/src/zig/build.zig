@@ -270,10 +270,28 @@ fn addYogaDependencies(
     }
 
     artifact.addIncludePath(yoga_dep.path(""));
+
+    // ── XINCLI: Android-specific C++ flags ─────────────────────────────
+    // Termux's math.h defines isinf/isnan as C macros (__builtin_isinf),
+    // which conflict with C++ std::isinf/std::isnan in yoga's <cmath>.
+    // Fix: undefine the C macros and provide inline wrappers that call
+    // std::isinf/std::isnan, so std::isinf works in C++ context.
+    var cxx_flags: std.ArrayList([]const u8) = std.ArrayList([]const u8).init(b.allocator);
+    for (YOGA_CXX_FLAGS) |flag| {
+        cxx_flags.append(flag) catch {};
+    }
+    if (target.result.abi == .android) {
+        // Override the C macros with C++-safe versions
+        cxx_flags.append("-Disinf(x)=std::isinf(x)") catch {};
+        cxx_flags.append("-Disnan(x)=std::isnan(x)") catch {};
+        cxx_flags.append("-Dfabs(x)=std::fabs(x)") catch {};
+        cxx_flags.append("-Dabs(x)=std::abs(x)") catch {};
+    }
+
     artifact.addCSourceFiles(.{
         .root = yoga_dep.path(""),
         .files = &YOGA_CXX_SOURCES,
-        .flags = &YOGA_CXX_FLAGS,
+        .flags = cxx_flags.items,
     });
 }
 

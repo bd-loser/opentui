@@ -272,19 +272,17 @@ fn addYogaDependencies(
     artifact.addIncludePath(yoga_dep.path(""));
 
     // ── XINCLI: Android-specific C++ flags ─────────────────────────────
-    // Termux's math.h defines isinf/isnan as C macros (__builtin_isinf),
-    // which conflict with C++ std::isinf/std::isnan in yoga's <cmath>.
-    // Fix: undefine the C macros and provide inline wrappers that call
-    // std::isinf/std::isnan, so std::isinf works in C++ context.
+    // Termux's math.h defines isinf/isnan as C macros that break std::isinf
+    // in C++ context. Fix: force-include a fixup header that #undefs the
+    // macros and provides inline C++ replacements. Use -include (not -D)
+    // because -D macros would pollute libc++ internals.
     if (target.result.abi == .android) {
         const android_cxx_flags = [_][]const u8{
             "-std=c++20",
             "-fexceptions",
             "-frtti",
-            "-Disinf(x)=std::isinf(x)",
-            "-Disnan(x)=std::isnan(x)",
-            "-Dfabs(x)=std::fabs(x)",
-            "-Dabs(x)=std::abs(x)",
+            "-include",
+            "termux-cxx-fixup.h",
         };
         artifact.addCSourceFiles(.{
             .root = yoga_dep.path(""),

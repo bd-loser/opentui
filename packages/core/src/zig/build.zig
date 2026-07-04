@@ -527,7 +527,7 @@ fn buildTarget(
     // the build-android.ts script.
     if (target.result.abi == .android) {
         if (std.posix.getenv("XINCLI_ANDROID_SYSROOT")) |sysroot| {
-            lib.linker_sysroot = sysroot;
+            lib.linkerSysroot = sysroot;
         }
     }
 

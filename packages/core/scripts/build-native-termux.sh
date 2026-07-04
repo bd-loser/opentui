@@ -208,10 +208,29 @@ echo ""
 # ZIG_LIBC env var makes Zig read our generated libc file (Bionic paths).
 # XINCLI_ANDROID_LIB_SEARCH_PATHS is read by build.zig's addLibraryPath calls
 # so ld.lld finds libc/libm/libdl in $PREFIX/lib + the linker-stubs dir.
-# We do NOT pass --sysroot because it causes path doubling with addLibraryPath.
+#
+# CRITICAL: Termux does NOT ship libc.so/libm.so/libdl.so in $PREFIX/lib/ —
+# they only exist at /system/lib64/. build.zig links them directly by
+# absolute path via addObjectFile, reading the paths from these env vars.
 export ZIG_LIBC="$LIBC_FILE"
 export XINCLI_ANDROID_LIB_PATH="$TERMUX_LIB"
 export XINCLI_ANDROID_LIB_SEARCH_PATHS="$TERMUX_LIB:$LINKER_STUBS_DIR"
+
+# Detect system Bionic paths. On standard Android these are at /system/lib64/.
+# On 32-bit devices they'd be at /system/lib/. We check both.
+SYSTEM_LIB_DIR="/system/lib64"
+if [ ! -f "$SYSTEM_LIB_DIR/libc.so" ]; then
+  SYSTEM_LIB_DIR="/system/lib"
+fi
+if [ ! -f "$SYSTEM_LIB_DIR/libc.so" ]; then
+  echo "❌ Cannot find libc.so in /system/lib64 or /system/lib"
+  echo "   Android system is broken — this should never happen."
+  exit 1
+fi
+export XINCLI_ANDROID_LIBC_PATH="$SYSTEM_LIB_DIR/libc.so"
+export XINCLI_ANDROID_LIBM_PATH="$SYSTEM_LIB_DIR/libm.so"
+export XINCLI_ANDROID_LIBDL_PATH="$SYSTEM_LIB_DIR/libdl.so"
+echo "✓ Bionic libs: $SYSTEM_LIB_DIR/{libc,libm,libdl}.so"
 
 zig build \
   -Dtarget=aarch64-linux-android \

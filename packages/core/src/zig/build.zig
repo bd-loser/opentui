@@ -540,6 +540,26 @@ fn buildTarget(
                 }
             }
         }
+
+        // ── XINCLI: link Bionic libs directly by absolute path ─────────
+        // Termux does NOT ship libc.so/libm.so/libdl.so in $PREFIX/lib/ —
+        // they only exist at /system/lib64/ as symlinks to the Bionic APEX.
+        // The -l flags from linkLibC() search $PREFIX/lib and fail with
+        // 'unable to find library -lm -lc -ldl'.
+        //
+        // Fix: link the three system .so files directly via addObjectFile,
+        // bypassing the search entirely. This is the same approach we use
+        // for libOpenSLES.so. The paths are read from env vars set by
+        // build-native-termux.sh so they're not hardcoded.
+        const bionic_libs = [_]struct { env: []const u8, fallback: []const u8 }{
+            .{ .env = "XINCLI_ANDROID_LIBC_PATH", .fallback = "/system/lib64/libc.so" },
+            .{ .env = "XINCLI_ANDROID_LIBM_PATH", .fallback = "/system/lib64/libm.so" },
+            .{ .env = "XINCLI_ANDROID_LIBDL_PATH", .fallback = "/system/lib64/libdl.so" },
+        };
+        for (bionic_libs) |bl| {
+            const path = std.posix.getenv(bl.env) orelse bl.fallback;
+            lib.addObjectFile(.{ .cwd_relative = path });
+        }
     }
 
     const install_dir = b.addInstallArtifact(lib, .{

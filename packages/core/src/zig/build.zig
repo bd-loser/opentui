@@ -250,12 +250,9 @@ fn addYogaDependencies(
     // from the C++ standard library. linkLibCpp() normally adds libc++'s
     // include path, but we skipped it for android.
     //
-    // IMPORTANT: For C++ files we use Termux's REAL $PREFIX/include (not the
-    // merged-include dir) because the merged-include's math.h defines isinf
-    // as a C macro that breaks std::isinf in C++ context.
-    //
-    // XINCLI_ANDROID_LIBCXX_INCLUDE = libc++ headers (c++/v1/)
-    // XINCLI_ANDROID_TERMUX_INCLUDE  = Termux's real $PREFIX/include
+    // The libc file's include_dir (Termux's $PREFIX/include) is used by
+    // C++ too, but libc++ headers live at $PREFIX/include/c++/v1/ which
+    // isn't in the default search path. Add it via addSystemIncludePath.
     if (target.result.abi == .android) {
         if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_INCLUDE")) |cxx_inc| {
             artifact.addSystemIncludePath(.{ .cwd_relative = cxx_inc });
@@ -263,39 +260,14 @@ fn addYogaDependencies(
         if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_INCLUDE2")) |cxx_inc2| {
             artifact.addSystemIncludePath(.{ .cwd_relative = cxx_inc2 });
         }
-        // Use Termux's real include dir for C++ (proper C/C++ separation)
-        if (std.posix.getenv("XINCLI_ANDROID_TERMUX_INCLUDE")) |termux_inc| {
-            artifact.addSystemIncludePath(.{ .cwd_relative = termux_inc });
-        }
     }
 
     artifact.addIncludePath(yoga_dep.path(""));
-
-    // ── XINCLI: Android-specific C++ flags ─────────────────────────────
-    // Termux's math.h defines isinf/isnan as C macros that break std::isinf
-    // in C++ context. Fix: force-include a fixup header that #undefs the
-    // macros and provides inline C++ replacements. Use -include (not -D)
-    // because -D macros would pollute libc++ internals.
-    if (target.result.abi == .android) {
-        const android_cxx_flags = [_][]const u8{
-            "-std=c++20",
-            "-fexceptions",
-            "-frtti",
-            "-include",
-            "termux-cxx-fixup.h",
-        };
-        artifact.addCSourceFiles(.{
-            .root = yoga_dep.path(""),
-            .files = &YOGA_CXX_SOURCES,
-            .flags = &android_cxx_flags,
-        });
-    } else {
-        artifact.addCSourceFiles(.{
-            .root = yoga_dep.path(""),
-            .files = &YOGA_CXX_SOURCES,
-            .flags = &YOGA_CXX_FLAGS,
-        });
-    }
+    artifact.addCSourceFiles(.{
+        .root = yoga_dep.path(""),
+        .files = &YOGA_CXX_SOURCES,
+        .flags = &YOGA_CXX_FLAGS,
+    });
 }
 
 /// Apply dependencies to a module
@@ -584,19 +556,18 @@ fn buildTarget(
 
     // ── XINCLI: @cImport include path for android ──────────────────────
     // We skipped linkLibC() for android (it emits -lm -lc -ldl that fail).
-    // But linkLibC() ALSO tells @cImport where to find libc headers like
-    // <pthread.h>, <math.h>, <signal.h>. Without it, @cImport fails with
-    // 'pthread.h' file not found.
+    // The libc file's include_dir points at Termux's real $PREFIX/include
+    // (set by build-native-termux.sh). @cImport reads it from there.
     //
-    // The merged-include dir (with Termux headers + arch asm/ headers) is
-    // already set as the libc file's include_dir via ZIG_LIBC env var.
-    // @cImport reads include_dir from the libc file — NOT from
-    // addSystemIncludePath. So we do NOT call addSystemIncludePath here.
-    //
-    // CRITICAL: If we added the merged-include via addSystemIncludePath, it
-    // would pollute C++ compilation too — yoga's <cmath> would pick up the
-    // merged-include's <math.h> which defines isinf as a C macro, breaking
-    // std::isinf. The libc file's include_dir is ONLY used by @cImport (C).
+    // The arch-specific asm/ headers live at $PREFIX/include/aarch64-linux-android/
+    // which isn't in the default search path. Add it via addSystemIncludePath
+    // so @cImport finds <asm/sigcontext.h> etc. This ONLY affects @cImport
+    // (C) — C++ compilation doesn't use module include paths for system headers.
+    if (target.result.abi == .android) {
+        if (std.posix.getenv("XINCLI_ANDROID_ASM_INCLUDE")) |asm_inc| {
+            module.addSystemIncludePath(.{ .cwd_relative = asm_inc });
+        }
+    }
 
     applyDependencies(b, module, optimize, target, build_options);
 

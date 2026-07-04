@@ -145,50 +145,36 @@ echo "✓ crt objects found at: $CRT_DIR"
 # (wrong!) and produces a .so that won't load on Termux. The libc file
 # explicitly tells Zig where Termux's Bionic headers + libs live.
 #
-# Zig's libc file only accepts ONE sys_include_dir, but opentui needs
-# BOTH $PREFIX/include (for signal.h, time.h) AND the arch-specific
-# $PREFIX/include/aarch64-linux-android (for <asm/sigcontext.h>).
-# Workaround: create a merged include dir with symlinks to both.
+# The libc file's include_dir is used by BOTH @cImport (C) AND the C++
+# compiler. So we point it at Termux's REAL $PREFIX/include which has
+# proper C/C++ header separation (math.h doesn't pollute C++ std::).
 #
-# IMPORTANT: We symlink the DIRECTORIES from $PREFIX/include (not individual
-# files) so the C++ compiler still sees the real headers via the original
-# $PREFIX/include path. The merged dir is ONLY for Zig @cImport which uses
-# include_dir from the libc file. C++ compilation uses XINCLI_ANDROID_TERMUX_INCLUDE
-# (the real $PREFIX/include) separately to avoid math.h macro conflicts.
-MERGED_INCLUDE="$REPO_ROOT/.zig-merged-include"
-mkdir -p "$MERGED_INCLUDE"
-# Symlink the arch-specific asm/ headers at the top level so
-# #include <asm/sigcontext.h> resolves through $MERGED_INCLUDE/asm/
-# This is the ONLY thing we add — everything else comes from the libc file's
-# include_dir which already points at $MERGED_INCLUDE.
-if [ -d "$ASM_DIR" ]; then
-  ln -sf "$ASM_DIR" "$MERGED_INCLUDE/asm" 2>/dev/null || true
-fi
-# Also symlink aarch64-linux-android dir so #include <aarch64-linux-android/...> works
-ln -sf "$TERMUX_INCLUDE/aarch64-linux-android" "$MERGED_INCLUDE/aarch64-linux-android" 2>/dev/null || true
-# Symlink the rest of $PREFIX/include's subdirectories (but NOT math.h itself)
-for entry in "$TERMUX_INCLUDE"/*; do
-  name=$(basename "$entry")
-  if [ "$name" = "asm" ] || [ "$name" = "aarch64-linux-android" ]; then
-    continue  # already symlinked above
-  fi
-  if [ ! -e "$MERGED_INCLUDE/$name" ]; then
-    ln -sf "$entry" "$MERGED_INCLUDE/$name" 2>/dev/null || true
-  fi
-done
-
+# For the arch-specific asm/ headers (asm/sigcontext.h, asm/types.h),
+# we add them via XINCLI_ANDROID_ASM_INCLUDE env var which build.zig
+# passes to @cImport only (not C++ compilation).
 LIBC_FILE="$REPO_ROOT/packages/core/src/zig/libc-termux.txt"
 cat > "$LIBC_FILE" << EOF
-include_dir=$MERGED_INCLUDE
-sys_include_dir=$MERGED_INCLUDE
+include_dir=$TERMUX_INCLUDE
+sys_include_dir=$TERMUX_INCLUDE
 crt_dir=$CRT_DIR
 msvc_lib_dir=
 kernel32_lib_dir=
 gcc_dir=
 EOF
 echo "✓ Generated libc file: $LIBC_FILE"
-echo "  → include_dir=$MERGED_INCLUDE (merged: Termux + arch asm/)"
+echo "  → include_dir=$TERMUX_INCLUDE (Termux real include — proper C/C++ separation)"
 echo "  → crt_dir=$CRT_DIR"
+
+# ── Set up asm include path for @cImport ────────────────────────
+# The asm/ headers (asm/sigcontext.h, asm/types.h) live at
+# $PREFIX/include/aarch64-linux-android/asm/. @cImport needs them but
+# they're not in $PREFIX/include directly. We export the path so
+# build.zig can add it via addSystemIncludePath for @cImport only.
+ASM_INCLUDE="$TERMUX_INCLUDE/aarch64-linux-android"
+if [ -d "$ASM_INCLUDE" ]; then
+  export XINCLI_ANDROID_ASM_INCLUDE="$ASM_INCLUDE"
+  echo "✓ asm include: $ASM_INCLUDE"
+fi
 
 # ── Verify Bionic libs exist (DO NOT create stubs — they break Termux) ─
 # Zig's linkLibC() adds -lm -lc -ldl. On Termux/Bionic, libc.so IS the

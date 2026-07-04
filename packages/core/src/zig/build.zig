@@ -250,10 +250,15 @@ fn addYogaDependencies(
     // from the C++ standard library. linkLibCpp() normally adds libc++'s
     // include path, but we skipped it for android.
     //
-    // The libc file's include_dir (Termux's $PREFIX/include) is used by
-    // C++ too, but libc++ headers live at $PREFIX/include/c++/v1/ which
-    // isn't in the default search path. Add it via addSystemIncludePath.
+    // Also: add a math.h wrapper dir FIRST in the search path. The wrapper
+    // #includes the real Bionic math.h then #undefs isinf/isnan/fabs/abs
+    // macros that break std::isinf in C++ context.
     if (target.result.abi == .android) {
+        // Math wrapper FIRST — shadows Bionic's math.h
+        if (std.posix.getenv("XINCLI_ANDROID_MATH_WRAPPER")) |wrapper| {
+            artifact.addSystemIncludePath(.{ .cwd_relative = wrapper });
+        }
+        // libc++ headers
         if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_INCLUDE")) |cxx_inc| {
             artifact.addSystemIncludePath(.{ .cwd_relative = cxx_inc });
         }

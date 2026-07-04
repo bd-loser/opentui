@@ -140,6 +140,23 @@ if [ -z "$CRT_DIR" ]; then
 fi
 echo "✓ crt objects found at: $CRT_DIR"
 
+# ── Create a math.h wrapper that #undefs Bionic's C macros ──────
+# Bionic's math.h defines isinf/isnan/fabs/abs as C macros. In C++
+# context, these macros expand inside std::isinf() → std::__builtin_isinf()
+# which breaks compilation.
+#
+# Fix: create a wrapper include dir with a math.h that:
+#   1. #includes the REAL Bionic math.h (via #include_next)
+#   2. #undefs the problematic macros
+#
+# Put this wrapper dir FIRST in the -I search path so it shadows
+# Bionic's real math.h. Every #include <math.h> now goes through
+# our wrapper which cleans up the macros.
+WRAPPER_INCLUDE="$REPO_ROOT/.zig-math-wrapper"
+mkdir -p "$WRAPPER_INCLUDE"
+cp "$REPO_ROOT/packages/core/src/zig/termux-math-wrapper.h" "$WRAPPER_INCLUDE/math.h"
+echo "✓ math.h wrapper created at $WRAPPER_INCLUDE/math.h"
+
 # ── Generate a Zig libc file pointing at Termux's Bionic ────────
 # CRITICAL: Without this, Zig detects the host as 'aarch64-linux-musl'
 # (wrong!) and produces a .so that won't load on Termux. The libc file
@@ -281,6 +298,9 @@ export XINCLI_ANDROID_LIB_SEARCH_PATHS="$TERMUX_LIB:$LINKER_STUBS_DIR"
 # both Termux's headers (pthread.h, math.h, signal.h) and arch-specific
 # asm/ headers (asm/sigcontext.h, asm/types.h).
 export XINCLI_ANDROID_INCLUDE_PATH="$MERGED_INCLUDE"
+# Math.h wrapper dir — placed FIRST in C++ include path to shadow
+# Bionic's math.h and #undef the isinf/isnan/fabs/abs macros.
+export XINCLI_ANDROID_MATH_WRAPPER="$WRAPPER_INCLUDE"
 
 # Export the system Bionic paths for build.zig's addObjectFile calls.
 # Use the RESOLVED real paths so ld.lld doesn't have to follow symlinks.

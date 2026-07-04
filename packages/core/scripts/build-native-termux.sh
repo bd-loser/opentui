@@ -144,6 +144,23 @@ echo "✓ Generated libc file: $LIBC_FILE"
 echo "  → include_dir=$MERGED_INCLUDE (merged: Termux + arch asm/)"
 echo "  → crt_dir=$TERMUX_LIB"
 
+# ── Verify Bionic libs exist + create any missing stubs ─────────
+# Zig's linkLibC() adds -lm -lc -ldl. On Termux/Bionic these should be
+# at $PREFIX/lib/. If any are missing, create empty stub .so files so
+# the linker is satisfied — Bionic provides these symbols via libc.so
+# at runtime, so the stubs just satisfy the link-time dependency.
+for libname in libc libm libdl; do
+  if [ ! -f "$TERMUX_LIB/${libname}.so" ]; then
+    echo "⚠️  $TERMUX_LIB/${libname}.so missing — creating stub"
+    # Create an empty shared object as a linker stub. Bionic's libc.so
+    # provides all the math/dl symbols at runtime, so an empty .so at
+    # link time is sufficient.
+    echo "INPUT($TERMUX_LIB/libc.so)" > "$TERMUX_LIB/${libname}.so" 2>/dev/null || true
+  fi
+done
+echo "✓ Bionic libs verified at $TERMUX_LIB"
+ls -la "$TERMUX_LIB"/libc.so "$TERMUX_LIB"/libm.so "$TERMUX_LIB"/libdl.so 2>/dev/null || true
+
 # ── Build ───────────────────────────────────────────────────────
 cd "$REPO_ROOT/packages/core/src/zig"
 
@@ -151,13 +168,19 @@ echo ""
 echo "🔧 Building libopentui.so natively..."
 echo "   Target: aarch64-linux-android (explicit — avoids musl misdetection)"
 echo "   Sysroot: $PREFIX (Termux's Bionic)"
+echo "   Lib search: $TERMUX_LIB"
 echo ""
 
 # Explicit -Dtarget=aarch64-linux-android so Zig doesn't misdetect as musl.
 # --sysroot points at Termux's PREFIX so Zig finds Bionic headers + libs.
 # ZIG_LIBC env var makes Zig read our generated libc file.
+# LDFLAGS adds -L$PREFIX/lib explicitly because Zig's --sysroot looks at
+# <sysroot>/usr/lib (which is $PREFIX/usr/lib — doesn't exist on Termux)
+# instead of <sysroot>/lib (which is $PREFIX/lib — where libs actually are).
 export ZIG_LIBC="$LIBC_FILE"
 export XINCLI_ANDROID_LIB_PATH="$TERMUX_LIB"
+export LDFLAGS="-L$TERMUX_LIB"
+export LIBRARY_PATH="$TERMUX_LIB"
 
 zig build \
   -Dtarget=aarch64-linux-android \

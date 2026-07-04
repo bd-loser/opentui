@@ -254,13 +254,7 @@ fn addYogaDependencies(
     // #includes the real Bionic math.h then #undefs isinf/isnan/fabs/abs
     // macros that break std::isinf in C++ context.
     if (target.result.abi == .android) {
-        // Math wrapper FIRST — use addIncludePath (-I) not addSystemIncludePath
-        // (-isystem) because -I is searched BEFORE the libc file's implicit
-        // system path. The wrapper must shadow Bionic's real math.h.
-        if (std.posix.getenv("XINCLI_ANDROID_MATH_WRAPPER")) |wrapper| {
-            artifact.addIncludePath(.{ .cwd_relative = wrapper });
-        }
-        // libc++ headers — these can stay as -isystem
+        // libc++ headers
         if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_INCLUDE")) |cxx_inc| {
             artifact.addSystemIncludePath(.{ .cwd_relative = cxx_inc });
         }
@@ -270,11 +264,32 @@ fn addYogaDependencies(
     }
 
     artifact.addIncludePath(yoga_dep.path(""));
-    artifact.addCSourceFiles(.{
-        .root = yoga_dep.path(""),
-        .files = &YOGA_CXX_SOURCES,
-        .flags = &YOGA_CXX_FLAGS,
-    });
+
+    // ── XINCLI: Android-specific C++ flags ─────────────────────────────
+    // Force-include termux-cxx-fixup.h which provides std::isinf/std::isnan/
+    // std::abs as inline functions calling __builtin_*. This works around
+    // Bionic's math.h defining isinf/isnan as C macros that break C++
+    // std::isinf expansion.
+    if (target.result.abi == .android) {
+        const android_cxx_flags = [_][]const u8{
+            "-std=c++20",
+            "-fexceptions",
+            "-frtti",
+            "-include",
+            "termux-cxx-fixup.h",
+        };
+        artifact.addCSourceFiles(.{
+            .root = yoga_dep.path(""),
+            .files = &YOGA_CXX_SOURCES,
+            .flags = &android_cxx_flags,
+        });
+    } else {
+        artifact.addCSourceFiles(.{
+            .root = yoga_dep.path(""),
+            .files = &YOGA_CXX_SOURCES,
+            .flags = &YOGA_CXX_FLAGS,
+        });
+    }
 }
 
 /// Apply dependencies to a module

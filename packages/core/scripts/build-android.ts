@@ -129,7 +129,10 @@ function buildOneArch(arch: AndroidArch): void {
   // fails with 'unable to provide libc for target aarch64-linux-android'.
   const libcFileContent = [
     `include_dir=${sysrootInclude}`,
-    `sys_include_dir=${sysrootInclude}`,
+    // sys_include_dir MUST be the arch-specific path so @cImport can find
+    // <asm/types.h> when <linux/types.h> includes it. Zig's C import
+    // doesn't respect CFLAGS — it only uses paths from the libc file.
+    `sys_include_dir=${sysrootIncludeArch}`,
     `crt_dir=${sysrootLibApiSpecific}`,
     `msvc_lib_dir=`,
     `kernel32_lib_dir=`,

@@ -519,6 +519,18 @@ fn buildTarget(
         .linkage = .dynamic,
     });
 
+    // ── XINCLI: Android sysroot ─────────────────────────────────────────
+    // Zig doesn't bundle Android's Bionic libc, so for android targets we
+    // MUST point the linker at the NDK sysroot. Without this, Zig fails
+    // with 'unable to provide libc for target aarch64-linux-android'.
+    // The sysroot path is passed via XINCLI_ANDROID_SYSROOT env var by
+    // the build-android.ts script.
+    if (target.result.abi == .android) {
+        if (std.posix.getenv("XINCLI_ANDROID_SYSROOT")) |sysroot| {
+            lib.linker_sysroot = sysroot;
+        }
+    }
+
     addNativeAudioDependencies(b, lib, target, macos_sdk_path);
     addYogaDependencies(b, lib);
 

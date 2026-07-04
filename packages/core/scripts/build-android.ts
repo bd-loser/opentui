@@ -107,10 +107,19 @@ function buildOneArch(arch: AndroidArch): void {
     `-Doptimize=ReleaseFast`,
   ]
 
-  // Pass sysroot + NDK toolchain via env so Zig's build system finds them.
-  // Zig 0.15+ respects these for cross-compilation:
-  //   - ZIG_*_LINKER_ARGS / ZIG_*_CFLAGS for additional flags
-  //   - CC / CXX / LDFLAGS for system-library resolution
+  // ── Zig + Android NDK cross-compilation ────────────────────────────
+  //
+  // The core challenge: Zig doesn't bundle Android's Bionic libc. So we
+  // MUST tell Zig to use the NDK's libc instead. There are two pieces:
+  //
+  //   1. Pass --sysroot=<NDK sysroot> to EVERY Zig compiler/linker invocation.
+  //      We do this via ZIG_GLOBAL_ARGS env var (Zig 0.15 reads this).
+  //
+  //   2. Add the NDK's lib paths so linkSystemLibrary("OpenSLES") works.
+  //      We do this via XINCLI_ANDROID_LIB_PATH env var (read by build.zig).
+  //
+  //   3. Set CC/CXX to the NDK's clang wrappers so any C compilation (yoga,
+  //      miniaudio_shim) uses NDK headers + libs.
   const sysrootLibApiSpecific = join(sysroot, "usr", "lib", arch.ndkTriple, NDK_API_LEVEL)
   const sysrootLibGeneric = join(sysroot, "usr", "lib", arch.ndkTriple)
   const env = {
@@ -121,14 +130,17 @@ function buildOneArch(arch: AndroidArch): void {
     // to find libOpenSLES.so inside the NDK sysroot.
     XINCLI_ANDROID_LIB_PATH: sysrootLibApiSpecific,
     XINCLI_ANDROID_LIB_PATH_GENERIC: sysrootLibGeneric,
-    // Point Zig at the NDK's clang so linkSystemLibrary("OpenSLES") can
-    // find libOpenSLES.so in the NDK sysroot.
+    // Critical: pass the NDK sysroot to build.zig's buildTarget() so it
+    // can set lib.linker_sysroot. Without this, Zig tries to provide its
+    // own Bionic libc (which it doesn't have) and fails with
+    // 'unable to provide libc for target aarch64-linux-android'.
+    XINCLI_ANDROID_SYSROOT: sysroot,
+    // Point Zig at the NDK's clang so any C/C++ compilation (yoga, miniaudio)
+    // uses NDK headers + libs.
     CC: join(ndkToolchainBin, `${arch.ndkTriple}${NDK_API_LEVEL}-clang`),
     CXX: join(ndkToolchainBin, `${arch.ndkTriple}${NDK_API_LEVEL}-clang++`),
     LDFLAGS: `--sysroot=${sysroot}`,
     CFLAGS: `--sysroot=${sysroot}`,
-    // Make sure Zig's own linker (ld.lld) can find the NDK libs.
-    // Zig 0.15 respects this for -Llibrary-search-paths.
     LIBRARY_PATH: `${sysrootLibApiSpecific}:${sysrootLibGeneric}`,
   }
 

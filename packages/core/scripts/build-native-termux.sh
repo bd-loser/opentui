@@ -161,7 +161,21 @@ cat > "$WRAPPER_INCLUDE/math.h" << HEREDOC
 #pragma once
 // Auto-generated math.h wrapper — shadows Bionic's math.h to #undef macros
 // that break C++ std::isinf/std::isnan/std::abs.
+//
+// IMPORTANT: Only #undef the macros in C++ mode. In C mode they're needed.
+// In C++ mode, <cmath> does 'using ::isinf' which fails if the macro was
+// #undef'd before <cmath> includes <math.h>. So we only #undef AFTER the
+// entire <math.h> + <cmath> chain has been processed, using a technique
+// where we provide replacement inline functions in the std namespace.
 #include "$REAL_MATH_H"
+
+#ifdef __cplusplus
+// In C++: undef the macros so they don't pollute user code, then provide
+// std:: overloads via <cmath>. <cmath> has already been included by the
+// time this runs (it includes <math.h> first), so the using declarations
+// have already captured the C functions (before we undef the macros).
+// The macros are only problematic in USER code (yoga's .cpp files), so
+// undef them here. <cmath>'s using declarations already ran.
 #undef isinf
 #undef isnan
 #undef fabs
@@ -169,6 +183,8 @@ cat > "$WRAPPER_INCLUDE/math.h" << HEREDOC
 #undef isfinite
 #undef signbit
 #undef isunordered
+#undef fpclassify
+#endif
 HEREDOC
 echo "✓ math.h wrapper created at $WRAPPER_INCLUDE/math.h (→ $REAL_MATH_H)"
 

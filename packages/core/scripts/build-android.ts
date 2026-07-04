@@ -88,27 +88,64 @@ function buildOneArch(arch: AndroidArch): void {
   const sysroot = buildSysrootPath(arch)
   const zigTarget = `${arch.zigArch}-linux-android`
 
-  // Zig cross-compile with NDK sysroot. --system-libc makes Zig use the
-  // NDK's Bionic libc headers/libs instead of trying to find glibc.
+  // Zig's build system: -Dtarget sets the target, -Doptimize sets the
+  // optimization mode. The NDK sysroot is passed via ZIG_* env vars that
+  // Zig's build system respects for cross-compilation. We can't pass
+  // --sysroot directly to `zig build` — it's a compiler flag, not a
+  // build-system flag. Instead we set CFLAGS/LDFLAGS that Zig's
+  // linkSystemLibrary picks up, AND set the NDK toolchain in PATH so Zig
+  // can find the android linker (ld.lld from the NDK).
+  const prebuiltDir = join(NDK_HOME, "toolchains", "llvm", "prebuilt")
+  const fs = require("fs") as typeof import("fs")
+  const hosts = fs.readdirSync(prebuiltDir)
+  const host = hosts[0]!
+  const ndkToolchainBin = join(prebuiltDir, host, "bin")
+
   const zigArgs = [
     "build",
-    "-Dtarget=" + zigTarget,
-    `-fsystem-libc`,
-    `--sysroot=${sysroot}`,
+    `-Dtarget=${zigTarget}`,
     `-Doptimize=ReleaseFast`,
-    "-Dlib-only", // only build the shared lib, not executables
   ]
 
-  // First build the native .so via Zig directly (bypassing build.ts which
-  // doesn't know about android sysroots)
-  run("zig", zigArgs, join(rootDir, "src", "zig"), `Zig build ${zigTarget}`)
+  // Pass sysroot + NDK toolchain via env so Zig's build system finds them.
+  // Zig 0.15+ respects these for cross-compilation:
+  //   - ZIG_*_LINKER_ARGS / ZIG_*_CFLAGS for additional flags
+  //   - CC / CXX / LDFLAGS for system-library resolution
+  const env = {
+    ...process.env,
+    ANDROID_NDK_HOME: NDK_HOME,
+    ANDROID_NDK_ROOT: NDK_HOME,
+    // Point Zig at the NDK's clang so linkSystemLibrary("OpenSLES") can
+    // find libOpenSLES.so in the NDK sysroot.
+    CC: join(ndkToolchainBin, `${arch.ndkTriple}${NDK_API_LEVEL}-clang`),
+    CXX: join(ndkToolchainBin, `${arch.ndkTriple}${NDK_API_LEVEL}-clang++`),
+    LDFLAGS: `--sysroot=${sysroot}`,
+    CFLAGS: `--sysroot=${sysroot}`,
+    // Make sure Zig's own linker (ld.lld) can find the NDK libs.
+    // Zig 0.15 respects this for -Llibrary-search-paths.
+    LIBRARY_PATH: join(sysroot, "usr", "lib", arch.ndkTriple, NDK_API_LEVEL),
+  }
 
-  // Locate the produced .so and copy it into the package dir
+  console.log(`  zig ${zigArgs.join(" ")}`)
+  console.log(`  CC=${env.CC}`)
+  console.log(`  sysroot=${sysroot}`)
+  const result = spawnSync("zig", zigArgs, {
+    cwd: join(rootDir, "src", "zig"),
+    stdio: "inherit",
+    env,
+  })
+  if (result.error || result.status !== 0) {
+    console.error(`✗ Zig build ${zigTarget} failed`)
+    process.exit(1)
+  }
+  console.log(`✓ Zig build ${zigTarget}`)
+
+  // Locate the produced .so — Zig puts it under zig-out/lib/
   const srcSo = join(rootDir, "src", "zig", "zig-out", "lib", "libopentui.so")
   if (!existsSync(srcSo)) {
-    // Zig may put it under a different path depending on version — search.
     console.error(`✗ libopentui.so not found at ${srcSo}`)
-    console.error("  Check zig-out/ for the actual output location")
+    console.error("  Check zig-out/ for the actual output location:")
+    run("find", [join(rootDir, "src", "zig", "zig-out"), "-name", "libopentui.so"], rootDir, "search for .so")
     process.exit(1)
   }
 

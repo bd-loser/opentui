@@ -199,19 +199,17 @@ fn addNativeAudioDependencies(
     switch (target.result.os.tag) {
         .macos => addMacOSSystemLibraries(b, artifact, macos_sdk_path.?),
         .linux => {
-            artifact.linkSystemLibrary("dl");
-            artifact.linkSystemLibrary("pthread");
-        },
-        // ── XINCLI: Android uses Bionic libc which provides dl/pthread
-        // implicitly via the NDK sysroot. linkSystemLibrary would try to
-        // find them via pkg-config which doesn't exist in the NDK; the
-        // sysroot already has libdl.so and libpthread.so on the linker
-        // path, so we just linkLibC() (already done in addMiniaudioShim)
-        // and let the NDK's default libs handle the rest. OpenSLES (the
-        // Android audio backend miniaudio uses) is linked automatically
-        // by the NDK when -lc is present.
-        .android => {
-            artifact.linkSystemLibrary("OpenSLES");
+            // ── XINCLI: Android is linux + .android ABI in Zig, not a
+            // separate OS tag. Bionic libc provides dl/pthread implicitly
+            // via the NDK sysroot; OpenSLES is Android's native audio
+            // backend (used by miniaudio). For non-android linux, use the
+            // standard dl + pthread system libraries.
+            if (target.result.abi == .android) {
+                artifact.linkSystemLibrary("OpenSLES");
+            } else {
+                artifact.linkSystemLibrary("dl");
+                artifact.linkSystemLibrary("pthread");
+            }
         },
         else => {},
     }

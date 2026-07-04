@@ -284,6 +284,10 @@ echo ""
 export ZIG_LIBC="$LIBC_FILE"
 export XINCLI_ANDROID_LIB_PATH="$TERMUX_LIB"
 export XINCLI_ANDROID_LIB_SEARCH_PATHS="$TERMUX_LIB:$LINKER_STUBS_DIR"
+# Include path for @cImport — points at the merged-include dir that has
+# both Termux's headers (pthread.h, math.h, signal.h) and arch-specific
+# asm/ headers (asm/sigcontext.h, asm/types.h).
+export XINCLI_ANDROID_INCLUDE_PATH="$MERGED_INCLUDE"
 
 # Export the system Bionic paths for build.zig's addObjectFile calls.
 # Use the RESOLVED real paths so ld.lld doesn't have to follow symlinks.

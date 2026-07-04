@@ -526,6 +526,21 @@ fn buildTarget(
         .optimize = optimize,
     });
 
+    // ── XINCLI: add libc include path for android @cImport ─────────────
+    // We skipped linkLibC() for android (it emits -lm -lc -ldl that fail).
+    // But linkLibC() ALSO tells @cImport where to find libc headers like
+    // <pthread.h>, <math.h>, <signal.h>. Without it, @cImport fails with
+    // 'pthread.h' file not found.
+    //
+    // Fix: add the Termux include dir to the module's system include path
+    // manually. The path is read from XINCLI_ANDROID_INCLUDE_PATH env var
+    // (set by build-native-termux.sh to the merged-include dir).
+    if (target.result.abi == .android) {
+        if (std.posix.getenv("XINCLI_ANDROID_INCLUDE_PATH")) |inc_path| {
+            module.addSystemIncludePath(.{ .cwd_relative = inc_path });
+        }
+    }
+
     applyDependencies(b, module, optimize, target, build_options);
 
     const lib = b.addLibrary(.{

@@ -524,6 +524,16 @@ fn buildTarget(
         .root_source_file = b.path(ROOT_SOURCE_FILE),
         .target = target,
         .optimize = optimize,
+        // ── XINCLI: tell Zig's stdlib that libc IS available for android ─
+        // We skipped linkLibC() (it emits -lm -lc -ldl that fail on Termux),
+        // but Zig's stdlib needs to KNOW libc is available — otherwise
+        // std.heap (free/malloc) and std.c (extern "c" fns) refuse to
+        // compile with 'dependency on libc must be explicitly specified'.
+        //
+        // link_libc=true on the module tells the stdlib "libc symbols exist
+        // at link time" WITHOUT emitting the -l flags. We link the .so files
+        // directly via addObjectFile in buildTarget() instead.
+        .link_libc = target.result.abi == .android,
     });
 
     // ── XINCLI: add libc include path for android @cImport ─────────────

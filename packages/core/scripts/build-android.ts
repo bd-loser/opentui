@@ -101,20 +101,6 @@ function buildOneArch(arch: AndroidArch): void {
   const host = hosts[0]!
   const ndkToolchainBin = join(prebuiltDir, host, "bin")
 
-  const zigArgs = [
-    "build",
-    `-Dtarget=${zigTarget}`,
-    `-Doptimize=ReleaseFast`,
-    // Critical: --sysroot is a GLOBAL zig build flag (not -D) that
-    // propagates to every compiler/linker invocation in the build graph.
-    // Without this, Zig tries to provide its own Bionic libc (which it
-    // doesn't have) and fails with 'unable to provide libc for target
-    // aarch64-linux-android'. This is the Zig-blessed way to cross-compile
-    // against a foreign libc — cleaner than patching build.zig.
-    `--sysroot`,
-    sysroot,
-  ]
-
   // ── Zig + Android NDK cross-compilation ────────────────────────────
   //
   // The core challenge: Zig doesn't bundle Android's Bionic libc. So we
@@ -130,21 +116,48 @@ function buildOneArch(arch: AndroidArch): void {
   //      miniaudio_shim) uses NDK headers + libs.
   const sysrootLibApiSpecific = join(sysroot, "usr", "lib", arch.ndkTriple, NDK_API_LEVEL)
   const sysrootLibGeneric = join(sysroot, "usr", "lib", arch.ndkTriple)
+  const sysrootInclude = join(sysroot, "usr", "include")
+
+  // ── Zig libc file ───────────────────────────────────────────────────
+  // Zig 0.15 needs an explicit libc file to cross-compile against a
+  // non-bundled libc like Android's Bionic. The file tells Zig where to
+  // find include dirs, crt objects, and the libc.so. Without this, Zig
+  // fails with 'unable to provide libc for target aarch64-linux-android'.
+  const libcFileContent = [
+    `include_dir=${sysrootInclude}`,
+    `sys_include_dir=${sysrootInclude}`,
+    `crt_dir=${sysrootLibApiSpecific}`,
+    `msvc_lib_dir=`,
+    `kernel32_lib_dir=`,
+    `gcc_dir=`,
+  ].join('\n')
+  const libcFilePath = join(rootDir, `libc-${arch.zigArch}-android.txt`)
+  writeFileSync(libcFilePath, libcFileContent, { encoding: 'utf-8' })
+
   const env = {
     ...process.env,
     ANDROID_NDK_HOME: NDK_HOME,
     ANDROID_NDK_ROOT: NDK_HOME,
     // Read by build.zig to locate libOpenSLES.so directly via addObjectFile
-    // (bypasses linkSystemLibrary's search which fails with --sysroot doubling).
     XINCLI_ANDROID_LIB_PATH: sysrootLibApiSpecific,
-    // Point Zig at the NDK's clang so any C/C++ compilation (yoga, miniaudio)
-    // uses NDK headers + libs. The NDK clang wrapper has --sysroot baked in.
     CC: join(ndkToolchainBin, `${arch.ndkTriple}${NDK_API_LEVEL}-clang`),
     CXX: join(ndkToolchainBin, `${arch.ndkTriple}${NDK_API_LEVEL}-clang++`),
     LDFLAGS: `--sysroot=${sysroot} -L${sysrootLibApiSpecific} -L${sysrootLibGeneric}`,
     CFLAGS: `--sysroot=${sysroot}`,
     LIBRARY_PATH: `${sysrootLibApiSpecific}:${sysrootLibGeneric}`,
   }
+
+  // Pass the libc file via -Dtarget and --sysroot. The libc file is
+  // passed via the ZIG_LIBC env var (Zig 0.15 reads this).
+  const zigArgs = [
+    "build",
+    `-Dtarget=${zigTarget}`,
+    `-Doptimize=ReleaseFast`,
+    `--sysroot`,
+    sysroot,
+  ]
+  // Set ZIG_LIBC to point at our generated libc file
+  env.ZIG_LIBC = libcFilePath
 
   console.log(`  zig ${zigArgs.join(" ")}`)
   console.log(`  CC=${env.CC}`)

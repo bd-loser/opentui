@@ -79,6 +79,11 @@ jobs:
           echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}"
           ls -la ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/
           test -d ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+          # Debug: show where libOpenSLES.so and crt files actually live
+          echo "=== NDK lib layout ==="
+          find ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android -name "libOpenSLES.so" -o -name "crt*.o" -o -name "libc.so" 2>/dev/null | head -20
+          echo "=== crt files ==="
+          find ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android -name "crt*.o" 2>/dev/null | head -10
 
       - name: Build Android arm64 (aarch64)
         env:

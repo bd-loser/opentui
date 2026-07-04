@@ -254,11 +254,13 @@ fn addYogaDependencies(
     // #includes the real Bionic math.h then #undefs isinf/isnan/fabs/abs
     // macros that break std::isinf in C++ context.
     if (target.result.abi == .android) {
-        // Math wrapper FIRST — shadows Bionic's math.h
+        // Math wrapper FIRST — use addIncludePath (-I) not addSystemIncludePath
+        // (-isystem) because -I is searched BEFORE the libc file's implicit
+        // system path. The wrapper must shadow Bionic's real math.h.
         if (std.posix.getenv("XINCLI_ANDROID_MATH_WRAPPER")) |wrapper| {
-            artifact.addSystemIncludePath(.{ .cwd_relative = wrapper });
+            artifact.addIncludePath(.{ .cwd_relative = wrapper });
         }
-        // libc++ headers
+        // libc++ headers — these can stay as -isystem
         if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_INCLUDE")) |cxx_inc| {
             artifact.addSystemIncludePath(.{ .cwd_relative = cxx_inc });
         }

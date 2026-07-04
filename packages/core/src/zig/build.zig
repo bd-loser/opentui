@@ -363,7 +363,7 @@ pub fn build(b: *std.Build) void {
         std.process.exit(1);
     }
     addNativeAudioDependencies(b, test_artifact, native_target, macos_sdk_path);
-    addYogaDependencies(b, test_artifact);
+    addYogaDependencies(b, test_artifact, native_target);
 
     const run_test = b.addRunArtifact(test_artifact);
     test_step.dependOn(&run_test.step);
@@ -403,7 +403,7 @@ pub fn build(b: *std.Build) void {
         std.process.exit(1);
     }
     addNativeAudioDependencies(b, bench_ffi_lib, native_target, macos_sdk_path);
-    addYogaDependencies(b, bench_ffi_lib);
+    addYogaDependencies(b, bench_ffi_lib, native_target);
     const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
     bench_ffi_step.dependOn(&install_bench_ffi.step);
     bench_step.dependOn(bench_ffi_step);

@@ -146,7 +146,8 @@ echo "✓ crt objects found at: $CRT_DIR"
 # which breaks compilation.
 #
 # Fix: create a wrapper include dir with a math.h that:
-#   1. #includes the REAL Bionic math.h (via #include_next)
+#   1. #includes the REAL Bionic math.h via ABSOLUTE PATH (not #include_next
+#      which doesn't work reliably with Zig's clang -isystem paths)
 #   2. #undefs the problematic macros
 #
 # Put this wrapper dir FIRST in the -I search path so it shadows
@@ -154,8 +155,22 @@ echo "✓ crt objects found at: $CRT_DIR"
 # our wrapper which cleans up the macros.
 WRAPPER_INCLUDE="$REPO_ROOT/.zig-math-wrapper"
 mkdir -p "$WRAPPER_INCLUDE"
-cp "$REPO_ROOT/packages/core/src/zig/termux-math-wrapper.h" "$WRAPPER_INCLUDE/math.h"
-echo "✓ math.h wrapper created at $WRAPPER_INCLUDE/math.h"
+REAL_MATH_H="$TERMUX_INCLUDE/math.h"
+# Write the wrapper with the absolute path baked in
+cat > "$WRAPPER_INCLUDE/math.h" << HEREDOC
+#pragma once
+// Auto-generated math.h wrapper — shadows Bionic's math.h to #undef macros
+// that break C++ std::isinf/std::isnan/std::abs.
+#include "$REAL_MATH_H"
+#undef isinf
+#undef isnan
+#undef fabs
+#undef abs
+#undef isfinite
+#undef signbit
+#undef isunordered
+HEREDOC
+echo "✓ math.h wrapper created at $WRAPPER_INCLUDE/math.h (→ $REAL_MATH_H)"
 
 # ── Generate a Zig libc file pointing at Termux's Bionic ────────
 # CRITICAL: Without this, Zig detects the host as 'aarch64-linux-musl'

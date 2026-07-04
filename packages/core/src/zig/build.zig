@@ -246,17 +246,26 @@ fn addYogaDependencies(
     }
 
     // ── XINCLI: add libc++ include path for android C++ compilation ────
-    // Yoga's C++ files #include <type_traits>, <cstddef>, etc. from the C++
-    // standard library. linkLibCpp() normally adds libc++'s include path,
-    // but we skipped it for android. Add the path manually so C++ files
-    // can find the headers. Read from XINCLI_ANDROID_LIBCXX_INCLUDE env var.
+    // Yoga's C++ files #include <type_traits>, <cstddef>, <cmath>, etc.
+    // from the C++ standard library. linkLibCpp() normally adds libc++'s
+    // include path, but we skipped it for android.
+    //
+    // IMPORTANT: For C++ files we use Termux's REAL $PREFIX/include (not the
+    // merged-include dir) because the merged-include's math.h defines isinf
+    // as a C macro that breaks std::isinf in C++ context.
+    //
+    // XINCLI_ANDROID_LIBCXX_INCLUDE = libc++ headers (c++/v1/)
+    // XINCLI_ANDROID_TERMUX_INCLUDE  = Termux's real $PREFIX/include
     if (target.result.abi == .android) {
         if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_INCLUDE")) |cxx_inc| {
             artifact.addSystemIncludePath(.{ .cwd_relative = cxx_inc });
         }
-        // Also add libc++'s __config header location (sometimes separate)
         if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_INCLUDE2")) |cxx_inc2| {
             artifact.addSystemIncludePath(.{ .cwd_relative = cxx_inc2 });
+        }
+        // Use Termux's real include dir for C++ (proper C/C++ separation)
+        if (std.posix.getenv("XINCLI_ANDROID_TERMUX_INCLUDE")) |termux_inc| {
+            artifact.addSystemIncludePath(.{ .cwd_relative = termux_inc });
         }
     }
 

@@ -149,26 +149,33 @@ echo "✓ crt objects found at: $CRT_DIR"
 # BOTH $PREFIX/include (for signal.h, time.h) AND the arch-specific
 # $PREFIX/include/aarch64-linux-android (for <asm/sigcontext.h>).
 # Workaround: create a merged include dir with symlinks to both.
+#
+# IMPORTANT: We symlink the DIRECTORIES from $PREFIX/include (not individual
+# files) so the C++ compiler still sees the real headers via the original
+# $PREFIX/include path. The merged dir is ONLY for Zig @cImport which uses
+# include_dir from the libc file. C++ compilation uses XINCLI_ANDROID_TERMUX_INCLUDE
+# (the real $PREFIX/include) separately to avoid math.h macro conflicts.
 MERGED_INCLUDE="$REPO_ROOT/.zig-merged-include"
 mkdir -p "$MERGED_INCLUDE"
-# Symlink everything from $PREFIX/include into the merged dir
+# Symlink the arch-specific asm/ headers at the top level so
+# #include <asm/sigcontext.h> resolves through $MERGED_INCLUDE/asm/
+# This is the ONLY thing we add — everything else comes from the libc file's
+# include_dir which already points at $MERGED_INCLUDE.
+if [ -d "$ASM_DIR" ]; then
+  ln -sf "$ASM_DIR" "$MERGED_INCLUDE/asm" 2>/dev/null || true
+fi
+# Also symlink aarch64-linux-android dir so #include <aarch64-linux-android/...> works
+ln -sf "$TERMUX_INCLUDE/aarch64-linux-android" "$MERGED_INCLUDE/aarch64-linux-android" 2>/dev/null || true
+# Symlink the rest of $PREFIX/include's subdirectories (but NOT math.h itself)
 for entry in "$TERMUX_INCLUDE"/*; do
   name=$(basename "$entry")
+  if [ "$name" = "asm" ] || [ "$name" = "aarch64-linux-android" ]; then
+    continue  # already symlinked above
+  fi
   if [ ! -e "$MERGED_INCLUDE/$name" ]; then
     ln -sf "$entry" "$MERGED_INCLUDE/$name" 2>/dev/null || true
   fi
 done
-# Also symlink the arch-specific asm/ headers at the top level so
-# #include <asm/sigcontext.h> resolves through $MERGED_INCLUDE/asm/
-if [ -d "$ASM_DIR" ]; then
-  for entry in "$ASM_DIR"/*; do
-    name=$(basename "$entry")
-    if [ ! -e "$MERGED_INCLUDE/asm/$name" ]; then
-      mkdir -p "$MERGED_INCLUDE/asm"
-      ln -sf "$entry" "$MERGED_INCLUDE/asm/$name" 2>/dev/null || true
-    fi
-  done
-fi
 
 LIBC_FILE="$REPO_ROOT/packages/core/src/zig/libc-termux.txt"
 cat > "$LIBC_FILE" << EOF
@@ -339,7 +346,12 @@ LIBCXX_INCLUDE2=$(dirname "$LIBCXX_INCLUDE" 2>/dev/null)
 if [ -d "$LIBCXX_INCLUDE2" ]; then
   export XINCLI_ANDROID_LIBCXX_INCLUDE2="$LIBCXX_INCLUDE2"
 fi
+# Termux's real include dir — used for C++ compilation (proper C/C++ separation).
+# The merged-include dir is only for Zig @cImport (C-only) because its math.h
+# macro 'isinf' breaks std::isinf in C++ context.
+export XINCLI_ANDROID_TERMUX_INCLUDE="$TERMUX_INCLUDE"
 echo "✓ libc++ headers: $LIBCXX_INCLUDE"
+echo "✓ Termux include (C++): $TERMUX_INCLUDE"
 
 zig build \
   -Dtarget=aarch64-linux-android \

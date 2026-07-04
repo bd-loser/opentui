@@ -27,6 +27,15 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
     .{ .zig_target = "aarch64-macos", .output_name = "aarch64-macos", .description = "macOS aarch64 (Apple Silicon)" },
     .{ .zig_target = "x86_64-windows-gnu", .output_name = "x86_64-windows", .description = "Windows x86_64" },
     .{ .zig_target = "aarch64-windows-gnu", .output_name = "aarch64-windows", .description = "Windows aarch64" },
+    // ── XINCLI: Android/Termux support ─────────────────────────────────
+    // Targets Android (Bionic libc) on aarch64 — the only Android arch
+    // Termux realistically runs on in 2026. The NDK sysroot must be passed
+    // via --sysroot; see the `build-android` workflow for the exact flags.
+    // The .so produced here is loaded by @xincli/opentui-core-android-arm64
+    // at runtime inside cli.mjs on the user's phone.
+    .{ .zig_target = "aarch64-linux-android", .output_name = "aarch64-android", .description = "Android aarch64 (Termux)" },
+    .{ .zig_target = "arm-linux-android", .output_name = "arm-android", .description = "Android armv7 (legacy Termux)" },
+    .{ .zig_target = "x86_64-linux-android", .output_name = "x86_64-android", .description = "Android x86_64 (emulator)" },
 };
 
 const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk";
@@ -192,6 +201,17 @@ fn addNativeAudioDependencies(
         .linux => {
             artifact.linkSystemLibrary("dl");
             artifact.linkSystemLibrary("pthread");
+        },
+        // ── XINCLI: Android uses Bionic libc which provides dl/pthread
+        // implicitly via the NDK sysroot. linkSystemLibrary would try to
+        // find them via pkg-config which doesn't exist in the NDK; the
+        // sysroot already has libdl.so and libpthread.so on the linker
+        // path, so we just linkLibC() (already done in addMiniaudioShim)
+        // and let the NDK's default libs handle the rest. OpenSLES (the
+        // Android audio backend miniaudio uses) is linked automatically
+        // by the NDK when -lc is present.
+        .android => {
+            artifact.linkSystemLibrary("OpenSLES");
         },
         else => {},
     }

@@ -116,6 +116,29 @@ async function resolveNativePackage() {
     if (process.arch === "arm64") return await import("@opentui/core-win32-arm64")
   }
 
+  // ── XINCLI: Android/Termux support ─────────────────────────────────
+  // Termux reports process.platform === 'android'. We publish three android
+  // native packages under the @xincli scope:
+  //   @xincli/opentui-core-android-arm64  (aarch64 — 99% of phones)
+  //   @xincli/opentui-core-android-arm    (armv7 — legacy 32-bit phones)
+  //   @xincli/opentui-core-android-x64    (x86_64 — emulators)
+  // Upstream opentui doesn't ship these — we cross-compile them in the
+  // fork's build-android.yml workflow using Zig + the Android NDK sysroot.
+  if (process.platform === "android") {
+    if (process.arch === "arm64") {
+      // @ts-ignore Optional native package may be absent when building on another platform.
+      return await import("@xincli/opentui-core-android-arm64")
+    }
+    if (process.arch === "arm") {
+      // @ts-ignore Optional native package may be absent when building on another platform.
+      return await import("@xincli/opentui-core-android-arm")
+    }
+    if (process.arch === "x64") {
+      // @ts-ignore Optional native package may be absent when building on another platform.
+      return await import("@xincli/opentui-core-android-x64")
+    }
+  }
+
   throw new Error(`opentui is not supported on the current platform: ${process.platform}-${process.arch}`)
 }
 const nativePackage = await resolveNativePackage()

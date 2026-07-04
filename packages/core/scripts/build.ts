@@ -61,6 +61,14 @@ const variants: Variant[] = [
   { platform: "linux", arch: "arm64", abi: "musl" },
   { platform: "win32", arch: "x64" },
   { platform: "win32", arch: "arm64" },
+  // ── XINCLI: Android/Termux variants ─────────────────────────────────
+  // Built via the separate `bun scripts/build-android.ts` script which
+  // invokes Zig with the NDK sysroot. Not part of the default --all build
+  // because the NDK isn't available on the macOS runner used by the
+  // upstream build-native workflow.
+  { platform: "android", arch: "arm64" },
+  { platform: "android", arch: "arm" },
+  { platform: "android", arch: "x64" },
 ]
 
 const getHostVariant = (): Variant => {
@@ -78,8 +86,8 @@ if (!buildLib && !buildNative) {
 }
 
 const getZigTarget = (platform: string, arch: string, abi?: string): string => {
-  const platformMap: Record<string, string> = { darwin: "macos", win32: "windows", linux: "linux" }
-  const archMap: Record<string, string> = { x64: "x86_64", arm64: "aarch64" }
+  const platformMap: Record<string, string> = { darwin: "macos", win32: "windows", linux: "linux", android: "android" }
+  const archMap: Record<string, string> = { x64: "x86_64", arm64: "aarch64", arm: "arm" }
   const base = `${archMap[arch] ?? arch}-${platformMap[platform] ?? platform}`
   return abi ? `${base}-${abi}` : base
 }

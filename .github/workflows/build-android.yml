@@ -1,0 +1,125 @@
+# ═════════════════════════════════════════════════════════════════
+# XINCLI OpenTUI Fork — Android/Termux Native Build
+#
+# Cross-compiles the opentui Zig core for Android (Bionic libc) using
+# the Android NDK. Produces three .so files published as npm packages
+# under the @xincli scope:
+#
+#   @xincli/opentui-core-android-arm64  — aarch64 (99% of phones)
+#   @xincli/opentui-core-android-arm    — armv7 (legacy 32-bit)
+#   @xincli/opentui-core-android-x64    — x86_64 (emulators)
+#
+# These packages are loaded by the patched resolveNativePackage() in
+# src/zig.ts when XINCLI's cli.mjs runs on Termux (process.platform === 'android').
+#
+# Triggers:
+#   - Push to main (source/** changes)
+#   - Manual dispatch
+#   - Tag push (v*) — publishes to npm
+# ═════════════════════════════════════════════════════════════════
+
+name: Build Android Native
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/core/src/zig/**'
+      - 'packages/core/scripts/build-android.ts'
+      - '.github/workflows/build-android.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to npm after build'
+        required: false
+        default: false
+        type: boolean
+  release:
+    types: [created]
+
+permissions:
+  contents: read
+
+env:
+  ZIG_VERSION: "0.15.2"
+  ANDROID_API_LEVEL: "24"
+
+jobs:
+  build-android:
+    name: Build Android .so files
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+          use-cache: false
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+          add-to-path: false
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Verify NDK
+        run: |
+          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}"
+          ls -la ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/
+          test -d ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+
+      - name: Build Android arm64 (aarch64)
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          ANDROID_API_LEVEL: ${{ env.ANDROID_API_LEVEL }}
+        run: |
+          cd packages/core
+          bun run scripts/build-android.ts
+
+      - name: Verify build outputs
+        run: |
+          set -e
+          echo "Checking Android .so files..."
+          test -f packages/core/dist-android/@xincli/opentui-core-android-arm64/libopentui.so || (echo "❌ arm64 .so missing!" && exit 1)
+          test -f packages/core/dist-android/@xincli/opentui-core-android-arm/libopentui.so || (echo "❌ arm .so missing!" && exit 1)
+          test -f packages/core/dist-android/@xincli/opentui-core-android-x64/libopentui.so || (echo "❌ x64 .so missing!" && exit 1)
+          echo "✅ All Android .so files present"
+          ls -lah packages/core/dist-android/@xincli/*/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: opentui-android-native
+          path: packages/core/dist-android/
+          retention-days: 30
+
+      - name: Publish to npm (on release or manual dispatch)
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_TOKEN }}
+        run: |
+          # Setup npm auth for the @xincli scope
+          cat << EOF > ~/.npmrc
+          @xincli:registry=https://registry.npmjs.org
+          //registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}
+          EOF
+
+          cd packages/core/dist-android
+          for pkg in @xincli/opentui-core-android-*; do
+            echo "Publishing $pkg..."
+            cd "$pkg"
+            npm publish --access public
+            cd ..
+          done

@@ -187,23 +187,41 @@ if [ ! -f "$SYSTEM_LIB_DIR/libc.so" ]; then
   exit 1
 fi
 SYSTEM_LIBC="$SYSTEM_LIB_DIR/libc.so"
-echo "✓ System Bionic: $SYSTEM_LIBC"
+# Resolve the symlink chain — /system/lib64/libc.so → /apex/com.android.runtime/lib64/bionic/libc.so
+# ld.lld sometimes can't follow the chain, so we resolve it ourselves.
+SYSTEM_LIBC_REAL=$(readlink -f "$SYSTEM_LIBC" 2>/dev/null || echo "$SYSTEM_LIBC")
+SYSTEM_LIBM_REAL=$(readlink -f "$SYSTEM_LIB_DIR/libm.so" 2>/dev/null || echo "$SYSTEM_LIBC_REAL")
+SYSTEM_LIBDL_REAL=$(readlink -f "$SYSTEM_LIB_DIR/libdl.so" 2>/dev/null || echo "$SYSTEM_LIBC_REAL")
+echo "✓ System Bionic (resolved):"
+echo "   libc:  $SYSTEM_LIBC_REAL"
+echo "   libm:  $SYSTEM_LIBM_REAL"
+echo "   libdl: $SYSTEM_LIBDL_REAL"
 
 # Bionic on Termux: libm and libdl symbols are inside libc.so. Termux
-# doesn't ship separate libm.so/libdl.so in $PREFIX/lib. We create
-# SYMLINKS in our temp stubs dir pointing at the system Bionic. Symlinks
-# (not linker scripts) because ld.lld's -l flag resolution needs to find
-# an actual .so file. The stubs dir is already in the -L search path.
+# doesn't ship separate libm.so/libdl.so in $PREFIX/lib. We COPY the
+# real Bionic .so files into our temp stubs dir (not symlinks — actual
+# file copies) so ld.lld's -l flag resolution finds a real ELF file
+# with no symlink chain to follow. The stubs dir is in the -L search path.
 NEED_EXTRA_L_PATH=""
 for libname in libc libm libdl; do
   if [ ! -f "$TERMUX_LIB/${libname}.so" ] && [ ! -L "$TERMUX_LIB/${libname}.so" ]; then
-    echo "ℹ️  Creating $LINKER_STUBS_DIR/${libname}.so → $SYSTEM_LIBC"
-    ln -sf "$SYSTEM_LIBC" "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || true
+    # Pick the resolved real path for each lib
+    case "$libname" in
+      libc)  TARGET_REAL="$SYSTEM_LIBC_REAL" ;;
+      libm)  TARGET_REAL="$SYSTEM_LIBM_REAL" ;;
+      libdl) TARGET_REAL="$SYSTEM_LIBDL_REAL" ;;
+    esac
+    echo "ℹ️  Copying $TARGET_REAL → $LINKER_STUBS_DIR/${libname}.so"
+    cp "$TARGET_REAL" "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || {
+      # If cp fails (read-only APEX), fall back to symlink
+      echo "ℹ️  cp failed, falling back to symlink"
+      ln -sf "$TARGET_REAL" "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || true
+    }
     NEED_EXTRA_L_PATH=1
   fi
 done
 if [ "$NEED_EXTRA_L_PATH" = "1" ]; then
-  echo "✓ Bionic symlinks created in $LINKER_STUBS_DIR"
+  echo "✓ Bionic libs prepared in $LINKER_STUBS_DIR"
   ls -la "$LINKER_STUBS_DIR"/ 2>&1
 fi
 
@@ -229,11 +247,12 @@ export ZIG_LIBC="$LIBC_FILE"
 export XINCLI_ANDROID_LIB_PATH="$TERMUX_LIB"
 export XINCLI_ANDROID_LIB_SEARCH_PATHS="$TERMUX_LIB:$LINKER_STUBS_DIR"
 
-# Export the system Bionic paths for build.zig's addObjectFile calls
-export XINCLI_ANDROID_LIBC_PATH="$SYSTEM_LIB_DIR/libc.so"
-export XINCLI_ANDROID_LIBM_PATH="$SYSTEM_LIB_DIR/libm.so"
-export XINCLI_ANDROID_LIBDL_PATH="$SYSTEM_LIB_DIR/libdl.so"
-echo "✓ Bionic libs: $SYSTEM_LIB_DIR/{libc,libm,libdl}.so"
+# Export the system Bionic paths for build.zig's addObjectFile calls.
+# Use the RESOLVED real paths so ld.lld doesn't have to follow symlinks.
+export XINCLI_ANDROID_LIBC_PATH="$SYSTEM_LIBC_REAL"
+export XINCLI_ANDROID_LIBM_PATH="$SYSTEM_LIBM_REAL"
+export XINCLI_ANDROID_LIBDL_PATH="$SYSTEM_LIBDL_REAL"
+echo "✓ Bionic libs (resolved): $SYSTEM_LIBC_REAL"
 
 zig build \
   -Dtarget=aarch64-linux-android \

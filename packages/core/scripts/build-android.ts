@@ -117,6 +117,10 @@ function buildOneArch(arch: AndroidArch): void {
   const sysrootLibApiSpecific = join(sysroot, "usr", "lib", arch.ndkTriple, NDK_API_LEVEL)
   const sysrootLibGeneric = join(sysroot, "usr", "lib", arch.ndkTriple)
   const sysrootInclude = join(sysroot, "usr", "include")
+  // Arch-specific include dir — the NDK puts <asm/> headers here, and
+  // <linux/types.h> does #include <asm/types.h>. Without this path, Zig's
+  // C import fails with 'asm/types.h' file not found.
+  const sysrootIncludeArch = join(sysroot, "usr", "include", arch.ndkTriple)
 
   // ── Zig libc file ───────────────────────────────────────────────────
   // Zig 0.15 needs an explicit libc file to cross-compile against a
@@ -138,12 +142,15 @@ function buildOneArch(arch: AndroidArch): void {
     ...process.env,
     ANDROID_NDK_HOME: NDK_HOME,
     ANDROID_NDK_ROOT: NDK_HOME,
-    // Read by build.zig to locate libOpenSLES.so directly via addObjectFile
     XINCLI_ANDROID_LIB_PATH: sysrootLibApiSpecific,
     CC: join(ndkToolchainBin, `${arch.ndkTriple}${NDK_API_LEVEL}-clang`),
     CXX: join(ndkToolchainBin, `${arch.ndkTriple}${NDK_API_LEVEL}-clang++`),
+    // CFLAGS: --sysroot + arch-specific -I for <asm/> headers that
+    // <linux/types.h> includes. Without -I<sysroot>/usr/include/<triple>,
+    // Zig's C import fails with 'asm/types.h' file not found.
+    CFLAGS: `--sysroot=${sysroot} -I${sysrootIncludeArch}`,
+    CXXFLAGS: `--sysroot=${sysroot} -I${sysrootIncludeArch}`,
     LDFLAGS: `--sysroot=${sysroot} -L${sysrootLibApiSpecific} -L${sysrootLibGeneric}`,
-    CFLAGS: `--sysroot=${sysroot}`,
     LIBRARY_PATH: `${sysrootLibApiSpecific}:${sysrootLibGeneric}`,
   }
 

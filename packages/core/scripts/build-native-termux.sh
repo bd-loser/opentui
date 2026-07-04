@@ -299,6 +299,48 @@ export XINCLI_ANDROID_LIBCXX_PATH="$TERMUX_LIB/libc++_shared.so"
 echo "✓ Bionic libs (resolved): $SYSTEM_LIBC_REAL"
 echo "✓ libc++: $XINCLI_ANDROID_LIBCXX_PATH"
 
+# ── Find libc++ headers for C++ compilation ─────────────────────
+# Yoga's C++ files need <type_traits>, <cstddef>, etc. from libc++.
+# We skipped linkLibCpp() for android, so we must add the include path manually.
+# Termux's libc++ package puts headers at $PREFIX/include/c++/v1/
+LIBCXX_INCLUDE=""
+for candidate in \
+  "$PREFIX/include/c++/v1" \
+  "$PREFIX/include/c++"/*/v1 \
+  "$PREFIX/include"/*/c++/v1; do
+  if [ -f "$candidate/type_traits" ] 2>/dev/null; then
+    LIBCXX_INCLUDE=$(echo $candidate | head -1)
+    break
+  fi
+done
+
+if [ -z "$LIBCXX_INCLUDE" ]; then
+  echo "📦 libc++ headers not found — installing libc++-dev..."
+  pkg install -y libc++-dev 2>&1 | tail -3 || true
+  for candidate in \
+    "$PREFIX/include/c++/v1" \
+    "$PREFIX/include/c++"/*/v1 \
+    "$PREFIX/include"/*/c++/v1; do
+    if [ -f "$candidate/type_traits" ] 2>/dev/null; then
+      LIBCXX_INCLUDE=$(echo $candidate | head -1)
+      break
+    fi
+  done
+fi
+
+if [ -z "$LIBCXX_INCLUDE" ]; then
+  echo "❌ Cannot find libc++ headers (type_traits)."
+  echo "   Try: pkg install libc++-dev"
+  exit 1
+fi
+export XINCLI_ANDROID_LIBCXX_INCLUDE="$LIBCXX_INCLUDE"
+# Some libc++ setups have __config in a separate dir
+LIBCXX_INCLUDE2=$(dirname "$LIBCXX_INCLUDE" 2>/dev/null)
+if [ -d "$LIBCXX_INCLUDE2" ]; then
+  export XINCLI_ANDROID_LIBCXX_INCLUDE2="$LIBCXX_INCLUDE2"
+fi
+echo "✓ libc++ headers: $LIBCXX_INCLUDE"
+
 zig build \
   -Dtarget=aarch64-linux-android \
   -Doptimize=ReleaseFast \

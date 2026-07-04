@@ -244,6 +244,22 @@ fn addYogaDependencies(
     if (target.result.abi != .android) {
         artifact.linkLibCpp();
     }
+
+    // ── XINCLI: add libc++ include path for android C++ compilation ────
+    // Yoga's C++ files #include <type_traits>, <cstddef>, etc. from the C++
+    // standard library. linkLibCpp() normally adds libc++'s include path,
+    // but we skipped it for android. Add the path manually so C++ files
+    // can find the headers. Read from XINCLI_ANDROID_LIBCXX_INCLUDE env var.
+    if (target.result.abi == .android) {
+        if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_INCLUDE")) |cxx_inc| {
+            artifact.addSystemIncludePath(.{ .cwd_relative = cxx_inc });
+        }
+        // Also add libc++'s __config header location (sometimes separate)
+        if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_INCLUDE2")) |cxx_inc2| {
+            artifact.addSystemIncludePath(.{ .cwd_relative = cxx_inc2 });
+        }
+    }
+
     artifact.addIncludePath(yoga_dep.path(""));
     artifact.addCSourceFiles(.{
         .root = yoga_dep.path(""),

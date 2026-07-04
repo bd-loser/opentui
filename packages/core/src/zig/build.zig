@@ -200,20 +200,19 @@ fn addNativeAudioDependencies(
         .macos => addMacOSSystemLibraries(b, artifact, macos_sdk_path.?),
         .linux => {
             // ── XINCLI: Android is linux + .android ABI in Zig, not a
-            // separate OS tag. Bionic libc provides dl/pthread implicitly
-            // via the NDK sysroot; OpenSLES is Android's native audio
-            // backend (used by miniaudio). For non-android linux, use the
-            // standard dl + pthread system libraries.
-            //
-            // NOTE: We do NOT call addLibraryPath here — when --sysroot is
-            // set (via `zig build --sysroot <path>` in build-android.ts),
-            // addLibraryPath paths get the sysroot prepended, producing
-            // doubled paths like /sysroot/sysroot/usr/lib/... that don't
-            // exist. Instead, the library search paths are passed via
-            // LDFLAGS in build-android.ts, which doesn't suffer from the
-            // doubling issue.
+            // separate OS tag. For Android, link OpenSLES directly by path
+            // instead of using linkSystemLibrary — the system library
+            // resolution fails because --sysroot makes Zig double the
+            // addLibraryPath paths. addObjectFile bypasses the search
+            // entirely and links the .so directly.
             if (target.result.abi == .android) {
-                artifact.linkSystemLibrary("OpenSLES");
+                if (std.posix.getenv("XINCLI_ANDROID_LIB_PATH")) |lib_path| {
+                    const opensles_path = b.pathJoin(&.{ lib_path, "libOpenSLES.so" });
+                    artifact.addObjectFile(.{ .cwd_relative = opensles_path });
+                } else {
+                    // Fallback: try linkSystemLibrary (may fail without paths)
+                    artifact.linkSystemLibrary("OpenSLES");
+                }
             } else {
                 artifact.linkSystemLibrary("dl");
                 artifact.linkSystemLibrary("pthread");

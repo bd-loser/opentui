@@ -561,20 +561,21 @@ fn buildTarget(
         .link_libc = target.result.abi == .android,
     });
 
-    // ── XINCLI: add libc include path for android @cImport ─────────────
+    // ── XINCLI: @cImport include path for android ──────────────────────
     // We skipped linkLibC() for android (it emits -lm -lc -ldl that fail).
     // But linkLibC() ALSO tells @cImport where to find libc headers like
     // <pthread.h>, <math.h>, <signal.h>. Without it, @cImport fails with
     // 'pthread.h' file not found.
     //
-    // Fix: add the Termux include dir to the module's system include path
-    // manually. The path is read from XINCLI_ANDROID_INCLUDE_PATH env var
-    // (set by build-native-termux.sh to the merged-include dir).
-    if (target.result.abi == .android) {
-        if (std.posix.getenv("XINCLI_ANDROID_INCLUDE_PATH")) |inc_path| {
-            module.addSystemIncludePath(.{ .cwd_relative = inc_path });
-        }
-    }
+    // The merged-include dir (with Termux headers + arch asm/ headers) is
+    // already set as the libc file's include_dir via ZIG_LIBC env var.
+    // @cImport reads include_dir from the libc file — NOT from
+    // addSystemIncludePath. So we do NOT call addSystemIncludePath here.
+    //
+    // CRITICAL: If we added the merged-include via addSystemIncludePath, it
+    // would pollute C++ compilation too — yoga's <cmath> would pick up the
+    // merged-include's <math.h> which defines isinf as a C macro, breaking
+    // std::isinf. The libc file's include_dir is ONLY used by @cImport (C).
 
     applyDependencies(b, module, optimize, target, build_options);
 

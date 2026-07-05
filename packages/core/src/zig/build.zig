@@ -639,10 +639,7 @@ fn buildTarget(
         .linkage = .dynamic,
     });
 
-    // ── XINCLI: Stop Zig from linking its own libc++ runtime ──────────
-    if (target.result.abi == .android) {
-        lib.bundle_compiler_rt = false;
-    }
+    // No special flags needed — Zig bundles compiler_rt (ARM atomics)
 
     // ── XINCLI: Android native build (Termux) ───────────────────────────
     // On Termux, Zig's --sysroot flag makes ld.lld look at <sysroot>/usr/lib/

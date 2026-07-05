@@ -27,7 +27,9 @@ DT_VERSYM = 0x6ffffff0
 DT_NULL = 0
 
 # Bionic libs to remove from NEEDED
-REMOVE_LIBS = {b"libc.so", b"libm.so", b"libdl.so"}
+# libc++_shared.so: NDK's __ndk1 namespace ≠ Termux's __1 namespace → ABI mismatch
+# Let it resolve from Termux's installed libc++_shared.so instead
+REMOVE_LIBS = {b"libc.so", b"libm.so", b"libdl.so", b"libc++_shared.so"}
 
 def read_elf_header(f):
     f.seek(0)

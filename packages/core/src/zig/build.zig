@@ -610,6 +610,15 @@ fn buildTarget(
         // as --allow-shlib-undefined (no NEEDED, just allow undefined symbols).
         // Zig's default for shared libs is to allow undefined symbols.
         .link_libc = target.result.abi == .android,
+        // ── XINCLI: Don't let Zig link its own libc++ runtime ────────────
+        // Zig bundles pre-compiled libc++ bitcode (in --zig-lib-dir/libcxx/)
+        // that uses __ndk1 namespace on android. When Zig sees C++ code
+        // (yoga's .cpp files), it automatically links this runtime — producing
+        // __ndk1 mangled symbols that don't exist in Termux's __1 libc++.
+        //
+        // Set link_libcpp=false to stop Zig from linking its own libc++.
+        // We link Termux's libc++_shared.so ourselves via addObjectFile.
+        .link_libcpp = target.result.abi != .android,
     });
 
     // ── XINCLI: @cImport include path for android ──────────────────────

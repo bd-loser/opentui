@@ -609,7 +609,7 @@ fn buildTarget(
         // Actually, the simplest: set link_libc=false but add -lc -lm -ldl
         // as --allow-shlib-undefined (no NEEDED, just allow undefined symbols).
         // Zig's default for shared libs is to allow undefined symbols.
-        .link_libc = false,
+        .link_libc = target.result.abi == .android,
     });
 
     // ── XINCLI: @cImport include path for android ──────────────────────
@@ -660,25 +660,17 @@ fn buildTarget(
             }
         }
 
-        // ── XINCLI: Don't link ANY Bionic .so files ─────────────────────
-        // The .so will have UNDEFINED symbols (malloc, free, pthread_create,
-        // __gxx_personality_v0, etc.) but NO NEEDED entries for libc/libm/
-        // libdl/libc++. At runtime, dlopen() resolves these from libraries
-        // ALREADY LOADED in the host process (Node.js loads Bionic libc +
-        // Termux's libc++_shared.so at startup).
+        // ── XINCLI: Set RPATH to /system/lib64 ──────────────────────────
+        // The .so has NEEDED: libc.so/libm.so/libdl.so (correct — it needs them).
+        // The problem was the linker finding $PREFIX/lib/libc.so (our copy from
+        // /apex/) which has TLS that crashes on dlopen. By setting RPATH to
+        // /system/lib64, the linker finds the SYSTEM's libc.so there — which
+        // is the SAME libc already loaded in the process, so dlopen doesn't
+        // try to load a second copy.
         //
-        // This fixes:
-        //   1. TLS crash — no NEEDED: libc.so = no re-load = no TLS crash
-        //   2. __ndk1 namespace — no NEEDED: libc++_shared.so = no NDK ABI
-        //   3. verneed errors — no version requirements = no verneed
-        //
-        // We use --allow-shlib-undefined (Zig's default for shared libs) so
-        // the linker allows undefined symbols. The .so is a "plug-in" that
-        // resolves its dependencies from the host process at dlopen time.
-        //
-        // DO NOT add addObjectFile for any .so — that creates NEEDED entries.
-        // DO NOT call linkLibC/linkLibCpp — that creates -l flags + NEEDED.
-        // Just let the symbols be undefined — they'll resolve at runtime.
+        // /system/lib64/libc.so → /apex/com.android.runtime/lib64/bionic/libc.so
+        // The dynamic linker recognizes it's the same library → doesn't re-load → no TLS crash.
+        lib.addRPath("/system/lib64");
     }
 
     const install_dir = b.addInstallArtifact(lib, .{

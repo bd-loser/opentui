@@ -289,14 +289,16 @@ fn applyDependencies(
 ) void {
     module.addOptions("build_options", build_options);
 
-    // Add uucode for grapheme break detection and width calculation.
     // ── XINCLI: Skip uucode for android targets ────────────────────────
     // uucode builds a native executable (uucode_build_tables) at build time
-    // that fails to link on Termux (linkLibC emits -lm -lc -ldl that can't
-    // be resolved). Skip the entire uucode dependency for android — the
-    // opentui .so compiles without grapheme breaking support. It's a
-    // non-essential Unicode feature, not required for the core renderer.
+    // that fails to link on Termux. For android, provide a stub module that
+    // returns neutral/default values. Grapheme breaking won't work for
+    // complex Unicode, but the core renderer compiles and runs fine.
     if (target.result.abi == .android) {
+        const uucode_stub = b.createModule(.{
+            .root_source_file = b.path("uucode-stub.zig"),
+        });
+        module.addImport("uucode", uucode_stub);
         return;
     }
 

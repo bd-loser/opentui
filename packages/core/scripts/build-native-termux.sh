@@ -305,21 +305,15 @@ for libname in libc libm libdl; do
     esac
     # rm -f first — previous runs may have left a broken symlink
     rm -f "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || true
+    rm -f "$TERMUX_LIB/${libname}.so" 2>/dev/null || true
     # Copy the real .so via dd (open/read/write — bypasses stat())
-    # dd is the most low-level copy tool — definitely uses open() not stat()
-    echo "ℹ️  Copying $TARGET_REAL → $LINKER_STUBS_DIR/${libname}.so"
-    dd if="$TARGET_REAL" of="$LINKER_STUBS_DIR/${libname}.so" bs=1M 2>&1 | tail -2
+    echo "ℹ️  Copying $TARGET_REAL → $TERMUX_LIB/${libname}.so (Termux lib dir)"
+    dd if="$TARGET_REAL" of="$TERMUX_LIB/${libname}.so" bs=1M 2>&1 | tail -2
+    # Also copy to stubs dir as backup
+    dd if="$TARGET_REAL" of="$LINKER_STUBS_DIR/${libname}.so" bs=1M 2>/dev/null || true
     # Verify the copy is a real ELF (check file size > 1000 bytes)
-    FILE_SIZE=$(wc -c < "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || echo "0")
-    if [ "$FILE_SIZE" -lt 1000 ]; then
-      echo "⚠️  dd copy failed (size=$FILE_SIZE bytes), trying cat..."
-      cat "$TARGET_REAL" > "$LINKER_STUBS_DIR/${libname}.so" 2>&1 || {
-        echo "⚠️  cat also failed — creating linker script fallback"
-        echo "INPUT ( $TARGET_REAL )" > "$LINKER_STUBS_DIR/${libname}.so"
-      }
-      FILE_SIZE=$(wc -c < "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || echo "0")
-    fi
-    echo "  → $libname.so size: $FILE_SIZE bytes"
+    FILE_SIZE=$(wc -c < "$TERMUX_LIB/${libname}.so" 2>/dev/null || echo "0")
+    echo "  → $libname.so size: $FILE_SIZE bytes at $TERMUX_LIB/"
     NEED_EXTRA_L_PATH=1
   fi
 done

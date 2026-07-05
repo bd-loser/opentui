@@ -305,8 +305,13 @@ for libname in libc libm libdl; do
     esac
     # rm -f first — previous runs may have left a broken symlink
     rm -f "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || true
-    echo "ℹ️  Creating linker script $LINKER_STUBS_DIR/${libname}.so → INPUT($TARGET_REAL)"
-    echo "INPUT ( $TARGET_REAL )" > "$LINKER_STUBS_DIR/${libname}.so"
+    # Copy the real .so via cat (open/read/write — bypasses stat())
+    # cp fails on /apex/ but cat works because it uses open() not stat()
+    echo "ℹ️  Copying $TARGET_REAL → $LINKER_STUBS_DIR/${libname}.so"
+    cat "$TARGET_REAL" > "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || {
+      echo "⚠️  cat failed, trying linker script fallback"
+      echo "INPUT ( $TARGET_REAL )" > "$LINKER_STUBS_DIR/${libname}.so"
+    }
     NEED_EXTRA_L_PATH=1
   fi
 done

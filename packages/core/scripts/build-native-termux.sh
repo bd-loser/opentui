@@ -428,11 +428,16 @@ if [ $ZIG_EXIT -ne 0 ]; then
 fi
 
 # ── Locate the produced .so ─────────────────────────────────────
+# The .so may be in zig-out/lib/ or a subdirectory — search recursively
+echo "Searching for libopentui.so in zig-out/..."
+find "$REPO_ROOT/packages/core/src/zig/zig-out" -name "libopentui*.so" -ls 2>/dev/null || echo "  (find returned nothing)"
+
 SO_PATH=""
 for candidate in \
   "$REPO_ROOT/packages/core/src/zig/zig-out/lib/libopentui.so" \
+  "$REPO_ROOT/packages/core/src/zig/zig-out/libopentui.so" \
   "$(find "$REPO_ROOT/packages/core/src/zig/zig-out" -name 'libopentui*.so' 2>/dev/null | head -1)"; do
-  if [ -f "$candidate" ]; then
+  if [ -n "$candidate" ] && [ -f "$candidate" ]; then
     SO_PATH="$candidate"
     break
   fi

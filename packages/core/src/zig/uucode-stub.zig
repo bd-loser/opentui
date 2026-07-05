@@ -5,6 +5,10 @@
 // neutral, general category returns unassigned. This means text wrapping
 // won't handle complex grapheme clusters (emoji sequences, combining
 // marks) but the core renderer works fine.
+//
+// Field names MUST match what utf8.zig references:
+//   .mark_nonspacing, .mark_spacing_combining, .mark_enclosing
+//   .fullwidth, .wide, .narrow, .ambiguous, .neutral
 
 pub const types = struct {
     pub const EastAsianWidth = enum {
@@ -23,9 +27,9 @@ pub const types = struct {
         titlecase_letter,
         modifier_letter,
         other_letter,
-        nonspacing_mark,
-        spacing_mark,
-        enclosing_mark,
+        mark_nonspacing,
+        mark_spacing_combining,
+        mark_enclosing,
         decimal_number,
         letter_number,
         other_number,
@@ -52,8 +56,6 @@ pub const types = struct {
 
 pub const grapheme = struct {
     pub const BreakState = struct {
-        default: BreakState = .{},
-
         pub const default: BreakState = .{};
     };
 

@@ -313,23 +313,10 @@ fn applyDependencies(
 ) void {
     module.addOptions("build_options", build_options);
 
-    // ── XINCLI: Android uucode stub ────────────────────────────────────
-    // uucode_build_tables is a build-time executable that fails to link on
-    // Termux because linkLibC() emits -lm -lc -ldl that Zig can't resolve
-    // for native executables (the .so copy fix only works for the .so
-    // artifact, not for uucode's own build exe).
-    //
-    // The stub provides the same API with neutral/default return values.
-    // Grapheme breaking won't work for complex Unicode, but the core
-    // renderer compiles and runs fine.
-    if (target.result.abi == .android) {
-        const uucode_stub = b.createModule(.{
-            .root_source_file = b.path("uucode-stub.zig"),
-        });
-        module.addImport("uucode", uucode_stub);
-        return;
-    }
-
+    // Add uucode for grapheme break detection and width calculation.
+    // uucode_build_tables is a build-time native executable. It now links
+    // because $PREFIX/lib has real Bionic .so files + the libc file's
+    // crt_dir points there + nativeExecutableTarget() doesn't force musl.
     if (b.lazyDependency("uucode", .{
         .target = target,
         .optimize = optimize,

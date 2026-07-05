@@ -288,7 +288,11 @@ fn addYogaDependencies(
             "-std=c++20",
             "-fexceptions",
             "-frtti",
-            "-nostdinc++",  // Skip Zig's bundled libc++ (uses __ndk1 on android)
+            "-nostdinc++",
+            // Override Zig's libc++ __ndk1 namespace with __1 to match
+            // Termux's libc++_shared.so. Without this, the compiled code
+            // has __ndk1 mangled symbols that don't exist in Termux's __1.
+            "-D_LIBCPP_ABI_NAMESPACE=__1",
         };
         artifact.addCSourceFiles(.{
             .root = yoga_dep.path(""),

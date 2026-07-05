@@ -660,17 +660,25 @@ fn buildTarget(
             }
         }
 
-        // ── XINCLI: Set RPATH to /system/lib64 ──────────────────────────
-        // The .so has NEEDED: libc.so/libm.so/libdl.so (correct — it needs them).
-        // The problem was the linker finding $PREFIX/lib/libc.so (our copy from
-        // /apex/) which has TLS that crashes on dlopen. By setting RPATH to
-        // /system/lib64, the linker finds the SYSTEM's libc.so there — which
-        // is the SAME libc already loaded in the process, so dlopen doesn't
-        // try to load a second copy.
+        // ── XINCLI: Set RPATH + link Termux's libc++ ─────────────────────
+        // RPATH to /system/lib64 — the linker finds system libc/libm/libdl
+        // there. Since they're already loaded in the process, dlopen doesn't
+        // re-load them → no TLS crash.
         //
-        // /system/lib64/libc.so → /apex/com.android.runtime/lib64/bionic/libc.so
-        // The dynamic linker recognizes it's the same library → doesn't re-load → no TLS crash.
+        // Link Termux's libc++_shared.so (NOT NDK's). Termux uses __1 namespace
+        // which provides __gxx_personality_v0 and all C++ symbols. The NDK
+        // version uses __ndk1 which doesn't match.
+        //
+        // We add it via addObjectFile so it gets NEEDED: libc++_shared.so.
+        // At runtime, the linker finds Termux's libc++_shared.so at $PREFIX/lib/
+        // (which is in the default search path on Termux).
         lib.addRPath(.{ .cwd_relative = "/system/lib64" });
+        
+        // Link Termux's libc++_shared.so for C++ symbols (__gxx_personality_v0 etc.)
+        // Path: $PREFIX/lib/libc++_shared.so (set by build-native-termux.sh)
+        if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_PATH")) |cxx_path| {
+            lib.addObjectFile(.{ .cwd_relative = cxx_path });
+        }
     }
 
     const install_dir = b.addInstallArtifact(lib, .{

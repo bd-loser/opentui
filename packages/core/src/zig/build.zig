@@ -669,16 +669,19 @@ fn buildTarget(
             }
         }
 
-        // ── XINCLI: Set RPATH to BOTH /system/lib64 AND $PREFIX/lib ────
-        // /system/lib64 — for Bionic libc/libm/libdl (already loaded, no TLS crash)
-        // $PREFIX/lib — for Termux's libc++_shared.so (has __ndk1 symbols)
+        // ── XINCLI: Set RPATH — $PREFIX/lib FIRST, then /system/lib64 ───
+        // Order matters! $PREFIX/lib must come FIRST so the linker finds:
+        //   - Termux's libc++_shared.so (has __ndk1 symbols)
+        // Before:
+        //   - System's libc++_shared.so (does NOT have __ndk1 symbols)
         //
-        // Without $PREFIX/lib in RPATH, the linker finds /system/lib64/libc++_shared.so
-        // which does NOT have __ndk1 symbols → dlopen fails.
-        lib.addRPath(.{ .cwd_relative = "/system/lib64" });
+        // /system/lib64 is still searched for Bionic libc/libm/libdl —
+        // those don't exist in $PREFIX/lib (well, they do now from our
+        // dd copies, but the system versions are already-loaded so no TLS crash).
         if (std.posix.getenv("XINCLI_ANDROID_LIB_PATH")) |termux_lib| {
             lib.addRPath(.{ .cwd_relative = termux_lib });
         }
+        lib.addRPath(.{ .cwd_relative = "/system/lib64" });
         
         // Link Termux's libc++_shared.so — creates NEEDED: libc++_shared.so.
         // RUNPATH includes $PREFIX/lib so the linker finds Termux's version

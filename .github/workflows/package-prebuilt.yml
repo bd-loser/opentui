@@ -92,10 +92,10 @@ jobs:
       - name: Publish to npm
         if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.publish)
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
         run: |
-          if [ -z "${{ secrets.XINCLI_NPM_TOKEN }}" ]; then
-            echo "⚠️  XINCLI_NPM_TOKEN secret not set — skipping publish."
+          if [ -z "${{ secrets.XINCLI_NPM_SECRET }}" ]; then
+            echo "⚠️  XINCLI_NPM_SECRET not set — skipping publish."
             echo "   Set it in repo Settings → Secrets → Actions to enable npm publishing."
             exit 0
           fi

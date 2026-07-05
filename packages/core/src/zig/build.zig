@@ -669,24 +669,15 @@ fn buildTarget(
             }
         }
 
-        // ── XINCLI: Set RPATH + link Termux's libc++ ─────────────────────
-        // RPATH to /system/lib64 — the linker finds system libc/libm/libdl
-        // there. Since they're already loaded in the process, dlopen doesn't
-        // re-load them → no TLS crash.
+        // ── XINCLI: Set RPATH to BOTH /system/lib64 AND $PREFIX/lib ────
+        // /system/lib64 — for Bionic libc/libm/libdl (already loaded, no TLS crash)
+        // $PREFIX/lib — for Termux's libc++_shared.so (has __ndk1 symbols)
         //
-        // Link Termux's libc++_shared.so (NOT NDK's). Termux uses __1 namespace
-        // which provides __gxx_personality_v0 and all C++ symbols. The NDK
-        // version uses __ndk1 which doesn't match.
-        //
-        // We add it via addObjectFile so it gets NEEDED: libc++_shared.so.
-        // At runtime, the linker finds Termux's libc++_shared.so at $PREFIX/lib/
-        // (which is in the default search path on Termux).
+        // Without $PREFIX/lib in RPATH, the linker finds /system/lib64/libc++_shared.so
+        // which does NOT have __ndk1 symbols → dlopen fails.
         lib.addRPath(.{ .cwd_relative = "/system/lib64" });
-        
-        // Link Termux's libc++_shared.so for C++ symbols (__gxx_personality_v0 etc.)
-        // Path: $PREFIX/lib/libc++_shared.so (set by build-native-termux.sh)
-        if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_PATH")) |cxx_path| {
-            lib.addObjectFile(.{ .cwd_relative = cxx_path });
+        if (std.posix.getenv("XINCLI_ANDROID_LIB_PATH")) |termux_lib| {
+            lib.addRPath(.{ .cwd_relative = termux_lib });
         }
     }
 

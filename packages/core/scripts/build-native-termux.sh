@@ -305,13 +305,21 @@ for libname in libc libm libdl; do
     esac
     # rm -f first — previous runs may have left a broken symlink
     rm -f "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || true
-    # Copy the real .so via cat (open/read/write — bypasses stat())
-    # cp fails on /apex/ but cat works because it uses open() not stat()
+    # Copy the real .so via dd (open/read/write — bypasses stat())
+    # dd is the most low-level copy tool — definitely uses open() not stat()
     echo "ℹ️  Copying $TARGET_REAL → $LINKER_STUBS_DIR/${libname}.so"
-    cat "$TARGET_REAL" > "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || {
-      echo "⚠️  cat failed, trying linker script fallback"
-      echo "INPUT ( $TARGET_REAL )" > "$LINKER_STUBS_DIR/${libname}.so"
-    }
+    dd if="$TARGET_REAL" of="$LINKER_STUBS_DIR/${libname}.so" bs=1M 2>&1 | tail -2
+    # Verify the copy is a real ELF (check file size > 1000 bytes)
+    FILE_SIZE=$(wc -c < "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || echo "0")
+    if [ "$FILE_SIZE" -lt 1000 ]; then
+      echo "⚠️  dd copy failed (size=$FILE_SIZE bytes), trying cat..."
+      cat "$TARGET_REAL" > "$LINKER_STUBS_DIR/${libname}.so" 2>&1 || {
+        echo "⚠️  cat also failed — creating linker script fallback"
+        echo "INPUT ( $TARGET_REAL )" > "$LINKER_STUBS_DIR/${libname}.so"
+      }
+      FILE_SIZE=$(wc -c < "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || echo "0")
+    fi
+    echo "  → $libname.so size: $FILE_SIZE bytes"
     NEED_EXTRA_L_PATH=1
   fi
 done

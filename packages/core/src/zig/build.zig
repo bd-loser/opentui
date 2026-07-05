@@ -296,42 +296,34 @@ fn applyDependencies(
 ) void {
     module.addOptions("build_options", build_options);
 
-    // Add uucode for grapheme break detection and width calculation.
-    // Previously skipped for android because uucode_build_tables (a build-time
-    // executable) failed to link with -lm -lc -ldl. Now that we copy real
-    // Bionic .so files to $PREFIX/lib/, the linker resolves those flags.
+    // ── XINCLI: Android uucode stub ────────────────────────────────────
+    // uucode_build_tables is a build-time executable that fails to link on
+    // Termux because linkLibC() emits -lm -lc -ldl that Zig can't resolve
+    // for native executables (the .so copy fix only works for the .so
+    // artifact, not for uucode's own build exe).
     //
-    // IMPORTANT: Don't pass .target to uucode on Android. uucode builds a
-    // native executable (uucode_build_tables) at build time that MUST run on
-    // the host. If we pass the android target, uucode tries to build the exe
-    // for android — which can't run on the host. By omitting .target, uucode
-    // uses the host target for the build-time exe, and generates the tables
-    // correctly. The tables are then compiled into the .so (which IS android).
+    // The stub provides the same API with neutral/default return values.
+    // Grapheme breaking won't work for complex Unicode, but the core
+    // renderer compiles and runs fine.
     if (target.result.abi == .android) {
-        if (b.lazyDependency("uucode", .{
-            .optimize = optimize,
-            .fields = @as([]const []const u8, &.{
-                "grapheme_break",
-                "east_asian_width",
-                "general_category",
-                "is_emoji_presentation",
-            }),
-        })) |uucode_dep| {
-            module.addImport("uucode", uucode_dep.module("uucode"));
-        }
-    } else {
-        if (b.lazyDependency("uucode", .{
-            .target = target,
-            .optimize = optimize,
-            .fields = @as([]const []const u8, &.{
-                "grapheme_break",
-                "east_asian_width",
-                "general_category",
-                "is_emoji_presentation",
-            }),
-        })) |uucode_dep| {
-            module.addImport("uucode", uucode_dep.module("uucode"));
-        }
+        const uucode_stub = b.createModule(.{
+            .root_source_file = b.path("uucode-stub.zig"),
+        });
+        module.addImport("uucode", uucode_stub);
+        return;
+    }
+
+    if (b.lazyDependency("uucode", .{
+        .target = target,
+        .optimize = optimize,
+        .fields = @as([]const []const u8, &.{
+            "grapheme_break",
+            "east_asian_width",
+            "general_category",
+            "is_emoji_presentation",
+        }),
+    })) |uucode_dep| {
+        module.addImport("uucode", uucode_dep.module("uucode"));
     }
 }
 

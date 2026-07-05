@@ -411,7 +411,10 @@ echo "✓ libc++ headers: $LIBCXX_INCLUDE"
 echo "✓ Termux include (C++): $TERMUX_INCLUDE"
 
 # Run zig build with --summary all to see all steps + errors
-# Don't pipe through anything — let all output through
+# Force clean first to avoid cached results that don't output the .so
+echo "Cleaning previous build cache..."
+rm -rf "$REPO_ROOT/packages/core/src/zig/zig-out" "$REPO_ROOT/packages/core/src/zig/.zig-cache" 2>/dev/null || true
+
 zig build \
   -Dtarget=aarch64-linux-android \
   -Doptimize=ReleaseFast \
@@ -428,15 +431,23 @@ if [ $ZIG_EXIT -ne 0 ]; then
 fi
 
 # ── Locate the produced .so ─────────────────────────────────────
-# The .so may be in zig-out/lib/ or a subdirectory — search recursively
-echo "Searching for libopentui.so in zig-out/..."
-find "$REPO_ROOT/packages/core/src/zig/zig-out" -name "libopentui*.so" -ls 2>/dev/null || echo "  (find returned nothing)"
+# The install step uses dest_dir "../lib/{output_name}" which puts the .so
+# at zig-out/lib/aarch64-android/libopentui.so (outside the default zig-out/)
+# Search broadly: zig-out/, .zig-cache/, and parent directories
+echo "Searching for libopentui.so..."
+find "$REPO_ROOT/packages/core/src/zig" -name "libopentui*.so" -ls 2>/dev/null || echo "  (find in src/zig returned nothing)"
+# Also search the zig global cache
+find "$HOME/.cache/zig" -name "libopentui*.so" -ls 2>/dev/null || true
 
 SO_PATH=""
 for candidate in \
   "$REPO_ROOT/packages/core/src/zig/zig-out/lib/libopentui.so" \
   "$REPO_ROOT/packages/core/src/zig/zig-out/libopentui.so" \
-  "$(find "$REPO_ROOT/packages/core/src/zig/zig-out" -name 'libopentui*.so' 2>/dev/null | head -1)"; do
+  "$REPO_ROOT/packages/core/src/zig/zig-out/lib/aarch64-android/libopentui.so" \
+  "$REPO_ROOT/packages/core/src/zig/lib/aarch64-android/libopentui.so" \
+  "$REPO_ROOT/packages/core/lib/aarch64-android/libopentui.so" \
+  "$REPO_ROOT/lib/aarch64-android/libopentui.so" \
+  "$(find "$REPO_ROOT" -name 'libopentui*.so' -not -path '*/prebuilt/*' 2>/dev/null | head -1)"; do
   if [ -n "$candidate" ] && [ -f "$candidate" ]; then
     SO_PATH="$candidate"
     break

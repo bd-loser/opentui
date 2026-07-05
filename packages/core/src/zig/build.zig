@@ -679,6 +679,13 @@ fn buildTarget(
         if (std.posix.getenv("XINCLI_ANDROID_LIB_PATH")) |termux_lib| {
             lib.addRPath(.{ .cwd_relative = termux_lib });
         }
+        
+        // Link Termux's libc++_shared.so — creates NEEDED: libc++_shared.so.
+        // RUNPATH includes $PREFIX/lib so the linker finds Termux's version
+        // (which has __ndk1 symbols + __gxx_personality_v0).
+        if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_PATH")) |cxx_path| {
+            lib.addObjectFile(.{ .cwd_relative = cxx_path });
+        }
     }
 
     const install_dir = b.addInstallArtifact(lib, .{

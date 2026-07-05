@@ -413,7 +413,7 @@ echo "✓ Termux include (C++): $TERMUX_INCLUDE"
 zig build \
   -Dtarget=aarch64-linux-android \
   -Doptimize=ReleaseFast \
-  2>&1 | tail -50
+  2>&1
 
 # ── Locate the produced .so ─────────────────────────────────────
 SO_PATH=""

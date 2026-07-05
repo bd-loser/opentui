@@ -148,6 +148,11 @@ echo "✓ crt objects found at: $CRT_DIR"
 # Fix: sed-patch yoga's source files to replace the problematic std::
 # calls with __builtin_* compiler intrinsics. These are always available,
 # never macros, and don't depend on any header.
+#
+# IMPORTANT: std::abs can be int or float. __builtin_abs is INT-ONLY.
+# Use __builtin_fabs for abs — it works for ALL numeric types (int,
+# float, double) via implicit conversion, and returns double which
+# compares correctly with < 0.0001.
 YOGA_DIR=$(find "$HOME/.cache/zig/p" -maxdepth 1 -name "N-V-*" -type d 2>/dev/null | head -1)
 if [ -n "$YOGA_DIR" ] && [ -d "$YOGA_DIR/yoga" ]; then
   echo "🔧 Patching yoga source: std::isinf → __builtin_isinf etc."
@@ -157,7 +162,7 @@ if [ -n "$YOGA_DIR" ] && [ -d "$YOGA_DIR/yoga" ]; then
       -e 's/std::isnan(/__builtin_isnan(/g' \
       -e 's/std::isfinite(/__builtin_isfinite(/g' \
       -e 's/std::signbit(/__builtin_signbit(/g' \
-      -e 's/std::abs(/__builtin_abs(/g' \
+      -e 's/std::abs(/__builtin_fabs(/g' \
       -e 's/std::fabs(/__builtin_fabs(/g' \
       -e 's/std::fpclassify(/__builtin_fpclassify(/g' \
       "$f" 2>/dev/null || true

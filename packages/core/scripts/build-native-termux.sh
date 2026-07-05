@@ -286,10 +286,14 @@ echo "   libm:  $SYSTEM_LIBM_REAL"
 echo "   libdl: $SYSTEM_LIBDL_REAL"
 
 # Bionic on Termux: libm and libdl symbols are inside libc.so. Termux
-# doesn't ship separate libm.so/libdl.so in $PREFIX/lib. We COPY the
-# real Bionic .so files into our temp stubs dir (not symlinks — actual
-# file copies) so ld.lld's -l flag resolution finds a real ELF file
-# with no symlink chain to follow. The stubs dir is in the -L search path.
+# doesn't ship separate libm.so/libdl.so in $PREFIX/lib. We create
+# LINKER SCRIPTS (not symlinks) in our temp stubs dir. The scripts use
+# ABSOLUTE paths to the APEX .so files so ld.lld opens them directly
+# via open() — bypassing the stat() call that fails on /apex/ due to
+# Android's restricted mount namespace.
+#
+# Format: INPUT ( /absolute/path/to/lib.so )
+# ld.lld reads this as a linker script and opens the absolute path.
 NEED_EXTRA_L_PATH=""
 for libname in libc libm libdl; do
   if [ ! -f "$TERMUX_LIB/${libname}.so" ] && [ ! -L "$TERMUX_LIB/${libname}.so" ]; then
@@ -299,17 +303,13 @@ for libname in libc libm libdl; do
       libm)  TARGET_REAL="$SYSTEM_LIBM_REAL" ;;
       libdl) TARGET_REAL="$SYSTEM_LIBDL_REAL" ;;
     esac
-    echo "ℹ️  Copying $TARGET_REAL → $LINKER_STUBS_DIR/${libname}.so"
-    cp "$TARGET_REAL" "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || {
-      # If cp fails (read-only APEX), fall back to symlink
-      echo "ℹ️  cp failed, falling back to symlink"
-      ln -sf "$TARGET_REAL" "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || true
-    }
+    echo "ℹ️  Creating linker script $LINKER_STUBS_DIR/${libname}.so → INPUT($TARGET_REAL)"
+    echo "INPUT ( $TARGET_REAL )" > "$LINKER_STUBS_DIR/${libname}.so"
     NEED_EXTRA_L_PATH=1
   fi
 done
 if [ "$NEED_EXTRA_L_PATH" = "1" ]; then
-  echo "✓ Bionic libs prepared in $LINKER_STUBS_DIR"
+  echo "✓ Bionic linker scripts created in $LINKER_STUBS_DIR"
   ls -la "$LINKER_STUBS_DIR"/ 2>&1
 fi
 

@@ -670,7 +670,7 @@ fn buildTarget(
         //
         // /system/lib64/libc.so → /apex/com.android.runtime/lib64/bionic/libc.so
         // The dynamic linker recognizes it's the same library → doesn't re-load → no TLS crash.
-        lib.addRPath("/system/lib64");
+        lib.addRPath(.{ .cwd_relative = "/system/lib64" });
     }
 
     const install_dir = b.addInstallArtifact(lib, .{

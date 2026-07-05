@@ -645,15 +645,8 @@ fn buildTarget(
     });
 
     // ── XINCLI: Stop Zig from linking its own libc++ runtime ──────────
-    // Even with link_libcpp=false on the module, the lib artifact may
-    // still link Zig's bundled libc++ bitcode (which uses __ndk1).
-    // Use bundle_compiler_rt=false to prevent Zig from bundling its
-    // own runtime objects including libc++, libcxxabi, and libunwind.
     if (target.result.abi == .android) {
         lib.bundle_compiler_rt = false;
-        // Also force the linker to use --no-whole-archive for libc++
-        // to prevent Zig's bundled libc++ from being included
-        lib.linkLibCpp = false;
     }
 
     // ── XINCLI: Android native build (Termux) ───────────────────────────

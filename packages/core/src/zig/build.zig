@@ -266,19 +266,16 @@ fn addYogaDependencies(
     artifact.addIncludePath(yoga_dep.path(""));
 
     // ── XINCLI: Android-specific C++ flags ─────────────────────────────
-    // Force-include termux-cxx-fixup.h which:
-    //   1. Neutralizes _LIBCPP_USING_IF_EXISTS (the root cause of the
-    //      'unresolved using declaration' error)
-    //   2. Provides std::isinf/isnan/abs as inline functions calling
-    //      __builtin_* directly
-    //   3. #undefs the C macros after <cmath> has processed them
+    // Bionic's <math.h> defines isinf/isnan as C macros that break libc++'s
+    // <cmath> 'using ::isinf' declaration. Fix: define _LIBCPP_HAS_NO_MATH_H
+    // so libc++ <cmath> declares math functions itself WITHOUT including
+    // <math.h>. This completely avoids the macro pollution.
     if (target.result.abi == .android) {
         const android_cxx_flags = [_][]const u8{
             "-std=c++20",
             "-fexceptions",
             "-frtti",
-            "-include",
-            "termux-cxx-fixup.h",
+            "-D_LIBCPP_HAS_NO_MATH_H",
         };
         artifact.addCSourceFiles(.{
             .root = yoga_dep.path(""),

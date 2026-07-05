@@ -265,30 +265,15 @@ fn addYogaDependencies(
 
     artifact.addIncludePath(yoga_dep.path(""));
 
-    // ── XINCLI: Android-specific C++ flags ─────────────────────────────
-    // Bionic's <math.h> defines isinf/isnan as C macros that break libc++'s
-    // <cmath> 'using ::isinf' declaration. Fix: define _LIBCPP_HAS_NO_MATH_H
-    // so libc++ <cmath> declares math functions itself WITHOUT including
-    // <math.h>. This completely avoids the macro pollution.
-    if (target.result.abi == .android) {
-        const android_cxx_flags = [_][]const u8{
-            "-std=c++20",
-            "-fexceptions",
-            "-frtti",
-            "-D_LIBCPP_HAS_NO_MATH_H",
-        };
-        artifact.addCSourceFiles(.{
-            .root = yoga_dep.path(""),
-            .files = &YOGA_CXX_SOURCES,
-            .flags = &android_cxx_flags,
-        });
-    } else {
-        artifact.addCSourceFiles(.{
-            .root = yoga_dep.path(""),
-            .files = &YOGA_CXX_SOURCES,
-            .flags = &YOGA_CXX_FLAGS,
-        });
-    }
+    // ── XINCLI: Android C++ flags ──────────────────────────────────────
+    // Bionic's math.h macros are handled by patching yoga's source (sed
+    // replaces std::isinf → __builtin_isinf etc.) in build-native-termux.sh.
+    // No special compiler flags needed — just the standard C++20 flags.
+    artifact.addCSourceFiles(.{
+        .root = yoga_dep.path(""),
+        .files = &YOGA_CXX_SOURCES,
+        .flags = &YOGA_CXX_FLAGS,
+    });
 }
 
 /// Apply dependencies to a module

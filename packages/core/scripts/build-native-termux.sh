@@ -140,59 +140,32 @@ if [ -z "$CRT_DIR" ]; then
 fi
 echo "✓ crt objects found at: $CRT_DIR"
 
-# ── Create a cmath wrapper that #undefs Bionic's C macros ──────
-# The problem: <cmath> includes <math.h> which defines isinf/isnan as
-# C macros. <cmath> then does 'using ::isinf' which imports the C function.
-# But the MACRO is still defined, so when user code does std::isinf(x),
-# the preprocessor expands isinf → __builtin_isinf → std::__builtin_isinf (FAILS).
+# ── Patch yoga source: replace std::isinf/isnan/abs with __builtin_* ──
+# NUCLEAR OPTION: Bionic's math.h defines isinf/isnan as C macros that
+# break ALL attempts to use std::isinf in C++. No compiler flag, wrapper
+# header, or macro game can fix this because the preprocessor always wins.
 #
-# Fix: create a wrapper <cmath> that:
-#   1. #include_next <cmath> (processes the real cmath + math.h + using decls)
-#   2. #undef isinf/isnan/fabs/abs (clears the macros AFTER cmath is done)
-#
-# Now user code's std::isinf(x) works because:
-#   - isinf is no longer a macro (we undef'd it)
-#   - std::isinf resolves to the function <cmath> imported via 'using ::isinf'
-WRAPPER_INCLUDE="$REPO_ROOT/.zig-cmath-wrapper"
-mkdir -p "$WRAPPER_INCLUDE"
-REAL_CMATH="$TERMUX_INCLUDE/c++/v1/cmath"
-cat > "$WRAPPER_INCLUDE/cmath" << HEREDOC
-#pragma once
-// Auto-generated cmath wrapper — clears Bionic's math.h macros AFTER <cmath>
-// has processed them. <cmath>'s 'using ::isinf' already ran, so std::isinf
-// is now a proper function. The macros only pollute user code, so undef them.
-#include "$REAL_CMATH"
-#undef isinf
-#undef isnan
-#undef fabs
-#undef abs
-#undef isfinite
-#undef signbit
-#undef isunordered
-#undef fpclassify
-HEREDOC
-echo "✓ cmath wrapper created at $WRAPPER_INCLUDE/cmath (→ $REAL_CMATH)"
-
-# ── Also create a math.h wrapper for direct #include <math.h> ────
-# Some files include <math.h> directly (not via <cmath>). Wrap it too.
-WRAPPER_MATH="$REPO_ROOT/.zig-math-wrapper"
-mkdir -p "$WRAPPER_MATH"
-REAL_MATH_H="$TERMUX_INCLUDE/math.h"
-cat > "$WRAPPER_MATH/math.h" << HEREDOC
-#pragma once
-#include "$REAL_MATH_H"
-#ifdef __cplusplus
-#undef isinf
-#undef isnan
-#undef fabs
-#undef abs
-#undef isfinite
-#undef signbit
-#undef isunordered
-#undef fpclassify
-#endif
-HEREDOC
-echo "✓ math.h wrapper created at $WRAPPER_MATH/math.h"
+# Fix: sed-patch yoga's source files to replace the problematic std::
+# calls with __builtin_* compiler intrinsics. These are always available,
+# never macros, and don't depend on any header.
+YOGA_DIR=$(find "$HOME/.cache/zig/p" -maxdepth 1 -name "N-V-*" -type d 2>/dev/null | head -1)
+if [ -n "$YOGA_DIR" ] && [ -d "$YOGA_DIR/yoga" ]; then
+  echo "🔧 Patching yoga source: std::isinf → __builtin_isinf etc."
+  find "$YOGA_DIR/yoga" -name "*.h" -o -name "*.cpp" | while read f; do
+    sed -i \
+      -e 's/std::isinf(/__builtin_isinf(/g' \
+      -e 's/std::isnan(/__builtin_isnan(/g' \
+      -e 's/std::isfinite(/__builtin_isfinite(/g' \
+      -e 's/std::signbit(/__builtin_signbit(/g' \
+      -e 's/std::abs(/__builtin_abs(/g' \
+      -e 's/std::fabs(/__builtin_fabs(/g' \
+      -e 's/std::fpclassify(/__builtin_fpclassify(/g' \
+      "$f" 2>/dev/null || true
+  done
+  echo "✓ Yoga source patched"
+else
+  echo "⚠️  Yoga dir not found at $YOGA_DIR — skipping patch"
+fi
 
 # ── Generate a Zig libc file pointing at Termux's Bionic ────────
 # CRITICAL: Without this, Zig detects the host as 'aarch64-linux-musl'

@@ -596,16 +596,20 @@ fn buildTarget(
         .root_source_file = b.path(ROOT_SOURCE_FILE),
         .target = target,
         .optimize = optimize,
-        // ── XINCLI: tell Zig's stdlib that libc IS available for android ─
-        // We skipped linkLibC() (it emits -lm -lc -ldl that fail on Termux),
-        // but Zig's stdlib needs to KNOW libc is available — otherwise
-        // std.heap (free/malloc) and std.c (extern "c" fns) refuse to
-        // compile with 'dependency on libc must be explicitly specified'.
+        // ── XINCLI: link_libc=false for android ─────────────────────────
+        // We set link_libc=true before to make std.heap (free/malloc) compile.
+        // But that ALSO makes Zig emit -lc -lm -ldl → NEEDED: libc.so etc.
+        // → TLS crash on dlopen.
         //
-        // link_libc=true on the module tells the stdlib "libc symbols exist
-        // at link time" WITHOUT emitting the -l flags. We link the .so files
-        // directly via addObjectFile in buildTarget() instead.
-        .link_libc = target.result.abi == .android,
+        // Set link_libc=false. std.heap won't compile with "C allocator only
+        // available when linking against libc" — BUT we can work around that
+        // by providing the extern declarations ourselves in a shim module.
+        // OR: just accept that std.heap won't work and use a custom allocator.
+        //
+        // Actually, the simplest: set link_libc=false but add -lc -lm -ldl
+        // as --allow-shlib-undefined (no NEEDED, just allow undefined symbols).
+        // Zig's default for shared libs is to allow undefined symbols.
+        .link_libc = false,
     });
 
     // ── XINCLI: @cImport include path for android ──────────────────────

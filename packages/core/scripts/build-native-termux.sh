@@ -140,42 +140,48 @@ if [ -z "$CRT_DIR" ]; then
 fi
 echo "✓ crt objects found at: $CRT_DIR"
 
-# ── Create a math.h wrapper that #undefs Bionic's C macros ──────
-# Bionic's math.h defines isinf/isnan/fabs/abs as C macros. In C++
-# context, these macros expand inside std::isinf() → std::__builtin_isinf()
-# which breaks compilation.
+# ── Create a cmath wrapper that #undefs Bionic's C macros ──────
+# The problem: <cmath> includes <math.h> which defines isinf/isnan as
+# C macros. <cmath> then does 'using ::isinf' which imports the C function.
+# But the MACRO is still defined, so when user code does std::isinf(x),
+# the preprocessor expands isinf → __builtin_isinf → std::__builtin_isinf (FAILS).
 #
-# Fix: create a wrapper include dir with a math.h that:
-#   1. #includes the REAL Bionic math.h via ABSOLUTE PATH (not #include_next
-#      which doesn't work reliably with Zig's clang -isystem paths)
-#   2. #undefs the problematic macros
+# Fix: create a wrapper <cmath> that:
+#   1. #include_next <cmath> (processes the real cmath + math.h + using decls)
+#   2. #undef isinf/isnan/fabs/abs (clears the macros AFTER cmath is done)
 #
-# Put this wrapper dir FIRST in the -I search path so it shadows
-# Bionic's real math.h. Every #include <math.h> now goes through
-# our wrapper which cleans up the macros.
-WRAPPER_INCLUDE="$REPO_ROOT/.zig-math-wrapper"
+# Now user code's std::isinf(x) works because:
+#   - isinf is no longer a macro (we undef'd it)
+#   - std::isinf resolves to the function <cmath> imported via 'using ::isinf'
+WRAPPER_INCLUDE="$REPO_ROOT/.zig-cmath-wrapper"
 mkdir -p "$WRAPPER_INCLUDE"
-REAL_MATH_H="$TERMUX_INCLUDE/math.h"
-# Write the wrapper with the absolute path baked in
-cat > "$WRAPPER_INCLUDE/math.h" << HEREDOC
+REAL_CMATH="$TERMUX_INCLUDE/c++/v1/cmath"
+cat > "$WRAPPER_INCLUDE/cmath" << HEREDOC
 #pragma once
-// Auto-generated math.h wrapper — shadows Bionic's math.h to #undef macros
-// that break C++ std::isinf/std::isnan/std::abs.
-//
-// IMPORTANT: Only #undef the macros in C++ mode. In C mode they're needed.
-// In C++ mode, <cmath> does 'using ::isinf' which fails if the macro was
-// #undef'd before <cmath> includes <math.h>. So we only #undef AFTER the
-// entire <math.h> + <cmath> chain has been processed, using a technique
-// where we provide replacement inline functions in the std namespace.
-#include "$REAL_MATH_H"
+// Auto-generated cmath wrapper — clears Bionic's math.h macros AFTER <cmath>
+// has processed them. <cmath>'s 'using ::isinf' already ran, so std::isinf
+// is now a proper function. The macros only pollute user code, so undef them.
+#include "$REAL_CMATH"
+#undef isinf
+#undef isnan
+#undef fabs
+#undef abs
+#undef isfinite
+#undef signbit
+#undef isunordered
+#undef fpclassify
+HEREDOC
+echo "✓ cmath wrapper created at $WRAPPER_INCLUDE/cmath (→ $REAL_CMATH)"
 
+# ── Also create a math.h wrapper for direct #include <math.h> ────
+# Some files include <math.h> directly (not via <cmath>). Wrap it too.
+WRAPPER_MATH="$REPO_ROOT/.zig-math-wrapper"
+mkdir -p "$WRAPPER_MATH"
+REAL_MATH_H="$TERMUX_INCLUDE/math.h"
+cat > "$WRAPPER_MATH/math.h" << HEREDOC
+#pragma once
+#include "$REAL_MATH_H"
 #ifdef __cplusplus
-// In C++: undef the macros so they don't pollute user code, then provide
-// std:: overloads via <cmath>. <cmath> has already been included by the
-// time this runs (it includes <math.h> first), so the using declarations
-// have already captured the C functions (before we undef the macros).
-// The macros are only problematic in USER code (yoga's .cpp files), so
-// undef them here. <cmath>'s using declarations already ran.
 #undef isinf
 #undef isnan
 #undef fabs
@@ -186,7 +192,7 @@ cat > "$WRAPPER_INCLUDE/math.h" << HEREDOC
 #undef fpclassify
 #endif
 HEREDOC
-echo "✓ math.h wrapper created at $WRAPPER_INCLUDE/math.h (→ $REAL_MATH_H)"
+echo "✓ math.h wrapper created at $WRAPPER_MATH/math.h"
 
 # ── Generate a Zig libc file pointing at Termux's Bionic ────────
 # CRITICAL: Without this, Zig detects the host as 'aarch64-linux-musl'
@@ -331,7 +337,9 @@ export XINCLI_ANDROID_LIB_SEARCH_PATHS="$TERMUX_LIB:$LINKER_STUBS_DIR"
 export XINCLI_ANDROID_INCLUDE_PATH="$MERGED_INCLUDE"
 # Math.h wrapper dir — placed FIRST in C++ include path to shadow
 # Bionic's math.h and #undef the isinf/isnan/fabs/abs macros.
-export XINCLI_ANDROID_MATH_WRAPPER="$WRAPPER_INCLUDE"
+export XINCLI_ANDROID_MATH_WRAPPER="$WRAPPER_MATH"
+# cmath wrapper dir — shadows <cmath>, #undefs macros AFTER <cmath> runs
+export XINCLI_ANDROID_CMATH_WRAPPER="$WRAPPER_INCLUDE"
 
 # Export the system Bionic paths for build.zig's addObjectFile calls.
 # Use the RESOLVED real paths so ld.lld doesn't have to follow symlinks.

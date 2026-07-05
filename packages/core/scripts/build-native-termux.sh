@@ -430,7 +430,56 @@ if [ $ZIG_EXIT -ne 0 ]; then
     --verbose
 fi
 
-# ── Locate the produced .so ─────────────────────────────────────
+# ── Patch .so: remove NEEDED + version info for Bionic libs ─────
+# CRITICAL: The .so has NEEDED entries for libc.so/libm.so/libdl.so.
+# When Node.js dlopens the .so, the dynamic linker tries to load these
+# AGAIN — but Bionic's libc.so uses TLS with IE access model that only
+# works at initial process load. Second load via dlopen → TLS crash.
+#
+# Fix: use patchelf to:
+#   1. Remove NEEDED for libm.so + libdl.so (symbols resolve from libc)
+#   2. Keep NEEDED for libc.so (required for versioned symbols)
+#   3. If that fails, strip version info entirely with --clear-symbol-versions
+#
+# Also: keep NEEDED for libc++_shared.so (Termux provides it at $PREFIX/lib)
+echo "🔧 Patching .so to fix TLS crash on dlopen..."
+if command -v patchelf >/dev/null 2>&1; then
+  SO_TO_PATCH=$(find "$REPO_ROOT/packages/core/src/zig" -name 'libopentui*.so' -not -path '*/prebuilt/*' 2>/dev/null | head -1)
+  if [ -z "$SO_TO_PATCH" ]; then
+    SO_TO_PATCH="$REPO_ROOT/packages/core/src/zig/lib/aarch64-android/libopentui.so"
+  fi
+  if [ -f "$SO_TO_PATCH" ]; then
+    echo "  Patching $SO_TO_PATCH"
+    # Remove NEEDED for libm.so + libdl.so (their symbols are in libc on Bionic)
+    patchelf --remove-needed libm.so "$SO_TO_PATCH" 2>/dev/null || true
+    patchelf --remove-needed libdl.so "$SO_TO_PATCH" 2>/dev/null || true
+    # Try removing libc.so NEEDED too — if verneed causes issues, we'll
+    # clear version info as a fallback
+    patchelf --remove-needed libc.so "$SO_TO_PATCH" 2>/dev/null || true
+    # If the .so has .gnu.version_r that references libc.so, clear ALL
+    # version requirements so the linker does pure symbol resolution
+    if readelf -d "$SO_TO_PATCH" 2>/dev/null | grep -q "VERNEED\|gnu.version_r"; then
+      echo "  Clearing symbol version requirements..."
+      # Use patchelf --clear-symbol-versions if available (patchelf >= 0.18)
+      patchelf --clear-symbol-versions "$SO_TO_PATCH" 2>/dev/null || {
+        echo "  patchelf --clear-symbol-versions not available, trying objcopy..."
+        # Fallback: use objcopy to strip .gnu.version* sections
+        objcopy --remove-section .gnu.version "$SO_TO_PATCH" "$SO_TO_PATCH.tmp" 2>/dev/null && mv "$SO_TO_PATCH.tmp" "$SO_TO_PATCH"
+        objcopy --remove-section .gnu.version_r "$SO_TO_PATCH" "$SO_TO_PATCH.tmp" 2>/dev/null && mv "$SO_TO_PATCH.tmp" "$SO_TO_PATCH"
+        objcopy --remove-section .gnu.version_d "$SO_TO_PATCH" "$SO_TO_PATCH.tmp" 2>/dev/null && mv "$SO_TO_PATCH.tmp" "$SO_TO_PATCH"
+      }
+    fi
+    # Verify
+    echo "  NEEDED entries after patching:"
+    readelf -d "$SO_TO_PATCH" 2>/dev/null | grep NEEDED || echo "    (none)"
+    echo "✓ .so patched for dlopen compatibility"
+  else
+    echo "⚠️  .so not found at $SO_TO_PATCH — skipping patch"
+  fi
+else
+  echo "⚠️  patchelf not installed — install with: pkg install patchelf"
+  echo "   The .so may crash on dlopen due to TLS re-initialization"
+fi
 # The install step uses dest_dir "../lib/{output_name}" which puts the .so
 # at zig-out/lib/aarch64-android/libopentui.so (outside the default zig-out/)
 # Search broadly: zig-out/, .zig-cache/, and parent directories

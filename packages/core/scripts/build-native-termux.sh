@@ -430,38 +430,12 @@ if [ $ZIG_EXIT -ne 0 ]; then
     --verbose
 fi
 
-# ── Patch .so: remove NEEDED + version info for Bionic libs ─────
-# CRITICAL: The .so has NEEDED entries for libc.so/libm.so/libdl.so.
-# When Node.js dlopens the .so, the dynamic linker tries to load these
-# AGAIN — but Bionic's libc.so uses TLS with IE access model that only
-# works at initial process load. Second load via dlopen → TLS crash.
-#
-# Fix: use a Python script to properly patch the ELF dynamic section:
-#   1. Zero out NEEDED entries for libc.so/libm.so/libdl.so
-#   2. Zero out DT_VERNEED, DT_VERNEEDNUM, DT_VERSYM tags
-#      (these reference libc.so version info and cause
-#       "cannot find libc.so from verneed" or "unsupported vn_version" errors)
-#   3. Keep NEEDED for libc++_shared.so (Termux provides it)
-#
-# patchelf --remove-needed + objcopy --remove-section DON'T work because:
-#   - patchelf removes NEEDED but leaves verneed → "cannot find libc.so from verneed"
-#   - objcopy removes the section bytes but leaves DT_VERNEED pointing at garbage → "vn_version: 0"
-# Only a proper ELF patcher that updates the dynamic section works.
-echo "🔧 Patching .so to fix TLS crash on dlopen..."
-SO_TO_PATCH=$(find "$REPO_ROOT/packages/core/src/zig" -name 'libopentui*.so' -not -path '*/prebuilt/*' 2>/dev/null | head -1)
-if [ -z "$SO_TO_PATCH" ]; then
-  SO_TO_PATCH="$REPO_ROOT/packages/core/src/zig/lib/aarch64-android/libopentui.so"
-fi
-if [ -f "$SO_TO_PATCH" ]; then
-  echo "  Patching $SO_TO_PATCH"
-  python3 "$REPO_ROOT/packages/core/scripts/patch-so-elf.py" "$SO_TO_PATCH"
-  # Verify
-  echo "  NEEDED entries after patching:"
-  readelf -d "$SO_TO_PATCH" 2>/dev/null | grep NEEDED || echo "    (none — all Bionic NEEDED removed)"
-  echo "✓ .so patched for dlopen compatibility"
-else
-  echo "⚠️  .so not found — skipping patch"
-fi
+# ── No ELF patching needed ──────────────────────────────────────
+# The .so has NO NEEDED entries for Bionic libs (we don't link them).
+# All symbols are undefined and resolve from the already-loaded libs
+# in the host process at dlopen time. No TLS crash, no verneed, no
+# __ndk1 namespace issues.
+echo "✓ No ELF patching needed (no NEEDED entries for Bionic libs)"
 # The install step uses dest_dir "../lib/{output_name}" which puts the .so
 # at zig-out/lib/aarch64-android/libopentui.so (outside the default zig-out/)
 # Search broadly: zig-out/, .zig-cache/, and parent directories
@@ -519,16 +493,9 @@ OUT_DIR="$REPO_ROOT/packages/core/prebuilt/aarch64-android"
 mkdir -p "$OUT_DIR"
 cp "$SO_PATH" "$OUT_DIR/libopentui.so"
 
-# ── Patch the PREBUILT .so (not the zig-cache copy) ────────────
-# The Python patcher must run on the FINAL .so that gets published.
-# Previous runs patched the zig-cache copy but copied the unpatched
-# lib/aarch64-android/ version to prebuilt/ — defeating the patch.
-echo "🔧 Patching prebuilt .so for dlopen compatibility..."
-python3 "$REPO_ROOT/packages/core/scripts/patch-so-elf.py" "$OUT_DIR/libopentui.so"
-
-# Verify the patch took effect
-echo "  NEEDED entries after patching:"
-readelf -d "$OUT_DIR/libopentui.so" 2>/dev/null | grep NEEDED || echo "    (none — all Bionic NEEDED removed)"
+# Verify no NEEDED entries for Bionic libs
+echo "  NEEDED entries:"
+readelf -d "$OUT_DIR/libopentui.so" 2>/dev/null | grep NEEDED || echo "    (none — all symbols resolve from host process)"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"

@@ -645,7 +645,7 @@ fn buildTarget(
     addNativeAudioDependencies(b, lib, target, macos_sdk_path);
     addYogaDependencies(b, lib, target);
 
-    // Add Termux lib search paths so ld.lld finds libc/libm/libdl
+    // Add Termux lib search paths for the linker
     if (target.result.abi == .android) {
         if (std.posix.getenv("XINCLI_ANDROID_LIB_SEARCH_PATHS")) |paths| {
             var it = std.mem.splitScalar(u8, paths, ':');
@@ -656,23 +656,25 @@ fn buildTarget(
             }
         }
 
-        // ── XINCLI: link Bionic + libc++ directly by absolute path ─────
-        // We skipped linkLibC() and linkLibCpp() for android (they emit
-        // -lm -lc -ldl -lc++ that fail on Termux). Instead, link the .so
-        // files directly via addObjectFile. Paths read from env vars set
-        // by build-native-termux.sh, with /system/lib64 + $PREFIX/lib
-        // fallbacks.
-        const android_libs = [_]struct { env: []const u8, fallback: []const u8 }{
-            .{ .env = "XINCLI_ANDROID_LIBC_PATH", .fallback = "/system/lib64/libc.so" },
-            .{ .env = "XINCLI_ANDROID_LIBM_PATH", .fallback = "/system/lib64/libm.so" },
-            .{ .env = "XINCLI_ANDROID_LIBDL_PATH", .fallback = "/system/lib64/libdl.so" },
-            // libc++_shared.so is at $PREFIX/lib/libc++_shared.so on Termux
-            .{ .env = "XINCLI_ANDROID_LIBCXX_PATH", .fallback = "/data/data/com.termux/files/usr/lib/libc++_shared.so" },
-        };
-        for (android_libs) |al| {
-            const path = std.posix.getenv(al.env) orelse al.fallback;
-            lib.addObjectFile(.{ .cwd_relative = path });
-        }
+        // ── XINCLI: Don't link ANY Bionic .so files ─────────────────────
+        // The .so will have UNDEFINED symbols (malloc, free, pthread_create,
+        // __gxx_personality_v0, etc.) but NO NEEDED entries for libc/libm/
+        // libdl/libc++. At runtime, dlopen() resolves these from libraries
+        // ALREADY LOADED in the host process (Node.js loads Bionic libc +
+        // Termux's libc++_shared.so at startup).
+        //
+        // This fixes:
+        //   1. TLS crash — no NEEDED: libc.so = no re-load = no TLS crash
+        //   2. __ndk1 namespace — no NEEDED: libc++_shared.so = no NDK ABI
+        //   3. verneed errors — no version requirements = no verneed
+        //
+        // We use --allow-shlib-undefined (Zig's default for shared libs) so
+        // the linker allows undefined symbols. The .so is a "plug-in" that
+        // resolves its dependencies from the host process at dlopen time.
+        //
+        // DO NOT add addObjectFile for any .so — that creates NEEDED entries.
+        // DO NOT call linkLibC/linkLibCpp — that creates -l flags + NEEDED.
+        // Just let the symbols be undefined — they'll resolve at runtime.
     }
 
     const install_dir = b.addInstallArtifact(lib, .{

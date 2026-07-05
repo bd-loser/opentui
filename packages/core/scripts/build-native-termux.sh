@@ -519,6 +519,17 @@ OUT_DIR="$REPO_ROOT/packages/core/prebuilt/aarch64-android"
 mkdir -p "$OUT_DIR"
 cp "$SO_PATH" "$OUT_DIR/libopentui.so"
 
+# ── Patch the PREBUILT .so (not the zig-cache copy) ────────────
+# The Python patcher must run on the FINAL .so that gets published.
+# Previous runs patched the zig-cache copy but copied the unpatched
+# lib/aarch64-android/ version to prebuilt/ — defeating the patch.
+echo "🔧 Patching prebuilt .so for dlopen compatibility..."
+python3 "$REPO_ROOT/packages/core/scripts/patch-so-elf.py" "$OUT_DIR/libopentui.so"
+
+# Verify the patch took effect
+echo "  NEEDED entries after patching:"
+readelf -d "$OUT_DIR/libopentui.so" 2>/dev/null | grep NEEDED || echo "    (none — all Bionic NEEDED removed)"
+
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║  ✅ NATIVE BUILD COMPLETE                                    ║"

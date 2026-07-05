@@ -431,11 +431,38 @@ if [ $ZIG_EXIT -ne 0 ]; then
 fi
 
 # ── No ELF patching needed ──────────────────────────────────────
-# The .so has NO NEEDED entries for Bionic libs (we don't link them).
-# All symbols are undefined and resolve from the already-loaded libs
-# in the host process at dlopen time. No TLS crash, no verneed, no
-# __ndk1 namespace issues.
-echo "✓ No ELF patching needed (no NEEDED entries for Bionic libs)"
+# The .so has NEEDED: libc.so/libm.so/libdl.so (correct — it needs them).
+# RUNPATH /system/lib64 tells the linker where to find them.
+# No TLS crash because the linker recognizes them as already-loaded.
+#
+# BUT: the .so has __ndk1 mangled C++ symbols that don't exist in
+# Termux's __1 libc++_shared.so. Fix: use objcopy to rename all
+# __ndk1 symbols to __1 symbols.
+echo "🔧 Renaming __ndk1 → __1 symbols in .so..."
+SO_TO_RENAME=$(find "$REPO_ROOT/packages/core/src/zig" -name 'libopentui*.so' -not -path '*/prebuilt/*' 2>/dev/null | head -1)
+if [ -z "$SO_TO_RENAME" ]; then
+  SO_TO_RENAME="$REPO_ROOT/packages/core/src/zig/lib/aarch64-android/libopentui.so"
+fi
+if [ -f "$SO_TO_RENAME" ] && command -v objcopy >/dev/null 2>&1; then
+  # Generate a symbol map: __ndk1 → __1
+  SYM_MAP="$REPO_ROOT/.zig-sym-map"
+  nm "$SO_TO_RENAME" 2>/dev/null | grep "__ndk1" | while read addr type name; do
+    newname=$(echo "$name" | sed 's/__ndk1/__1/g')
+    echo "$name $newname" >> "$SYM_MAP"
+  done
+  SYM_COUNT=$(wc -l < "$SYM_MAP" 2>/dev/null || echo "0")
+  echo "  Found $SYM_COUNT __ndk1 symbols to rename"
+  if [ "$SYM_COUNT" -gt 0 ]; then
+    objcopy --redefine-syms="$SYM_MAP" "$SO_TO_RENAME" "$SO_TO_RENAME.tmp" 2>/dev/null && mv "$SO_TO_RENAME.tmp" "$SO_TO_RENAME"
+    echo "  ✓ Renamed $SYM_COUNT symbols: __ndk1 → __1"
+    # Verify
+    REMAINING=$(nm "$SO_TO_RENAME" 2>/dev/null | grep -c "__ndk1" || echo "0")
+    echo "  Remaining __ndk1 symbols: $REMAINING"
+  fi
+  rm -f "$SYM_MAP"
+else
+  echo "  ⚠️ objcopy not found or .so not found — skipping symbol rename"
+fi
 # The install step uses dest_dir "../lib/{output_name}" which puts the .so
 # at zig-out/lib/aarch64-android/libopentui.so (outside the default zig-out/)
 # Search broadly: zig-out/, .zig-cache/, and parent directories
@@ -493,9 +520,20 @@ OUT_DIR="$REPO_ROOT/packages/core/prebuilt/aarch64-android"
 mkdir -p "$OUT_DIR"
 cp "$SO_PATH" "$OUT_DIR/libopentui.so"
 
-# Verify no NEEDED entries for Bionic libs
-echo "  NEEDED entries:"
-readelf -d "$OUT_DIR/libopentui.so" 2>/dev/null | grep NEEDED || echo "    (none — all symbols resolve from host process)"
+# Also rename __ndk1 → __1 in the prebuilt copy
+if command -v objcopy >/dev/null 2>&1; then
+  SYM_MAP="$REPO_ROOT/.zig-sym-map2"
+  nm "$OUT_DIR/libopentui.so" 2>/dev/null | grep "__ndk1" | while read addr type name; do
+    newname=$(echo "$name" | sed 's/__ndk1/__1/g')
+    echo "$name $newname" >> "$SYM_MAP"
+  done
+  SYM_COUNT=$(wc -l < "$SYM_MAP" 2>/dev/null || echo "0")
+  if [ "$SYM_COUNT" -gt 0 ]; then
+    objcopy --redefine-syms="$SYM_MAP" "$OUT_DIR/libopentui.so" "$OUT_DIR/libopentui.so.tmp" 2>/dev/null && mv "$OUT_DIR/libopentui.so.tmp" "$OUT_DIR/libopentui.so"
+    echo "  ✓ Renamed $SYM_COUNT __ndk1 → __1 symbols in prebuilt"
+  fi
+  rm -f "$SYM_MAP"
+fi
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"

@@ -430,22 +430,12 @@ if [ $ZIG_EXIT -ne 0 ]; then
     --verbose
 fi
 
-# ── Rename __ndk1 → __1 in ALL symbol tables ────────────────────
-# objcopy --redefine-syms only patches .symtab (static symbols).
-# dlopen uses .dynsym (dynamic symbols) which objcopy doesn't touch.
-# This Python script patches BOTH .symtab AND .dynsym string tables
-# (.strtab and .dynstr) — replacing __ndk1 with __1\0\0\0 in-place.
-echo "🔧 Renaming __ndk1 → __1 in .symtab AND .dynsym..."
-SO_TO_RENAME=$(find "$REPO_ROOT/packages/core/src/zig" -name 'libopentui*.so' -not -path '*/prebuilt/*' 2>/dev/null | head -1)
-if [ -z "$SO_TO_RENAME" ]; then
-  SO_TO_RENAME="$REPO_ROOT/packages/core/src/zig/lib/aarch64-android/libopentui.so"
-fi
-if [ -f "$SO_TO_RENAME" ]; then
-  python3 "$REPO_ROOT/packages/core/scripts/patch-so-elf.py" "$SO_TO_RENAME"
-  echo "✓ .so patched for dlopen compatibility"
-else
-  echo "⚠️  .so not found — skipping patch"
-fi
+# ── No symbol renaming needed ───────────────────────────────────
+# Termux's libc++_shared.so ALSO uses __ndk1 namespace! The original
+# __ndk1 symbols are correct — they match Termux's libc++. The only
+# problem was the TLS crash from NEEDED: libc.so, which is now fixed
+# by RUNPATH: /system/lib64.
+echo "✓ No symbol renaming needed (Termux libc++ uses __ndk1 too)"
 # The install step uses dest_dir "../lib/{output_name}" which puts the .so
 # at zig-out/lib/aarch64-android/libopentui.so (outside the default zig-out/)
 # Search broadly: zig-out/, .zig-cache/, and parent directories
@@ -503,9 +493,7 @@ OUT_DIR="$REPO_ROOT/packages/core/prebuilt/aarch64-android"
 mkdir -p "$OUT_DIR"
 cp "$SO_PATH" "$OUT_DIR/libopentui.so"
 
-# Patch the PREBUILT .so (rename __ndk1 → __1 in .dynsym + .symtab)
-echo "🔧 Patching prebuilt .so..."
-python3 "$REPO_ROOT/packages/core/scripts/patch-so-elf.py" "$OUT_DIR/libopentui.so"
+# No symbol renaming — __ndk1 is correct (matches Termux's libc++)
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════╗"

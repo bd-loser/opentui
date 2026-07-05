@@ -21,7 +21,7 @@ DT_VERNEED = 0x6ffffffe
 DT_VERNEEDNUM = 0x6fffffff
 
 # Bionic libs to remove from NEEDED
-REMOVE_LIBS = {b"libc.so", b"libm.so", b"libdl.so", b"libc++_shared.so"}
+REMOVE_LIBS = {b"libc.so", b"libm.so", b"libdl.so"}
 
 # Tags to zero out (version requirements)
 ZERO_TAGS = {DT_VERSYM, DT_VERNEED, DT_VERNEEDNUM}

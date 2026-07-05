@@ -278,12 +278,30 @@ fn addYogaDependencies(
     // ── XINCLI: Android C++ flags ──────────────────────────────────────
     // Bionic's math.h macros are handled by patching yoga's source (sed
     // replaces std::isinf → __builtin_isinf etc.) in build-native-termux.sh.
-    // No special compiler flags needed — just the standard C++20 flags.
-    artifact.addCSourceFiles(.{
-        .root = yoga_dep.path(""),
-        .files = &YOGA_CXX_SOURCES,
-        .flags = &YOGA_CXX_FLAGS,
-    });
+    //
+    // CRITICAL: Use -nostdinc++ to skip Zig's bundled libc++ headers (which
+    // use __ndk1 namespace on android). Instead, use Termux's libc++ headers
+    // (at $PREFIX/include/c++/v1/) which use __1 namespace — matching
+    // Termux's libc++_shared.so that we link against.
+    if (target.result.abi == .android) {
+        const android_cxx_flags = [_][]const u8{
+            "-std=c++20",
+            "-fexceptions",
+            "-frtti",
+            "-nostdinc++",  // Skip Zig's bundled libc++ (uses __ndk1 on android)
+        };
+        artifact.addCSourceFiles(.{
+            .root = yoga_dep.path(""),
+            .files = &YOGA_CXX_SOURCES,
+            .flags = &android_cxx_flags,
+        });
+    } else {
+        artifact.addCSourceFiles(.{
+            .root = yoga_dep.path(""),
+            .files = &YOGA_CXX_SOURCES,
+            .flags = &YOGA_CXX_FLAGS,
+        });
+    }
 }
 
 /// Apply dependencies to a module

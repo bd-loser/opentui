@@ -303,6 +303,8 @@ for libname in libc libm libdl; do
       libm)  TARGET_REAL="$SYSTEM_LIBM_REAL" ;;
       libdl) TARGET_REAL="$SYSTEM_LIBDL_REAL" ;;
     esac
+    # rm -f first — previous runs may have left a broken symlink
+    rm -f "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || true
     echo "ℹ️  Creating linker script $LINKER_STUBS_DIR/${libname}.so → INPUT($TARGET_REAL)"
     echo "INPUT ( $TARGET_REAL )" > "$LINKER_STUBS_DIR/${libname}.so"
     NEED_EXTRA_L_PATH=1

@@ -153,7 +153,26 @@ echo "✓ crt objects found at: $CRT_DIR"
 # Use __builtin_fabs for abs — it works for ALL numeric types (int,
 # float, double) via implicit conversion, and returns double which
 # compares correctly with < 0.0001.
+#
+# CRITICAL: Clear the Zig cache for yoga first, so we get FRESH source.
+# Previous runs may have already patched std::abs → __builtin_abs (wrong),
+# and the sed for std::abs won't match anymore. Clearing forces a re-fetch.
 YOGA_DIR=$(find "$HOME/.cache/zig/p" -maxdepth 1 -name "N-V-*" -type d 2>/dev/null | head -1)
+if [ -n "$YOGA_DIR" ] && [ -d "$YOGA_DIR/yoga" ]; then
+  # Check if already patched (has __builtin_abs from a previous run)
+  if grep -q "__builtin_abs(" "$YOGA_DIR/yoga/numeric/Comparison.h" 2>/dev/null; then
+    echo "⚠️  Yoga source has stale patches from previous run — re-fetching fresh copy"
+    rm -rf "$YOGA_DIR"
+    # Re-populate from vendored deps
+    ZIG_GLOBAL_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/zig"
+    YOGA_HASH="N-V-__8AAOYl0gAU76B1VRPFD9AWvy2VkOef2jN0B3sISTeO"
+    if [ -d "$REPO_ROOT/.zig-deps/yoga" ]; then
+      cp -r "$REPO_ROOT/.zig-deps/yoga" "$ZIG_GLOBAL_CACHE/p/$YOGA_HASH"
+      YOGA_DIR="$ZIG_GLOBAL_CACHE/p/$YOGA_HASH"
+    fi
+  fi
+fi
+
 if [ -n "$YOGA_DIR" ] && [ -d "$YOGA_DIR/yoga" ]; then
   echo "🔧 Patching yoga source: std::isinf → __builtin_isinf etc."
   find "$YOGA_DIR/yoga" -name "*.h" -o -name "*.cpp" | while read f; do
@@ -167,9 +186,15 @@ if [ -n "$YOGA_DIR" ] && [ -d "$YOGA_DIR/yoga" ]; then
       -e 's/std::fpclassify(/__builtin_fpclassify(/g' \
       "$f" 2>/dev/null || true
   done
-  echo "✓ Yoga source patched"
+  # Verify the patch took effect
+  if grep -q "__builtin_fabs(" "$YOGA_DIR/yoga/numeric/Comparison.h" 2>/dev/null; then
+    echo "✓ Yoga source patched (verified: __builtin_fabs in Comparison.h)"
+  else
+    echo "⚠️  Patch may not have applied — Comparison.h still doesn't have __builtin_fabs"
+    grep -n "abs\|isinf" "$YOGA_DIR/yoga/numeric/Comparison.h" 2>/dev/null | head -5
+  fi
 else
-  echo "⚠️  Yoga dir not found at $YOGA_DIR — skipping patch"
+  echo "⚠️  Yoga dir not found — skipping patch"
 fi
 
 # ── Generate a Zig libc file pointing at Termux's Bionic ────────

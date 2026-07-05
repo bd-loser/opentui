@@ -410,10 +410,22 @@ export XINCLI_ANDROID_TERMUX_INCLUDE="$TERMUX_INCLUDE"
 echo "✓ libc++ headers: $LIBCXX_INCLUDE"
 echo "✓ Termux include (C++): $TERMUX_INCLUDE"
 
+# Run zig build with --summary all to see all steps + errors
+# Don't pipe through anything — let all output through
 zig build \
   -Dtarget=aarch64-linux-android \
   -Doptimize=ReleaseFast \
-  2>&1
+  --summary all
+ZIG_EXIT=$?
+echo "zig build exit code: $ZIG_EXIT"
+if [ $ZIG_EXIT -ne 0 ]; then
+  echo "=== Build failed. Re-running with verbose to see the actual error ==="
+  zig build \
+    -Dtarget=aarch64-linux-android \
+    -Doptimize=ReleaseFast \
+    --summary all \
+    --verbose
+fi
 
 # ── Locate the produced .so ─────────────────────────────────────
 SO_PATH=""

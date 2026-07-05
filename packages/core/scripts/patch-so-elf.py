@@ -19,12 +19,18 @@ Usage: python3 patch-so-elf.py <path/to/libopentui.so>
 import struct
 import sys
 
-# ELF constants
+# ELF constants — ONLY these are zeroed, nothing else
 DT_NEEDED = 1
+DT_HASH = 4
+DT_GNU_HASH = 0x6ffffef2
+DT_VERSYM = 0x6ffffff0
 DT_VERNEED = 0x6ffffffe
 DT_VERNEEDNUM = 0x6fffffff
-DT_VERSYM = 0x6ffffff0
 DT_NULL = 0
+
+# Tags to zero out (version requirements that reference Bionic libc)
+# MUST NOT include DT_HASH or DT_GNU_HASH — those are needed for symbol lookup
+ZERO_TAGS = {DT_VERSYM, DT_VERNEED, DT_VERNEEDNUM}
 
 # Bionic libs to remove from NEEDED
 # libc++_shared.so: NDK's __ndk1 namespace ≠ Termux's __1 namespace → ABI mismatch
@@ -158,25 +164,9 @@ def patch_elf(filepath):
                 else:
                     f.write(struct.pack(fmt + 'iI', 0, 0))
                 write_count += 1
-            elif tag == DT_VERNEED:
-                # Zero out DT_VERNEED
-                print("  Zeroing DT_VERNEED")
-                if is_64:
-                    f.write(struct.pack(fmt + 'qQ', 0, 0))
-                else:
-                    f.write(struct.pack(fmt + 'iI', 0, 0))
-                write_count += 1
-            elif tag == DT_VERNEEDNUM:
-                # Zero out DT_VERNEEDNUM
-                print("  Zeroing DT_VERNEEDNUM")
-                if is_64:
-                    f.write(struct.pack(fmt + 'qQ', 0, 0))
-                else:
-                    f.write(struct.pack(fmt + 'iI', 0, 0))
-                write_count += 1
-            elif tag == DT_VERSYM:
-                # Zero out DT_VERSYM
-                print("  Zeroing DT_VERSYM")
+            elif tag in ZERO_TAGS:
+                # Zero out version requirement tags
+                print(f"  Zeroing tag {tag} ({'DT_VERSYM' if tag == DT_VERSYM else 'DT_VERNEED' if tag == DT_VERNEED else 'DT_VERNEEDNUM'})")
                 if is_64:
                     f.write(struct.pack(fmt + 'qQ', 0, 0))
                 else:

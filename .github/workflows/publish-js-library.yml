@@ -98,8 +98,11 @@ jobs:
 
       - name: Repackage as @xincli/opentui-core
         run: |
+          set -e
           VERSION="${{ steps.version.outputs.version }}"
-          STAGE="$(mktemp -d)/package"
+          WORKSPACE="$PWD"
+          STAGE_DIR="$(mktemp -d)"
+          STAGE="$STAGE_DIR/package"
           mkdir -p "$STAGE"
           cp -r packages/core/dist/* "$STAGE/"
 
@@ -132,15 +135,18 @@ jobs:
             console.log('optionalDeps:', Object.keys(opts));
           "
 
-          # Pack
-          mkdir -p artifacts
-          (cd "$(dirname "$STAGE")" && npm pack ./package --pack-destination ../../artifacts)
-          ls -lh artifacts/
+          # Pack into workspace artifacts/ dir (use absolute path)
+          mkdir -p "$WORKSPACE/artifacts"
+          (cd "$STAGE_DIR" && npm pack ./package --pack-destination "$WORKSPACE/artifacts")
+          ls -lh "$WORKSPACE/artifacts/"
 
       - name: Repackage as @xincli/opentui-react
         run: |
+          set -e
           VERSION="${{ steps.version.outputs.version }}"
-          STAGE="$(mktemp -d)/package"
+          WORKSPACE="$PWD"
+          STAGE_DIR="$(mktemp -d)"
+          STAGE="$STAGE_DIR/package"
           mkdir -p "$STAGE"
           cp -r packages/react/dist/* "$STAGE/"
 
@@ -172,34 +178,38 @@ jobs:
             sed -i -E 's|from "(react-reconciler)/([a-zA-Z0-9_/-]+)"|from "\1/\2.js"|g' "$f"
           done
 
-          # Pack
-          (cd "$(dirname "$STAGE")" && npm pack ./package --pack-destination ../../artifacts)
-          ls -lh artifacts/
+          # Pack into workspace artifacts/ dir (use absolute path)
+          (cd "$STAGE_DIR" && npm pack ./package --pack-destination "$WORKSPACE/artifacts")
+          ls -lh "$WORKSPACE/artifacts/"
 
       - name: Verify packages resolve under Node
         run: |
           set -e
           VERSION="${{ steps.version.outputs.version }}"
+          WORKSPACE="$PWD"
           TESTDIR="$(mktemp -d)"
           cd "$TESTDIR"
-          npm init -y >/dev/null
-          cat > package.json << EOF
-          {
-            "name": "verify",
-            "type": "module",
-            "dependencies": {
-              "@xincli/opentui-core": "file:$GITHUB_WORKSPACE/artifacts/xincli-opentui-core-$VERSION.tgz",
-              "@xincli/opentui-react": "file:$GITHUB_WORKSPACE/artifacts/xincli-opentui-react-$VERSION.tgz",
-              "react": "19.2.0",
-              "react-reconciler": "0.33.0",
-              "react-devtools-core": "7.0.1",
-              "ws": "8.18.0"
-            },
-            "overrides": {
-              "@opentui/core": "file:$GITHUB_WORKSPACE/artifacts/xincli-opentui-core-$VERSION.tgz"
-            }
-          }
-          EOF
+          # Write package.json via node to avoid heredoc indentation issues
+          node -e "
+            const fs = require('fs');
+            const pkg = {
+              name: 'verify',
+              type: 'module',
+              dependencies: {
+                '@xincli/opentui-core': 'file:' + process.argv[1] + '/artifacts/xincli-opentui-core-' + process.argv[2] + '.tgz',
+                '@xincli/opentui-react': 'file:' + process.argv[1] + '/artifacts/xincli-opentui-react-' + process.argv[2] + '.tgz',
+                'react': '19.2.0',
+                'react-reconciler': '0.33.0',
+                'react-devtools-core': '7.0.1',
+                'ws': '8.18.0',
+              },
+              overrides: {
+                '@opentui/core': 'file:' + process.argv[1] + '/artifacts/xincli-opentui-core-' + process.argv[2] + '.tgz',
+              },
+            };
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+          " "$WORKSPACE" "$VERSION"
+
           npm install --legacy-peer-deps
 
           node --input-type=module -e "

@@ -1,0 +1,43 @@
+# Publish @xincli/opentui-react — React reconciler for OpenTUI.
+
+name: Publish opentui-react
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to npm'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish @xincli/opentui-react
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm
+        if: inputs.publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
+        run: |
+          if [ -z "${{ secrets.XINCLI_NPM_SECRET }}" ]; then
+            echo "⚠️  XINCLI_NPM_SECRET not set"
+            exit 0
+          fi
+
+          cd packages/react
+          npm publish --access public --ignore-scripts

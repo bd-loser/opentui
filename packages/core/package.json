@@ -1,15 +1,15 @@
 {
-  "name": "@xincli/opentui-core",
-  "description": "XINCLI fork of OpenTUI core — with Android/Termux support via @xincli/opentui-core-android-*",
+  "name": "@opentui/core",
+  "description": "OpenTUI is a TypeScript library on a native Zig core for building terminal user interfaces (TUIs)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bd-loser/opentui",
+    "url": "https://github.com/anomalyco/opentui",
     "directory": "packages/core"
   },
   "types": "src/index.ts",
   "module": "src/index.ts",
   "main": "src/index.ts",
-  "version": "0.4.6",
+  "version": "0.4.3",
   "type": "module",
   "scripts": {
     "build": "bun run build:native && bun run build:lib",
@@ -57,10 +57,7 @@
     "@opentui/core-win32-x64": "0.4.3",
     "@opentui/core-win32-arm64": "0.4.3",
     "@opentui/core-linux-x64-musl": "0.4.3",
-    "@opentui/core-linux-arm64-musl": "0.4.3",
-    "@xincli/opentui-core-android-arm64": "0.4.5",
-    "@xincli/opentui-core-android-arm": "0.4.5",
-    "@xincli/opentui-core-android-x64": "0.4.5"
+    "@opentui/core-linux-arm64-musl": "0.4.3"
   },
   "exports": {
     ".": {

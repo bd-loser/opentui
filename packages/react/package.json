@@ -1,16 +1,16 @@
 {
-  "name": "@xincli/opentui-react",
-  "version": "0.4.6",
-  "description": "XINCLI fork of React renderer for OpenTUI core — with Android support",
+  "name": "@opentui/react",
+  "version": "0.4.3",
+  "description": "React renderer for building terminal user interfaces using OpenTUI core",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bd-loser/opentui",
+    "url": "https://github.com/anomalyco/opentui",
     "directory": "packages/react"
   },
   "module": "src/index.ts",
   "type": "module",
-  "private": false,
+  "private": true,
   "main": "src/index.ts",
   "exports": {
     ".": {
@@ -71,7 +71,7 @@
     }
   },
   "dependencies": {
-    "@opentui/core": "npm:@xincli/opentui-core@0.4.6",
+    "@opentui/core": "workspace:*",
     "react-reconciler": "^0.33.0"
   }
 }

@@ -52,9 +52,31 @@ function packageOne(archDir: string, packageName: string): void {
       url: "git+https://github.com/bd-loser/opentui.git",
     },
     license: "MIT",
-    main: "libopentui.so",
-    files: ["libopentui.so"],
+    type: "module",
+    main: "index.js",
+    module: "index.js",
+    exports: {
+      ".": {
+        import: "./index.js",
+        types: "./index.d.ts",
+      },
+    },
+    files: ["libopentui.so", "index.js", "index.d.ts"],
   }
+  
+  // Create index.js that exports the .so path (not the .so itself)
+  // This is what @opentui/core's resolveNativePackage expects:
+  //   const nativePackage = await import("@xincli/opentui-core-android-arm64")
+  //   const libPath = nativePackage.default  // ← path to libopentui.so
+  const indexJsContent = `import { fileURLToPath } from "node:url"
+
+export default fileURLToPath(new URL("./libopentui.so", import.meta.url))
+`
+  writeFileSync(join(pkgDir, "index.js"), indexJsContent)
+  
+  // Create index.d.ts
+  writeFileSync(join(pkgDir, "index.d.ts"), "declare const path: string\nexport default path\n")
+  
   writeFileSync(join(pkgDir, "package.json"), JSON.stringify(pkgJson, null, 2))
 
   const sizeKb = Math.round(existsSync(soPath) ? require("fs").statSync(soPath).size / 1024 : 0)

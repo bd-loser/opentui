@@ -1,0 +1,50 @@
+# Publish @xincli/opentui-core — the TS wrapper with Android support.
+#
+# This publishes the TypeScript source (not compiled — the source IS the
+# entry point, same as upstream @opentui/core). The android branch in
+# resolveNativePackage() loads @xincli/opentui-core-android-arm64.
+
+name: Publish opentui-core
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to npm'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish @xincli/opentui-core
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm
+        if: inputs.publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
+        run: |
+          if [ -z "${{ secrets.XINCLI_NPM_SECRET }}" ]; then
+            echo "⚠️  XINCLI_NPM_SECRET not set"
+            exit 0
+          fi
+
+          cd packages/core
+          # The package.json already has name: @xincli/opentui-core
+          # The source IS the entry point (src/index.ts) — no build needed
+          # Publish with --ignore-scripts to avoid trying to build native
+          npm publish --access public --ignore-scripts

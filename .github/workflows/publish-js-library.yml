@@ -250,11 +250,12 @@ jobs:
           fi
 
           VERSION="${{ steps.version.outputs.version }}"
+          WORKSPACE="$PWD"
           echo "Publishing @xincli/opentui-core@$VERSION..."
-          npm publish artifacts/xincli-opentui-core-$VERSION.tgz --access public
+          npm publish "$WORKSPACE/artifacts/xincli-opentui-core-$VERSION.tgz" --access public
 
           echo "Publishing @xincli/opentui-react@$VERSION..."
-          npm publish artifacts/xincli-opentui-react-$VERSION.tgz --access public
+          npm publish "$WORKSPACE/artifacts/xincli-opentui-react-$VERSION.tgz" --access public
 
           echo ""
           echo "✅ Published. Install with:"

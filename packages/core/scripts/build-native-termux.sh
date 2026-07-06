@@ -488,7 +488,22 @@ if command -v readelf >/dev/null 2>&1; then
   readelf -d "$SO_PATH" 2>/dev/null | grep NEEDED | head -10
 fi
 
-# ── Copy to prebuilt/ ───────────────────────────────────────────
+# ── Remove Bionic .so copies from $PREFIX/lib after build ──────
+# These were needed for BUILD (linking) but must NOT be present at RUNTIME.
+# At runtime, the linker searches RUNPATH ($PREFIX/lib first) and finds
+# these copies (from /apex/) which cause TLS crash on dlopen because
+# Bionic libc is already loaded in the process.
+#
+# At runtime, the linker should find libc.so at /system/lib64 (second in
+# RUNPATH) — which is the SAME libc already loaded, so no re-load = no crash.
+#
+# Only libc++_shared.so should remain in $PREFIX/lib (Termux's version).
+echo "🧹 Removing Bionic .so copies from $PREFIX/lib (runtime TLS fix)..."
+rm -f "$TERMUX_LIB/libc.so" 2>/dev/null && echo "  ✓ Removed libc.so" || true
+rm -f "$TERMUX_LIB/libm.so" 2>/dev/null && echo "  ✓ Removed libm.so" || true
+rm -f "$TERMUX_LIB/libdl.so" 2>/dev/null && echo "  ✓ Removed libdl.so" || true
+echo "  Remaining in $PREFIX/lib:"
+ls -la "$TERMUX_LIB"/libc*.so "$TERMUX_LIB"/libm*.so "$TERMUX_LIB"/libdl*.so 2>/dev/null || echo "    (none — good!)"
 OUT_DIR="$REPO_ROOT/packages/core/prebuilt/aarch64-android"
 mkdir -p "$OUT_DIR"
 cp "$SO_PATH" "$OUT_DIR/libopentui.so"

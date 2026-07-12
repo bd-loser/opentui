@@ -117,25 +117,32 @@ async function resolveNativePackage() {
   }
 
   // ── XINCLI: Android/Termux support ─────────────────────────────────
-  // Termux reports process.platform === 'android'. We publish three android
-  // native packages under the @xincli scope:
+  // Termux reports process.platform === 'android' (under Node) or 'linux'
+  // (under Bun, which normalizes android→linux). We publish the native
+  // .so under the @xincli scope:
   //   @xincli/opentui-core-android-arm64  (aarch64 — 99% of phones)
-  //   @xincli/opentui-core-android-arm    (armv7 — legacy 32-bit phones)
-  //   @xincli/opentui-core-android-x64    (x86_64 — emulators)
-  // Upstream opentui doesn't ship these — we cross-compile them in the
-  // fork's build-android.yml workflow using Zig + the Android NDK sysroot.
-  if (process.platform === "android") {
-    if (process.arch === "arm64") {
-      // @ts-ignore Optional native package may be absent when building on another platform.
-      return await import("@xincli/opentui-core-android-arm64")
+  //
+  // Dev mode fallback: if the npm package isn't installed (running from
+  // source), use the local prebuilt/aarch64-android/libopentui.so directly.
+  const isTermux =
+    typeof process.env.PREFIX === "string" &&
+    process.env.PREFIX.includes("com.termux")
+  if (process.platform === "android" || (process.platform === "linux" && isTermux)) {
+    // Try the npm package first
+    try {
+      if (process.arch === "arm64") {
+        // @ts-ignore Optional native package may be absent when building on another platform.
+        return await import("@xincli/opentui-core-android-arm64")
+      }
+    } catch {
+      // npm package not installed — fall through to dev mode
     }
-    if (process.arch === "arm") {
-      // @ts-ignore Optional native package may be absent when building on another platform.
-      return await import("@xincli/opentui-core-android-arm")
-    }
-    if (process.arch === "x64") {
-      // @ts-ignore Optional native package may be absent when building on another platform.
-      return await import("@xincli/opentui-core-android-x64")
+
+    // Dev mode: use local prebuilt .so
+    const prebuiltPath = new URL("../prebuilt/aarch64-android/libopentui.so", import.meta.url)
+    const prebuiltFsPath = fileURLToPath(prebuiltPath)
+    if (existsSync(prebuiltFsPath)) {
+      return { default: prebuiltFsPath }
     }
   }
 

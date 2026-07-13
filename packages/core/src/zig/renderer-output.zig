@@ -54,7 +54,15 @@ pub const StdoutOutput = struct {
         if (data.len == 0) return;
 
         const self: *StdoutOutput = @ptrCast(@alignCast(ctx));
-        var stdoutWriter = std.fs.File.stdout().writer(&self.stdoutBuffer);
+        // Store File in a local var so it lives for the duration of the writer.
+        // std.fs.File.stdout() returns a temporary; calling .writer() on it
+        // stores a pointer to that temporary, which is destroyed at end of
+        // expression. On Node the stack isn't reused fast enough to matter,
+        // but Bun (JavaScriptCore) has a different stack layout that causes
+        // the temporary to be overwritten before writeAll() completes,
+        // resulting in SIGSEGV.
+        var stdout_file = std.fs.File.stdout();
+        var stdoutWriter = stdout_file.writer(&self.stdoutBuffer);
         const w = &stdoutWriter.interface;
         w.writeAll(data) catch {};
         w.flush() catch {};

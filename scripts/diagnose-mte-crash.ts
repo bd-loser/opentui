@@ -30,6 +30,68 @@ interface Phase {
 }
 
 const phases: Phase[] = [
+  // ─── H0: malloc+free entirely from C (bypass JS↔C boundary) ───
+  {
+    name: "H0-A: malloc+free entirely from C (cc)",
+    description: "CRITICAL: Call malloc AND free from within a TinyCC-compiled C function. No JS round-trip.",
+    code: `
+      const { cc } = require("bun:ffi")
+      const os = require("os"), path = require("path"), fs = require("fs")
+      const tmpDir = process.env.TMPDIR || os.tmpdir()
+      const cFile = path.join(tmpDir, "test_c_malloc_free_" + Date.now() + ".c")
+      fs.writeFileSync(cFile, \`
+        extern void* malloc(unsigned long);
+        extern void free(void*);
+        extern unsigned long long strrchr_addr;
+        int test_c_malloc_free() {
+          void* p = malloc(64);
+          if (!p) return -1;
+          // Store the pointer value so JS can read it
+          *(unsigned long long*)strrchr_addr = (unsigned long long)p;
+          free(p);
+          return 0;
+        }
+      \`)
+      const lib = cc({
+        source: cFile,
+        symbols: {
+          test_c_malloc_free: { args: [], returns: "i32" },
+          strrchr_addr: { args: [], returns: "u64" },
+        },
+      })
+      const result = lib.symbols.test_c_malloc_free()
+      console.log("test_c_malloc_free() =", result)
+      console.log(result === 0 ? "✅ malloc+free from C works — scudo is fine" : "❌ malloc+free from C failed")
+    `,
+  },
+  {
+    name: "H0-B: malloc from C, free from JS (cross boundary)",
+    description: "malloc from cc() C code, free via dlopen'd libc.free. Tests if the tag survives JS.",
+    code: `
+      const { dlopen, cc } = require("bun:ffi")
+      const os = require("os"), path = require("path"), fs = require("fs")
+      const libc = dlopen("/system/lib64/libc.so", {
+        free: { args: ["ptr"], returns: "void" },
+      })
+      const tmpDir = process.env.TMPDIR || os.tmpdir()
+      const cFile = path.join(tmpDir, "c_malloc_" + Date.now() + ".c")
+      fs.writeFileSync(cFile, \`
+        extern void* malloc(unsigned long);
+        void* c_malloc(unsigned long sz) { return malloc(sz); }
+      \`)
+      const lib = cc({
+        source: cFile,
+        symbols: { c_malloc: { args: ["u64"], returns: "ptr" } },
+      })
+      const p = lib.symbols.c_malloc(64)
+      console.log("c_malloc(64) =", "0x" + p.toString(16))
+      const topByte = Math.floor(p / 0x100000000000000) & 0xff
+      console.log("top byte    =", "0x" + topByte.toString(16))
+      console.log("calling free via dlopen...")
+      libc.symbols.free(p)
+      console.log("free OK!")
+    `,
+  },
   // ─── H1: Does the FFI trampoline preserve tagged pointers? ───
   {
     name: "H1-A: cc() echo pointer (TinyCC ptr round-trip)",

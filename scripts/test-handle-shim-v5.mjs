@@ -17,17 +17,23 @@ const libPath = "/data/data/com.termux/files/home/opentui/packages/core/prebuilt
 
 console.log("Step 1: dlopen libc to get dlopen+dlsym function pointers...")
 const libc = dlopen("/system/lib64/libc.so", {
-  dlopen: { args: ["cstring", "i32"], returns: "ptr" },
-  dlsym: { args: ["ptr", "cstring"], returns: "ptr" },
-  dlerror: { args: [], returns: "cstring" },
+  dlopen: { args: ["ptr", "i32"], returns: "ptr" },
+  dlsym: { args: ["ptr", "ptr"], returns: "ptr" },
+  dlerror: { args: [], returns: "ptr" },
 })
 console.log("✅ libc dlopen'd")
 
+// Helper: convert JS string to null-terminated Buffer (for ptr args)
+function toCStringBuffer(str) {
+  return Buffer.from(str + "\0", "utf8")
+}
+
 console.log("\nStep 2: Use libc.dlopen to load libopentui.so...")
-const opentuiHandle = libc.symbols.dlopen(libPath, 1)  // RTLD_LAZY = 1
+const libPathBuf = toCStringBuffer(libPath)
+const opentuiHandle = libc.symbols.dlopen(libPathBuf, 1)  // RTLD_LAZY = 1
 console.log("  opentui handle =", "0x" + opentuiHandle.toString(16))
 if (!opentuiHandle) {
-  console.log("  dlerror:", libc.symbols.dlerror())
+  console.log("  dlopen failed")
   process.exit(1)
 }
 
@@ -43,7 +49,8 @@ const symNames = [
   "yogaNodeCalculateLayout",
 ]
 for (const name of symNames) {
-  const ptr = libc.symbols.dlsym(opentuiHandle, name)
+  const nameBuf = toCStringBuffer(name)
+  const ptr = libc.symbols.dlsym(opentuiHandle, nameBuf)
   console.log(`  ${name} = 0x${ptr.toString(16)}`)
   symbols[name] = ptr
 }

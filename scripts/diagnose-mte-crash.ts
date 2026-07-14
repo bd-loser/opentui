@@ -59,7 +59,6 @@ const phases: Phase[] = [
       const echoed = lib.symbols.echo_ptr(p)
       console.log("echo_ptr() =", "0x" + echoed.toString(16))
       console.log("match:", p === echoed ? "YES — TinyCC preserves tagged ptr" : "NO — TinyCC corrupts ptr")
-      console.log("diff:", p - echoed)
     `,
   },
   {
@@ -85,8 +84,7 @@ const phases: Phase[] = [
 
       const echoed = lib.symbols.echo_u64(p)
       console.log("echo_u64()   =", "0x" + echoed.toString(16))
-      console.log("match:", p === echoed ? "YES" : "NO — u64 also corrupts!")
-      console.log("diff:", p - echoed)
+      console.log("match:", echoed === BigInt(p) ? "YES" : "NO — u64 also corrupts!")
     `,
   },
 
@@ -137,8 +135,8 @@ const phases: Phase[] = [
       })
       const p = libc.symbols.malloc(64)
       console.log("malloc(64)  =", "0x" + p.toString(16))
-      // Strip top byte (mask with 0x00FFFFFFFFFFFFFF)
-      const untagged = p & 0x00FFFFFFFFFFFFFF
+      // Strip top byte using BigInt (JS bitwise & converts to Int32, which gives 0)
+      const untagged = Number(BigInt(p) & 0x00FFFFFFFFFFFFFFn)
       console.log("untagged    =", "0x" + untagged.toString(16))
       console.log("calling free(untagged)...")
       libc.symbols.free(untagged)

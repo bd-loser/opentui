@@ -21,11 +21,8 @@ name: Package Prebuilt Native
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'packages/core/prebuilt/**'
-      - 'packages/core/scripts/package-prebuilt.ts'
-      - '.github/workflows/package-prebuilt.yml'
+    tags:
+      - 'lib-v*'
   workflow_dispatch:
     inputs:
       publish:

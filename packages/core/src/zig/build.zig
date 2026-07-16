@@ -313,19 +313,6 @@ fn applyDependencies(
 ) void {
     module.addOptions("build_options", build_options);
 
-    // ── XINCLI: Android uucode stub ────────────────────────────────────
-    // uucode_build_tables is a build-time native executable that fails to
-    // link on Termux. The stub provides neutral/default return values.
-    // Grapheme breaking won't work for complex Unicode, but the core
-    // renderer compiles, links, and LOADS successfully via dlopen.
-    if (target.result.abi == .android) {
-        const uucode_stub = b.createModule(.{
-            .root_source_file = b.path("uucode-stub.zig"),
-        });
-        module.addImport("uucode", uucode_stub);
-        return;
-    }
-
     if (b.lazyDependency("uucode", .{
         .target = target,
         .optimize = optimize,

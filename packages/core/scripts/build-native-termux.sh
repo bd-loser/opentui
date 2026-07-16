@@ -61,6 +61,30 @@ if [ -d "$DEPS_DIR/uucode" ] && [ ! -d "$ZIG_GLOBAL_CACHE/p/$UUCODE_HASH" ]; the
   cp -r "$DEPS_DIR/uucode" "$ZIG_GLOBAL_CACHE/p/$UUCODE_HASH" 2>/dev/null || true
   echo "✓ Cached uucode in Zig global cache"
 fi
+
+# ── XINCLI: Patch uucode's build.zig so uucode_build_tables uses our
+# target (aarch64-linux-android) instead of b.graph.host (misdetected as
+# aarch64-linux-musl on Termux, which fails to link -lm -lc -ldl).
+# Idempotent — safe to re-run.
+UUCODE_BUILD_ZIG="$ZIG_GLOBAL_CACHE/p/$UUCODE_HASH/build.zig"
+if [ -f "$UUCODE_BUILD_ZIG" ] && ! grep -q "XINCLI-patched\|target: std.Build.ResolvedTarget," "$UUCODE_BUILD_ZIG"; then
+  echo "🔧 Patching uucode/build.zig for Android target..."
+  # 1. Add target param to buildTables signature
+  sed -i 's|^fn buildTables(\s*$|fn buildTables(\n    // XINCLI-patched: accept target|' "$UUCODE_BUILD_ZIG"
+  sed -i 's|^    b: \*std\.Build,\s*$|    b: *std.Build,\n    target: std.Build.ResolvedTarget,|' "$UUCODE_BUILD_ZIG"
+  # 2. Drop the local `const target = b.graph.host;`
+  sed -i 's|^    const target = b\.graph\.host;.*$|    // XINCLI-patched: target is now a parameter|' "$UUCODE_BUILD_ZIG"
+  # 3. Replace remaining `b.graph.host` reference for build_tables_mod
+  sed -i 's|\.target = b\.graph\.host,|.target = target,|g' "$UUCODE_BUILD_ZIG"
+  # 4. Update the call site in createLibMod
+  sed -i 's|buildTables(b, build_config_path, build_tables_optimize)|buildTables(b, target, build_config_path, build_tables_optimize)|' "$UUCODE_BUILD_ZIG"
+
+  if grep -q "target: std.Build.ResolvedTarget" "$UUCODE_BUILD_ZIG"; then
+    echo "✓ uucode/build.zig patched (target threaded through)"
+  else
+    echo "⚠️  uucode patch may not have applied — check $UUCODE_BUILD_ZIG"
+  fi
+fi
 if [ -d "$DEPS_DIR/yoga" ] && [ ! -d "$ZIG_GLOBAL_CACHE/p/$YOGA_HASH" ]; then
   cp -r "$DEPS_DIR/yoga" "$ZIG_GLOBAL_CACHE/p/$YOGA_HASH" 2>/dev/null || true
   echo "✓ Cached yoga in Zig global cache"

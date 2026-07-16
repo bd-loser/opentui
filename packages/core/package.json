@@ -9,7 +9,7 @@
   "types": "src/index.ts",
   "module": "src/index.ts",
   "main": "src/index.ts",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "type": "module",
   "scripts": {
     "build": "bun run build:native && bun run build:lib",
@@ -58,7 +58,7 @@
     "@opentui/core-win32-arm64": "0.4.3",
     "@opentui/core-linux-x64-musl": "0.4.3",
     "@opentui/core-linux-arm64-musl": "0.4.3",
-    "@xincli/opentui-core-android-arm64": "0.4.7"
+    "@xincli/opentui-core-android-arm64": "0.4.8"
   },
   "exports": {
     ".": {

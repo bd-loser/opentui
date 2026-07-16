@@ -8,8 +8,10 @@ import {
   type Pointer,
 } from "./platform/ffi.js"
 import { writeFile } from "./platform/runtime.js"
-import { existsSync, writeFileSync } from "fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
 import { fileURLToPath } from "node:url"
+import { tmpdir } from "node:os"
+import { createHash } from "node:crypto"
 import { EventEmitter } from "events"
 import {
   type CursorStyle,
@@ -165,7 +167,45 @@ export type NativeRenderableHandle = NativeHandle<"native_renderable">
 let targetLibPath = nativePackage.default
 
 if (isBunfsPath(targetLibPath)) {
-  targetLibPath = targetLibPath.replace("../", "")
+  // ── Bunfs extraction (compiled binary support) ──────────────────────
+  //
+  // When opentui is bundled into a Bun-compiled binary, the .so lives
+  // inside bunfs (Bun's virtual embedded filesystem). The path returned
+  // by the native package's index.js looks like:
+  //   /$bunfs/root/node_modules/@xincli/opentui-core-android-arm64/libopentui.so
+  //
+  // Bun's fs.* functions (and Bun.file) CAN read from bunfs — Bun
+  // intercepts the syscall and serves the bytes from the embedded store.
+  //
+  // BUT dlopen() is a raw kernel syscall. It cannot read bunfs. If we
+  // pass a bunfs path to dlopen(), it fails with ENOENT, and opentui
+  // throws "opentui is not supported on the current platform".
+  //
+  // Fix: extract the .so to a real temp directory, then point
+  // targetLibPath at the extracted file. The hash suffix prevents
+  // collisions between different opentui versions that might coexist.
+  // The temp file persists across invocations (no re-extraction cost on
+  // subsequent runs) but is safe to delete — it'll be re-extracted.
+  //
+  // This fix is what makes `bun build --compile` work for opencode on
+  // Termux. Without it, only `bun run` (dev mode) works because in dev
+  // mode the .so is at a real filesystem path, not inside bunfs.
+  const extDir = `${tmpdir()}/opentui-native`
+  mkdirSync(extDir, { recursive: true })
+  const hash = createHash("sha256").update(targetLibPath).digest("hex").slice(0, 16)
+  const tmpSo = `${extDir}/libopentui-${hash}.so`
+  if (!existsSync(tmpSo)) {
+    try {
+      const bytes = readFileSync(targetLibPath)
+      writeFileSync(tmpSo, bytes, { mode: 0o755 })
+    } catch (e) {
+      throw new Error(
+        `opentui: failed to extract native library from bunfs to ${tmpSo}: ` +
+        `${e instanceof Error ? e.message : String(e)}`,
+      )
+    }
+  }
+  targetLibPath = tmpSo
 }
 
 if (!existsSync(targetLibPath)) {

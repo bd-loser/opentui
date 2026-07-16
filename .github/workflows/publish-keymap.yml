@@ -1,0 +1,176 @@
+# ═════════════════════════════════════════════════════════════════
+# XINCLI OpenTUI Fork — Publish @xincli/opentui-keymap
+#
+# Builds @opentui/keymap from source, repackages it as
+# @xincli/opentui-keymap with @opentui/core aliased to
+# npm:@xincli/opentui-core, and publishes to npm.
+#
+# Prerequisites:
+#   - @xincli/opentui-core@<version> must already be on npm
+#   - XINCLI_NPM_SECRET must be set in repo secrets
+#
+# Trigger:
+#   - Push tag: keymap-v* (e.g. keymap-v0.4.9)
+#   - Manual dispatch (workflow_dispatch)
+# ═════════════════════════════════════════════════════════════════
+
+name: Publish opentui-keymap (XINCLI)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.4.9)'
+        required: true
+        type: string
+      publish:
+        description: 'Publish to npm (false = dry run)'
+        required: false
+        default: true
+        type: boolean
+  push:
+    tags:
+      - 'keymap-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build + Publish @xincli/opentui-keymap
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26.3'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install workspace dependencies
+        run: bun install
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+            VERSION="${TAG#keymap-v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing version: $VERSION"
+
+      - name: Verify @xincli/opentui-core exists on npm
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Checking if @xincli/opentui-core@$VERSION exists on npm..."
+          if ! npm view "@xincli/opentui-core@$VERSION" version 2>/dev/null; then
+            echo "ERROR: @xincli/opentui-core@$VERSION not found on npm"
+            echo "Publish core first (trigger publish-js-library.yml)"
+            exit 1
+          fi
+          echo "OK: @xincli/opentui-core@$VERSION is available"
+
+      - name: Build @opentui/keymap
+        run: |
+          cd packages/keymap
+          bun scripts/build.ts
+          echo "=== dist/ contents ==="
+          ls -lh dist/ | head -20
+          echo "=== dist/package.json ==="
+          cat dist/package.json
+
+      - name: Repackage as @xincli/opentui-keymap
+        run: |
+          set -e
+          VERSION="${{ steps.version.outputs.version }}"
+          WORKSPACE="$PWD"
+          STAGE_DIR="$(mktemp -d)"
+          STAGE="$STAGE_DIR/package"
+          mkdir -p "$STAGE"
+          cp -r packages/keymap/dist/* "$STAGE/"
+
+          # Rewrite package.json
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('$STAGE/package.json'));
+            p.name = '@xincli/opentui-keymap';
+            p.version = '$VERSION';
+            p.description = 'XINCLI fork of OpenTUI keymap — for use with @xincli/opentui-core';
+            p.repository = {
+              type: 'git',
+              url: 'git+https://github.com/bd-loser/opentui.git',
+              directory: 'packages/keymap',
+            };
+            // Alias @opentui/core → npm:@xincli/opentui-core
+            if (p.dependencies && p.dependencies['@opentui/core']) {
+              p.dependencies['@opentui/core'] = 'npm:@xincli/opentui-core@$VERSION';
+            }
+            if (p.peerDependencies && p.peerDependencies['@opentui/core']) {
+              p.peerDependencies['@opentui/core'] = 'npm:@xincli/opentui-core@$VERSION';
+            }
+            // Alias @opentui/react and @opentui/solid in peerDeps
+            if (p.peerDependencies && p.peerDependencies['@opentui/react']) {
+              p.peerDependencies['@opentui/react'] = 'npm:@xincli/opentui-react@$VERSION';
+            }
+            if (p.peerDependencies && p.peerDependencies['@opentui/solid']) {
+              p.peerDependencies['@opentui/solid'] = 'npm:@xincli/opentui-solid@$VERSION';
+            }
+            if (p.devDependencies && p.devDependencies['@opentui/react']) {
+              p.devDependencies['@opentui/react'] = 'npm:@xincli/opentui-react@$VERSION';
+            }
+            if (p.devDependencies && p.devDependencies['@opentui/solid']) {
+              p.devDependencies['@opentui/solid'] = 'npm:@xincli/opentui-solid@$VERSION';
+            }
+            fs.writeFileSync('$STAGE/package.json', JSON.stringify(p, null, 2));
+            console.log('Repackaged as:', p.name, p.version);
+            console.log('dependencies:', JSON.stringify(p.dependencies, null, 2));
+            console.log('peerDependencies:', JSON.stringify(p.peerDependencies, null, 2));
+          "
+
+          # Patch Node ESM compatibility
+          find "$STAGE" -name '*.js' -type f | while read f; do
+            sed -i -E 's|from "(react-reconciler)/([a-zA-Z0-9_/-]+)"|from "\1/\2.js"|g' "$f"
+          done
+
+          # Pack into workspace artifacts/ dir
+          mkdir -p "$WORKSPACE/artifacts"
+          (cd "$STAGE_DIR" && npm pack ./package --pack-destination "$WORKSPACE/artifacts")
+          ls -lh "$WORKSPACE/artifacts/"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xincli-opentui-keymap-package
+          path: artifacts/*.tgz
+          retention-days: 90
+
+      - name: Publish to npm
+        if: (github.event_name == 'workflow_dispatch' && inputs.publish) || startsWith(github.ref, 'refs/tags/')
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
+        run: |
+          if [ -z "${{ secrets.XINCLI_NPM_SECRET }}" ]; then
+            echo "WARNING: XINCLI_NPM_SECRET secret not set — skipping publish."
+            exit 0
+          fi
+
+          VERSION="${{ steps.version.outputs.version }}"
+          WORKSPACE="$PWD"
+          echo "Publishing @xincli/opentui-keymap@$VERSION..."
+          npm publish "$WORKSPACE/artifacts/xincli-opentui-keymap-$VERSION.tgz" --access public
+
+          echo ""
+          echo "SUCCESS: Published @xincli/opentui-keymap@$VERSION"
+          echo "Install with:"
+          echo "  npm install @xincli/opentui-keymap@$VERSION --legacy-peer-deps"

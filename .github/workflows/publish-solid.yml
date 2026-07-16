@@ -1,0 +1,218 @@
+# ═════════════════════════════════════════════════════════════════
+# XINCLI OpenTUI Fork — Publish @xincli/opentui-solid
+#
+# Builds @opentui/solid from source, repackages it as
+# @xincli/opentui-solid with @opentui/core aliased to
+# npm:@xincli/opentui-core, and publishes to npm.
+#
+# This eliminates the need for consumers to use `overrides` —
+# @xincli/opentui-solid directly depends on @xincli/opentui-core.
+#
+# Prerequisites:
+#   - @xincli/opentui-core@<version> must already be on npm
+#   - XINCLI_NPM_SECRET must be set in repo secrets
+#
+# Trigger:
+#   - Push tag: solid-v* (e.g. solid-v0.4.9)
+#   - Manual dispatch (workflow_dispatch)
+# ═════════════════════════════════════════════════════════════════
+
+name: Publish opentui-solid (XINCLI)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 0.4.9)'
+        required: true
+        type: string
+      publish:
+        description: 'Publish to npm (false = dry run)'
+        required: false
+        default: true
+        type: boolean
+  push:
+    tags:
+      - 'solid-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build + Publish @xincli/opentui-solid
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26.3'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install workspace dependencies
+        run: bun install
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+            VERSION="${TAG#solid-v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing version: $VERSION"
+
+      - name: Verify @xincli/opentui-core exists on npm
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Checking if @xincli/opentui-core@$VERSION exists on npm..."
+          if ! npm view "@xincli/opentui-core@$VERSION" version 2>/dev/null; then
+            echo "ERROR: @xincli/opentui-core@$VERSION not found on npm"
+            echo "Publish core first (trigger publish-js-library.yml)"
+            exit 1
+          fi
+          echo "OK: @xincli/opentui-core@$VERSION is available"
+
+      - name: Build @opentui/solid
+        run: |
+          cd packages/solid
+          bun scripts/build.ts
+          echo "=== dist/ contents ==="
+          ls -lh dist/ | head -20
+          echo "=== dist/package.json ==="
+          cat dist/package.json
+
+      - name: Repackage as @xincli/opentui-solid
+        run: |
+          set -e
+          VERSION="${{ steps.version.outputs.version }}"
+          WORKSPACE="$PWD"
+          STAGE_DIR="$(mktemp -d)"
+          STAGE="$STAGE_DIR/package"
+          mkdir -p "$STAGE"
+          cp -r packages/solid/dist/* "$STAGE/"
+
+          # Rewrite package.json
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('$STAGE/package.json'));
+            p.name = '@xincli/opentui-solid';
+            p.version = '$VERSION';
+            p.description = 'XINCLI fork of OpenTUI SolidJS binding — for use with @xincli/opentui-core';
+            p.repository = {
+              type: 'git',
+              url: 'git+https://github.com/bd-loser/opentui.git',
+              directory: 'packages/solid',
+            };
+            // Alias @opentui/core → npm:@xincli/opentui-core
+            if (p.dependencies && p.dependencies['@opentui/core']) {
+              p.dependencies['@opentui/core'] = 'npm:@xincli/opentui-core@$VERSION';
+            }
+            if (p.peerDependencies && p.peerDependencies['@opentui/core']) {
+              p.peerDependencies['@opentui/core'] = 'npm:@xincli/opentui-core@$VERSION';
+            }
+            // Alias @opentui/keymap → npm:@xincli/opentui-keymap
+            if (p.dependencies && p.dependencies['@opentui/keymap']) {
+              p.dependencies['@opentui/keymap'] = 'npm:@xincli/opentui-keymap@$VERSION';
+            }
+            if (p.peerDependencies && p.peerDependencies['@opentui/keymap']) {
+              p.peerDependencies['@opentui/keymap'] = 'npm:@xincli/opentui-keymap@$VERSION';
+            }
+            fs.writeFileSync('$STAGE/package.json', JSON.stringify(p, null, 2));
+            console.log('Repackaged as:', p.name, p.version);
+            console.log('dependencies:', JSON.stringify(p.dependencies, null, 2));
+          "
+
+          # Patch Node ESM compatibility: add .js to bare subpath imports
+          find "$STAGE" -name '*.js' -type f | while read f; do
+            sed -i -E 's|from "(react-reconciler)/([a-zA-Z0-9_/-]+)"|from "\1/\2.js"|g' "$f"
+          done
+
+          # Pack into workspace artifacts/ dir
+          mkdir -p "$WORKSPACE/artifacts"
+          (cd "$STAGE_DIR" && npm pack ./package --pack-destination "$WORKSPACE/artifacts")
+          ls -lh "$WORKSPACE/artifacts/"
+
+      - name: Verify package resolves under Node
+        run: |
+          set -e
+          VERSION="${{ steps.version.outputs.version }}"
+          WORKSPACE="$PWD"
+          TESTDIR="$(mktemp -d)"
+          cd "$TESTDIR"
+
+          node -e "
+            const fs = require('fs');
+            const pkg = {
+              name: 'verify',
+              type: 'module',
+              dependencies: {
+                '@xincli/opentui-core': 'file:' + process.argv[1] + '/artifacts/xincli-opentui-core-' + process.argv[2] + '.tgz',
+                '@xincli/opentui-solid': 'file:' + process.argv[1] + '/artifacts/xincli-opentui-solid-' + process.argv[2] + '.tgz',
+                'solid-js': '1.9.12',
+              },
+              overrides: {
+                '@opentui/core': 'file:' + process.argv[1] + '/artifacts/xincli-opentui-core-' + process.argv[2] + '.tgz',
+              },
+            };
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+          " "$WORKSPACE" "$VERSION"
+
+          # We need the core artifact too — download it from the prior workflow
+          # or just install from npm (if already published)
+          npm install --legacy-peer-deps || {
+            echo "Install failed — @xincli/opentui-core may not be published yet"
+            echo "Falling back to npm resolution"
+            node -e "
+              const fs = require('fs');
+              const pkg = {
+                name: 'verify',
+                type: 'module',
+                dependencies: {
+                  '@xincli/opentui-core': '$VERSION',
+                  '@xincli/opentui-solid': 'file:' + process.argv[1] + '/artifacts/xincli-opentui-solid-' + process.argv[2] + '.tgz',
+                  'solid-js': '1.9.12',
+                },
+              };
+              fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+            " "$WORKSPACE" "$VERSION"
+            npm install --legacy-peer-deps
+          }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xincli-opentui-solid-package
+          path: artifacts/*.tgz
+          retention-days: 90
+
+      - name: Publish to npm
+        if: (github.event_name == 'workflow_dispatch' && inputs.publish) || startsWith(github.ref, 'refs/tags/')
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
+        run: |
+          if [ -z "${{ secrets.XINCLI_NPM_SECRET }}" ]; then
+            echo "WARNING: XINCLI_NPM_SECRET secret not set — skipping publish."
+            exit 0
+          fi
+
+          VERSION="${{ steps.version.outputs.version }}"
+          WORKSPACE="$PWD"
+          echo "Publishing @xincli/opentui-solid@$VERSION..."
+          npm publish "$WORKSPACE/artifacts/xincli-opentui-solid-$VERSION.tgz" --access public
+
+          echo ""
+          echo "SUCCESS: Published @xincli/opentui-solid@$VERSION"
+          echo "Install with:"
+          echo "  npm install @xincli/opentui-solid@$VERSION --legacy-peer-deps"

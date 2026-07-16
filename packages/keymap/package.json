@@ -1,6 +1,6 @@
 {
   "name": "@opentui/keymap",
-  "version": "0.4.3",
+  "version": "0.4.9",
   "description": "Standalone keymap package for OpenTUI",
   "license": "MIT",
   "repository": {
@@ -62,7 +62,8 @@
     "build": "bun run scripts/build.ts",
     "publish": "bun run scripts/publish.ts",
     "test:dist": "bun run scripts/test-packed-consumer.ts",
-    "test": "bun run scripts/test.ts"
+    "test": "bun run scripts/test.ts",
+    "publish:xincli": "bun scripts/publish-xincli.ts"
   },
   "dependencies": {
     "@opentui/core": "workspace:*"

@@ -9,6 +9,7 @@ import {
 } from "./platform/ffi.js"
 import { writeFile } from "./platform/runtime.js"
 import { existsSync, writeFileSync } from "fs"
+import { fileURLToPath } from "node:url"
 import { EventEmitter } from "events"
 import {
   type CursorStyle,

@@ -64,13 +64,21 @@ function packageOne(archDir: string, packageName: string): void {
     files: ["libopentui.so", "index.js", "index.d.ts"],
   }
   
-  // Create index.js that exports the .so path (not the .so itself)
-  // This is what @opentui/core's resolveNativePackage expects:
-  //   const nativePackage = await import("@xincli/opentui-core-android-arm64")
-  //   const libPath = nativePackage.default  // ← path to libopentui.so
-  const indexJsContent = `import { fileURLToPath } from "node:url"
+  // Create index.js that exports the .so path (not the .so itself).
+  // Using `import ... with { type: "file" }` so `bun build --compile`
+  // embeds libopentui.so into bunfs (with a hashed filename). Under
+  // `bun run` this resolves to a real filesystem path; under a compiled
+  // binary it resolves to `/$bunfs/root/libopentui-<hash>.so`, which
+  // @xincli/opentui-core's resolver extracts via Bun.file().
+  //
+  // The prior `new URL("./libopentui.so", import.meta.url)` pattern was
+  // NOT picked up by Bun's asset scanner through a dynamic import
+  // boundary, so the .so was never packed into bunfs and the compiled
+  // binary failed at startup with:
+  //   opentui: failed to extract native library from bunfs ... ENOENT
+  const indexJsContent = `import libopentui from "./libopentui.so" with { type: "file" }
 
-export default fileURLToPath(new URL("./libopentui.so", import.meta.url))
+export default libopentui
 `
   writeFileSync(join(pkgDir, "index.js"), indexJsContent)
   

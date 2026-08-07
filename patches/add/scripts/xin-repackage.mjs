@@ -195,32 +195,61 @@ if (pkgKey === "core") {
 writeFileSync(distPkgPath, `${JSON.stringify(pkg, null, 2)}\n`)
 console.log(`  [OK] ${pkg.name}@${pkg.version}`)
 
-// ── 3. Node ESM fixup (react only) ─────────────────────────────────────
+// ── 3. rewrite intra-fork import specifiers in the built JS ────────────
 
-// Bun resolves bare subpath imports like "react-reconciler/constants"
-// without an extension; Node ESM does not. Add the .js so the published
-// package works under plain Node.
-if (pkgKey === "react") {
-  console.log(`\n=== Step 3: Node ESM subpath fixup ===`)
-  let patched = 0
-  const walk = (dir) => {
-    for (const entry of readdirSync(dir)) {
-      const full = join(dir, entry)
-      if (statSync(full).isDirectory()) {
-        walk(full)
-      } else if (entry.endsWith(".js")) {
-        const before = readFileSync(full, "utf8")
-        const after = before.replace(/from "(react-reconciler)\/([A-Za-z0-9_/-]+)"/g, 'from "$1/$2.js"')
-        if (after !== before) {
-          writeFileSync(full, after)
-          patched += 1
-        }
-      }
+// The compiled output imports sibling packages — and itself — by upstream
+// name: `import("@opentui/core/parser.worker")`, `from "@opentui/core"`.
+// A package may import itself by name, so this works upstream. Renamed to
+// @xincli/opentui-core it does not, and the failure is invisible under
+// Node (the paths are lazy) but immediate under Bun:
+//
+//   Cannot find module '@opentui/core/parser.worker'
+//
+// The dependency aliases below happen to paper over this whenever a
+// binding is installed, because `npm:` materialises node_modules/@opentui/core
+// — but `npm install @xincli/opentui-core` on its own has no such luck.
+// Rewrite the specifiers so the packages stand alone.
+//
+// The negative lookahead matters: @opentui/core-linux-x64 and friends are
+// upstream's real prebuilt binaries, still resolved from upstream, and
+// must NOT be renamed.
+console.log(`\n=== Step 3: rewrite intra-fork import specifiers ===`)
+
+const SPECIFIER_RULES = Object.entries(RENAMES).map(([from, to]) => ({
+  // "@opentui/core" or "@opentui/core/sub", never "@opentui/core-linux-x64"
+  re: new RegExp(`(["'])${from.replace("/", "\\/")}(?=\\1|/)`, "g"),
+  to: `$1${to}`,
+  from,
+}))
+
+let rewritten = 0
+const rewriteTree = (dir) => {
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry)
+    if (statSync(full).isDirectory()) {
+      rewriteTree(full)
+      continue
+    }
+    if (!/\.(js|mjs|cjs)$/.test(entry)) continue
+
+    const before = readFileSync(full, "utf8")
+    let after = before
+    for (const rule of SPECIFIER_RULES) after = after.replace(rule.re, rule.to)
+
+    // Bun resolves bare subpath imports like "react-reconciler/constants"
+    // without an extension; Node ESM does not.
+    if (pkgKey === "react") {
+      after = after.replace(/from "(react-reconciler)\/([A-Za-z0-9_/-]+)"/g, 'from "$1/$2.js"')
+    }
+
+    if (after !== before) {
+      writeFileSync(full, after)
+      rewritten += 1
     }
   }
-  walk(distDir)
-  console.log(`  [OK] patched ${patched} file(s)`)
 }
+rewriteTree(distDir)
+console.log(`  [OK] rewrote ${rewritten} file(s)`)
 
 // ── 4. pack ────────────────────────────────────────────────────────────
 

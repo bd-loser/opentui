@@ -1,0 +1,375 @@
+# ═══════════════════════════════════════════════════════════════════════
+# XINCLI OpenTUI fork — one-tag release
+#
+# Publishes all five @xincli packages at the same version from a single
+# tag. Replaces the old split workflows (package-prebuilt, publish-core,
+# publish-js-library, publish-react, publish-solid, publish-keymap),
+# which each needed their own tag and could drift out of lockstep.
+#
+# Trigger:
+#   git tag xin-v0.5.0 && git push origin xin-v0.5.0
+#
+# Order matters — each stage's output is the next stage's dependency:
+#
+#   native   @xincli/opentui-core-android-arm64   (the .so)
+#      |
+#   core     @xincli/opentui-core                 (optionalDep -> native)
+#      |
+#   +--------+--------+
+#   react  solid  keymap                          (dep -> core, parallel)
+#
+# The .so is NOT built here. It is built natively on-device by
+# packages/core/scripts/build-native-termux.sh and committed to
+# packages/core/prebuilt/. Cross-compiling aarch64-android from a GitHub
+# x86 runner was tried and abandoned; a native Termux build links against
+# the exact Bionic libc that will dlopen it.
+#
+# Requires repo secret: XINCLI_NPM_SECRET (npm automation token).
+# ═══════════════════════════════════════════════════════════════════════
+
+name: XINCLI Release
+
+on:
+  push:
+    tags:
+      - "xin-v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.5.0)"
+        required: true
+        type: string
+      publish:
+        description: "Publish to npm (false = build + verify only)"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "1.3.14"
+  NODE_VERSION: "26.3"
+
+jobs:
+  # ── Resolve the version once, and refuse to reuse a burned one ────────
+  setup:
+    name: Resolve version
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive version
+        id: v
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            PUBLISH="${{ inputs.publish }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+            VERSION="${TAG#xin-v}"
+            PUBLISH="true"
+          fi
+
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::'$VERSION' is not a semver version"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+          echo "Releasing $VERSION (publish=$PUBLISH)"
+
+      - name: Check package.json versions agree with the tag
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.v.outputs.version }}"
+          FAIL=0
+          for pkg in core react solid keymap; do
+            HAVE="$(node -p "require('./packages/$pkg/package.json').version")"
+            if [ "$HAVE" != "$VERSION" ]; then
+              echo "::error::packages/$pkg/package.json is $HAVE, tag says $VERSION"
+              FAIL=1
+            fi
+          done
+          [ "$FAIL" = 0 ] || exit 1
+          echo "All four package.json versions are $VERSION"
+
+      - name: Refuse to reuse a published version
+        if: steps.v.outputs.publish == 'true'
+        run: |
+          set -uo pipefail
+          VERSION="${{ steps.v.outputs.version }}"
+          FAIL=0
+          for name in opentui-core opentui-react opentui-solid opentui-keymap opentui-core-android-arm64; do
+            if npm view "@xincli/$name@$VERSION" version >/dev/null 2>&1; then
+              echo "::error::@xincli/$name@$VERSION already exists on npm — npm versions are immutable"
+              FAIL=1
+            fi
+          done
+          [ "$FAIL" = 0 ] || exit 1
+          echo "$VERSION is free on all five packages"
+
+  # ── 1. The native .so, committed from an on-device Termux build ───────
+  native:
+    name: "1 · native (.so)"
+    needs: setup
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Verify the committed .so is a real aarch64 ELF
+        run: |
+          set -euo pipefail
+          SO=packages/core/prebuilt/aarch64-android/libopentui.so
+          if [ ! -f "$SO" ]; then
+            echo "::error::$SO is missing. Build it on-device:"
+            echo "::error::  bash packages/core/scripts/build-native-termux.sh"
+            exit 1
+          fi
+          ls -lh "$SO"
+          file "$SO"
+          readelf -h "$SO" | grep -E "Class|Machine"
+          readelf -h "$SO" | grep -q "AArch64" || {
+            echo "::error::$SO is not an AArch64 object"; exit 1; }
+
+      - name: Verify the .so matches this source revision
+        run: |
+          set -euo pipefail
+          SO=packages/core/prebuilt/aarch64-android/libopentui.so
+          # Every FFI symbol the TS side declares must exist in the .so.
+          # A stale .so from an older upstream base is the single most
+          # likely release failure, and it surfaces at runtime as
+          # "Symbol <name> not found" — catch it here instead.
+          node -e '
+            const fs = require("fs");
+            const src = fs.readFileSync("packages/core/src/zig.ts", "utf8");
+            const start = src.indexOf("dlopen(resolvedLibPath");
+            if (start === -1) throw new Error("could not find the dlopen() symbol table in src/zig.ts");
+            const end = src.indexOf("\n  })", start);
+            const table = src.slice(start, end === -1 ? undefined : end);
+            const names = [...new Set(
+              [...table.matchAll(/^ {4}([A-Za-z_][A-Za-z0-9_]*): \{/gm)].map((m) => m[1]),
+            )];
+            if (names.length === 0) throw new Error("extracted 0 symbols — the regex needs updating");
+            console.error(`declared FFI symbols: ${names.length}`);
+            process.stdout.write(names.join("\n"));
+          ' > /tmp/declared-symbols.txt
+
+          nm -D --defined-only "$SO" | awk '{print $NF}' | sort -u > /tmp/so-symbols.txt
+          echo "exported by .so: $(wc -l < /tmp/so-symbols.txt)"
+
+          MISSING="$(comm -23 <(sort -u /tmp/declared-symbols.txt) /tmp/so-symbols.txt)"
+          if [ -n "$MISSING" ]; then
+            echo "::error::The committed .so is stale — it does not export every symbol src/zig.ts declares."
+            echo "::error::Rebuild on-device: bash packages/core/scripts/build-native-termux.sh"
+            echo "Missing symbols:"
+            printf '  %s\n' $MISSING
+            exit 1
+          fi
+          echo "All declared FFI symbols are present"
+
+      - name: Package into npm layout
+        run: |
+          cd packages/core
+          bun run scripts/package-prebuilt.ts
+          command find dist-prebuilt -type f | head -20
+
+      - name: Set version
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.setup.outputs.version }}"
+          for dir in packages/core/dist-prebuilt/@xincli/*/; do
+            [ -d "$dir" ] || continue
+            node -e "
+              const fs = require('fs');
+              const p = '$dir/package.json';
+              const j = JSON.parse(fs.readFileSync(p));
+              j.version = '$VERSION';
+              fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
+              console.log(j.name, '->', j.version);
+            "
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opentui-android-prebuilt
+          path: packages/core/dist-prebuilt/
+          retention-days: 90
+
+      - name: Publish
+        if: needs.setup.outputs.publish == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::XINCLI_NPM_SECRET is not set in repo secrets"
+            exit 1
+          fi
+          for dir in packages/core/dist-prebuilt/@xincli/*/; do
+            [ -d "$dir" ] || continue
+            echo "Publishing $dir"
+            npm publish "$dir" --access public
+          done
+
+  # ── 2. core — depends on the native package existing ─────────────────
+  core:
+    name: "2 · core"
+    needs: [setup, native]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+
+      - run: bun install
+
+      - name: Build + repackage + publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
+        run: |
+          node scripts/xin-repackage.mjs \
+            --package core \
+            --version "${{ needs.setup.outputs.version }}" \
+            ${{ needs.setup.outputs.publish == 'true' && '--publish' || '' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xincli-opentui-core
+          path: artifacts/*.tgz
+          retention-days: 90
+
+  # ── 3. the three bindings — parallel, all depend on core ─────────────
+  bindings:
+    name: "3 · ${{ matrix.package }}"
+    needs: [setup, core]
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [react, solid, keymap]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+
+      - run: bun install
+
+      - name: Wait for @xincli/opentui-core to be resolvable
+        if: needs.setup.outputs.publish == 'true'
+        run: |
+          set -uo pipefail
+          VERSION="${{ needs.setup.outputs.version }}"
+          # npm's CDN is read-after-write eventually consistent; a publish
+          # that just succeeded can 404 for a few seconds.
+          for i in $(seq 1 30); do
+            if npm view "@xincli/opentui-core@$VERSION" version >/dev/null 2>&1; then
+              echo "@xincli/opentui-core@$VERSION is live"
+              exit 0
+            fi
+            echo "  attempt $i/30 — not visible yet, sleeping 10s"
+            sleep 10
+          done
+          echo "::error::@xincli/opentui-core@$VERSION never became visible"
+          exit 1
+
+      - name: Build + repackage + publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
+        run: |
+          node scripts/xin-repackage.mjs \
+            --package "${{ matrix.package }}" \
+            --version "${{ needs.setup.outputs.version }}" \
+            ${{ needs.setup.outputs.publish == 'true' && '--publish' || '' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xincli-opentui-${{ matrix.package }}
+          path: artifacts/*.tgz
+          retention-days: 90
+
+  # ── 4. install the published set the way a consumer would ────────────
+  verify:
+    name: "4 · verify"
+    needs: [setup, core, bindings]
+    if: needs.setup.outputs.publish == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install and import from npm
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.setup.outputs.version }}"
+          mkdir -p /tmp/verify && cd /tmp/verify
+          npm init -y >/dev/null
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json'));
+            p.type = 'module';
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2));
+          "
+          npm install --legacy-peer-deps \
+            "@xincli/opentui-core@$VERSION" \
+            "@xincli/opentui-react@$VERSION" \
+            "@xincli/opentui-solid@$VERSION" \
+            "@xincli/opentui-keymap@$VERSION"
+
+          node --input-type=module -e "
+            const core = await import('@xincli/opentui-core');
+            for (const k of ['createCliRenderer', 'RGBA', 'Box', 'Text', 't']) {
+              if (typeof core[k] === 'undefined') throw new Error('core missing ' + k);
+            }
+            console.log('OK @xincli/opentui-core');
+            const react = await import('@xincli/opentui-react');
+            for (const k of ['createRoot', 'useKeyboard', 'useRenderer']) {
+              if (typeof react[k] === 'undefined') throw new Error('react missing ' + k);
+            }
+            console.log('OK @xincli/opentui-react');
+            await import('@xincli/opentui-solid');
+            console.log('OK @xincli/opentui-solid');
+            await import('@xincli/opentui-keymap');
+            console.log('OK @xincli/opentui-keymap');
+          "
+
+      - name: Summary
+        run: |
+          VERSION="${{ needs.setup.outputs.version }}"
+          {
+            echo "## Published \`$VERSION\`"
+            echo
+            for n in core react solid keymap core-android-arm64; do
+              echo "- \`@xincli/opentui-$n@$VERSION\`"
+            done
+            echo
+            echo '```sh'
+            echo "npm install @xincli/opentui-solid@$VERSION --legacy-peer-deps"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

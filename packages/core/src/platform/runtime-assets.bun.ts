@@ -1,5 +1,6 @@
 import { resolveBundledDefaultParserAsset } from "../lib/tree-sitter/default-parser-assets.bun.js"
 import { getCurrentNodeAssetTarget, getNativeAssetDescriptor } from "../node-asset-target.js"
+import { resolveAndroidNativeLibraryPath } from "./android-native.js"
 import { resolveAssetPath, resolveAssetRootPath } from "./assets.js"
 import { resolveBundledFilePath } from "./runtime.js"
 
@@ -37,10 +38,23 @@ export function resolveTreeSitterWasm(): Promise<string> {
 }
 
 export async function resolveNativeLibraryPath(): Promise<string> {
-  const asset = getNativeAssetDescriptor(getCurrentNodeAssetTarget())
+  const target = getCurrentNodeAssetTarget()
+  const asset = getNativeAssetDescriptor(target)
   const configuredPath = resolveAssetRootPath(asset.key)
   if (configuredPath !== undefined) {
     return configuredPath
+  }
+
+  // ── XINCLI: Android/Termux ────────────────────────────────────────────
+  if (target.platform === "android") {
+    const androidPath = await resolveAndroidNativeLibraryPath(asset.packageName, target.arch)
+    if (androidPath !== undefined) {
+      return androidPath
+    }
+    throw new Error(
+      `OpenTUI native library for Android is missing. Install ${asset.packageName}, ` +
+        `or build it on-device with: bash packages/core/scripts/build-native-termux.sh`,
+    )
   }
 
   if (process.platform === "darwin") {

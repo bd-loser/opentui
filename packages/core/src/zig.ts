@@ -95,6 +95,7 @@ export type NativeAudioStreamCloseReason = NativeAudioStreamCloseReasonType
 export const NativeAudioStreamFormat = NativeAudioStreamFormatValue
 export type NativeAudioStreamFormat = NativeAudioStreamFormatType
 import { isBunfsPath } from "./lib/bunfs.js"
+import { extractBunfsNativeLibrary } from "./platform/bunfs-extract.js"
 import { resolveNativeLibraryPath } from "#opentui/runtime-assets"
 import { allocStruct } from "bun-ffi-structs"
 
@@ -123,7 +124,8 @@ let targetLibError: Error | undefined
 try {
   targetLibPath = await resolveNativeLibraryPath()
   if (isBunfsPath(targetLibPath)) {
-    targetLibPath = targetLibPath.replace("../", "")
+    // XINCLI: dlopen() cannot read bunfs, so copy the .so out to a real file.
+    targetLibPath = await extractBunfsNativeLibrary(targetLibPath)
   }
   if (!existsSync(targetLibPath)) {
     throw new Error(`OpenTUI native library does not exist at ${JSON.stringify(targetLibPath)}`)

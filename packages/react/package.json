@@ -10,7 +10,6 @@
   },
   "module": "src/index.ts",
   "type": "module",
-  "private": true,
   "main": "src/index.ts",
   "exports": {
     ".": {
@@ -43,7 +42,8 @@
     "build:examples": "bun examples/build.ts",
     "build:dev": "bun run scripts/build.ts --dev",
     "publish": "bun run scripts/publish.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "publish:xincli": "node ../../scripts/xin-repackage.mjs --package react"
   },
   "devDependencies": {
     "@opentui/keymap": "workspace:*",

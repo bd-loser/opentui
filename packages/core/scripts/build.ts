@@ -65,6 +65,13 @@ const variants: Variant[] = [
   { platform: "linux", arch: "arm64", abi: "musl" },
   { platform: "win32", arch: "x64" },
   { platform: "win32", arch: "arm64" },
+  // ── XINCLI: Android/Termux variant ──────────────────────────────────
+  // Built natively ON the phone via scripts/build-native-termux.sh, not
+  // cross-compiled — Zig links it against the exact Bionic libc that will
+  // load it. Excluded from the default --all build because that runs on a
+  // CI runner with no Termux sysroot; the .so is committed to
+  // packages/core/prebuilt/ and published by the xin-release workflow.
+  { platform: "android", arch: "arm64" },
 ]
 
 const getHostVariant = (): Variant => {
@@ -82,8 +89,8 @@ if (!buildLib && !buildNative) {
 }
 
 const getZigTarget = (platform: string, arch: string, abi?: string): string => {
-  const platformMap: Record<string, string> = { darwin: "macos", win32: "windows", linux: "linux" }
-  const archMap: Record<string, string> = { x64: "x86_64", arm64: "aarch64" }
+  const platformMap: Record<string, string> = { darwin: "macos", win32: "windows", linux: "linux", android: "android" }
+  const archMap: Record<string, string> = { x64: "x86_64", arm64: "aarch64", arm: "arm" }
   const base = `${archMap[arch] ?? arch}-${platformMap[platform] ?? platform}`
   return abi ? `${base}-${abi}` : base
 }

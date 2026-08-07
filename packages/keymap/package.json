@@ -62,7 +62,8 @@
     "build": "bun run scripts/build.ts",
     "publish": "bun run scripts/publish.ts",
     "test:dist": "bun run scripts/test-packed-consumer.ts",
-    "test": "bun run scripts/test.ts"
+    "test": "bun run scripts/test.ts",
+    "publish:xincli": "node ../../scripts/xin-repackage.mjs --package keymap"
   },
   "dependencies": {
     "@opentui/core": "workspace:*"

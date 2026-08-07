@@ -1,0 +1,57 @@
+{
+  "name": "xincli-opentui-android",
+  "description": "Android/Termux support for OpenTUI, as a standalone patch kit rather than a diverged fork branch. Apply to any upstream tag with scripts/xin-patch.sh, regenerate with scripts/xin-regen.sh.",
+  "base": {
+    "version": "0.5.1",
+    "tag": "v0.5.1"
+  },
+  "upstream": "https://github.com/anomalyco/opentui.git",
+  "fork": "https://github.com/bd-loser/opentui.git",
+  "scope": "@xincli",
+  "add": [
+    ".github/workflows/xin-release.yml",
+    "NATIVE_BUILD.md",
+    "OPENTUI_TERMUX.md",
+    "packages/core/scripts/build-native-termux.sh",
+    "packages/core/scripts/package-prebuilt.ts",
+    "packages/core/scripts/test-bun-load.ts",
+    "packages/core/scripts/vendor-deps.sh",
+    "packages/core/src/platform/android-native.ts",
+    "packages/core/src/platform/bunfs-extract.ts",
+    "scripts/xin-repackage.mjs"
+  ],
+  "mod": [
+    ".gitignore",
+    "packages/core/scripts/build.ts",
+    "packages/core/src/node-asset-target.ts",
+    "packages/core/src/platform/runtime-assets.bun.ts",
+    "packages/core/src/platform/runtime-assets.node.ts",
+    "packages/core/src/zig.ts",
+    "packages/core/src/zig/build.zig"
+  ],
+  "ignore": [
+    ".github/disabled-workflows/",
+    ".github/workflows/",
+    ".zig-cmath-wrapper/",
+    ".zig-deps/",
+    ".zig-linker-stubs/",
+    ".zig-math-wrapper/",
+    ".zig-merged-include/",
+    "artifacts/",
+    "bun.lock",
+    "packages/core/dist-prebuilt/",
+    "packages/core/prebuilt/",
+    "packages/core/package.json",
+    "packages/keymap/package.json",
+    "packages/react/package.json",
+    "packages/solid/package.json",
+    "patches/",
+    "scripts/xin-patch.sh",
+    "scripts/xin-regen.sh"
+  ],
+  "notes": {
+    "package.json": "Not patched. patches/apply-package-json.mjs makes the edits programmatically, because upstream reorders keys and bumps versions every release and a textual diff would conflict every time.",
+    "prebuilt": "packages/core/prebuilt/<arch>/libopentui.so is a binary build artifact, committed but never patched. Rebuild it on-device after every upstream bump — the FFI symbol set changes between releases.",
+    "renderer-output.zig": "The 0.4.x fork patched a dangling-temporary SIGSEGV in renderer-output.zig. Upstream 0.5.0 restructured that code (stdout is a struct field now), so the patch was dropped as obsolete."
+  }
+}

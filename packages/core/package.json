@@ -45,7 +45,8 @@
     "test:standalone": "bun scripts/standalone-test.ts",
     "test:js": "bun test",
     "test:js:node": "bun scripts/test-node.ts",
-    "test": "bun run test:native && bun run test:js"
+    "test": "bun run test:native && bun run test:js",
+    "publish:xincli": "node ../../scripts/xin-repackage.mjs --package core"
   },
   "license": "MIT",
   "devDependencies": {

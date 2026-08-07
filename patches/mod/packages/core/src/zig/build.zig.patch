@@ -1,0 +1,287 @@
+diff --git a/packages/core/src/zig/build.zig b/packages/core/src/zig/build.zig
+old mode 100644
+new mode 100755
+index 6c94af7e..a303afd5
+--- a/packages/core/src/zig/build.zig
++++ b/packages/core/src/zig/build.zig
+@@ -27,6 +27,15 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
+     .{ .zig_target = "aarch64-macos", .output_name = "aarch64-macos", .description = "macOS aarch64 (Apple Silicon)" },
+     .{ .zig_target = "x86_64-windows-gnu", .output_name = "x86_64-windows", .description = "Windows x86_64" },
+     .{ .zig_target = "aarch64-windows-gnu", .output_name = "aarch64-windows", .description = "Windows aarch64" },
++    // ── XINCLI: Android/Termux support ─────────────────────────────────
++    // Targets Android (Bionic libc) on aarch64 — the only Android arch
++    // Termux realistically runs on in 2026. The NDK sysroot must be passed
++    // via --sysroot; see the `build-android` workflow for the exact flags.
++    // The .so produced here is loaded by @xincli/opentui-core-android-arm64
++    // at runtime inside cli.mjs on the user's phone.
++    .{ .zig_target = "aarch64-linux-android", .output_name = "aarch64-android", .description = "Android aarch64 (Termux)" },
++    .{ .zig_target = "arm-linux-android", .output_name = "arm-android", .description = "Android armv7 (legacy Termux)" },
++    .{ .zig_target = "x86_64-linux-android", .output_name = "x86_64-android", .description = "Android x86_64 (emulator)" },
+ };
+ 
+ const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk";
+@@ -96,6 +105,13 @@ fn nativeExecutableTarget(b: *std.Build) std.Build.ResolvedTarget {
+         return b.resolveTargetQuery(.{});
+     }
+ 
++    // ── XINCLI: On Android/Termux, use the host target directly (Bionic).
++    // The musl override below breaks on Android because the host is android
++    // ABI, and forcing musl creates an unresolvable target.
++    if (builtin.abi == .android) {
++        return b.resolveTargetQuery(.{});
++    }
++
+     // Zig 0.15.2's ELF linker currently fails on newer glibc startup objects
+     // that ship .sframe relocations. Keep shipped libraries on linux-gnu, but
+     // use musl for local native executables so test/debug/bench still work.
+@@ -182,7 +198,15 @@ fn addMiniaudioShim(
+     };
+ 
+     artifact.addIncludePath(b.path("."));
+-    artifact.linkLibC();
++    // ── XINCLI: skip linkLibC() for android ───────────────────────────
++    // linkLibC() emits -lm -lc -ldl that Zig tries to resolve via its own
++    // libc resolution. On Termux/Android, Zig can't find Bionic properly
++    // (it falls back to glibc defaults), so -lm -lc -ldl fail.
++    // For android, we link the .so files directly via addObjectFile in
++    // buildTarget() instead. For all other targets, linkLibC() works fine.
++    if (target.result.abi != .android) {
++        artifact.linkLibC();
++    }
+     artifact.addCSourceFile(.{
+         .file = b.path("miniaudio_shim.c"),
+         .flags = c_flags,
+@@ -351,24 +375,94 @@ fn addNativeAudioDependencies(
+     switch (target.result.os.tag) {
+         .macos => addMacOSSystemLibraries(b, artifact, macos_sdk_path.?),
+         .linux => {
+-            artifact.linkSystemLibrary("dl");
+-            artifact.linkSystemLibrary("pthread");
+-            artifact.linkSystemLibrary("m");
++            // ── XINCLI: Android is linux + .android ABI in Zig, not a
++            // separate OS tag. For Android, link OpenSLES directly by path
++            // instead of using linkSystemLibrary — the system library
++            // resolution fails because --sysroot makes Zig double the
++            // addLibraryPath paths. addObjectFile bypasses the search
++            // entirely and links the .so directly.
++            if (target.result.abi == .android) {
++                if (std.posix.getenv("XINCLI_ANDROID_LIB_PATH")) |lib_path| {
++                    const opensles_path = b.pathJoin(&.{ lib_path, "libOpenSLES.so" });
++                    artifact.addObjectFile(.{ .cwd_relative = opensles_path });
++                } else {
++                    // Fallback: try linkSystemLibrary (may fail without paths)
++                    artifact.linkSystemLibrary("OpenSLES");
++                }
++            } else {
++                artifact.linkSystemLibrary("dl");
++                artifact.linkSystemLibrary("pthread");
++                artifact.linkSystemLibrary("m");
++            }
+         },
+         else => {},
+     }
+ }
+ 
+-fn addYogaDependencies(b: *std.Build, artifact: *std.Build.Step.Compile) void {
++fn addYogaDependencies(
++    b: *std.Build,
++    artifact: *std.Build.Step.Compile,
++    target: std.Build.ResolvedTarget,
++) void {
+     const yoga_dep = b.dependency("yoga", .{});
+ 
+-    artifact.linkLibCpp();
++    // ── XINCLI: skip linkLibCpp() for android ─────────────────────────
++    // linkLibCpp() emits -lc++ which fails on Termux (only libc++_shared.so
++    // exists, not libc++.so). For android, we link libc++_shared.so directly
++    // via addObjectFile in buildTarget(). For other targets, linkLibCpp() works.
++    if (target.result.abi != .android) {
++        artifact.linkLibCpp();
++    }
++
++    // ── XINCLI: add libc++ include path for android C++ compilation ────
++    // Yoga's C++ files #include <type_traits>, <cstddef>, <cmath>, etc.
++    // from the C++ standard library. linkLibCpp() normally adds libc++'s
++    // include path, but we skipped it for android.
++    //
++    // Also: add a math.h wrapper dir FIRST in the search path. The wrapper
++    // #includes the real Bionic math.h then #undefs isinf/isnan/fabs/abs
++    // macros that break std::isinf in C++ context.
++    if (target.result.abi == .android) {
++        // libc++ headers — use addIncludePath (-I) NOT addSystemIncludePath
++        // (-isystem) so C++ Standard Library headers are searched BEFORE
++        // the C Standard Library. <cerrno> needs libc++'s <errno.h> wrapper
++        // to be found before the C <errno.h>, otherwise it errors out.
++        if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_INCLUDE")) |cxx_inc| {
++            artifact.addIncludePath(.{ .cwd_relative = cxx_inc });
++        }
++        if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_INCLUDE2")) |cxx_inc2| {
++            artifact.addIncludePath(.{ .cwd_relative = cxx_inc2 });
++        }
++    }
++
+     artifact.addIncludePath(yoga_dep.path(""));
+-    artifact.addCSourceFiles(.{
+-        .root = yoga_dep.path(""),
+-        .files = &YOGA_CXX_SOURCES,
+-        .flags = &YOGA_CXX_FLAGS,
+-    });
++
++    // ── XINCLI: Android C++ flags ──────────────────────────────────────
++    // Bionic's math.h macros are handled by patching yoga's source (sed
++    // replaces std::isinf → __builtin_isinf etc.) in build-native-termux.sh.
++    //
++    // CRITICAL: Use -nostdinc++ to skip Zig's bundled libc++ headers (which
++    // use __ndk1 namespace on android). Instead, use Termux's libc++ headers
++    // (at $PREFIX/include/c++/v1/) which use __1 namespace — matching
++    // Termux's libc++_shared.so that we link against.
++    if (target.result.abi == .android) {
++        const android_cxx_flags = [_][]const u8{
++            "-std=c++20",
++            "-fexceptions",
++            "-frtti",
++        };
++        artifact.addCSourceFiles(.{
++            .root = yoga_dep.path(""),
++            .files = &YOGA_CXX_SOURCES,
++            .flags = &android_cxx_flags,
++        });
++    } else {
++        artifact.addCSourceFiles(.{
++            .root = yoga_dep.path(""),
++            .files = &YOGA_CXX_SOURCES,
++            .flags = &YOGA_CXX_FLAGS,
++        });
++    }
+ }
+ 
+ /// Apply dependencies to a module
+@@ -381,7 +475,6 @@ fn applyDependencies(
+ ) void {
+     module.addOptions("build_options", build_options);
+ 
+-    // Add uucode for grapheme break detection and width calculation
+     if (b.lazyDependency("uucode", .{
+         .target = target,
+         .optimize = optimize,
+@@ -482,7 +575,7 @@ pub fn build(b: *std.Build) void {
+         std.process.exit(1);
+     }
+     addNativeAudioDependencies(b, test_artifact, native_target, macos_sdk_path);
+-    addYogaDependencies(b, test_artifact);
++    addYogaDependencies(b, test_artifact, native_target);
+ 
+     const run_test = b.addRunArtifact(test_artifact);
+     test_step.dependOn(&run_test.step);
+@@ -525,7 +618,7 @@ pub fn build(b: *std.Build) void {
+         std.process.exit(1);
+     }
+     addNativeAudioDependencies(b, bench_ffi_lib, native_target, macos_sdk_path);
+-    addYogaDependencies(b, bench_ffi_lib);
++    addYogaDependencies(b, bench_ffi_lib, native_target);
+     const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
+     bench_ffi_step.dependOn(&install_bench_ffi.step);
+     bench_step.dependOn(bench_ffi_step);
+@@ -646,8 +739,46 @@ fn buildTarget(
+         .root_source_file = b.path(ROOT_SOURCE_FILE),
+         .target = target,
+         .optimize = optimize,
++        // ── XINCLI: link_libc=false for android ─────────────────────────
++        // We set link_libc=true before to make std.heap (free/malloc) compile.
++        // But that ALSO makes Zig emit -lc -lm -ldl → NEEDED: libc.so etc.
++        // → TLS crash on dlopen.
++        //
++        // Set link_libc=false. std.heap won't compile with "C allocator only
++        // available when linking against libc" — BUT we can work around that
++        // by providing the extern declarations ourselves in a shim module.
++        // OR: just accept that std.heap won't work and use a custom allocator.
++        //
++        // Actually, the simplest: set link_libc=false but add -lc -lm -ldl
++        // as --allow-shlib-undefined (no NEEDED, just allow undefined symbols).
++        // Zig's default for shared libs is to allow undefined symbols.
++        .link_libc = target.result.abi == .android,
++        // ── XINCLI: Don't let Zig link its own libc++ runtime ────────────
++        // Zig bundles pre-compiled libc++ bitcode (in --zig-lib-dir/libcxx/)
++        // that uses __ndk1 namespace on android. When Zig sees C++ code
++        // (yoga's .cpp files), it automatically links this runtime — producing
++        // __ndk1 mangled symbols that don't exist in Termux's __1 libc++.
++        //
++        // Set link_libcpp=false to stop Zig from linking its own libc++.
++        // We link Termux's libc++_shared.so ourselves via addObjectFile.
++        .link_libcpp = target.result.abi != .android,
+     });
+ 
++    // ── XINCLI: @cImport include path for android ──────────────────────
++    // We skipped linkLibC() for android (it emits -lm -lc -ldl that fail).
++    // The libc file's include_dir points at Termux's real $PREFIX/include
++    // (set by build-native-termux.sh). @cImport reads it from there.
++    //
++    // The arch-specific asm/ headers live at $PREFIX/include/aarch64-linux-android/
++    // which isn't in the default search path. Add it via addSystemIncludePath
++    // so @cImport finds <asm/sigcontext.h> etc. This ONLY affects @cImport
++    // (C) — C++ compilation doesn't use module include paths for system headers.
++    if (target.result.abi == .android) {
++        if (std.posix.getenv("XINCLI_ANDROID_ASM_INCLUDE")) |asm_inc| {
++            module.addSystemIncludePath(.{ .cwd_relative = asm_inc });
++        }
++    }
++
+     applyDependencies(b, module, optimize, target, build_options);
+ 
+     const lib = b.addLibrary(.{
+@@ -656,8 +787,54 @@ fn buildTarget(
+         .linkage = .dynamic,
+     });
+ 
++    // No special flags needed — Zig bundles compiler_rt (ARM atomics)
++
++    // ── XINCLI: Android native build (Termux) ───────────────────────────
++    // On Termux, Zig's --sysroot flag makes ld.lld look at <sysroot>/usr/lib/
++    // which doesn't exist (Termux's libs are at <sysroot>/lib/). We add the
++    // real lib paths explicitly via addLibraryPath, reading them from the
++    // XINCLI_ANDROID_LIB_SEARCH_PATHS env var (colon-separated) set by
++    // build-native-termux.sh.
++    //
++    // This is done in build.zig (not via LDFLAGS) because Zig's ld.lld
++    // doesn't respect the LDFLAGS env var — only flags passed through the
++    // build system reach the linker.
++
+     addNativeAudioDependencies(b, lib, target, macos_sdk_path);
+-    addYogaDependencies(b, lib);
++    addYogaDependencies(b, lib, target);
++
++    // Add Termux lib search paths for the linker
++    if (target.result.abi == .android) {
++        if (std.posix.getenv("XINCLI_ANDROID_LIB_SEARCH_PATHS")) |paths| {
++            var it = std.mem.splitScalar(u8, paths, ':');
++            while (it.next()) |path| {
++                if (path.len > 0) {
++                    lib.addLibraryPath(.{ .cwd_relative = path });
++                }
++            }
++        }
++
++        // ── XINCLI: Set RPATH — $PREFIX/lib FIRST, then /system/lib64 ───
++        // Order matters! $PREFIX/lib must come FIRST so the linker finds:
++        //   - Termux's libc++_shared.so (has __ndk1 symbols)
++        // Before:
++        //   - System's libc++_shared.so (does NOT have __ndk1 symbols)
++        //
++        // /system/lib64 is still searched for Bionic libc/libm/libdl —
++        // those don't exist in $PREFIX/lib (well, they do now from our
++        // dd copies, but the system versions are already-loaded so no TLS crash).
++        if (std.posix.getenv("XINCLI_ANDROID_LIB_PATH")) |termux_lib| {
++            lib.addRPath(.{ .cwd_relative = termux_lib });
++        }
++        lib.addRPath(.{ .cwd_relative = "/system/lib64" });
++
++        // Link Termux's libc++_shared.so — creates NEEDED: libc++_shared.so.
++        // RUNPATH includes $PREFIX/lib so the linker finds Termux's version
++        // (which has __ndk1 symbols + __gxx_personality_v0).
++        if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_PATH")) |cxx_path| {
++            lib.addObjectFile(.{ .cwd_relative = cxx_path });
++        }
++    }
+ 
+     const install_dir = b.addInstallArtifact(lib, .{
+         .dest_dir = .{

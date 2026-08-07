@@ -336,11 +336,18 @@ jobs:
             p.type = 'module';
             fs.writeFileSync('package.json', JSON.stringify(p, null, 2));
           "
+          # --legacy-peer-deps does not install peer dependencies, so the
+          # bindings' peers have to be named explicitly or importing them
+          # dies with ERR_MODULE_NOT_FOUND. That is correct packaging —
+          # upstream declares react and solid-js as peers so the consumer
+          # controls the version — but it means this job has to install
+          # them the way a real consumer would.
           npm install --legacy-peer-deps \
             "@xincli/opentui-core@$VERSION" \
             "@xincli/opentui-react@$VERSION" \
             "@xincli/opentui-solid@$VERSION" \
-            "@xincli/opentui-keymap@$VERSION"
+            "@xincli/opentui-keymap@$VERSION" \
+            react solid-js react-devtools-core ws
 
           node --input-type=module -e "
             const core = await import('@xincli/opentui-core');

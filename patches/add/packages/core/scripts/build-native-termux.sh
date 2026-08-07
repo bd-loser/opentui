@@ -550,16 +550,80 @@ cp "$SO_PATH" "$OUT_DIR/libopentui.so"
 
 # No symbol renaming — __ndk1 is correct (matches Termux's libc++)
 
+# ── Verify the .so matches this checkout's FFI declarations ─────────────
+#
+# The single most likely failure after an upstream bump is a .so built
+# from older sources: it loads, then dies at the first missing symbol
+# with "Symbol <name> not found". Catch it here, while the toolchain is
+# still warm, instead of at runtime or in CI.
 echo ""
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  ✅ NATIVE BUILD COMPLETE                                    ║"
-echo "╠══════════════════════════════════════════════════════════════╣"
-echo "║  Output: packages/core/prebuilt/aarch64-android/libopentui.so ║"
-echo "║                                                              ║"
-echo "║  Next:                                                       ║"
-echo "║   git add packages/core/prebuilt/                            ║"
-echo "║   git commit -m 'build: native arm64 .so from Termux'        ║"
-echo "║   git push origin main                                       ║"
-echo "║                                                              ║"
-echo "║  The package-prebuilt.yml workflow will publish to npm.      ║"
-echo "╚══════════════════════════════════════════════════════════════╝"
+echo "🔍 Verifying FFI symbols against src/zig.ts..."
+SYM_TMP="$(mktemp -d "${TMPDIR:-/tmp}/xin-sym.XXXXXX")"
+if node -e '
+  const fs = require("fs");
+  const src = fs.readFileSync(process.argv[1], "utf8");
+  const start = src.indexOf("dlopen(resolvedLibPath");
+  if (start === -1) throw new Error("could not find the dlopen() symbol table");
+  const end = src.indexOf("\n  })", start);
+  const table = src.slice(start, end === -1 ? undefined : end);
+  const names = [...new Set(
+    [...table.matchAll(/^ {4}([A-Za-z_][A-Za-z0-9_]*): \{/gm)].map((m) => m[1]),
+  )];
+  if (names.length === 0) throw new Error("extracted 0 symbols");
+  process.stdout.write(names.join("\n") + "\n");
+' "$REPO_ROOT/packages/core/src/zig.ts" > "$SYM_TMP/declared.txt" 2>"$SYM_TMP/err"; then
+  nm -D --defined-only "$OUT_DIR/libopentui.so" 2>/dev/null | awk '{print $NF}' | sort -u > "$SYM_TMP/exported.txt"
+  MISSING_SYMS="$(comm -23 <(sort -u "$SYM_TMP/declared.txt") "$SYM_TMP/exported.txt")"
+  if [ -n "$MISSING_SYMS" ]; then
+    echo "  ❌ The .so does not export every symbol src/zig.ts declares:"
+    printf '       %s\n' $MISSING_SYMS
+    echo "     This build is stale or incomplete — do NOT commit it."
+    rm -rf "$SYM_TMP"
+    exit 1
+  fi
+  echo "  ✓ all $(wc -l < "$SYM_TMP/declared.txt" | tr -d ' ') declared symbols present"
+else
+  echo "  ⚠️  could not extract symbols; skipping check"
+  cat "$SYM_TMP/err" 2>/dev/null | sed 's/^/     /'
+fi
+rm -rf "$SYM_TMP"
+
+# ── Report ─────────────────────────────────────────────────────────────
+
+XIN_VERSION="$(node -p "require('$REPO_ROOT/packages/core/package.json').version" 2>/dev/null || echo "")"
+XIN_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+
+echo ""
+echo "╔═══════════════════════════════════════════════════════════════╗"
+echo "║  ✅ NATIVE BUILD COMPLETE                                     ║"
+echo "╚═══════════════════════════════════════════════════════════════╝"
+echo ""
+echo "  Output:  packages/core/prebuilt/aarch64-android/libopentui.so"
+echo "  Size:    $(du -h "$OUT_DIR/libopentui.so" | cut -f1)"
+[ -n "$XIN_VERSION" ] && echo "  Version: $XIN_VERSION"
+echo ""
+echo "  ── Publish all five @xincli packages ─────────────────────────"
+echo ""
+echo "    git add -A"
+echo "    git commit -m 'build: native arm64 .so from Termux'"
+
+if [ -n "$XIN_VERSION" ]; then
+  echo "    git push origin ${XIN_BRANCH:-HEAD}"
+  echo "    git tag xin-v$XIN_VERSION && git push origin xin-v$XIN_VERSION"
+  echo ""
+  echo "  That one tag runs .github/workflows/xin-release.yml, which"
+  echo "  publishes — in dependency order, all at $XIN_VERSION:"
+  echo ""
+  echo "    1. @xincli/opentui-core-android-arm64   (this .so)"
+  echo "    2. @xincli/opentui-core"
+  echo "    3. @xincli/opentui-{react,solid,keymap}  (in parallel)"
+  echo ""
+  echo "  npm versions are immutable — the workflow refuses to start if"
+  echo "  $XIN_VERSION is already published. Check first with:"
+  echo ""
+  echo "    npm view @xincli/opentui-core@$XIN_VERSION version"
+else
+  echo "    git push origin ${XIN_BRANCH:-HEAD}"
+  echo "    git tag xin-v<version> && git push origin xin-v<version>"
+fi
+echo ""

@@ -167,7 +167,7 @@ jobs:
             )];
             if (names.length === 0) throw new Error("extracted 0 symbols — the regex needs updating");
             console.error(`declared FFI symbols: ${names.length}`);
-            process.stdout.write(names.join("\n"));
+            process.stdout.write(names.join("\n") + "\n");
           ' > /tmp/declared-symbols.txt
 
           nm -D --defined-only "$SO" | awk '{print $NF}' | sort -u > /tmp/so-symbols.txt

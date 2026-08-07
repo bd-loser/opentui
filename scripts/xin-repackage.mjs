@@ -26,7 +26,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { spawnSync } from "node:child_process"
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
@@ -142,7 +142,7 @@ delete pkg.private
 // Point every intra-fork @opentui/* edge at its @xincli counterpart, so a
 // consumer never pulls upstream @opentui/core — which throws
 // "opentui is not supported" on Termux.
-for (const field of ["dependencies", "peerDependencies", "devDependencies"]) {
+for (const field of ["dependencies", "peerDependencies"]) {
   const deps = pkg[field]
   if (deps === undefined) continue
   for (const [name, range] of Object.entries(deps)) {
@@ -153,16 +153,43 @@ for (const field of ["dependencies", "peerDependencies", "devDependencies"]) {
   }
 }
 
-// core carries the native library as optional deps: upstream's own
-// per-platform packages plus our Android one, all pinned to this version.
-if (pkgKey === "core") {
-  const opts = pkg.optionalDependencies ?? {}
-  for (const name of Object.keys(opts)) {
-    if (name.startsWith("@opentui/core-")) opts[name] = version
+// devDependencies are never installed by consumers, and the workspace
+// entries here would otherwise be published as literal "workspace:*",
+// which is not a valid npm range. Upstream drops them from its published
+// packages; do the same rather than inventing versions for them.
+if (pkg.devDependencies !== undefined) {
+  for (const name of Object.keys(pkg.devDependencies)) {
+    if (RENAMES[name] === undefined && !name.startsWith("@opentui/")) continue
+    delete pkg.devDependencies[name]
+    console.log(`  devDependencies: dropped ${name}`)
   }
-  opts[`${SCOPE}/opentui-core-android-arm64`] = version
+}
+
+// core carries the native library as optional deps, one per platform,
+// all pinned to this version.
+//
+// The non-Android ones stay pointed at upstream's published binaries —
+// they are the same artifacts this fork would produce, so there is no
+// reason to republish them under @xincli.
+//
+// The Android ones must be renamed. scripts/build.ts adds an
+// { platform: "android" } variant, so the generated dist/package.json
+// names it @opentui/core-android-arm64 by convention — but upstream
+// never publishes that, and we publish @xincli/opentui-core-android-*.
+// Left unrenamed it is a permanent 404 in every consumer's install log.
+if (pkgKey === "core") {
+  const opts = {}
+  for (const [name, range] of Object.entries(pkg.optionalDependencies ?? {})) {
+    if (name.startsWith("@opentui/core-android")) {
+      const renamed = name.replace("@opentui/core-", `${SCOPE}/opentui-core-`)
+      opts[renamed] = version
+      console.log(`  optionalDependencies: ${name} -> ${renamed}@${version} (was ${range})`)
+    } else {
+      opts[name] = name.startsWith("@opentui/core-") ? version : range
+    }
+  }
   pkg.optionalDependencies = opts
-  console.log(`  optionalDependencies: ${Object.keys(opts).join(", ")}`)
+  console.log(`  optionalDependencies: ${Object.keys(opts).length} platform(s)`)
 }
 
 writeFileSync(distPkgPath, `${JSON.stringify(pkg, null, 2)}\n`)
@@ -198,6 +225,7 @@ if (pkgKey === "react") {
 // ── 4. pack ────────────────────────────────────────────────────────────
 
 console.log(`\n=== Step 4: npm pack ===`)
+mkdirSync(artifactsDir, { recursive: true })
 run("npm", ["pack", distDir, "--pack-destination", artifactsDir])
 
 const tgz = join(artifactsDir, `xincli-opentui-${pkgKey}-${version}.tgz`)

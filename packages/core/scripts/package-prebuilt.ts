@@ -22,14 +22,25 @@ const rootDir = resolve(__dirname, "..")
 const PREBUILT_DIR = join(rootDir, "prebuilt")
 const DIST_DIR = join(rootDir, "dist-prebuilt")
 
-// Map prebuilt/ subdirectory names to npm package names.
-const ARCH_TO_PACKAGE: Record<string, string> = {
-  "aarch64-android": "@xincli/opentui-core-android-arm64",
-  "arm-android": "@xincli/opentui-core-android-arm",
-  "x86_64-android": "@xincli/opentui-core-android-x64",
+// Map prebuilt/ subdirectory names to npm package names and the CPU they
+// were built for.
+const ARCH_TO_PACKAGE: Record<string, { name: string; cpu: string }> = {
+  "aarch64-android": { name: "@xincli/opentui-core-android-arm64", cpu: "arm64" },
+  "arm-android": { name: "@xincli/opentui-core-android-arm", cpu: "arm" },
+  "x86_64-android": { name: "@xincli/opentui-core-android-x64", cpu: "x64" },
 }
 
-function packageOne(archDir: string, packageName: string): void {
+// npm and bun skip an optional dependency whose os/cpu don't match the
+// host, which is how upstream keeps a macOS user from downloading eight
+// platforms' worth of .so. We want the same, but "android" alone is not
+// enough: Node on Termux reports process.platform === "android" while
+// Bun reports "linux", so an android-only constraint would make
+// `bun install` silently skip the very package it needs. Listing both
+// covers either installer, at the cost of also installing on desktop
+// linux-arm64 — where the resolver ignores it anyway.
+const OS_LIST = ["android", "linux"]
+
+function packageOne(archDir: string, packageName: string, cpu: string): void {
   const soPath = join(PREBUILT_DIR, archDir, "libopentui.so")
   if (!existsSync(soPath)) {
     console.log(`⊘ Skipping ${packageName} — no .so at ${soPath}`)
@@ -53,6 +64,8 @@ function packageOne(archDir: string, packageName: string): void {
     },
     license: "MIT",
     type: "module",
+    os: OS_LIST,
+    cpu: [cpu],
     main: "index.js",
     module: "index.js",
     exports: {
@@ -63,7 +76,7 @@ function packageOne(archDir: string, packageName: string): void {
     },
     files: ["libopentui.so", "index.js", "index.d.ts"],
   }
-  
+
   // Create index.js that exports the .so path (not the .so itself).
   // Using `import ... with { type: "file" }` so `bun build --compile`
   // embeds libopentui.so into bunfs (with a hashed filename). Under
@@ -81,10 +94,10 @@ function packageOne(archDir: string, packageName: string): void {
 export default libopentui
 `
   writeFileSync(join(pkgDir, "index.js"), indexJsContent)
-  
+
   // Create index.d.ts
   writeFileSync(join(pkgDir, "index.d.ts"), "declare const path: string\nexport default path\n")
-  
+
   writeFileSync(join(pkgDir, "package.json"), JSON.stringify(pkgJson, null, 2))
 
   const sizeKb = Math.round(existsSync(soPath) ? require("fs").statSync(soPath).size / 1024 : 0)
@@ -100,9 +113,9 @@ if (!existsSync(PREBUILT_DIR)) {
 }
 
 let packaged = 0
-for (const [archDir, packageName] of Object.entries(ARCH_TO_PACKAGE)) {
+for (const [archDir, { name, cpu }] of Object.entries(ARCH_TO_PACKAGE)) {
   if (existsSync(join(PREBUILT_DIR, archDir, "libopentui.so"))) {
-    packageOne(archDir, packageName)
+    packageOne(archDir, name, cpu)
     packaged++
   }
 }

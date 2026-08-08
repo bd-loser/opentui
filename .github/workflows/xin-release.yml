@@ -326,6 +326,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      # Needed by the JSX-transform step below; @opentui/solid/bun-plugin
+      # is Bun-only by design (its .node.js twin throws on purpose).
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
       - name: Install and import from npm
         run: |
           set -euo pipefail
@@ -410,6 +416,70 @@ jobs:
             await import('@opentui/keymap');
             console.log('OK @opentui/keymap (aliased)');
           "
+
+      - name: Verify the Solid JSX transform against the aliased install
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.setup.outputs.version }}"
+          # Importing a package only proves its own specifiers resolve. It
+          # says nothing about the specifiers the package WRITES INTO the
+          # consumer's code — and at 0.5.1-bun the repackager had renamed
+          # the Solid JSX moduleName default to "@xincli/opentui-solid",
+          # so every consumer .tsx compiled to an import of a directory the
+          # alias never creates:
+          #
+          #   error: Could not resolve: "@xincli/opentui-solid"
+          #     at packages/tui/src/context/helper.tsx:1:54
+          #
+          # Both import steps above passed on that build. Bundling through
+          # the plugin is what catches it, so it gets its own step.
+          mkdir -p /tmp/verify-jsx && cd /tmp/verify-jsx
+          npm init -y >/dev/null
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json'));
+            p.type = 'module';
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2));
+          "
+          npm install --legacy-peer-deps \
+            "@opentui/core@npm:@xincli/opentui-core@$VERSION" \
+            "@opentui/solid@npm:@xincli/opentui-solid@$VERSION" \
+            solid-js
+
+          mkdir -p src
+          cat > src/app.tsx <<'TSX'
+          /** @jsxImportSource @opentui/solid */
+          export function App() {
+            return <box><text>hello</text></box>
+          }
+          TSX
+
+          cat > build.ts <<'TS'
+          import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
+          // @opentui/core-<platform> are optionalDependencies for the other
+          // platforms and are legitimately absent; only the JSX specifiers
+          // are under test here.
+          const r = await Bun.build({
+            entrypoints: ["src/app.tsx"],
+            target: "bun",
+            external: ["@opentui/core-*", "@xincli/opentui-core-*"],
+            plugins: [createSolidTransformPlugin()],
+          })
+          if (!r.success) {
+            for (const l of r.logs) console.error(String(l))
+            throw new Error("bundling a .tsx through the Solid transform failed")
+          }
+          const out = await r.outputs[0].text()
+          const leaked = [...new Set(out.match(/@xincli\/opentui-(core|solid|keymap|react)(?![a-z-])/g) ?? [])]
+          if (leaked.length > 0) {
+            throw new Error(
+              "the bundle references @xincli names that an aliased install never creates: " + leaked.join(", "),
+            )
+          }
+          console.log("OK Solid JSX transform (aliased)")
+          TS
+
+          bun build.ts
 
       - name: Summary
         run: |

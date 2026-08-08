@@ -9,7 +9,7 @@
   "types": "src/index.ts",
   "module": "src/index.ts",
   "main": "src/index.ts",
-  "version": "0.5.1-bun",
+  "version": "0.5.1-bun.1",
   "type": "module",
   "imports": {
     "#opentui/runtime-assets": {

@@ -240,14 +240,56 @@ console.log(`\n=== Step 3: rewrite self-referencing import specifiers ===`)
 // under its real name instead would resolve, but a consumer that aliases
 // @opentui/core for its own source (as opencode does) would then get two
 // copies of core — two module instances, two dlopens of the same .so.
-const SPECIFIER_RULES = Object.entries(RENAMES)
-  .filter(([from]) => from === `@opentui/${pkgKey}`)
-  .map(([from, to]) => ({
-    // "@opentui/core" or "@opentui/core/sub", never "@opentui/core-linux-x64"
-    re: new RegExp(`(["'])${from.replace("/", "\\/")}(?=\\1|/)`, "g"),
-    to: `$1${to}`,
-    from,
-  }))
+//
+// And only strings in an actual import position get rewritten. Matching
+// every quoted "@opentui/solid" also hit this, in scripts/solid-transform.js:
+//
+//   moduleName: options.moduleName ?? "@opentui/solid"
+//
+// which is not a specifier this package resolves — it is the name the Solid
+// JSX transform *writes into the consumer's* compiled output. The consumer
+// resolves it, and the consumer has node_modules/@opentui/solid from the
+// alias, so renaming it broke every build that uses the plugin:
+//
+//   error: Could not resolve: "@xincli/opentui-solid"
+//     at packages/tui/src/context/helper.tsx:1:54
+//
+// Same invariant as above, one level out: anything a CONSUMER resolves stays
+// upstream-named. Only what this package resolves for itself gets renamed.
+const SELF_NAME = `@opentui/${pkgKey}`
+const SELF_RENAMED = RENAMES[SELF_NAME]
+
+// from "x" / import "x" / import("x") / require("x"), including the
+// no-whitespace forms bundlers emit (`import{a}from"x"`).
+const SPECIFIER_RE = /\b(from|import|require)(\s*\(\s*|\s*)(["'])(@opentui\/[^"'/]+)((?:\/[^"']*)?)\3/g
+
+// One more exception, same shape as moduleName: an import statement that
+// lives INSIDE a template literal is code this package generates for a
+// consumer, not code it runs. lib/tree-sitter/assets/update.ts emits a
+// parser-assets file into the user's project containing
+//
+//   `import { resolveBundledFilePath } from "@opentui/core"`
+//
+// which the USER's tree then has to resolve. Backtick parity is a cheap
+// test for that: a real import is never inside a template literal, and
+// when the count is thrown off the failure mode is a skipped rename —
+// which still resolves under an alias, the way opencode consumes this.
+const insideTemplateLiteral = (src, offset) => {
+  let ticks = 0
+  for (let i = 0; i < offset; i++) {
+    if (src[i] === "`" && src[i - 1] !== "\\") ticks++
+  }
+  return ticks % 2 === 1
+}
+
+const rewriteSpecifiers = (src) =>
+  src.replace(SPECIFIER_RE, (match, kw, gap, quote, name, subpath, offset) => {
+    // A non-self @opentui/* name — a cross-package edge, or one of
+    // upstream's @opentui/core-<platform> binaries — is left alone.
+    if (name !== SELF_NAME) return match
+    if (insideTemplateLiteral(src, offset)) return match
+    return `${kw}${gap}${quote}${SELF_RENAMED}${subpath}${quote}`
+  })
 
 let rewritten = 0
 const rewriteTree = (dir) => {
@@ -260,8 +302,7 @@ const rewriteTree = (dir) => {
     if (!/\.(js|mjs|cjs)$/.test(entry)) continue
 
     const before = readFileSync(full, "utf8")
-    let after = before
-    for (const rule of SPECIFIER_RULES) after = after.replace(rule.re, rule.to)
+    let after = rewriteSpecifiers(before)
 
     // Bun resolves bare subpath imports like "react-reconciler/constants"
     // without an extension; Node ESM does not.

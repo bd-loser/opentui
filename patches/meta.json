@@ -32,11 +32,8 @@
   "ignore": [
     ".github/disabled-workflows/",
     ".github/workflows/",
-    ".zig-cmath-wrapper/",
     ".zig-deps/",
     ".zig-linker-stubs/",
-    ".zig-math-wrapper/",
-    ".zig-merged-include/",
     "artifacts/",
     "bun.lock",
     "packages/core/dist-prebuilt/",

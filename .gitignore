@@ -52,10 +52,7 @@ host_key.pub
 # libopentui.so natively on Termux. Regenerated on every build (~22 MB),
 # and machine-specific — never commit it.
 .zig-deps/
-.zig-cmath-wrapper/
-.zig-math-wrapper/
 .zig-linker-stubs/
-.zig-merged-include/
 
 # Staging dirs for the @xincli packages, written by
 # scripts/xin-repackage.mjs and packages/core/scripts/package-prebuilt.ts.

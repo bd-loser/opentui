@@ -438,13 +438,15 @@ fn addYogaDependencies(
     artifact.addIncludePath(yoga_dep.path(""));
 
     // ── XINCLI: Android C++ flags ──────────────────────────────────────
-    // Bionic's math.h macros are handled by patching yoga's source (sed
-    // replaces std::isinf → __builtin_isinf etc.) in build-native-termux.sh.
+    // Termux's libc++ headers are put on the include path above (via
+    // XINCLI_ANDROID_LIBCXX_INCLUDE, using addIncludePath so they are searched
+    // before the C headers). They declare _LIBCPP_ABI_NAMESPACE as __1, which
+    // is what Termux's libc++_shared.so exports — whereas Zig's bundled libc++
+    // uses __ndk1 and would produce unresolvable mangled symbols.
     //
-    // CRITICAL: Use -nostdinc++ to skip Zig's bundled libc++ headers (which
-    // use __ndk1 namespace on android). Instead, use Termux's libc++ headers
-    // (at $PREFIX/include/c++/v1/) which use __1 namespace — matching
-    // Termux's libc++_shared.so that we link against.
+    // Those headers also make std::isinf / std::isnan / std::abs resolve
+    // correctly despite Bionic's math.h defining the C macros, so yoga's
+    // sources compile unmodified.
     if (target.result.abi == .android) {
         const android_cxx_flags = [_][]const u8{
             "-std=c++20",
@@ -475,6 +477,7 @@ fn applyDependencies(
 ) void {
     module.addOptions("build_options", build_options);
 
+    // Add uucode for grapheme break detection and width calculation
     if (b.lazyDependency("uucode", .{
         .target = target,
         .optimize = optimize,
@@ -739,20 +742,16 @@ fn buildTarget(
         .root_source_file = b.path(ROOT_SOURCE_FILE),
         .target = target,
         .optimize = optimize,
-        // ── XINCLI: link_libc=false for android ─────────────────────────
-        // We set link_libc=true before to make std.heap (free/malloc) compile.
-        // But that ALSO makes Zig emit -lc -lm -ldl → NEEDED: libc.so etc.
-        // → TLS crash on dlopen.
+        // ── XINCLI: link libc explicitly on android ─────────────────────
+        // std.heap's C allocator only compiles when linking libc, so android
+        // opts in here. The symbols are then satisfied by hand: this function
+        // links Bionic's libc/libm/libdl by absolute path via addObjectFile,
+        // because Termux ships no libc.so/libm.so/libdl.so in $PREFIX/lib for
+        // ld.lld to find — a plain -lc -lm -ldl fails to resolve.
         //
-        // Set link_libc=false. std.heap won't compile with "C allocator only
-        // available when linking against libc" — BUT we can work around that
-        // by providing the extern declarations ourselves in a shim module.
-        // OR: just accept that std.heap won't work and use a custom allocator.
-        //
-        // Actually, the simplest: set link_libc=false but add -lc -lm -ldl
-        // as --allow-shlib-undefined (no NEEDED, just allow undefined symbols).
-        // Zig's default for shared libs is to allow undefined symbols.
-        .link_libc = target.result.abi == .android,
+        // Non-android stays null (upstream's behaviour), leaving the decision
+        // to addMiniaudioShim()'s artifact-level linkLibC().
+        .link_libc = if (target.result.abi == .android) true else null,
         // ── XINCLI: Don't let Zig link its own libc++ runtime ────────────
         // Zig bundles pre-compiled libc++ bitcode (in --zig-lib-dir/libcxx/)
         // that uses __ndk1 namespace on android. When Zig sees C++ code
@@ -761,7 +760,8 @@ fn buildTarget(
         //
         // Set link_libcpp=false to stop Zig from linking its own libc++.
         // We link Termux's libc++_shared.so ourselves via addObjectFile.
-        .link_libcpp = target.result.abi != .android,
+        // Non-android stays null so addYogaDependencies()' linkLibCpp() wins.
+        .link_libcpp = if (target.result.abi == .android) false else null,
     });
 
     // ── XINCLI: @cImport include path for android ──────────────────────

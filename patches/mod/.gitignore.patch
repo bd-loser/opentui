@@ -1,8 +1,8 @@
 diff --git a/.gitignore b/.gitignore
-index ab59aa07..cd5edd36 100644
+index ab59aa07..19084451 100644
 --- a/.gitignore
 +++ b/.gitignore
-@@ -46,3 +46,22 @@ screenshot-*.png
+@@ -46,3 +46,19 @@ screenshot-*.png
  host_key
  host_key.pub
  *.host_key
@@ -12,10 +12,7 @@ index ab59aa07..cd5edd36 100644
 +# libopentui.so natively on Termux. Regenerated on every build (~22 MB),
 +# and machine-specific — never commit it.
 +.zig-deps/
-+.zig-cmath-wrapper/
-+.zig-math-wrapper/
 +.zig-linker-stubs/
-+.zig-merged-include/
 +
 +# Staging dirs for the @xincli packages, written by
 +# scripts/xin-repackage.mjs and packages/core/scripts/package-prebuilt.ts.

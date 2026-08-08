@@ -164,61 +164,23 @@ if [ -z "$CRT_DIR" ]; then
 fi
 echo "✓ crt objects found at: $CRT_DIR"
 
-# ── Patch yoga source: replace std::isinf/isnan/abs with __builtin_* ──
-# NUCLEAR OPTION: Bionic's math.h defines isinf/isnan as C macros that
-# break ALL attempts to use std::isinf in C++. No compiler flag, wrapper
-# header, or macro game can fix this because the preprocessor always wins.
+# ── Heal a yoga cache left rewritten by an older build script ─────────
 #
-# Fix: sed-patch yoga's source files to replace the problematic std::
-# calls with __builtin_* compiler intrinsics. These are always available,
-# never macros, and don't depend on any header.
+# This script used to sed yoga's sources in the global Zig cache,
+# rewriting std::isinf/isnan/abs into __builtin_* intrinsics. That was a
+# workaround for Bionic's math.h defining isinf/isnan as C macros; with
+# Termux's libc++ headers on the include path (see XINCLI_ANDROID_LIBCXX_INCLUDE
+# in build.zig) the std:: forms compile fine, so the rewrite is gone.
 #
-# IMPORTANT: std::abs can be int or float. __builtin_abs is INT-ONLY.
-# Use __builtin_fabs for abs — it works for ALL numeric types (int,
-# float, double) via implicit conversion, and returns double which
-# compares correctly with < 0.0001.
-#
-# CRITICAL: Clear the Zig cache for yoga first, so we get FRESH source.
-# Previous runs may have already patched std::abs → __builtin_abs (wrong),
-# and the sed for std::abs won't match anymore. Clearing forces a re-fetch.
-YOGA_DIR=$(find "$HOME/.cache/zig/p" -maxdepth 1 -name "N-V-*" -type d 2>/dev/null | head -1)
-if [ -n "$YOGA_DIR" ] && [ -d "$YOGA_DIR/yoga" ]; then
-  # Check if already patched (has __builtin_abs from a previous run)
-  if grep -q "__builtin_abs(" "$YOGA_DIR/yoga/numeric/Comparison.h" 2>/dev/null; then
-    echo "⚠️  Yoga source has stale patches from previous run — re-fetching fresh copy"
-    rm -rf "$YOGA_DIR"
-    # Re-populate from vendored deps
-    ZIG_GLOBAL_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/zig"
-    YOGA_HASH="N-V-__8AAOYl0gAU76B1VRPFD9AWvy2VkOef2jN0B3sISTeO"
-    if [ -d "$REPO_ROOT/.zig-deps/yoga" ]; then
-      cp -r "$REPO_ROOT/.zig-deps/yoga" "$ZIG_GLOBAL_CACHE/p/$YOGA_HASH"
-      YOGA_DIR="$ZIG_GLOBAL_CACHE/p/$YOGA_HASH"
-    fi
-  fi
-fi
-
-if [ -n "$YOGA_DIR" ] && [ -d "$YOGA_DIR/yoga" ]; then
-  echo "🔧 Patching yoga source: std::isinf → __builtin_isinf etc."
-  find "$YOGA_DIR/yoga" -name "*.h" -o -name "*.cpp" | while read f; do
-    sed -i \
-      -e 's/std::isinf(/__builtin_isinf(/g' \
-      -e 's/std::isnan(/__builtin_isnan(/g' \
-      -e 's/std::isfinite(/__builtin_isfinite(/g' \
-      -e 's/std::signbit(/__builtin_signbit(/g' \
-      -e 's/std::abs(/__builtin_fabs(/g' \
-      -e 's/std::fabs(/__builtin_fabs(/g' \
-      -e 's/std::fpclassify(/__builtin_fpclassify(/g' \
-      "$f" 2>/dev/null || true
-  done
-  # Verify the patch took effect
-  if grep -q "__builtin_fabs(" "$YOGA_DIR/yoga/numeric/Comparison.h" 2>/dev/null; then
-    echo "✓ Yoga source patched (verified: __builtin_fabs in Comparison.h)"
-  else
-    echo "⚠️  Patch may not have applied — Comparison.h still doesn't have __builtin_fabs"
-    grep -n "abs\|isinf" "$YOGA_DIR/yoga/numeric/Comparison.h" 2>/dev/null | head -5
-  fi
-else
-  echo "⚠️  Yoga dir not found — skipping patch"
+# It has to be undone rather than merely stopped: the cache lives outside
+# the repo and survives checkouts, and the old std::abs → __builtin_fabs
+# rule was lossy (integer abs silently became double fabs). Restore the
+# pristine vendored copy so the build compiles what upstream shipped.
+if grep -q "__builtin_" "$ZIG_GLOBAL_CACHE/p/$YOGA_HASH/yoga/numeric/Comparison.h" 2>/dev/null; then
+  echo "⚠️  Yoga cache was rewritten by an older build script — restoring pristine source"
+  rm -rf "${ZIG_GLOBAL_CACHE:?}/p/$YOGA_HASH"
+  cp -r "$DEPS_DIR/yoga" "$ZIG_GLOBAL_CACHE/p/$YOGA_HASH"
+  echo "✓ Yoga source restored from $DEPS_DIR/yoga"
 fi
 
 # ── Generate a Zig libc file pointing at Termux's Bionic ────────
@@ -376,29 +338,13 @@ echo ""
 # ZIG_LIBC env var makes Zig read our generated libc file (Bionic paths).
 # XINCLI_ANDROID_LIB_SEARCH_PATHS is read by build.zig's addLibraryPath calls
 # so ld.lld finds libc/libm/libdl in $PREFIX/lib + the linker-stubs dir.
-#
-# CRITICAL: Termux does NOT ship libc.so/libm.so/libdl.so in $PREFIX/lib/ —
-# they only exist at /system/lib64/. build.zig links them directly by
-# absolute path via addObjectFile, reading the paths from these env vars.
 export ZIG_LIBC="$LIBC_FILE"
 export XINCLI_ANDROID_LIB_PATH="$TERMUX_LIB"
 export XINCLI_ANDROID_LIB_SEARCH_PATHS="$TERMUX_LIB:$LINKER_STUBS_DIR"
-# Include path for @cImport — points at the merged-include dir that has
-# both Termux's headers (pthread.h, math.h, signal.h) and arch-specific
-# asm/ headers (asm/sigcontext.h, asm/types.h).
-export XINCLI_ANDROID_INCLUDE_PATH="$MERGED_INCLUDE"
-# Math.h wrapper dir — placed FIRST in C++ include path to shadow
-# Bionic's math.h and #undef the isinf/isnan/fabs/abs macros.
-export XINCLI_ANDROID_MATH_WRAPPER="$WRAPPER_MATH"
-# cmath wrapper dir — shadows <cmath>, #undefs macros AFTER <cmath> runs
-export XINCLI_ANDROID_CMATH_WRAPPER="$WRAPPER_INCLUDE"
 
-# Export the system Bionic paths for build.zig's addObjectFile calls.
-# Use the RESOLVED real paths so ld.lld doesn't have to follow symlinks.
-export XINCLI_ANDROID_LIBC_PATH="$SYSTEM_LIBC_REAL"
-export XINCLI_ANDROID_LIBM_PATH="$SYSTEM_LIBM_REAL"
-export XINCLI_ANDROID_LIBDL_PATH="$SYSTEM_LIBDL_REAL"
-# libc++_shared.so lives in Termux's $PREFIX/lib (from the libc++ package)
+# libc++_shared.so lives in Termux's $PREFIX/lib (from the libc++ package).
+# Termux ships no libc++.so, so build.zig links this one by absolute path
+# via addObjectFile instead of calling linkLibCpp().
 export XINCLI_ANDROID_LIBCXX_PATH="$TERMUX_LIB/libc++_shared.so"
 echo "✓ Bionic libs (resolved): $SYSTEM_LIBC_REAL"
 echo "✓ libc++: $XINCLI_ANDROID_LIBCXX_PATH"
@@ -443,12 +389,7 @@ LIBCXX_INCLUDE2=$(dirname "$LIBCXX_INCLUDE" 2>/dev/null)
 if [ -d "$LIBCXX_INCLUDE2" ]; then
   export XINCLI_ANDROID_LIBCXX_INCLUDE2="$LIBCXX_INCLUDE2"
 fi
-# Termux's real include dir — used for C++ compilation (proper C/C++ separation).
-# The merged-include dir is only for Zig @cImport (C-only) because its math.h
-# macro 'isinf' breaks std::isinf in C++ context.
-export XINCLI_ANDROID_TERMUX_INCLUDE="$TERMUX_INCLUDE"
 echo "✓ libc++ headers: $LIBCXX_INCLUDE"
-echo "✓ Termux include (C++): $TERMUX_INCLUDE"
 
 # Run zig build with --summary all to see all steps + errors
 # Force clean first to avoid cached results that don't output the .so

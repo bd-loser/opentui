@@ -97,6 +97,15 @@ if (typeof version !== "string" || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(ver
   process.exit(2)
 }
 
+// The fork tracks upstream releases exactly, but sometimes needs to ship a
+// fix to its own packaging between two upstream tags. That is expressed as a
+// prerelease suffix on the upstream base: 0.5.1 -> 0.5.1-bun.
+//
+// Anything published under @xincli uses the full fork version. Anything still
+// resolved from upstream — the non-Android core-<platform> binaries — must use
+// the base, because upstream publishes 0.5.1 and never 0.5.1-bun.
+const upstreamVersion = version.replace(/-.*$/, "")
+
 console.log("=".repeat(58))
 console.log(`Repackaging ${publishedName}@${version}`)
 console.log("=".repeat(58))
@@ -185,7 +194,7 @@ if (pkgKey === "core") {
       opts[renamed] = version
       console.log(`  optionalDependencies: ${name} -> ${renamed}@${version} (was ${range})`)
     } else {
-      opts[name] = name.startsWith("@opentui/core-") ? version : range
+      opts[name] = name.startsWith("@opentui/core-") ? upstreamVersion : range
     }
   }
   pkg.optionalDependencies = opts
@@ -200,27 +209,44 @@ console.log(`  [OK] ${pkg.name}@${pkg.version}`)
 // The compiled output imports sibling packages — and itself — by upstream
 // name: `import("@opentui/core/parser.worker")`, `from "@opentui/core"`.
 // A package may import itself by name, so this works upstream. Renamed to
-// @xincli/opentui-core it does not, and the failure is invisible under
-// Node (the paths are lazy) but immediate under Bun:
+// @xincli/opentui-core the SELF-import does not, and the failure is
+// invisible under Node (the paths are lazy) but immediate under Bun:
 //
 //   Cannot find module '@opentui/core/parser.worker'
 //
-// The dependency aliases below happen to paper over this whenever a
-// binding is installed, because `npm:` materialises node_modules/@opentui/core
-// — but `npm install @xincli/opentui-core` on its own has no such luck.
-// Rewrite the specifiers so the packages stand alone.
+// A dependency alias papers over this whenever a binding is installed,
+// because `npm:` materialises node_modules/@opentui/core — but
+// `npm install @xincli/opentui-core` on its own has no such luck.
+// Rewrite the self-references so the packages stand alone.
 //
 // The negative lookahead matters: @opentui/core-linux-x64 and friends are
 // upstream's real prebuilt binaries, still resolved from upstream, and
 // must NOT be renamed.
-console.log(`\n=== Step 3: rewrite intra-fork import specifiers ===`)
+console.log(`\n=== Step 3: rewrite self-referencing import specifiers ===`)
 
-const SPECIFIER_RULES = Object.entries(RENAMES).map(([from, to]) => ({
-  // "@opentui/core" or "@opentui/core/sub", never "@opentui/core-linux-x64"
-  re: new RegExp(`(["'])${from.replace("/", "\\/")}(?=\\1|/)`, "g"),
-  to: `$1${to}`,
-  from,
-}))
+// Only SELF-references get rewritten. A cross-package edge (solid or keymap
+// importing core) must keep the upstream specifier, because step 2 declares
+// that edge as an alias whose *key* is the upstream name:
+//
+//   "@opentui/core": "npm:@xincli/opentui-core@<version>"
+//
+// which installs to node_modules/@opentui/core. Rewriting the specifier to
+// @xincli/opentui-core points it at a directory the alias never creates:
+//
+//   Cannot find module '@xincli/opentui-core' from '.../@opentui/solid/index.bun.js'
+//
+// Keeping the alias also keeps core a single instance. Declaring the edge
+// under its real name instead would resolve, but a consumer that aliases
+// @opentui/core for its own source (as opencode does) would then get two
+// copies of core — two module instances, two dlopens of the same .so.
+const SPECIFIER_RULES = Object.entries(RENAMES)
+  .filter(([from]) => from === `@opentui/${pkgKey}`)
+  .map(([from, to]) => ({
+    // "@opentui/core" or "@opentui/core/sub", never "@opentui/core-linux-x64"
+    re: new RegExp(`(["'])${from.replace("/", "\\/")}(?=\\1|/)`, "g"),
+    to: `$1${to}`,
+    from,
+  }))
 
 let rewritten = 0
 const rewriteTree = (dir) => {

@@ -194,6 +194,15 @@ if (pkgKey === "core") {
       const renamed = name.replace("@opentui/core-", `${SCOPE}/opentui-core-`)
       opts[renamed] = version
       console.log(`  optionalDependencies: ${name} -> ${renamed}@${version} (was ${range})`)
+    } else if (name.startsWith(`${SCOPE}/opentui-core-android`)) {
+      // Already @xincli-named in the working tree, and it has to be: the
+      // build marks every optionalDependency --external, and this import
+      // MUST stay external. Inlined, the native package's
+      //   new URL("./libopentui.so", import.meta.url)
+      // re-anchors to core's own dist chunk, where no .so exists. Only
+      // pin it to the release version here.
+      opts[name] = version
+      console.log(`  optionalDependencies: ${name}@${version} (was ${range})`)
     } else {
       opts[name] = name.startsWith("@opentui/core-") ? upstreamVersion : range
     }

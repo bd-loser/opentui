@@ -55,6 +55,39 @@ export async function resolveAndroidNativeLibraryPath(
   }
 
   // 2. Published npm package.
+  //
+  // The specifier here MUST stay a string LITERAL. Bun's `--compile`
+  // bundler only follows static specifiers; handed a computed one it
+  // embeds nothing at all, and the standalone binary then has no .so to
+  // find — neither path above survives compilation, because there is no
+  // node_modules beside the binary and no source checkout either:
+  //
+  //   Failed to initialize OpenTUI render library: OpenTUI native library
+  //   for Android is missing. Install @xincli/opentui-core-android-arm64
+  //
+  // 0.4.10 worked for exactly this reason: it had
+  // `await import("@xincli/opentui-core-android-arm64")` written out in
+  // zig.ts, so Bun resolved it at build time, embedded libopentui.so into
+  // bunfs, and extractBunfsNativeLibrary() copied it out to a real file
+  // for dlopen(). Passing `packageName` through as a variable — as the
+  // 0.5.1 port did — silently removed the embed and left the extractor
+  // with nothing to extract.
+  //
+  // arm64 is the only Android arch the fork publishes, so a single
+  // literal covers every real consumer. Other arches keep the computed
+  // import: still correct for an ordinary node_modules install, just not
+  // embeddable into a compiled binary.
+  if (arch === "arm64") {
+    try {
+      const mod = (await import("@xincli/opentui-core-android-arm64" as string)) as NativePackageModule
+      if (typeof mod.default === "string" && mod.default.length > 0) {
+        return mod.default
+      }
+    } catch {
+      // Not installed.
+    }
+  }
+
   try {
     const mod = (await import(packageName as string)) as NativePackageModule
     if (typeof mod.default === "string" && mod.default.length > 0) {

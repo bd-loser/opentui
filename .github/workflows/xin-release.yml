@@ -486,6 +486,89 @@ jobs:
 
           bun build.ts
 
+      - name: Verify the Android native library stays embeddable
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.setup.outputs.version }}"
+          # 0.5.1-bun.1 published cleanly, passed every step above, and
+          # produced a `bun build --compile` binary that died on launch:
+          #
+          #   Failed to initialize OpenTUI render library: OpenTUI native
+          #   library for Android is missing. Install
+          #   @xincli/opentui-core-android-arm64
+          #
+          # Two independent regressions, neither visible to an import test
+          # (there is no .so to load on an x64 runner, so core never gets
+          # that far). Both are visible in the published JS, so check that:
+          #
+          #  1. The specifier must survive as a string LITERAL. Bun's
+          #     --compile bundler only follows static specifiers; handed
+          #     `import(packageName)` it embeds nothing, and the binary has
+          #     no .so — no node_modules beside it, no source checkout.
+          #  2. It must stay EXTERNAL. Inlined, the native package's
+          #       new URL("./libopentui.so", import.meta.url)
+          #     re-anchors to core's own dist chunk, where no .so exists.
+          #     core keeps it external by listing it in
+          #     optionalDependencies (build.ts derives --external from
+          #     that), so dropping the entry silently inlines it.
+          mkdir -p /tmp/verify-native && cd /tmp/verify-native
+          npm init -y >/dev/null
+          npm install --legacy-peer-deps "@xincli/opentui-core@$VERSION"
+
+          NAME=@xincli/opentui-core-android-arm64
+
+          node -e '
+            const fs = require("fs"), path = require("path");
+            const name = process.argv[1];
+            const root = "node_modules/@xincli/opentui-core";
+
+            const files = [];
+            (function walk(d) {
+              for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+                const p = path.join(d, e.name);
+                if (e.isDirectory()) walk(p);
+                else if (/\.(js|mjs|cjs)$/.test(e.name)) files.push(p);
+              }
+            })(root);
+
+            // A live external import: import("<name>") left in the output.
+            const importRe = new RegExp(`import\\s*\\(\\s*["\x27]${name}["\x27]`);
+            const hits = files.filter((f) => importRe.test(fs.readFileSync(f, "utf8")));
+            if (hits.length === 0) {
+              throw new Error(
+                `no literal import("${name}") anywhere in ${root} — ` +
+                  "a compiled binary will embed no libopentui.so. " +
+                  "Check src/platform/android-native.ts still uses a string literal.",
+              );
+            }
+            console.log(`literal external import in ${hits.length} file(s):`);
+            for (const h of hits) console.log(`  ${h}`);
+
+            // The inline marker: core resolving the .so relative to its OWN
+            // chunk is exactly the broken shape.
+            const inlineRe = /new URL\(\s*["\x27]\.\/libopentui\.so["\x27]/;
+            const inlined = files.filter((f) => inlineRe.test(fs.readFileSync(f, "utf8")));
+            if (inlined.length > 0) {
+              throw new Error(
+                `${name} was INLINED into core: ${inlined.join(", ")}. ` +
+                  "It must stay external — re-add it to packages/core/package.json optionalDependencies.",
+              );
+            }
+            console.log("not inlined");
+          ' "$NAME"
+
+          # The optionalDependency is what makes it external, and it is
+          # pinned by the repackager, so it must name this exact version.
+          HAVE="$(node -p "
+            require('./node_modules/@xincli/opentui-core/package.json')
+              .optionalDependencies['$NAME'] ?? ''
+          ")"
+          if [ "$HAVE" != "$VERSION" ]; then
+            echo "::error::published core pins $NAME@'$HAVE', expected $VERSION"
+            exit 1
+          fi
+          echo "OK Android native library is external, literal, and pinned to $VERSION"
+
       - name: Summary
         run: |
           VERSION="${{ needs.setup.outputs.version }}"

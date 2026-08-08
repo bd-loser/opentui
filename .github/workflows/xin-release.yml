@@ -511,11 +511,20 @@ jobs:
           #     core keeps it external by listing it in
           #     optionalDependencies (build.ts derives --external from
           #     that), so dropping the entry silently inlines it.
+          #
+          # The name checked is upstream's @opentui/core-android-arm64,
+          # not @xincli. core declares an ALIAS at that key pointing at
+          # the fork's tarball, so npm installs it under upstream's name
+          # and that is the specifier that has to resolve. The key also
+          # has to STAY upstream-named: npm indexes dependents by key, so
+          # a literal @xincli key makes every version of the fork's native
+          # package permanently unpublishable.
           mkdir -p /tmp/verify-native && cd /tmp/verify-native
           npm init -y >/dev/null
           npm install --legacy-peer-deps "@xincli/opentui-core@$VERSION"
 
-          NAME=@xincli/opentui-core-android-arm64
+          NAME=@opentui/core-android-arm64
+          ALIAS="npm:@xincli/opentui-core-android-arm64@$VERSION"
 
           node -e '
             const fs = require("fs"), path = require("path");
@@ -558,16 +567,45 @@ jobs:
           ' "$NAME"
 
           # The optionalDependency is what makes it external, and it is
-          # pinned by the repackager, so it must name this exact version.
+          # pinned by the repackager, so it must be the alias naming this
+          # exact version. A bare version string here would mean the key
+          # reverted to the literal @xincli name — which still works for
+          # consumers, and silently re-welds the native package to the
+          # registry forever. Checked as an exact string for that reason.
           HAVE="$(node -p "
             require('./node_modules/@xincli/opentui-core/package.json')
               .optionalDependencies['$NAME'] ?? ''
           ")"
-          if [ "$HAVE" != "$VERSION" ]; then
-            echo "::error::published core pins $NAME@'$HAVE', expected $VERSION"
+          if [ "$HAVE" != "$ALIAS" ]; then
+            echo "::error::published core pins $NAME='$HAVE', expected '$ALIAS'"
             exit 1
           fi
-          echo "OK Android native library is external, literal, and pinned to $VERSION"
+
+          # A literal @xincli key must not come back alongside the alias.
+          STRAY="$(node -p "
+            Object.keys(
+              require('./node_modules/@xincli/opentui-core/package.json')
+                .optionalDependencies ?? {}
+            ).filter((k) => k.startsWith('@xincli/opentui-core-android')).join(',')
+          ")"
+          if [ -n "$STRAY" ]; then
+            echo "::error::published core has literal @xincli android key(s): $STRAY"
+            echo "::error::npm indexes dependents by key — this blocks unpublish of the native package forever."
+            exit 1
+          fi
+
+          # The alias has to actually materialise under upstream's name,
+          # since that is the specifier the literal import resolves.
+          if [ ! -f "node_modules/$NAME/package.json" ]; then
+            echo "::error::alias did not install node_modules/$NAME"
+            exit 1
+          fi
+          REAL="$(node -p "require('./node_modules/$NAME/package.json').name")"
+          if [ "$REAL" != "@xincli/opentui-core-android-arm64" ]; then
+            echo "::error::node_modules/$NAME is '$REAL', not the fork's native package"
+            exit 1
+          fi
+          echo "OK Android native library is external, literal, and aliased to $ALIAS"
 
       - name: Summary
         run: |

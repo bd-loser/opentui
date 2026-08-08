@@ -182,27 +182,44 @@ if (pkg.devDependencies !== undefined) {
 // they are the same artifacts this fork would produce, so there is no
 // reason to republish them under @xincli.
 //
-// The Android ones must be renamed. scripts/build.ts adds an
-// { platform: "android" } variant, so the generated dist/package.json
-// names it @opentui/core-android-arm64 by convention — but upstream
-// never publishes that, and we publish @xincli/opentui-core-android-*.
-// Left unrenamed it is a permanent 404 in every consumer's install log.
+// The Android one is published by this fork, as
+// @xincli/opentui-core-android-arm64 — upstream has no such package. It
+// is declared as an ALIAS under upstream's own name:
+//
+//   "@opentui/core-android-arm64":
+//       "npm:@xincli/opentui-core-android-arm64@<version>"
+//
+// which is the same shape step 2 gives every cross-package edge, and for
+// the same reason: `npm:` materialises node_modules/@opentui/core-android-arm64,
+// so the string LITERAL in src/platform/android-native.ts resolves, and
+// build.ts already derives that exact name for the android variant.
+//
+// Renaming the KEY to @xincli instead — which this script used to do —
+// resolves equally well, but permanently welds the native package to the
+// registry. npm indexes dependents by dependency key, so a literal
+// @xincli key makes @xincli/opentui-core-android-arm64 a package with
+// dependents, and npm then refuses to unpublish ANY version of it:
+//
+//   405 Method Not Allowed - You can no longer unpublish this package.
+//   Failed criteria: has dependent packages in the registry
+//
+// Four broken 0.5.x builds got stuck on the registry that way, with no
+// route to remove them while any published core held the literal key.
+// Under the alias the key is @opentui/core-android-arm64, so the fork's
+// own package stays unpublishable-free and a bad build can be withdrawn.
 if (pkgKey === "core") {
   const opts = {}
   for (const [name, range] of Object.entries(pkg.optionalDependencies ?? {})) {
     if (name.startsWith("@opentui/core-android")) {
-      const renamed = name.replace("@opentui/core-", `${SCOPE}/opentui-core-`)
-      opts[renamed] = version
-      console.log(`  optionalDependencies: ${name} -> ${renamed}@${version} (was ${range})`)
+      const target = name.replace("@opentui/core-", `${SCOPE}/opentui-core-`)
+      opts[name] = `npm:${target}@${version}`
+      console.log(`  optionalDependencies: ${name} -> ${opts[name]} (was ${range})`)
     } else if (name.startsWith(`${SCOPE}/opentui-core-android`)) {
-      // Already @xincli-named in the working tree, and it has to be: the
-      // build marks every optionalDependency --external, and this import
-      // MUST stay external. Inlined, the native package's
-      //   new URL("./libopentui.so", import.meta.url)
-      // re-anchors to core's own dist chunk, where no .so exists. Only
-      // pin it to the release version here.
-      opts[name] = version
-      console.log(`  optionalDependencies: ${name}@${version} (was ${range})`)
+      // A leftover literal @xincli key from an older working tree. Drop
+      // it: build.ts always emits the @opentui/core-android-arm64 key
+      // above, the alias there already points at this same package, and
+      // keeping both would publish the literal key that blocks unpublish.
+      console.log(`  optionalDependencies: dropped literal ${name} (aliased above)`)
     } else {
       opts[name] = name.startsWith("@opentui/core-") ? upstreamVersion : range
     }

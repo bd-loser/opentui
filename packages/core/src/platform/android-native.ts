@@ -66,12 +66,30 @@ export async function resolveAndroidNativeLibraryPath(
   //   for Android is missing. Install @xincli/opentui-core-android-arm64
   //
   // 0.4.10 worked for exactly this reason: it had
-  // `await import("@xincli/opentui-core-android-arm64")` written out in
+  // `await import("@opentui/core-android-arm64")` written out in
   // zig.ts, so Bun resolved it at build time, embedded libopentui.so into
   // bunfs, and extractBunfsNativeLibrary() copied it out to a real file
   // for dlopen(). Passing `packageName` through as a variable — as the
   // 0.5.1 port did — silently removed the embed and left the extractor
   // with nothing to extract.
+  //
+  // The name is upstream's, not @xincli's, even though the fork is what
+  // publishes the tarball. core declares it as an ALIAS:
+  //
+  //   "@opentui/core-android-arm64":
+  //       "npm:@xincli/opentui-core-android-arm64@<version>"
+  //
+  // which installs the fork's package into node_modules under upstream's
+  // name — so this literal resolves, and it is the name build.ts already
+  // derives for the android variant. Importing the @xincli name directly
+  // would NOT resolve, because the alias never creates that directory.
+  //
+  // Aliasing is also what makes the fork's own npm hygiene possible: npm
+  // indexes dependents by the dependency KEY, so a literal @xincli key
+  // here marks the native package as having dependents forever, and
+  // npm then refuses to unpublish ANY version of it —
+  //   405 ... Failed criteria: has dependent packages in the registry
+  // which is how four broken 0.5.x builds got stuck on the registry.
   //
   // arm64 is the only Android arch the fork publishes, so a single
   // literal covers every real consumer. Other arches keep the computed
@@ -79,7 +97,7 @@ export async function resolveAndroidNativeLibraryPath(
   // embeddable into a compiled binary.
   if (arch === "arm64") {
     try {
-      const mod = (await import("@xincli/opentui-core-android-arm64" as string)) as NativePackageModule
+      const mod = (await import("@opentui/core-android-arm64" as string)) as NativePackageModule
       if (typeof mod.default === "string" && mod.default.length > 0) {
         return mod.default
       }

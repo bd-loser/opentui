@@ -9,7 +9,7 @@
   "types": "src/index.ts",
   "module": "src/index.ts",
   "main": "src/index.ts",
-  "version": "0.5.1-bun.2",
+  "version": "0.5.1-bun.3",
   "type": "module",
   "imports": {
     "#opentui/runtime-assets": {
@@ -76,7 +76,7 @@
     "@opentui/core-win32-arm64": "0.5.1",
     "@opentui/core-linux-x64-musl": "0.5.1",
     "@opentui/core-linux-arm64-musl": "0.5.1",
-    "@xincli/opentui-core-android-arm64": "0.5.1-bun.2"
+    "@opentui/core-android-arm64": "npm:@xincli/opentui-core-android-arm64@0.5.1-bun.3"
   },
   "exports": {
     ".": {

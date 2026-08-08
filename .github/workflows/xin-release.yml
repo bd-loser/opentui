@@ -456,13 +456,18 @@ jobs:
 
           cat > build.ts <<'TS'
           import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
-          // @opentui/core-<platform> are optionalDependencies for the other
-          // platforms and are legitimately absent; only the JSX specifiers
-          // are under test here.
+          // Externals, all of them upstream shapes this test is not about:
+          //   @opentui/core-<platform>   optionalDependencies for the OTHER
+          //                              platforms, legitimately absent here
+          //   web-tree-sitter/*          core imports tree-sitter.wasm as an
+          //                              asset subpath that is not in that
+          //                              package's exports map, so a bundler
+          //                              cannot resolve it without a loader
+          // Only the JSX specifiers are under test.
           const r = await Bun.build({
             entrypoints: ["src/app.tsx"],
             target: "bun",
-            external: ["@opentui/core-*", "@xincli/opentui-core-*"],
+            external: ["@opentui/core-*", "@xincli/opentui-core-*", "web-tree-sitter", "web-tree-sitter/*"],
             plugins: [createSolidTransformPlugin()],
           })
           if (!r.success) {

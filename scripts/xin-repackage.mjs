@@ -18,6 +18,7 @@
 //   --package <core|react|solid|keymap>   required
 //   --version <semver>                    required
 //   --publish                             npm publish (default: dry run)
+//   --npm-tag <tag>                       dist-tag to publish under (default: latest)
 //   --skip-build                          reuse an existing dist/
 //
 // This replaces four near-identical copies of the same logic that used
@@ -300,7 +301,18 @@ if (!shouldPublish) {
 }
 
 console.log(`\n=== Step 5: npm publish ===`)
-run("npm", ["publish", tgz, "--access", "public"])
+
+// npm refuses to publish a prerelease version without an explicit --tag:
+//
+//   npm error You must specify a tag using --tag when publishing a prerelease version.
+//
+// The fork uses a prerelease suffix for packaging fixes between upstream
+// tags (0.5.1 -> 0.5.1-bun), so this is the normal path, not an edge case.
+// "latest" is correct: a suffixed release exists because the unsuffixed one
+// is broken, so a bare `npm install` should land on the fixed build. Pass
+// --npm-tag to park a release somewhere else instead.
+const npmTag = flag("npm-tag") ?? "latest"
+run("npm", ["publish", tgz, "--access", "public", "--tag", npmTag])
 
 console.log(`\n${"=".repeat(58)}`)
 console.log(`SUCCESS: ${publishedName}@${version} published`)

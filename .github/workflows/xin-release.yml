@@ -224,7 +224,9 @@ jobs:
           for dir in packages/core/dist-prebuilt/@xincli/*/; do
             [ -d "$dir" ] || continue
             echo "Publishing $dir"
-            npm publish "$dir" --access public
+            # --tag is mandatory for prerelease versions (0.5.1-bun); npm
+            # errors out without it. See scripts/xin-repackage.mjs step 5.
+            npm publish "$dir" --access public --tag latest
           done
 
   # ── 2. core — depends on the native package existing ─────────────────
@@ -364,6 +366,49 @@ jobs:
             console.log('OK @xincli/opentui-solid');
             await import('@xincli/opentui-keymap');
             console.log('OK @xincli/opentui-keymap');
+          "
+
+      - name: Verify the aliased install
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.setup.outputs.version }}"
+          # The step above installs the packages under their real @xincli
+          # names, which creates node_modules/@xincli/opentui-core. That
+          # hides a whole class of bug: at 0.5.1 the compiled JS of solid
+          # and keymap imported "@xincli/opentui-core" directly, which
+          # resolved here and passed CI — but broke every consumer that
+          # aliases instead, because an alias installs to
+          # node_modules/@opentui/core and nothing creates the @xincli
+          # directory. Aliasing is how opencode consumes this fork, so it
+          # gets its own step.
+          mkdir -p /tmp/verify-alias && cd /tmp/verify-alias
+          npm init -y >/dev/null
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json'));
+            p.type = 'module';
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2));
+          "
+          npm install --legacy-peer-deps \
+            "@opentui/core@npm:@xincli/opentui-core@$VERSION" \
+            "@opentui/solid@npm:@xincli/opentui-solid@$VERSION" \
+            "@opentui/keymap@npm:@xincli/opentui-keymap@$VERSION" \
+            solid-js
+
+          # If this exists, the step is not testing what it claims to.
+          if [ -e node_modules/@xincli/opentui-core ]; then
+            echo "::error::node_modules/@xincli/opentui-core exists — not an alias-only install"
+            exit 1
+          fi
+
+          node --input-type=module -e "
+            const core = await import('@opentui/core');
+            if (typeof core.createCliRenderer === 'undefined') throw new Error('core missing createCliRenderer');
+            console.log('OK @opentui/core (aliased)');
+            await import('@opentui/solid');
+            console.log('OK @opentui/solid (aliased)');
+            await import('@opentui/keymap');
+            console.log('OK @opentui/keymap (aliased)');
           "
 
       - name: Summary

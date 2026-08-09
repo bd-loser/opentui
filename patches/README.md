@@ -1,4 +1,4 @@
-# XINCLI patch kit — Android/Termux support for OpenTUI
+# ANDROIDTUI patch kit — Android/Termux support for OpenTUI
 
 This fork exists to run OpenTUI on Android under Termux. Everything it
 adds lives in this directory, as a **patch kit** rather than a
@@ -23,7 +23,7 @@ on top, and reports what conflicted. Then:
 bun install
 bash packages/core/scripts/build-native-termux.sh   # on-device, ~10 min
 bash scripts/xin-regen.sh                           # move the kit's base forward
-git add -A && git commit -m "port XINCLI Android patches to v0.5.1"
+git add -A && git commit -m "port ANDROIDTUI Android patches to v0.5.1"
 git tag xin-v0.5.1 && git push origin xin/0.5.1 xin-v0.5.1
 ```
 
@@ -48,7 +48,7 @@ design exists to avoid.
 **`package.json`** — upstream reorders keys and bumps versions every
 release, so a textual diff would conflict every single time. The script
 makes the same edits structurally instead: strip `private` from react
-and solid, add a `publish:xincli` alias. It's idempotent, and
+and solid, add a `publish:androidtui` alias. It's idempotent, and
 `--check` reports drift.
 
 **Workflow disabling** — upstream's CI assumes upstream's secrets and
@@ -77,8 +77,8 @@ against the `dlopen()` table in `src/zig.ts` and refuse a stale one.
 
 | File | Change |
 | --- | --- |
-| `src/zig/build.zig` | Android/Bionic build support — 20 `XINCLI` markers. Android is `linux` + `.android` ABI in Zig, not a separate OS tag, so several upstream `.linux` branches need splitting. Paths come from `XINCLI_ANDROID_*` env vars set by the build script. |
-| `src/node-asset-target.ts` | Adds an `android` platform resolving to `@xincli/opentui-core-android-<arch>`. Sits **before** the libc validation, because Bionic is neither glibc nor musl. Detects Termux via `$PREFIX`, since Bun reports `process.platform === "linux"` on Android while Node reports `"android"`. |
+| `src/zig/build.zig` | Android/Bionic build support — 20 `ANDROIDTUI` markers. Android is `linux` + `.android` ABI in Zig, not a separate OS tag, so several upstream `.linux` branches need splitting. Paths come from `ANDROIDTUI_ANDROID_*` env vars set by the build script. |
+| `src/node-asset-target.ts` | Adds an `android` platform resolving to `@androidtui/core-android-<arch>`. Sits **before** the libc validation, because Bionic is neither glibc nor musl. Detects Termux via `$PREFIX`, since Bun reports `process.platform === "linux"` on Android while Node reports `"android"`. |
 | `src/platform/runtime-assets.{bun,node}.ts` | Route Android through the new resolver. |
 | `src/zig.ts` | Two lines: bunfs paths get extracted to a real file first, because `dlopen()` can't read Bun's virtual filesystem. |
 | `scripts/build.ts` | Registers the `android`/`arm64` variant. |
@@ -110,13 +110,13 @@ and finishes by installing the published set from npm and importing it,
 the way a consumer would.
 
 The tree keeps upstream's `@opentui/*` names so `workspace:*` linking
-works; `scripts/xin-repackage.mjs` does the rename to `@xincli/*` in
+works; `scripts/xin-repackage.mjs` does the rename to `@androidtui/*` in
 `dist/` at publish time, and rewrites every intra-fork dependency edge
-to `npm:@xincli/...` so consumers never resolve upstream `@opentui/core`
+to `npm:@androidtui/...` so consumers never resolve upstream `@opentui/core`
 — which throws `opentui is not supported` on Termux.
 
 Versions track upstream exactly: upstream `0.5.0` publishes as
-`@xincli/opentui-*@0.5.0`. npm versions are immutable, so a given base
+`@androidtui/*@0.5.0`. npm versions are immutable, so a given base
 gets one shot — `0.4.4` and `0.4.5` are already burned from an earlier
 run. Both `xin-patch.sh` and the workflow check npm before doing
 anything.

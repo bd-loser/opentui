@@ -2,12 +2,12 @@
 //
 // This runs in GitHub Actions AFTER you commit a .so built natively on
 // Termux. It reads the .so from packages/core/prebuilt/<arch>/libopentui.so
-// and produces the three npm package directories that XINCLI's
+// and produces the three npm package directories that ANDROIDTUI's
 // resolveNativePackage() loads at runtime:
 //
-//   dist/@xincli/opentui-core-android-arm64/libopentui.so
-//   dist/@xincli/opentui-core-android-arm/libopentui.so   (if present)
-//   dist/@xincli/opentui-core-android-x64/libopentui.so   (if present)
+//   dist/@androidtui/core-android-arm64/libopentui.so
+//   dist/@androidtui/core-android-arm/libopentui.so   (if present)
+//   dist/@androidtui/core-android-x64/libopentui.so   (if present)
 //
 // No Zig, no NDK, no cross-compilation. Just packaging.
 
@@ -25,9 +25,9 @@ const DIST_DIR = join(rootDir, "dist-prebuilt")
 // Map prebuilt/ subdirectory names to npm package names and the CPU they
 // were built for.
 const ARCH_TO_PACKAGE: Record<string, { name: string; cpu: string }> = {
-  "aarch64-android": { name: "@xincli/opentui-core-android-arm64", cpu: "arm64" },
-  "arm-android": { name: "@xincli/opentui-core-android-arm", cpu: "arm" },
-  "x86_64-android": { name: "@xincli/opentui-core-android-x64", cpu: "x64" },
+  "aarch64-android": { name: "@androidtui/core-android-arm64", cpu: "arm64" },
+  "arm-android": { name: "@androidtui/core-android-arm", cpu: "arm" },
+  "x86_64-android": { name: "@androidtui/core-android-x64", cpu: "x64" },
 }
 
 // npm and bun skip an optional dependency whose os/cpu don't match the
@@ -57,7 +57,7 @@ function packageOne(archDir: string, packageName: string, cpu: string): void {
   const pkgJson = {
     name: packageName,
     version: corePkg.version,
-    description: `OpenTUI native core for Android ${archDir} (Termux). Built natively, packaged by XINCLI.`,
+    description: `OpenTUI native core for Android ${archDir} (Termux). Built natively, packaged by ANDROIDTUI.`,
     repository: {
       type: "git",
       url: "git+https://github.com/bd-loser/opentui.git",
@@ -82,7 +82,7 @@ function packageOne(archDir: string, packageName: string, cpu: string): void {
   // embeds libopentui.so into bunfs (with a hashed filename). Under
   // `bun run` this resolves to a real filesystem path; under a compiled
   // binary it resolves to `/$bunfs/root/libopentui-<hash>.so`, which
-  // @xincli/opentui-core's resolver extracts via Bun.file().
+  // @androidtui/core's resolver extracts via Bun.file().
   //
   // The prior `new URL("./libopentui.so", import.meta.url)` pattern was
   // NOT picked up by Bun's asset scanner through a dynamic import

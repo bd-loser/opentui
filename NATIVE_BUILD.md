@@ -1,4 +1,4 @@
-# Native Termux Build — XINCLI OpenTUI Fork
+# Native Termux Build — ANDROIDTUI OpenTUI Fork
 
 This fork builds the opentui native core **natively on Termux** instead of
 cross-compiling from x86-linux. Cross-compilation to Android (Bionic libc)
@@ -24,15 +24,15 @@ files, and header paths. Native builds skip all of it.
 │                                                          │
 │  package-prebuilt.yml                                    │
 │    ↓  verify .so is ARM64 ELF                            │
-│    ↓  package-prebuilt.ts → dist-prebuilt/@xincli/...    │
-│    ↓  npm publish (if XINCLI_NPM_TOKEN set)              │
+│    ↓  package-prebuilt.ts → dist-prebuilt/@androidtui/...    │
+│    ↓  npm publish (if ANDROIDTUI_NPM_TOKEN set)              │
 └─────────────────────────┬───────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────┐
 │  NPM                                                     │
 │                                                          │
-│  @xincli/opentui-core-android-arm64                      │
+│  @androidtui/core-android-arm64                      │
 │    ↓  npm install                                        │
 └─────────────────────────┬───────────────────────────────┘
                           │
@@ -40,9 +40,9 @@ files, and header paths. Native builds skip all of it.
 ┌─────────────────────────────────────────────────────────┐
 │  USER'S PHONE (Termux)                                   │
 │                                                          │
-│  XINCLI's cli.mjs                                        │
+│  ANDROIDTUI's cli.mjs                                        │
 │    ↓  import('@opentui/core')                            │
-│    ↓  resolveNativePackage() loads @xincli/...           │
+│    ↓  resolveNativePackage() loads @androidtui/...           │
 │    ↓  libopentui.so loads — full opentui renderer 🎉     │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -79,18 +79,18 @@ git push origin main
 ```
 
 Push triggers the `package-prebuilt.yml` workflow, which packages the `.so`
-and (if `XINCLI_NPM_TOKEN` is set) publishes it to npm.
+and (if `ANDROIDTUI_NPM_TOKEN` is set) publishes it to npm.
 
 ## Setting the npm token
 
 For the workflow to publish, you need an npm access token with publish
-rights to the `@xincli` scope:
+rights to the `@androidtui` scope:
 
 1. Create an account at npmjs.com (if you don't have one)
-2. Create an org named `xincli`
+2. Create an org named `androidtui`
 3. Create an access token: npmjs.com → Access Tokens → Generate New Token → Automation
 4. Add it to the fork: `github.com/bd-loser/opentui/settings/secrets/actions`
-   - Name: `XINCLI_NPM_TOKEN`
+   - Name: `ANDROIDTUI_NPM_TOKEN`
    - Value: your token
 
 Without the token, the workflow still packages the `.so` and uploads it as

@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ═════════════════════════════════════════════════════════════════
-# XINCLI OpenTUI — Native Termux Build Script
+# ANDROIDTUI OpenTUI — Native Termux Build Script
 #
 # RUN THIS ON YOUR ANDROID PHONE (in Termux).
 # Builds libopentui.so natively — no cross-compilation, no NDK.
@@ -62,18 +62,18 @@ if [ -d "$DEPS_DIR/uucode" ] && [ ! -d "$ZIG_GLOBAL_CACHE/p/$UUCODE_HASH" ]; the
   echo "✓ Cached uucode in Zig global cache"
 fi
 
-# ── XINCLI: Patch uucode's build.zig so uucode_build_tables uses our
+# ── ANDROIDTUI: Patch uucode's build.zig so uucode_build_tables uses our
 # target (aarch64-linux-android) instead of b.graph.host (misdetected as
 # aarch64-linux-musl on Termux, which fails to link -lm -lc -ldl).
 # Idempotent — safe to re-run.
 UUCODE_BUILD_ZIG="$ZIG_GLOBAL_CACHE/p/$UUCODE_HASH/build.zig"
-if [ -f "$UUCODE_BUILD_ZIG" ] && ! grep -q "XINCLI-patched\|target: std.Build.ResolvedTarget," "$UUCODE_BUILD_ZIG"; then
+if [ -f "$UUCODE_BUILD_ZIG" ] && ! grep -q "ANDROIDTUI-patched\|target: std.Build.ResolvedTarget," "$UUCODE_BUILD_ZIG"; then
   echo "🔧 Patching uucode/build.zig for Android target..."
   # 1. Add target param to buildTables signature
-  sed -i 's|^fn buildTables(\s*$|fn buildTables(\n    // XINCLI-patched: accept target|' "$UUCODE_BUILD_ZIG"
+  sed -i 's|^fn buildTables(\s*$|fn buildTables(\n    // ANDROIDTUI-patched: accept target|' "$UUCODE_BUILD_ZIG"
   sed -i 's|^    b: \*std\.Build,\s*$|    b: *std.Build,\n    target: std.Build.ResolvedTarget,|' "$UUCODE_BUILD_ZIG"
   # 2. Drop the local `const target = b.graph.host;`
-  sed -i 's|^    const target = b\.graph\.host;.*$|    // XINCLI-patched: target is now a parameter|' "$UUCODE_BUILD_ZIG"
+  sed -i 's|^    const target = b\.graph\.host;.*$|    // ANDROIDTUI-patched: target is now a parameter|' "$UUCODE_BUILD_ZIG"
   # 3. Replace remaining `b.graph.host` reference for build_tables_mod
   sed -i 's|\.target = b\.graph\.host,|.target = target,|g' "$UUCODE_BUILD_ZIG"
   # 4. Update the call site in createLibMod
@@ -169,7 +169,7 @@ echo "✓ crt objects found at: $CRT_DIR"
 # This script used to sed yoga's sources in the global Zig cache,
 # rewriting std::isinf/isnan/abs into __builtin_* intrinsics. That was a
 # workaround for Bionic's math.h defining isinf/isnan as C macros; with
-# Termux's libc++ headers on the include path (see XINCLI_ANDROID_LIBCXX_INCLUDE
+# Termux's libc++ headers on the include path (see ANDROIDTUI_ANDROID_LIBCXX_INCLUDE
 # in build.zig) the std:: forms compile fine, so the rewrite is gone.
 #
 # It has to be undone rather than merely stopped: the cache lives outside
@@ -193,7 +193,7 @@ fi
 # proper C/C++ header separation (math.h doesn't pollute C++ std::).
 #
 # For the arch-specific asm/ headers (asm/sigcontext.h, asm/types.h),
-# we add them via XINCLI_ANDROID_ASM_INCLUDE env var which build.zig
+# we add them via ANDROIDTUI_ANDROID_ASM_INCLUDE env var which build.zig
 # passes to @cImport only (not C++ compilation).
 LIBC_FILE="$REPO_ROOT/packages/core/src/zig/libc-termux.txt"
 cat > "$LIBC_FILE" << EOF
@@ -215,7 +215,7 @@ echo "  → crt_dir=$CRT_DIR"
 # build.zig can add it via addSystemIncludePath for @cImport only.
 ASM_INCLUDE="$TERMUX_INCLUDE/aarch64-linux-android"
 if [ -d "$ASM_INCLUDE" ]; then
-  export XINCLI_ANDROID_ASM_INCLUDE="$ASM_INCLUDE"
+  export ANDROIDTUI_ANDROID_ASM_INCLUDE="$ASM_INCLUDE"
   echo "✓ asm include: $ASM_INCLUDE"
 fi
 
@@ -336,18 +336,18 @@ echo ""
 
 # Explicit -Dtarget=aarch64-linux-android so Zig doesn't misdetect as musl.
 # ZIG_LIBC env var makes Zig read our generated libc file (Bionic paths).
-# XINCLI_ANDROID_LIB_SEARCH_PATHS is read by build.zig's addLibraryPath calls
+# ANDROIDTUI_ANDROID_LIB_SEARCH_PATHS is read by build.zig's addLibraryPath calls
 # so ld.lld finds libc/libm/libdl in $PREFIX/lib + the linker-stubs dir.
 export ZIG_LIBC="$LIBC_FILE"
-export XINCLI_ANDROID_LIB_PATH="$TERMUX_LIB"
-export XINCLI_ANDROID_LIB_SEARCH_PATHS="$TERMUX_LIB:$LINKER_STUBS_DIR"
+export ANDROIDTUI_ANDROID_LIB_PATH="$TERMUX_LIB"
+export ANDROIDTUI_ANDROID_LIB_SEARCH_PATHS="$TERMUX_LIB:$LINKER_STUBS_DIR"
 
 # libc++_shared.so lives in Termux's $PREFIX/lib (from the libc++ package).
 # Termux ships no libc++.so, so build.zig links this one by absolute path
 # via addObjectFile instead of calling linkLibCpp().
-export XINCLI_ANDROID_LIBCXX_PATH="$TERMUX_LIB/libc++_shared.so"
+export ANDROIDTUI_ANDROID_LIBCXX_PATH="$TERMUX_LIB/libc++_shared.so"
 echo "✓ Bionic libs (resolved): $SYSTEM_LIBC_REAL"
-echo "✓ libc++: $XINCLI_ANDROID_LIBCXX_PATH"
+echo "✓ libc++: $ANDROIDTUI_ANDROID_LIBCXX_PATH"
 
 # ── Find libc++ headers for C++ compilation ─────────────────────
 # Yoga's C++ files need <type_traits>, <cstddef>, etc. from libc++.
@@ -383,11 +383,11 @@ if [ -z "$LIBCXX_INCLUDE" ]; then
   echo "   Try: pkg install libc++-dev"
   exit 1
 fi
-export XINCLI_ANDROID_LIBCXX_INCLUDE="$LIBCXX_INCLUDE"
+export ANDROIDTUI_ANDROID_LIBCXX_INCLUDE="$LIBCXX_INCLUDE"
 # Some libc++ setups have __config in a separate dir
 LIBCXX_INCLUDE2=$(dirname "$LIBCXX_INCLUDE" 2>/dev/null)
 if [ -d "$LIBCXX_INCLUDE2" ]; then
-  export XINCLI_ANDROID_LIBCXX_INCLUDE2="$LIBCXX_INCLUDE2"
+  export ANDROIDTUI_ANDROID_LIBCXX_INCLUDE2="$LIBCXX_INCLUDE2"
 fi
 echo "✓ libc++ headers: $LIBCXX_INCLUDE"
 
@@ -543,7 +543,7 @@ echo "  Output:  packages/core/prebuilt/aarch64-android/libopentui.so"
 echo "  Size:    $(du -h "$OUT_DIR/libopentui.so" | cut -f1)"
 [ -n "$XIN_VERSION" ] && echo "  Version: $XIN_VERSION"
 echo ""
-echo "  ── Publish all five @xincli packages ─────────────────────────"
+echo "  ── Publish all five @androidtui packages ─────────────────────────"
 echo ""
 echo "    git add -A"
 echo "    git commit -m 'build: native arm64 .so from Termux'"
@@ -555,14 +555,14 @@ if [ -n "$XIN_VERSION" ]; then
   echo "  That one tag runs .github/workflows/xin-release.yml, which"
   echo "  publishes — in dependency order, all at $XIN_VERSION:"
   echo ""
-  echo "    1. @xincli/opentui-core-android-arm64   (this .so)"
-  echo "    2. @xincli/opentui-core"
-  echo "    3. @xincli/opentui-{react,solid,keymap}  (in parallel)"
+  echo "    1. @androidtui/core-android-arm64   (this .so)"
+  echo "    2. @androidtui/core"
+  echo "    3. @androidtui/{react,solid,keymap}  (in parallel)"
   echo ""
   echo "  npm versions are immutable — the workflow refuses to start if"
   echo "  $XIN_VERSION is already published. Check first with:"
   echo ""
-  echo "    npm view @xincli/opentui-core@$XIN_VERSION version"
+  echo "    npm view @androidtui/core@$XIN_VERSION version"
 else
   echo "    git push origin ${XIN_BRANCH:-HEAD}"
   echo "    git tag xin-v<version> && git push origin xin-v<version>"

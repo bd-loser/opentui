@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════
-// XINCLI: extract the native library out of bunfs
+// ANDROIDTUI: extract the native library out of bunfs
 //
 // Additive file — keeps the change inside zig.ts down to a single call,
 // so rebasing the fork onto a new upstream tag stays trivial.

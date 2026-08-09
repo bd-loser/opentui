@@ -47,14 +47,14 @@ host_key
 host_key.pub
 *.host_key
 
-# ── XINCLI Android/Termux fork ──────────────────────────────────────────
+# ── ANDROIDTUI Android/Termux fork ──────────────────────────────────────────
 # Scratch produced by packages/core/scripts/vendor-deps.sh while building
 # libopentui.so natively on Termux. Regenerated on every build (~22 MB),
 # and machine-specific — never commit it.
 .zig-deps/
 .zig-linker-stubs/
 
-# Staging dirs for the @xincli packages, written by
+# Staging dirs for the @androidtui packages, written by
 # scripts/xin-repackage.mjs and packages/core/scripts/package-prebuilt.ts.
 artifacts/
 packages/core/dist-prebuilt/

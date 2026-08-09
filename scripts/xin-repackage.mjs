@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // ═══════════════════════════════════════════════════════════════════════
-// XINCLI OpenTUI fork — unified repackager
+// ANDROIDTUI OpenTUI fork — unified repackager
 //
 // Builds one of the four JS packages, rewrites its dist/package.json to
-// the @xincli identity, packs it, and optionally publishes it.
+// the @androidtui identity, packs it, and optionally publishes it.
 //
 // The working tree keeps upstream's @opentui/* names so that
 // `workspace:*` linking and `bun install` behave exactly as upstream
@@ -22,7 +22,7 @@
 //   --skip-build                          reuse an existing dist/
 //
 // This replaces four near-identical copies of the same logic that used
-// to live in packages/{solid,keymap}/scripts/publish-xincli.ts and
+// to live in packages/{solid,keymap}/scripts/publish-androidtui.ts and
 // inline in .github/workflows/publish-js-library.yml.
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -33,36 +33,43 @@ import process from "node:process"
 import { fileURLToPath } from "node:url"
 
 const REPO_URL = "git+https://github.com/bd-loser/opentui.git"
-const SCOPE = "@xincli"
+const SCOPE = "@androidtui"
 
-/** Upstream package name -> the @xincli name it is published under. */
+// Upstream package name -> the @androidtui name it is published under.
+//
+// The fork's scope is Android-specific, so the redundant "opentui-" infix
+// the previous scope needed is gone. That makes every rename a pure
+// scope swap — @opentui/X -> @androidtui/X, with no per-package table and
+// no special case for the native .so package.
+const rename = (name) => name.replace(/^@opentui\//, `${SCOPE}/`)
+
 const RENAMES = {
-  "@opentui/core": `${SCOPE}/opentui-core`,
-  "@opentui/react": `${SCOPE}/opentui-react`,
-  "@opentui/solid": `${SCOPE}/opentui-solid`,
-  "@opentui/keymap": `${SCOPE}/opentui-keymap`,
+  "@opentui/core": rename("@opentui/core"),
+  "@opentui/react": rename("@opentui/react"),
+  "@opentui/solid": rename("@opentui/solid"),
+  "@opentui/keymap": rename("@opentui/keymap"),
 }
 
 const PACKAGES = {
   core: {
     dir: "packages/core",
     build: ["bun", "scripts/build.ts", "--lib"],
-    description: "XINCLI fork of OpenTUI core — with Android/Termux support via @xincli/opentui-core-android-*",
+    description: "ANDROIDTUI fork of OpenTUI core — with Android/Termux support via @androidtui/core-android-*",
   },
   react: {
     dir: "packages/react",
     build: ["bun", "scripts/build.ts"],
-    description: "XINCLI fork of OpenTUI React binding — for use with @xincli/opentui-core",
+    description: "ANDROIDTUI fork of OpenTUI React binding — for use with @androidtui/core",
   },
   solid: {
     dir: "packages/solid",
     build: ["bun", "scripts/build.ts"],
-    description: "XINCLI fork of OpenTUI SolidJS binding — for use with @xincli/opentui-core",
+    description: "ANDROIDTUI fork of OpenTUI SolidJS binding — for use with @androidtui/core",
   },
   keymap: {
     dir: "packages/keymap",
     build: ["bun", "scripts/build.ts"],
-    description: "XINCLI fork of OpenTUI keymap — for use with @xincli/opentui-core",
+    description: "ANDROIDTUI fork of OpenTUI keymap — for use with @androidtui/core",
   },
 }
 
@@ -102,7 +109,7 @@ if (typeof version !== "string" || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(ver
 // fix to its own packaging between two upstream tags. That is expressed as a
 // prerelease suffix on the upstream base: 0.5.1 -> 0.5.1-bun.
 //
-// Anything published under @xincli uses the full fork version. Anything still
+// Anything published under @androidtui uses the full fork version. Anything still
 // resolved from upstream — the non-Android core-<platform> binaries — must use
 // the base, because upstream publishes 0.5.1 and never 0.5.1-bun.
 const upstreamVersion = version.replace(/-.*$/, "")
@@ -149,7 +156,7 @@ pkg.description = spec.description
 pkg.repository = { type: "git", url: REPO_URL, directory: spec.dir }
 delete pkg.private
 
-// Point every intra-fork @opentui/* edge at its @xincli counterpart, so a
+// Point every intra-fork @opentui/* edge at its @androidtui counterpart, so a
 // consumer never pulls upstream @opentui/core — which throws
 // "opentui is not supported" on Termux.
 for (const field of ["dependencies", "peerDependencies"]) {
@@ -180,24 +187,24 @@ if (pkg.devDependencies !== undefined) {
 //
 // The non-Android ones stay pointed at upstream's published binaries —
 // they are the same artifacts this fork would produce, so there is no
-// reason to republish them under @xincli.
+// reason to republish them under @androidtui.
 //
 // The Android one is published by this fork, as
-// @xincli/opentui-core-android-arm64 — upstream has no such package. It
+// @androidtui/core-android-arm64 — upstream has no such package. It
 // is declared as an ALIAS under upstream's own name:
 //
 //   "@opentui/core-android-arm64":
-//       "npm:@xincli/opentui-core-android-arm64@<version>"
+//       "npm:@androidtui/core-android-arm64@<version>"
 //
 // which is the same shape step 2 gives every cross-package edge, and for
 // the same reason: `npm:` materialises node_modules/@opentui/core-android-arm64,
 // so the string LITERAL in src/platform/android-native.ts resolves, and
 // build.ts already derives that exact name for the android variant.
 //
-// Renaming the KEY to @xincli instead — which this script used to do —
+// Renaming the KEY to @androidtui instead — which this script used to do —
 // resolves equally well, but permanently welds the native package to the
 // registry. npm indexes dependents by dependency key, so a literal
-// @xincli key makes @xincli/opentui-core-android-arm64 a package with
+// @androidtui key makes @androidtui/core-android-arm64 a package with
 // dependents, and npm then refuses to unpublish ANY version of it:
 //
 //   405 Method Not Allowed - You can no longer unpublish this package.
@@ -211,11 +218,11 @@ if (pkgKey === "core") {
   const opts = {}
   for (const [name, range] of Object.entries(pkg.optionalDependencies ?? {})) {
     if (name.startsWith("@opentui/core-android")) {
-      const target = name.replace("@opentui/core-", `${SCOPE}/opentui-core-`)
+      const target = rename(name)
       opts[name] = `npm:${target}@${version}`
       console.log(`  optionalDependencies: ${name} -> ${opts[name]} (was ${range})`)
-    } else if (name.startsWith(`${SCOPE}/opentui-core-android`)) {
-      // A leftover literal @xincli key from an older working tree. Drop
+    } else if (name.startsWith(`${SCOPE}/core-android`)) {
+      // A leftover literal @androidtui key from an older working tree. Drop
       // it: build.ts always emits the @opentui/core-android-arm64 key
       // above, the alias there already points at this same package, and
       // keeping both would publish the literal key that blocks unpublish.
@@ -236,14 +243,14 @@ console.log(`  [OK] ${pkg.name}@${pkg.version}`)
 // The compiled output imports sibling packages — and itself — by upstream
 // name: `import("@opentui/core/parser.worker")`, `from "@opentui/core"`.
 // A package may import itself by name, so this works upstream. Renamed to
-// @xincli/opentui-core the SELF-import does not, and the failure is
+// @androidtui/core the SELF-import does not, and the failure is
 // invisible under Node (the paths are lazy) but immediate under Bun:
 //
 //   Cannot find module '@opentui/core/parser.worker'
 //
 // A dependency alias papers over this whenever a binding is installed,
 // because `npm:` materialises node_modules/@opentui/core — but
-// `npm install @xincli/opentui-core` on its own has no such luck.
+// `npm install @androidtui/core` on its own has no such luck.
 // Rewrite the self-references so the packages stand alone.
 //
 // The negative lookahead matters: @opentui/core-linux-x64 and friends are
@@ -255,12 +262,12 @@ console.log(`\n=== Step 3: rewrite self-referencing import specifiers ===`)
 // importing core) must keep the upstream specifier, because step 2 declares
 // that edge as an alias whose *key* is the upstream name:
 //
-//   "@opentui/core": "npm:@xincli/opentui-core@<version>"
+//   "@opentui/core": "npm:@androidtui/core@<version>"
 //
 // which installs to node_modules/@opentui/core. Rewriting the specifier to
-// @xincli/opentui-core points it at a directory the alias never creates:
+// @androidtui/core points it at a directory the alias never creates:
 //
-//   Cannot find module '@xincli/opentui-core' from '.../@opentui/solid/index.bun.js'
+//   Cannot find module '@androidtui/core' from '.../@opentui/solid/index.bun.js'
 //
 // Keeping the alias also keeps core a single instance. Declaring the edge
 // under its real name instead would resolve, but a consumer that aliases
@@ -277,7 +284,7 @@ console.log(`\n=== Step 3: rewrite self-referencing import specifiers ===`)
 // resolves it, and the consumer has node_modules/@opentui/solid from the
 // alias, so renaming it broke every build that uses the plugin:
 //
-//   error: Could not resolve: "@xincli/opentui-solid"
+//   error: Could not resolve: "@androidtui/solid"
 //     at packages/tui/src/context/helper.tsx:1:54
 //
 // Same invariant as above, one level out: anything a CONSUMER resolves stays
@@ -351,7 +358,7 @@ console.log(`\n=== Step 4: npm pack ===`)
 mkdirSync(artifactsDir, { recursive: true })
 run("npm", ["pack", distDir, "--pack-destination", artifactsDir])
 
-const tgz = join(artifactsDir, `xincli-opentui-${pkgKey}-${version}.tgz`)
+const tgz = join(artifactsDir, `androidtui-${pkgKey}-${version}.tgz`)
 if (!existsSync(tgz)) {
   console.error(`FAIL: expected tarball not found at ${tgz}`)
   process.exit(1)

@@ -124,7 +124,7 @@ let targetLibError: Error | undefined
 try {
   targetLibPath = await resolveNativeLibraryPath()
   if (isBunfsPath(targetLibPath)) {
-    // XINCLI: dlopen() cannot read bunfs, so copy the .so out to a real file.
+    // ANDROIDTUI: dlopen() cannot read bunfs, so copy the .so out to a real file.
     targetLibPath = await extractBunfsNativeLibrary(targetLibPath)
   }
   if (!existsSync(targetLibPath)) {

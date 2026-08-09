@@ -65,7 +65,7 @@ const variants: Variant[] = [
   { platform: "linux", arch: "arm64", abi: "musl" },
   { platform: "win32", arch: "x64" },
   { platform: "win32", arch: "arm64" },
-  // ── XINCLI: Android/Termux variant ──────────────────────────────────
+  // ── ANDROIDTUI: Android/Termux variant ──────────────────────────────────
   // Built natively ON the phone via scripts/build-native-termux.sh, not
   // cross-compiled — Zig links it against the exact Bionic libc that will
   // load it. Excluded from the default --all build because that runs on a

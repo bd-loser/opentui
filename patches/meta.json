@@ -1,5 +1,5 @@
 {
-  "name": "xincli-opentui-android",
+  "name": "androidtui-android",
   "description": "Android/Termux support for OpenTUI, as a standalone patch kit rather than a diverged fork branch. Apply to any upstream tag with scripts/xin-patch.sh, regenerate with scripts/xin-regen.sh.",
   "base": {
     "version": "0.5.1",
@@ -7,7 +7,7 @@
   },
   "upstream": "https://github.com/anomalyco/opentui.git",
   "fork": "https://github.com/bd-loser/opentui.git",
-  "scope": "@xincli",
+  "scope": "@androidtui",
   "add": [
     ".github/workflows/xin-release.yml",
     "NATIVE_BUILD.md",

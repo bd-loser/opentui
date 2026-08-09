@@ -32,7 +32,7 @@ export async function resolveNativeLibraryPath(): Promise<string> {
     return configuredPath
   }
 
-  // ── XINCLI: Android/Termux ────────────────────────────────────────────
+  // ── ANDROIDTUI: Android/Termux ────────────────────────────────────────────
   if (target.platform === "android") {
     const androidPath = await resolveAndroidNativeLibraryPath(asset.packageName, target.arch)
     if (androidPath !== undefined) {

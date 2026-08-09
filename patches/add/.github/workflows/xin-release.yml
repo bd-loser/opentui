@@ -1,7 +1,7 @@
 # ═══════════════════════════════════════════════════════════════════════
-# XINCLI OpenTUI fork — one-tag release
+# ANDROIDTUI OpenTUI fork — one-tag release
 #
-# Publishes all five @xincli packages at the same version from a single
+# Publishes all five @androidtui packages at the same version from a single
 # tag. Replaces the old split workflows (package-prebuilt, publish-core,
 # publish-js-library, publish-react, publish-solid, publish-keymap),
 # which each needed their own tag and could drift out of lockstep.
@@ -11,9 +11,9 @@
 #
 # Order matters — each stage's output is the next stage's dependency:
 #
-#   native   @xincli/opentui-core-android-arm64   (the .so)
+#   native   @androidtui/core-android-arm64   (the .so)
 #      |
-#   core     @xincli/opentui-core                 (optionalDep -> native)
+#   core     @androidtui/core                 (optionalDep -> native)
 #      |
 #   +--------+--------+
 #   react  solid  keymap                          (dep -> core, parallel)
@@ -24,10 +24,10 @@
 # x86 runner was tried and abandoned; a native Termux build links against
 # the exact Bionic libc that will dlopen it.
 #
-# Requires repo secret: XINCLI_NPM_SECRET (npm automation token).
+# Requires repo secret: ANDROIDTUI_NPM_SECRET (npm automation token).
 # ═══════════════════════════════════════════════════════════════════════
 
-name: XINCLI Release
+name: ANDROIDTUI Release
 
 on:
   push:
@@ -106,9 +106,9 @@ jobs:
           set -uo pipefail
           VERSION="${{ steps.v.outputs.version }}"
           FAIL=0
-          for name in opentui-core opentui-react opentui-solid opentui-keymap opentui-core-android-arm64; do
-            if npm view "@xincli/$name@$VERSION" version >/dev/null 2>&1; then
-              echo "::error::@xincli/$name@$VERSION already exists on npm — npm versions are immutable"
+          for name in core react solid keymap core-android-arm64; do
+            if npm view "@androidtui/$name@$VERSION" version >/dev/null 2>&1; then
+              echo "::error::@androidtui/$name@$VERSION already exists on npm — npm versions are immutable"
               FAIL=1
             fi
           done
@@ -193,7 +193,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ needs.setup.outputs.version }}"
-          for dir in packages/core/dist-prebuilt/@xincli/*/; do
+          for dir in packages/core/dist-prebuilt/@androidtui/*/; do
             [ -d "$dir" ] || continue
             node -e "
               const fs = require('fs');
@@ -214,17 +214,19 @@ jobs:
       - name: Publish
         if: needs.setup.outputs.publish == 'true'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
+          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET }}
         run: |
           set -euo pipefail
           if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::error::XINCLI_NPM_SECRET is not set in repo secrets"
+            echo "::error::ANDROIDTUI_NPM_SECRET is not set in repo secrets"
             exit 1
           fi
-          for dir in packages/core/dist-prebuilt/@xincli/*/; do
+          for dir in packages/core/dist-prebuilt/@androidtui/*/; do
             [ -d "$dir" ] || continue
             echo "Publishing $dir"
-            npm publish "$dir" --access public
+            # --tag is mandatory for prerelease versions (0.5.1-bun); npm
+            # errors out without it. See scripts/xin-repackage.mjs step 5.
+            npm publish "$dir" --access public --tag latest
           done
 
   # ── 2. core — depends on the native package existing ─────────────────
@@ -246,7 +248,7 @@ jobs:
 
       - name: Build + repackage + publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
+          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET }}
         run: |
           node scripts/xin-repackage.mjs \
             --package core \
@@ -255,7 +257,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xincli-opentui-core
+          name: androidtui-core
           path: artifacts/*.tgz
           retention-days: 90
 
@@ -280,7 +282,7 @@ jobs:
 
       - run: bun install
 
-      - name: Wait for @xincli/opentui-core to be resolvable
+      - name: Wait for @androidtui/core to be resolvable
         if: needs.setup.outputs.publish == 'true'
         run: |
           set -uo pipefail
@@ -288,19 +290,19 @@ jobs:
           # npm's CDN is read-after-write eventually consistent; a publish
           # that just succeeded can 404 for a few seconds.
           for i in $(seq 1 30); do
-            if npm view "@xincli/opentui-core@$VERSION" version >/dev/null 2>&1; then
-              echo "@xincli/opentui-core@$VERSION is live"
+            if npm view "@androidtui/core@$VERSION" version >/dev/null 2>&1; then
+              echo "@androidtui/core@$VERSION is live"
               exit 0
             fi
             echo "  attempt $i/30 — not visible yet, sleeping 10s"
             sleep 10
           done
-          echo "::error::@xincli/opentui-core@$VERSION never became visible"
+          echo "::error::@androidtui/core@$VERSION never became visible"
           exit 1
 
       - name: Build + repackage + publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
+          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET }}
         run: |
           node scripts/xin-repackage.mjs \
             --package "${{ matrix.package }}" \
@@ -309,7 +311,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xincli-opentui-${{ matrix.package }}
+          name: androidtui-${{ matrix.package }}
           path: artifacts/*.tgz
           retention-days: 90
 
@@ -323,6 +325,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+
+      # Needed by the JSX-transform step below; @opentui/solid/bun-plugin
+      # is Bun-only by design (its .node.js twin throws on purpose).
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install and import from npm
         run: |
@@ -343,28 +351,289 @@ jobs:
           # controls the version — but it means this job has to install
           # them the way a real consumer would.
           npm install --legacy-peer-deps \
-            "@xincli/opentui-core@$VERSION" \
-            "@xincli/opentui-react@$VERSION" \
-            "@xincli/opentui-solid@$VERSION" \
-            "@xincli/opentui-keymap@$VERSION" \
+            "@androidtui/core@$VERSION" \
+            "@androidtui/react@$VERSION" \
+            "@androidtui/solid@$VERSION" \
+            "@androidtui/keymap@$VERSION" \
             react solid-js react-devtools-core ws
 
           node --input-type=module -e "
-            const core = await import('@xincli/opentui-core');
+            const core = await import('@androidtui/core');
             for (const k of ['createCliRenderer', 'RGBA', 'Box', 'Text', 't']) {
               if (typeof core[k] === 'undefined') throw new Error('core missing ' + k);
             }
-            console.log('OK @xincli/opentui-core');
-            const react = await import('@xincli/opentui-react');
+            console.log('OK @androidtui/core');
+            const react = await import('@androidtui/react');
             for (const k of ['createRoot', 'useKeyboard', 'useRenderer']) {
               if (typeof react[k] === 'undefined') throw new Error('react missing ' + k);
             }
-            console.log('OK @xincli/opentui-react');
-            await import('@xincli/opentui-solid');
-            console.log('OK @xincli/opentui-solid');
-            await import('@xincli/opentui-keymap');
-            console.log('OK @xincli/opentui-keymap');
+            console.log('OK @androidtui/react');
+            await import('@androidtui/solid');
+            console.log('OK @androidtui/solid');
+            await import('@androidtui/keymap');
+            console.log('OK @androidtui/keymap');
           "
+
+      - name: Verify the aliased install
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.setup.outputs.version }}"
+          # The step above installs the packages under their real @androidtui
+          # names, which creates node_modules/@androidtui/core. That
+          # hides a whole class of bug: at 0.5.1 the compiled JS of solid
+          # and keymap imported "@androidtui/core" directly, which
+          # resolved here and passed CI — but broke every consumer that
+          # aliases instead, because an alias installs to
+          # node_modules/@opentui/core and nothing creates the @androidtui
+          # directory. Aliasing is how opencode consumes this fork, so it
+          # gets its own step.
+          mkdir -p /tmp/verify-alias && cd /tmp/verify-alias
+          npm init -y >/dev/null
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json'));
+            p.type = 'module';
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2));
+          "
+          npm install --legacy-peer-deps \
+            "@opentui/core@npm:@androidtui/core@$VERSION" \
+            "@opentui/solid@npm:@androidtui/solid@$VERSION" \
+            "@opentui/keymap@npm:@androidtui/keymap@$VERSION" \
+            solid-js
+
+          # If this exists, the step is not testing what it claims to.
+          if [ -e node_modules/@androidtui/core ]; then
+            echo "::error::node_modules/@androidtui/core exists — not an alias-only install"
+            exit 1
+          fi
+
+          node --input-type=module -e "
+            const core = await import('@opentui/core');
+            if (typeof core.createCliRenderer === 'undefined') throw new Error('core missing createCliRenderer');
+            console.log('OK @opentui/core (aliased)');
+            await import('@opentui/solid');
+            console.log('OK @opentui/solid (aliased)');
+            await import('@opentui/keymap');
+            console.log('OK @opentui/keymap (aliased)');
+          "
+
+      - name: Verify the Solid JSX transform against the aliased install
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.setup.outputs.version }}"
+          # Importing a package only proves its own specifiers resolve. It
+          # says nothing about the specifiers the package WRITES INTO the
+          # consumer's code — and at 0.5.1-bun the repackager had renamed
+          # the Solid JSX moduleName default to "@androidtui/solid",
+          # so every consumer .tsx compiled to an import of a directory the
+          # alias never creates:
+          #
+          #   error: Could not resolve: "@androidtui/solid"
+          #     at packages/tui/src/context/helper.tsx:1:54
+          #
+          # Both import steps above passed on that build. Bundling through
+          # the plugin is what catches it, so it gets its own step.
+          mkdir -p /tmp/verify-jsx && cd /tmp/verify-jsx
+          npm init -y >/dev/null
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json'));
+            p.type = 'module';
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2));
+          "
+          npm install --legacy-peer-deps \
+            "@opentui/core@npm:@androidtui/core@$VERSION" \
+            "@opentui/solid@npm:@androidtui/solid@$VERSION" \
+            solid-js
+
+          mkdir -p src
+          cat > src/app.tsx <<'TSX'
+          /** @jsxImportSource @opentui/solid */
+          export function App() {
+            return <box><text>hello</text></box>
+          }
+          TSX
+
+          cat > build.ts <<'TS'
+          import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
+          // Externals, all of them upstream shapes this test is not about:
+          //   @opentui/core-<platform>   optionalDependencies for the OTHER
+          //                              platforms, legitimately absent here
+          //   web-tree-sitter/*          core imports tree-sitter.wasm as an
+          //                              asset subpath that is not in that
+          //                              package's exports map, so a bundler
+          //                              cannot resolve it without a loader
+          // Only the JSX specifiers are under test.
+          const r = await Bun.build({
+            entrypoints: ["src/app.tsx"],
+            target: "bun",
+            external: ["@opentui/core-*", "@androidtui/core-*", "web-tree-sitter", "web-tree-sitter/*"],
+            plugins: [createSolidTransformPlugin()],
+          })
+          if (!r.success) {
+            for (const l of r.logs) console.error(String(l))
+            throw new Error("bundling a .tsx through the Solid transform failed")
+          }
+          const out = await r.outputs[0].text()
+          const leaked = [...new Set(out.match(/@androidtui\/(core|solid|keymap|react)(?![a-z-])/g) ?? [])]
+          if (leaked.length > 0) {
+            throw new Error(
+              "the bundle references @androidtui names that an aliased install never creates: " + leaked.join(", "),
+            )
+          }
+          console.log("OK Solid JSX transform (aliased)")
+          TS
+
+          bun build.ts
+
+      - name: Verify the Android native library stays embeddable
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.setup.outputs.version }}"
+          # 0.5.1-bun.1 published cleanly, passed every step above, and
+          # produced a `bun build --compile` binary that died on launch:
+          #
+          #   Failed to initialize OpenTUI render library: OpenTUI native
+          #   library for Android is missing. Install
+          #   @androidtui/core-android-arm64
+          #
+          # Two independent regressions, neither visible to an import test
+          # (there is no .so to load on an x64 runner, so core never gets
+          # that far). Both are visible in the published JS, so check that:
+          #
+          #  1. The specifier must survive as a string LITERAL. Bun's
+          #     --compile bundler only follows static specifiers; handed
+          #     `import(packageName)` it embeds nothing, and the binary has
+          #     no .so — no node_modules beside it, no source checkout.
+          #  2. It must stay EXTERNAL. Inlined, the native package's
+          #       new URL("./libopentui.so", import.meta.url)
+          #     re-anchors to core's own dist chunk, where no .so exists.
+          #     core keeps it external by listing it in
+          #     optionalDependencies (build.ts derives --external from
+          #     that), so dropping the entry silently inlines it.
+          #
+          # The name checked is upstream's @opentui/core-android-arm64,
+          # not @androidtui. core declares an ALIAS at that key pointing at
+          # the fork's tarball, so npm installs it under upstream's name
+          # and that is the specifier that has to resolve. The key also
+          # has to STAY upstream-named: npm indexes dependents by key, so
+          # a literal @androidtui key makes every version of the fork's native
+          # package permanently unpublishable.
+          mkdir -p /tmp/verify-native && cd /tmp/verify-native
+          npm init -y >/dev/null
+          npm install --legacy-peer-deps "@androidtui/core@$VERSION"
+
+          NAME=@opentui/core-android-arm64
+          ALIAS="npm:@androidtui/core-android-arm64@$VERSION"
+
+          node -e '
+            const fs = require("fs"), path = require("path");
+            const name = process.argv[1];
+            const root = "node_modules/@androidtui/core";
+
+            const files = [];
+            (function walk(d) {
+              for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+                const p = path.join(d, e.name);
+                if (e.isDirectory()) walk(p);
+                else if (/\.(js|mjs|cjs)$/.test(e.name)) files.push(p);
+              }
+            })(root);
+
+            // A live external import: import("<name>") left in the output.
+            const importRe = new RegExp(`import\\s*\\(\\s*["\x27]${name}["\x27]`);
+            const hits = files.filter((f) => importRe.test(fs.readFileSync(f, "utf8")));
+            if (hits.length === 0) {
+              throw new Error(
+                `no literal import("${name}") anywhere in ${root} — ` +
+                  "a compiled binary will embed no libopentui.so. " +
+                  "Check src/platform/android-native.ts still uses a string literal.",
+              );
+            }
+            console.log(`literal external import in ${hits.length} file(s):`);
+            for (const h of hits) console.log(`  ${h}`);
+
+            // The inline marker: core resolving the .so relative to its OWN
+            // chunk is exactly the broken shape.
+            const inlineRe = /new URL\(\s*["\x27]\.\/libopentui\.so["\x27]/;
+            const inlined = files.filter((f) => inlineRe.test(fs.readFileSync(f, "utf8")));
+            if (inlined.length > 0) {
+              throw new Error(
+                `${name} was INLINED into core: ${inlined.join(", ")}. ` +
+                  "It must stay external — re-add it to packages/core/package.json optionalDependencies.",
+              );
+            }
+            console.log("not inlined");
+          ' "$NAME"
+
+          # The optionalDependency is what makes it external, and it is
+          # pinned by the repackager, so it must be the alias naming this
+          # exact version. A bare version string here would mean the key
+          # reverted to the literal @androidtui name — which still works for
+          # consumers, and silently re-welds the native package to the
+          # registry forever. Checked as an exact string for that reason.
+          HAVE="$(node -p "
+            require('./node_modules/@androidtui/core/package.json')
+              .optionalDependencies['$NAME'] ?? ''
+          ")"
+          if [ "$HAVE" != "$ALIAS" ]; then
+            echo "::error::published core pins $NAME='$HAVE', expected '$ALIAS'"
+            exit 1
+          fi
+
+          # A literal @androidtui key must not come back alongside the alias.
+          STRAY="$(node -p "
+            Object.keys(
+              require('./node_modules/@androidtui/core/package.json')
+                .optionalDependencies ?? {}
+            ).filter((k) => k.startsWith('@androidtui/core-android')).join(',')
+          ")"
+          if [ -n "$STRAY" ]; then
+            echo "::error::published core has literal @androidtui android key(s): $STRAY"
+            echo "::error::npm indexes dependents by key — this blocks unpublish of the native package forever."
+            exit 1
+          fi
+
+          # The alias has to actually materialise under upstream's name,
+          # since that is the specifier the literal import resolves.
+          #
+          # It will NOT have materialised in the install above. The native
+          # package declares cpu=["arm64"], npm silently skips an
+          # optionalDependency whose cpu/os does not match the host, and
+          # this runner is linux-x64 — so asserting on the tree above can
+          # never pass here, however correct the alias is. (That assertion
+          # is what failed 0.5.1-bun.3, after all five packages had already
+          # published fine.)
+          #
+          # Resolve it in a scratch tree instead, as a REGULAR dependency
+          # with --force so npm downgrades EBADPLATFORM to a warning. That
+          # exercises the same alias string a Termux consumer resolves,
+          # independently of what the runner's own arch is.
+          mkdir -p /tmp/verify-alias && cd /tmp/verify-alias
+          npm init -y >/dev/null
+          npm install --force --no-audit --no-fund "$NAME@$ALIAS"
+
+          if [ ! -f "node_modules/$NAME/package.json" ]; then
+            echo "::error::alias '$ALIAS' did not install node_modules/$NAME"
+            exit 1
+          fi
+          REAL="$(node -p "require('./node_modules/$NAME/package.json').name")"
+          if [ "$REAL" != "@androidtui/core-android-arm64" ]; then
+            echo "::error::node_modules/$NAME is '$REAL', not the fork's native package"
+            exit 1
+          fi
+
+          # And the tarball has to contain the library it exists to ship.
+          # Nothing upstream of here would notice an empty one: the JS
+          # entry is just a path string, so import succeeds and the .so is
+          # only missed at dlopen time, on a device, at launch.
+          SO="$(find "node_modules/$NAME" -name libopentui.so -print -quit)"
+          if [ -z "$SO" ]; then
+            echo "::error::$REAL@$VERSION ships no libopentui.so"
+            exit 1
+          fi
+          echo "  $SO ($(stat -c %s "$SO") bytes)"
+          echo "OK Android native library is external, literal, and aliased to $ALIAS"
 
       - name: Summary
         run: |
@@ -373,10 +642,10 @@ jobs:
             echo "## Published \`$VERSION\`"
             echo
             for n in core react solid keymap core-android-arm64; do
-              echo "- \`@xincli/opentui-$n@$VERSION\`"
+              echo "- \`@androidtui/$n@$VERSION\`"
             done
             echo
             echo '```sh'
-            echo "npm install @xincli/opentui-solid@$VERSION --legacy-peer-deps"
+            echo "npm install @androidtui/solid@$VERSION --legacy-peer-deps"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

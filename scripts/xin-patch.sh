@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════
-# xin-patch.sh — apply the XINCLI Android/Termux patch kit to any
+# xin-patch.sh — apply the ANDROIDTUI Android/Termux patch kit to any
 #                upstream OpenTUI release.
 #
 #   bash scripts/xin-patch.sh 0.5.1
@@ -244,12 +244,12 @@ node -e '
 if [ "$SKIP_NPM" -eq 0 ] && command -v npm >/dev/null 2>&1; then
   info "checking npm (versions are immutable — a burned one cannot be reused)"
   BURNED=()
-  for name in opentui-core opentui-react opentui-solid opentui-keymap opentui-core-android-arm64; do
-    if npm view "@xincli/$name@$VERSION" version >/dev/null 2>&1; then
-      printf '  \033[31mtaken\033[0m @xincli/%s@%s\n' "$name" "$VERSION"
+  for name in core react solid keymap core-android-arm64; do
+    if npm view "@androidtui/$name@$VERSION" version >/dev/null 2>&1; then
+      printf '  \033[31mtaken\033[0m @androidtui/%s@%s\n' "$name" "$VERSION"
       BURNED+=("$name")
     else
-      ok "@xincli/$name@$VERSION is free"
+      ok "@androidtui/$name@$VERSION is free"
     fi
   done
 fi
@@ -269,7 +269,7 @@ if [ "${#CONFLICTS[@]}" -gt 0 ]; then
   echo
   echo "  Open each one and search for <<<<<<< markers. Upstream's side is"
   echo "  labelled 'ours'; the fork's side is 'theirs'. Fork additions are"
-  echo "  tagged with an XINCLI comment — keep those, and keep whatever"
+  echo "  tagged with an ANDROIDTUI comment — keep those, and keep whatever"
   echo "  upstream added around them."
 fi
 
@@ -286,7 +286,7 @@ cat <<EOF
     bun install
     bash packages/core/scripts/build-native-termux.sh
     bash scripts/xin-regen.sh
-    git add -A && git commit -m "port XINCLI Android patches to $TAG"
+    git add -A && git commit -m "port ANDROIDTUI Android patches to $TAG"
     git tag xin-v$VERSION && git push origin "$BRANCH" xin-v$VERSION
 
 EOF

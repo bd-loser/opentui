@@ -1,7 +1,7 @@
 # ═══════════════════════════════════════════════════════════════════════
-# XINCLI OpenTUI fork — one-tag release
+# ANDROIDTUI OpenTUI fork — one-tag release
 #
-# Publishes all five @xincli packages at the same version from a single
+# Publishes all five @androidtui packages at the same version from a single
 # tag. Replaces the old split workflows (package-prebuilt, publish-core,
 # publish-js-library, publish-react, publish-solid, publish-keymap),
 # which each needed their own tag and could drift out of lockstep.
@@ -11,9 +11,9 @@
 #
 # Order matters — each stage's output is the next stage's dependency:
 #
-#   native   @xincli/opentui-core-android-arm64   (the .so)
+#   native   @androidtui/core-android-arm64   (the .so)
 #      |
-#   core     @xincli/opentui-core                 (optionalDep -> native)
+#   core     @androidtui/core                 (optionalDep -> native)
 #      |
 #   +--------+--------+
 #   react  solid  keymap                          (dep -> core, parallel)
@@ -24,10 +24,10 @@
 # x86 runner was tried and abandoned; a native Termux build links against
 # the exact Bionic libc that will dlopen it.
 #
-# Requires repo secret: XINCLI_NPM_SECRET (npm automation token).
+# Requires repo secret: ANDROIDTUI_NPM_SECRET (npm automation token).
 # ═══════════════════════════════════════════════════════════════════════
 
-name: XINCLI Release
+name: ANDROIDTUI Release
 
 on:
   push:
@@ -106,9 +106,9 @@ jobs:
           set -uo pipefail
           VERSION="${{ steps.v.outputs.version }}"
           FAIL=0
-          for name in opentui-core opentui-react opentui-solid opentui-keymap opentui-core-android-arm64; do
-            if npm view "@xincli/$name@$VERSION" version >/dev/null 2>&1; then
-              echo "::error::@xincli/$name@$VERSION already exists on npm — npm versions are immutable"
+          for name in core react solid keymap core-android-arm64; do
+            if npm view "@androidtui/$name@$VERSION" version >/dev/null 2>&1; then
+              echo "::error::@androidtui/$name@$VERSION already exists on npm — npm versions are immutable"
               FAIL=1
             fi
           done
@@ -193,7 +193,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ needs.setup.outputs.version }}"
-          for dir in packages/core/dist-prebuilt/@xincli/*/; do
+          for dir in packages/core/dist-prebuilt/@androidtui/*/; do
             [ -d "$dir" ] || continue
             node -e "
               const fs = require('fs');
@@ -214,14 +214,14 @@ jobs:
       - name: Publish
         if: needs.setup.outputs.publish == 'true'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
+          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET }}
         run: |
           set -euo pipefail
           if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::error::XINCLI_NPM_SECRET is not set in repo secrets"
+            echo "::error::ANDROIDTUI_NPM_SECRET is not set in repo secrets"
             exit 1
           fi
-          for dir in packages/core/dist-prebuilt/@xincli/*/; do
+          for dir in packages/core/dist-prebuilt/@androidtui/*/; do
             [ -d "$dir" ] || continue
             echo "Publishing $dir"
             # --tag is mandatory for prerelease versions (0.5.1-bun); npm
@@ -248,7 +248,7 @@ jobs:
 
       - name: Build + repackage + publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
+          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET }}
         run: |
           node scripts/xin-repackage.mjs \
             --package core \
@@ -257,7 +257,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xincli-opentui-core
+          name: androidtui-core
           path: artifacts/*.tgz
           retention-days: 90
 
@@ -282,7 +282,7 @@ jobs:
 
       - run: bun install
 
-      - name: Wait for @xincli/opentui-core to be resolvable
+      - name: Wait for @androidtui/core to be resolvable
         if: needs.setup.outputs.publish == 'true'
         run: |
           set -uo pipefail
@@ -290,19 +290,19 @@ jobs:
           # npm's CDN is read-after-write eventually consistent; a publish
           # that just succeeded can 404 for a few seconds.
           for i in $(seq 1 30); do
-            if npm view "@xincli/opentui-core@$VERSION" version >/dev/null 2>&1; then
-              echo "@xincli/opentui-core@$VERSION is live"
+            if npm view "@androidtui/core@$VERSION" version >/dev/null 2>&1; then
+              echo "@androidtui/core@$VERSION is live"
               exit 0
             fi
             echo "  attempt $i/30 — not visible yet, sleeping 10s"
             sleep 10
           done
-          echo "::error::@xincli/opentui-core@$VERSION never became visible"
+          echo "::error::@androidtui/core@$VERSION never became visible"
           exit 1
 
       - name: Build + repackage + publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
+          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET }}
         run: |
           node scripts/xin-repackage.mjs \
             --package "${{ matrix.package }}" \
@@ -311,7 +311,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: xincli-opentui-${{ matrix.package }}
+          name: androidtui-${{ matrix.package }}
           path: artifacts/*.tgz
           retention-days: 90
 
@@ -351,40 +351,40 @@ jobs:
           # controls the version — but it means this job has to install
           # them the way a real consumer would.
           npm install --legacy-peer-deps \
-            "@xincli/opentui-core@$VERSION" \
-            "@xincli/opentui-react@$VERSION" \
-            "@xincli/opentui-solid@$VERSION" \
-            "@xincli/opentui-keymap@$VERSION" \
+            "@androidtui/core@$VERSION" \
+            "@androidtui/react@$VERSION" \
+            "@androidtui/solid@$VERSION" \
+            "@androidtui/keymap@$VERSION" \
             react solid-js react-devtools-core ws
 
           node --input-type=module -e "
-            const core = await import('@xincli/opentui-core');
+            const core = await import('@androidtui/core');
             for (const k of ['createCliRenderer', 'RGBA', 'Box', 'Text', 't']) {
               if (typeof core[k] === 'undefined') throw new Error('core missing ' + k);
             }
-            console.log('OK @xincli/opentui-core');
-            const react = await import('@xincli/opentui-react');
+            console.log('OK @androidtui/core');
+            const react = await import('@androidtui/react');
             for (const k of ['createRoot', 'useKeyboard', 'useRenderer']) {
               if (typeof react[k] === 'undefined') throw new Error('react missing ' + k);
             }
-            console.log('OK @xincli/opentui-react');
-            await import('@xincli/opentui-solid');
-            console.log('OK @xincli/opentui-solid');
-            await import('@xincli/opentui-keymap');
-            console.log('OK @xincli/opentui-keymap');
+            console.log('OK @androidtui/react');
+            await import('@androidtui/solid');
+            console.log('OK @androidtui/solid');
+            await import('@androidtui/keymap');
+            console.log('OK @androidtui/keymap');
           "
 
       - name: Verify the aliased install
         run: |
           set -euo pipefail
           VERSION="${{ needs.setup.outputs.version }}"
-          # The step above installs the packages under their real @xincli
-          # names, which creates node_modules/@xincli/opentui-core. That
+          # The step above installs the packages under their real @androidtui
+          # names, which creates node_modules/@androidtui/core. That
           # hides a whole class of bug: at 0.5.1 the compiled JS of solid
-          # and keymap imported "@xincli/opentui-core" directly, which
+          # and keymap imported "@androidtui/core" directly, which
           # resolved here and passed CI — but broke every consumer that
           # aliases instead, because an alias installs to
-          # node_modules/@opentui/core and nothing creates the @xincli
+          # node_modules/@opentui/core and nothing creates the @androidtui
           # directory. Aliasing is how opencode consumes this fork, so it
           # gets its own step.
           mkdir -p /tmp/verify-alias && cd /tmp/verify-alias
@@ -396,14 +396,14 @@ jobs:
             fs.writeFileSync('package.json', JSON.stringify(p, null, 2));
           "
           npm install --legacy-peer-deps \
-            "@opentui/core@npm:@xincli/opentui-core@$VERSION" \
-            "@opentui/solid@npm:@xincli/opentui-solid@$VERSION" \
-            "@opentui/keymap@npm:@xincli/opentui-keymap@$VERSION" \
+            "@opentui/core@npm:@androidtui/core@$VERSION" \
+            "@opentui/solid@npm:@androidtui/solid@$VERSION" \
+            "@opentui/keymap@npm:@androidtui/keymap@$VERSION" \
             solid-js
 
           # If this exists, the step is not testing what it claims to.
-          if [ -e node_modules/@xincli/opentui-core ]; then
-            echo "::error::node_modules/@xincli/opentui-core exists — not an alias-only install"
+          if [ -e node_modules/@androidtui/core ]; then
+            echo "::error::node_modules/@androidtui/core exists — not an alias-only install"
             exit 1
           fi
 
@@ -424,11 +424,11 @@ jobs:
           # Importing a package only proves its own specifiers resolve. It
           # says nothing about the specifiers the package WRITES INTO the
           # consumer's code — and at 0.5.1-bun the repackager had renamed
-          # the Solid JSX moduleName default to "@xincli/opentui-solid",
+          # the Solid JSX moduleName default to "@androidtui/solid",
           # so every consumer .tsx compiled to an import of a directory the
           # alias never creates:
           #
-          #   error: Could not resolve: "@xincli/opentui-solid"
+          #   error: Could not resolve: "@androidtui/solid"
           #     at packages/tui/src/context/helper.tsx:1:54
           #
           # Both import steps above passed on that build. Bundling through
@@ -442,8 +442,8 @@ jobs:
             fs.writeFileSync('package.json', JSON.stringify(p, null, 2));
           "
           npm install --legacy-peer-deps \
-            "@opentui/core@npm:@xincli/opentui-core@$VERSION" \
-            "@opentui/solid@npm:@xincli/opentui-solid@$VERSION" \
+            "@opentui/core@npm:@androidtui/core@$VERSION" \
+            "@opentui/solid@npm:@androidtui/solid@$VERSION" \
             solid-js
 
           mkdir -p src
@@ -467,7 +467,7 @@ jobs:
           const r = await Bun.build({
             entrypoints: ["src/app.tsx"],
             target: "bun",
-            external: ["@opentui/core-*", "@xincli/opentui-core-*", "web-tree-sitter", "web-tree-sitter/*"],
+            external: ["@opentui/core-*", "@androidtui/core-*", "web-tree-sitter", "web-tree-sitter/*"],
             plugins: [createSolidTransformPlugin()],
           })
           if (!r.success) {
@@ -475,10 +475,10 @@ jobs:
             throw new Error("bundling a .tsx through the Solid transform failed")
           }
           const out = await r.outputs[0].text()
-          const leaked = [...new Set(out.match(/@xincli\/opentui-(core|solid|keymap|react)(?![a-z-])/g) ?? [])]
+          const leaked = [...new Set(out.match(/@androidtui\/(core|solid|keymap|react)(?![a-z-])/g) ?? [])]
           if (leaked.length > 0) {
             throw new Error(
-              "the bundle references @xincli names that an aliased install never creates: " + leaked.join(", "),
+              "the bundle references @androidtui names that an aliased install never creates: " + leaked.join(", "),
             )
           }
           console.log("OK Solid JSX transform (aliased)")
@@ -495,7 +495,7 @@ jobs:
           #
           #   Failed to initialize OpenTUI render library: OpenTUI native
           #   library for Android is missing. Install
-          #   @xincli/opentui-core-android-arm64
+          #   @androidtui/core-android-arm64
           #
           # Two independent regressions, neither visible to an import test
           # (there is no .so to load on an x64 runner, so core never gets
@@ -513,23 +513,23 @@ jobs:
           #     that), so dropping the entry silently inlines it.
           #
           # The name checked is upstream's @opentui/core-android-arm64,
-          # not @xincli. core declares an ALIAS at that key pointing at
+          # not @androidtui. core declares an ALIAS at that key pointing at
           # the fork's tarball, so npm installs it under upstream's name
           # and that is the specifier that has to resolve. The key also
           # has to STAY upstream-named: npm indexes dependents by key, so
-          # a literal @xincli key makes every version of the fork's native
+          # a literal @androidtui key makes every version of the fork's native
           # package permanently unpublishable.
           mkdir -p /tmp/verify-native && cd /tmp/verify-native
           npm init -y >/dev/null
-          npm install --legacy-peer-deps "@xincli/opentui-core@$VERSION"
+          npm install --legacy-peer-deps "@androidtui/core@$VERSION"
 
           NAME=@opentui/core-android-arm64
-          ALIAS="npm:@xincli/opentui-core-android-arm64@$VERSION"
+          ALIAS="npm:@androidtui/core-android-arm64@$VERSION"
 
           node -e '
             const fs = require("fs"), path = require("path");
             const name = process.argv[1];
-            const root = "node_modules/@xincli/opentui-core";
+            const root = "node_modules/@androidtui/core";
 
             const files = [];
             (function walk(d) {
@@ -569,11 +569,11 @@ jobs:
           # The optionalDependency is what makes it external, and it is
           # pinned by the repackager, so it must be the alias naming this
           # exact version. A bare version string here would mean the key
-          # reverted to the literal @xincli name — which still works for
+          # reverted to the literal @androidtui name — which still works for
           # consumers, and silently re-welds the native package to the
           # registry forever. Checked as an exact string for that reason.
           HAVE="$(node -p "
-            require('./node_modules/@xincli/opentui-core/package.json')
+            require('./node_modules/@androidtui/core/package.json')
               .optionalDependencies['$NAME'] ?? ''
           ")"
           if [ "$HAVE" != "$ALIAS" ]; then
@@ -581,15 +581,15 @@ jobs:
             exit 1
           fi
 
-          # A literal @xincli key must not come back alongside the alias.
+          # A literal @androidtui key must not come back alongside the alias.
           STRAY="$(node -p "
             Object.keys(
-              require('./node_modules/@xincli/opentui-core/package.json')
+              require('./node_modules/@androidtui/core/package.json')
                 .optionalDependencies ?? {}
-            ).filter((k) => k.startsWith('@xincli/opentui-core-android')).join(',')
+            ).filter((k) => k.startsWith('@androidtui/core-android')).join(',')
           ")"
           if [ -n "$STRAY" ]; then
-            echo "::error::published core has literal @xincli android key(s): $STRAY"
+            echo "::error::published core has literal @androidtui android key(s): $STRAY"
             echo "::error::npm indexes dependents by key — this blocks unpublish of the native package forever."
             exit 1
           fi
@@ -618,7 +618,7 @@ jobs:
             exit 1
           fi
           REAL="$(node -p "require('./node_modules/$NAME/package.json').name")"
-          if [ "$REAL" != "@xincli/opentui-core-android-arm64" ]; then
+          if [ "$REAL" != "@androidtui/core-android-arm64" ]; then
             echo "::error::node_modules/$NAME is '$REAL', not the fork's native package"
             exit 1
           fi
@@ -642,10 +642,10 @@ jobs:
             echo "## Published \`$VERSION\`"
             echo
             for n in core react solid keymap core-android-arm64; do
-              echo "- \`@xincli/opentui-$n@$VERSION\`"
+              echo "- \`@androidtui/$n@$VERSION\`"
             done
             echo
             echo '```sh'
-            echo "npm install @xincli/opentui-solid@$VERSION --legacy-peer-deps"
+            echo "npm install @androidtui/solid@$VERSION --legacy-peer-deps"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

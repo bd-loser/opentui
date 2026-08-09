@@ -1,5 +1,5 @@
 diff --git a/packages/core/src/platform/runtime-assets.bun.ts b/packages/core/src/platform/runtime-assets.bun.ts
-index 02e46534..f3cd3080 100644
+index 02e46534..3ecb86bc 100644
 --- a/packages/core/src/platform/runtime-assets.bun.ts
 +++ b/packages/core/src/platform/runtime-assets.bun.ts
 @@ -1,5 +1,6 @@
@@ -21,7 +21,7 @@ index 02e46534..f3cd3080 100644
      return configuredPath
    }
  
-+  // ── XINCLI: Android/Termux ────────────────────────────────────────────
++  // ── ANDROIDTUI: Android/Termux ────────────────────────────────────────────
 +  if (target.platform === "android") {
 +    const androidPath = await resolveAndroidNativeLibraryPath(asset.packageName, target.arch)
 +    if (androidPath !== undefined) {

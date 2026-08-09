@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════
-// XINCLI: Android/Termux native library resolution
+// ANDROIDTUI: Android/Termux native library resolution
 //
 // Additive file — upstream has no equivalent, so this never conflicts
 // when rebasing the fork onto a new upstream tag. The modified upstream
@@ -10,9 +10,9 @@
 //      a source checkout, never in a published tarball (build.ts does not
 //      copy prebuilt/ into dist/). In a checkout this is the .so you just
 //      built with build-native-termux.sh, so it must win: otherwise a
-//      stale @xincli/opentui-core-android-arm64 sitting in node_modules
+//      stale @androidtui/core-android-arm64 sitting in node_modules
 //      would silently shadow the build you are trying to test.
-//   2. @xincli/opentui-core-android-<arch> — the published npm package,
+//   2. @androidtui/core-android-<arch> — the published npm package,
 //      which is what real consumers get.
 //
 // OTUI_ASSET_ROOT overrides both (handled upstream, before we get here).
@@ -63,7 +63,7 @@ export async function resolveAndroidNativeLibraryPath(
   // node_modules beside the binary and no source checkout either:
   //
   //   Failed to initialize OpenTUI render library: OpenTUI native library
-  //   for Android is missing. Install @xincli/opentui-core-android-arm64
+  //   for Android is missing. Install @androidtui/core-android-arm64
   //
   // 0.4.10 worked for exactly this reason: it had
   // `await import("@opentui/core-android-arm64")` written out in
@@ -73,19 +73,19 @@ export async function resolveAndroidNativeLibraryPath(
   // 0.5.1 port did — silently removed the embed and left the extractor
   // with nothing to extract.
   //
-  // The name is upstream's, not @xincli's, even though the fork is what
+  // The name is upstream's, not @androidtui's, even though the fork is what
   // publishes the tarball. core declares it as an ALIAS:
   //
   //   "@opentui/core-android-arm64":
-  //       "npm:@xincli/opentui-core-android-arm64@<version>"
+  //       "npm:@androidtui/core-android-arm64@<version>"
   //
   // which installs the fork's package into node_modules under upstream's
   // name — so this literal resolves, and it is the name build.ts already
-  // derives for the android variant. Importing the @xincli name directly
+  // derives for the android variant. Importing the @androidtui name directly
   // would NOT resolve, because the alias never creates that directory.
   //
   // Aliasing is also what makes the fork's own npm hygiene possible: npm
-  // indexes dependents by the dependency KEY, so a literal @xincli key
+  // indexes dependents by the dependency KEY, so a literal @androidtui key
   // here marks the native package as having dependents forever, and
   // npm then refuses to unpublish ANY version of it —
   //   405 ... Failed criteria: has dependent packages in the registry

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ═══════════════════════════════════════════════════════════════════════
-// XINCLI patch kit — package.json transform
+// ANDROIDTUI patch kit — package.json transform
 //
 // The four workspace package.json files need small, structural edits that
 // are awkward to express as unified diffs: upstream reorders keys and
@@ -32,7 +32,7 @@ const checkOnly = process.argv.includes("--check")
  * Each entry returns true when it changed something. Keep these edits
  * minimal and idempotent — they run again on every version bump.
  *
- * Deliberately NOT here: the @xincli/opentui-core-android-arm64 optional
+ * Deliberately NOT here: the @androidtui/core-android-arm64 optional
  * dependency. It would name a version that does not exist on npm until
  * the release workflow publishes it, so carrying it in the tree only
  * risks `bun install` noise for no benefit — nothing in a source
@@ -59,7 +59,7 @@ const TRANSFORMS = {
   },
 
   keymap() {
-    // Not private upstream — nothing beyond the shared publish:xincli
+    // Not private upstream — nothing beyond the shared publish:androidtui
     // script added below.
     return false
   },
@@ -75,10 +75,10 @@ for (const [name, transform] of Object.entries(TRANSFORMS)) {
   let changed = transform(pkg)
 
   // A convenience alias so you can publish one package by hand from its
-  // own directory: `bun run publish:xincli -- --publish`
+  // own directory: `bun run publish:androidtui -- --publish`
   const publishCmd = `node ../../scripts/xin-repackage.mjs --package ${name}`
-  if (pkg.scripts !== undefined && pkg.scripts["publish:xincli"] !== publishCmd) {
-    pkg.scripts["publish:xincli"] = publishCmd
+  if (pkg.scripts !== undefined && pkg.scripts["publish:androidtui"] !== publishCmd) {
+    pkg.scripts["publish:androidtui"] = publishCmd
     changed = true
   }
 

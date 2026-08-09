@@ -27,11 +27,11 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
     .{ .zig_target = "aarch64-macos", .output_name = "aarch64-macos", .description = "macOS aarch64 (Apple Silicon)" },
     .{ .zig_target = "x86_64-windows-gnu", .output_name = "x86_64-windows", .description = "Windows x86_64" },
     .{ .zig_target = "aarch64-windows-gnu", .output_name = "aarch64-windows", .description = "Windows aarch64" },
-    // ── XINCLI: Android/Termux support ─────────────────────────────────
+    // ── ANDROIDTUI: Android/Termux support ─────────────────────────────────
     // Targets Android (Bionic libc) on aarch64 — the only Android arch
     // Termux realistically runs on in 2026. The NDK sysroot must be passed
     // via --sysroot; see the `build-android` workflow for the exact flags.
-    // The .so produced here is loaded by @xincli/opentui-core-android-arm64
+    // The .so produced here is loaded by @androidtui/core-android-arm64
     // at runtime inside cli.mjs on the user's phone.
     .{ .zig_target = "aarch64-linux-android", .output_name = "aarch64-android", .description = "Android aarch64 (Termux)" },
     .{ .zig_target = "arm-linux-android", .output_name = "arm-android", .description = "Android armv7 (legacy Termux)" },
@@ -105,7 +105,7 @@ fn nativeExecutableTarget(b: *std.Build) std.Build.ResolvedTarget {
         return b.resolveTargetQuery(.{});
     }
 
-    // ── XINCLI: On Android/Termux, use the host target directly (Bionic).
+    // ── ANDROIDTUI: On Android/Termux, use the host target directly (Bionic).
     // The musl override below breaks on Android because the host is android
     // ABI, and forcing musl creates an unresolvable target.
     if (builtin.abi == .android) {
@@ -198,7 +198,7 @@ fn addMiniaudioShim(
     };
 
     artifact.addIncludePath(b.path("."));
-    // ── XINCLI: skip linkLibC() for android ───────────────────────────
+    // ── ANDROIDTUI: skip linkLibC() for android ───────────────────────────
     // linkLibC() emits -lm -lc -ldl that Zig tries to resolve via its own
     // libc resolution. On Termux/Android, Zig can't find Bionic properly
     // (it falls back to glibc defaults), so -lm -lc -ldl fail.
@@ -375,14 +375,14 @@ fn addNativeAudioDependencies(
     switch (target.result.os.tag) {
         .macos => addMacOSSystemLibraries(b, artifact, macos_sdk_path.?),
         .linux => {
-            // ── XINCLI: Android is linux + .android ABI in Zig, not a
+            // ── ANDROIDTUI: Android is linux + .android ABI in Zig, not a
             // separate OS tag. For Android, link OpenSLES directly by path
             // instead of using linkSystemLibrary — the system library
             // resolution fails because --sysroot makes Zig double the
             // addLibraryPath paths. addObjectFile bypasses the search
             // entirely and links the .so directly.
             if (target.result.abi == .android) {
-                if (std.posix.getenv("XINCLI_ANDROID_LIB_PATH")) |lib_path| {
+                if (std.posix.getenv("ANDROIDTUI_ANDROID_LIB_PATH")) |lib_path| {
                     const opensles_path = b.pathJoin(&.{ lib_path, "libOpenSLES.so" });
                     artifact.addObjectFile(.{ .cwd_relative = opensles_path });
                 } else {
@@ -406,7 +406,7 @@ fn addYogaDependencies(
 ) void {
     const yoga_dep = b.dependency("yoga", .{});
 
-    // ── XINCLI: skip linkLibCpp() for android ─────────────────────────
+    // ── ANDROIDTUI: skip linkLibCpp() for android ─────────────────────────
     // linkLibCpp() emits -lc++ which fails on Termux (only libc++_shared.so
     // exists, not libc++.so). For android, we link libc++_shared.so directly
     // via addObjectFile in buildTarget(). For other targets, linkLibCpp() works.
@@ -414,7 +414,7 @@ fn addYogaDependencies(
         artifact.linkLibCpp();
     }
 
-    // ── XINCLI: add libc++ include path for android C++ compilation ────
+    // ── ANDROIDTUI: add libc++ include path for android C++ compilation ────
     // Yoga's C++ files #include <type_traits>, <cstddef>, <cmath>, etc.
     // from the C++ standard library. linkLibCpp() normally adds libc++'s
     // include path, but we skipped it for android.
@@ -427,19 +427,19 @@ fn addYogaDependencies(
         // (-isystem) so C++ Standard Library headers are searched BEFORE
         // the C Standard Library. <cerrno> needs libc++'s <errno.h> wrapper
         // to be found before the C <errno.h>, otherwise it errors out.
-        if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_INCLUDE")) |cxx_inc| {
+        if (std.posix.getenv("ANDROIDTUI_ANDROID_LIBCXX_INCLUDE")) |cxx_inc| {
             artifact.addIncludePath(.{ .cwd_relative = cxx_inc });
         }
-        if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_INCLUDE2")) |cxx_inc2| {
+        if (std.posix.getenv("ANDROIDTUI_ANDROID_LIBCXX_INCLUDE2")) |cxx_inc2| {
             artifact.addIncludePath(.{ .cwd_relative = cxx_inc2 });
         }
     }
 
     artifact.addIncludePath(yoga_dep.path(""));
 
-    // ── XINCLI: Android C++ flags ──────────────────────────────────────
+    // ── ANDROIDTUI: Android C++ flags ──────────────────────────────────────
     // Termux's libc++ headers are put on the include path above (via
-    // XINCLI_ANDROID_LIBCXX_INCLUDE, using addIncludePath so they are searched
+    // ANDROIDTUI_ANDROID_LIBCXX_INCLUDE, using addIncludePath so they are searched
     // before the C headers). They declare _LIBCPP_ABI_NAMESPACE as __1, which
     // is what Termux's libc++_shared.so exports — whereas Zig's bundled libc++
     // uses __ndk1 and would produce unresolvable mangled symbols.
@@ -742,7 +742,7 @@ fn buildTarget(
         .root_source_file = b.path(ROOT_SOURCE_FILE),
         .target = target,
         .optimize = optimize,
-        // ── XINCLI: link libc explicitly on android ─────────────────────
+        // ── ANDROIDTUI: link libc explicitly on android ─────────────────────
         // std.heap's C allocator only compiles when linking libc, so android
         // opts in here. The symbols are then satisfied by hand: this function
         // links Bionic's libc/libm/libdl by absolute path via addObjectFile,
@@ -752,7 +752,7 @@ fn buildTarget(
         // Non-android stays null (upstream's behaviour), leaving the decision
         // to addMiniaudioShim()'s artifact-level linkLibC().
         .link_libc = if (target.result.abi == .android) true else null,
-        // ── XINCLI: Don't let Zig link its own libc++ runtime ────────────
+        // ── ANDROIDTUI: Don't let Zig link its own libc++ runtime ────────────
         // Zig bundles pre-compiled libc++ bitcode (in --zig-lib-dir/libcxx/)
         // that uses __ndk1 namespace on android. When Zig sees C++ code
         // (yoga's .cpp files), it automatically links this runtime — producing
@@ -764,7 +764,7 @@ fn buildTarget(
         .link_libcpp = if (target.result.abi == .android) false else null,
     });
 
-    // ── XINCLI: @cImport include path for android ──────────────────────
+    // ── ANDROIDTUI: @cImport include path for android ──────────────────────
     // We skipped linkLibC() for android (it emits -lm -lc -ldl that fail).
     // The libc file's include_dir points at Termux's real $PREFIX/include
     // (set by build-native-termux.sh). @cImport reads it from there.
@@ -774,7 +774,7 @@ fn buildTarget(
     // so @cImport finds <asm/sigcontext.h> etc. This ONLY affects @cImport
     // (C) — C++ compilation doesn't use module include paths for system headers.
     if (target.result.abi == .android) {
-        if (std.posix.getenv("XINCLI_ANDROID_ASM_INCLUDE")) |asm_inc| {
+        if (std.posix.getenv("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |asm_inc| {
             module.addSystemIncludePath(.{ .cwd_relative = asm_inc });
         }
     }
@@ -789,11 +789,11 @@ fn buildTarget(
 
     // No special flags needed — Zig bundles compiler_rt (ARM atomics)
 
-    // ── XINCLI: Android native build (Termux) ───────────────────────────
+    // ── ANDROIDTUI: Android native build (Termux) ───────────────────────────
     // On Termux, Zig's --sysroot flag makes ld.lld look at <sysroot>/usr/lib/
     // which doesn't exist (Termux's libs are at <sysroot>/lib/). We add the
     // real lib paths explicitly via addLibraryPath, reading them from the
-    // XINCLI_ANDROID_LIB_SEARCH_PATHS env var (colon-separated) set by
+    // ANDROIDTUI_ANDROID_LIB_SEARCH_PATHS env var (colon-separated) set by
     // build-native-termux.sh.
     //
     // This is done in build.zig (not via LDFLAGS) because Zig's ld.lld
@@ -805,7 +805,7 @@ fn buildTarget(
 
     // Add Termux lib search paths for the linker
     if (target.result.abi == .android) {
-        if (std.posix.getenv("XINCLI_ANDROID_LIB_SEARCH_PATHS")) |paths| {
+        if (std.posix.getenv("ANDROIDTUI_ANDROID_LIB_SEARCH_PATHS")) |paths| {
             var it = std.mem.splitScalar(u8, paths, ':');
             while (it.next()) |path| {
                 if (path.len > 0) {
@@ -814,7 +814,7 @@ fn buildTarget(
             }
         }
 
-        // ── XINCLI: Set RPATH — $PREFIX/lib FIRST, then /system/lib64 ───
+        // ── ANDROIDTUI: Set RPATH — $PREFIX/lib FIRST, then /system/lib64 ───
         // Order matters! $PREFIX/lib must come FIRST so the linker finds:
         //   - Termux's libc++_shared.so (has __ndk1 symbols)
         // Before:
@@ -823,7 +823,7 @@ fn buildTarget(
         // /system/lib64 is still searched for Bionic libc/libm/libdl —
         // those don't exist in $PREFIX/lib (well, they do now from our
         // dd copies, but the system versions are already-loaded so no TLS crash).
-        if (std.posix.getenv("XINCLI_ANDROID_LIB_PATH")) |termux_lib| {
+        if (std.posix.getenv("ANDROIDTUI_ANDROID_LIB_PATH")) |termux_lib| {
             lib.addRPath(.{ .cwd_relative = termux_lib });
         }
         lib.addRPath(.{ .cwd_relative = "/system/lib64" });
@@ -831,7 +831,7 @@ fn buildTarget(
         // Link Termux's libc++_shared.so — creates NEEDED: libc++_shared.so.
         // RUNPATH includes $PREFIX/lib so the linker finds Termux's version
         // (which has __ndk1 symbols + __gxx_personality_v0).
-        if (std.posix.getenv("XINCLI_ANDROID_LIBCXX_PATH")) |cxx_path| {
+        if (std.posix.getenv("ANDROIDTUI_ANDROID_LIBCXX_PATH")) |cxx_path| {
             lib.addObjectFile(.{ .cwd_relative = cxx_path });
         }
     }

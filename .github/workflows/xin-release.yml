@@ -596,8 +596,25 @@ jobs:
 
           # The alias has to actually materialise under upstream's name,
           # since that is the specifier the literal import resolves.
+          #
+          # It will NOT have materialised in the install above. The native
+          # package declares cpu=["arm64"], npm silently skips an
+          # optionalDependency whose cpu/os does not match the host, and
+          # this runner is linux-x64 — so asserting on the tree above can
+          # never pass here, however correct the alias is. (That assertion
+          # is what failed 0.5.1-bun.3, after all five packages had already
+          # published fine.)
+          #
+          # Resolve it in a scratch tree instead, as a REGULAR dependency
+          # with --force so npm downgrades EBADPLATFORM to a warning. That
+          # exercises the same alias string a Termux consumer resolves,
+          # independently of what the runner's own arch is.
+          mkdir -p /tmp/verify-alias && cd /tmp/verify-alias
+          npm init -y >/dev/null
+          npm install --force --no-audit --no-fund "$NAME@$ALIAS"
+
           if [ ! -f "node_modules/$NAME/package.json" ]; then
-            echo "::error::alias did not install node_modules/$NAME"
+            echo "::error::alias '$ALIAS' did not install node_modules/$NAME"
             exit 1
           fi
           REAL="$(node -p "require('./node_modules/$NAME/package.json').name")"
@@ -605,6 +622,17 @@ jobs:
             echo "::error::node_modules/$NAME is '$REAL', not the fork's native package"
             exit 1
           fi
+
+          # And the tarball has to contain the library it exists to ship.
+          # Nothing upstream of here would notice an empty one: the JS
+          # entry is just a path string, so import succeeds and the .so is
+          # only missed at dlopen time, on a device, at launch.
+          SO="$(find "node_modules/$NAME" -name libopentui.so -print -quit)"
+          if [ -z "$SO" ]; then
+            echo "::error::$REAL@$VERSION ships no libopentui.so"
+            exit 1
+          fi
+          echo "  $SO ($(stat -c %s "$SO") bytes)"
           echo "OK Android native library is external, literal, and aliased to $ALIAS"
 
       - name: Summary

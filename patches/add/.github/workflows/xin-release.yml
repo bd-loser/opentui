@@ -24,7 +24,10 @@
 # x86 runner was tried and abandoned; a native Termux build links against
 # the exact Bionic libc that will dlopen it.
 #
-# Requires repo secret: ANDROIDTUI_NPM_SECRET (npm automation token).
+# Requires an npm automation token with publish rights on @androidtui, as
+# repo secret ANDROIDTUI_NPM_SECRET. XINCLI_NPM_SECRET is accepted as a
+# fallback so the rename can happen at leisure; drop it once the new
+# secret is set.
 # ═══════════════════════════════════════════════════════════════════════
 
 name: ANDROIDTUI Release
@@ -214,11 +217,11 @@ jobs:
       - name: Publish
         if: needs.setup.outputs.publish == 'true'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET }}
+          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET || secrets.XINCLI_NPM_SECRET }}
         run: |
           set -euo pipefail
           if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
-            echo "::error::ANDROIDTUI_NPM_SECRET is not set in repo secrets"
+            echo "::error::no npm token — set repo secret ANDROIDTUI_NPM_SECRET"
             exit 1
           fi
           for dir in packages/core/dist-prebuilt/@androidtui/*/; do
@@ -248,7 +251,7 @@ jobs:
 
       - name: Build + repackage + publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET }}
+          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET || secrets.XINCLI_NPM_SECRET }}
         run: |
           node scripts/xin-repackage.mjs \
             --package core \
@@ -302,7 +305,7 @@ jobs:
 
       - name: Build + repackage + publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET }}
+          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET || secrets.XINCLI_NPM_SECRET }}
         run: |
           node scripts/xin-repackage.mjs \
             --package "${{ matrix.package }}" \

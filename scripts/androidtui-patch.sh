@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════
-# xin-patch.sh — apply the ANDROIDTUI Android/Termux patch kit to any
+# androidtui-patch.sh — apply the ANDROIDTUI Android/Termux patch kit to any
 #                upstream OpenTUI release.
 #
-#   bash scripts/xin-patch.sh 0.5.1
+#   bash scripts/androidtui-patch.sh 0.5.1
 #
-# Creates branch xin/0.5.1 from upstream tag v0.5.1, lays the kit down on
+# Creates branch androidtui/0.5.1 from upstream tag v0.5.1, lays the kit down on
 # top of it, and tells you what conflicted (if anything).
 #
 # The point of the kit is that this repo is NOT a permanently-diverged
@@ -16,12 +16,12 @@
 # After this succeeds:
 #   1. bun install
 #   2. bash packages/core/scripts/build-native-termux.sh   (on-device)
-#   3. bash scripts/xin-regen.sh    — moves the kit's base to this version
-#   4. commit, then: git tag xin-v0.5.1 && git push origin xin-v0.5.1
+#   3. bash scripts/androidtui-regen.sh — moves the kit's base to this version
+#   4. commit, then: git tag androidtui-v0.5.1 && git push origin androidtui-v0.5.1
 #
 # Flags:
 #   --remote <name>     upstream remote (default: auto-detect)
-#   --force             overwrite an existing xin/<version> branch and
+#   --force             overwrite an existing androidtui/<version> branch and
 #                       skip the clean-tree check
 #   --no-fetch          skip `git fetch --tags`
 #   --skip-npm-check    don't ask npm whether the version is burned
@@ -59,13 +59,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -n "$VERSION" ] || die "usage: bash scripts/xin-patch.sh <version>   (e.g. 0.5.1)"
+[ -n "$VERSION" ] || die "usage: bash scripts/androidtui-patch.sh <version>   (e.g. 0.5.1)"
 VERSION="${VERSION#v}"
 printf '%s' "$VERSION" | "$GREP" -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$' \
   || die "'$VERSION' is not a semver version"
 
 TAG="v$VERSION"
-BRANCH="xin/$VERSION"
+BRANCH="androidtui/$VERSION"
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"
 cd "$ROOT"
@@ -130,13 +130,13 @@ $(git tag --list 'v*' | "$SORT" -V | tail -8 | command sed 's/^/         /')"
 # about patches/ — so the kit has to travel out-of-tree and come back.
 # This is also what propagates the kit onto the new branch.
 
-STAGE="$(mktemp -d "${TMPDIR:-/tmp}/xin-kit.XXXXXX")"
+STAGE="$(mktemp -d "${TMPDIR:-/tmp}/androidtui-kit.XXXXXX")"
 cleanup() { rm -rf "$STAGE"; }
 trap cleanup EXIT INT TERM
 
 mkdir -p "$STAGE/scripts"
 cp -R patches "$STAGE/patches"
-for s in xin-patch.sh xin-regen.sh; do
+for s in androidtui-patch.sh androidtui-regen.sh; do
   [ -f "scripts/$s" ] && cp -p "scripts/$s" "$STAGE/scripts/$s"
 done
 info "kit staged at $STAGE"
@@ -156,7 +156,7 @@ ok "on $BRANCH at $(git rev-parse --short HEAD)"
 rm -rf patches
 cp -R "$STAGE/patches" patches
 mkdir -p scripts
-for s in xin-patch.sh xin-regen.sh; do
+for s in androidtui-patch.sh androidtui-regen.sh; do
   [ -f "$STAGE/scripts/$s" ] && cp -p "$STAGE/scripts/$s" "scripts/$s"
 done
 ok "kit restored"
@@ -175,7 +175,7 @@ if [ -d .github/workflows ]; then
   for f in .github/workflows/*; do
     [ -e "$f" ] || continue
     base="$(basename "$f")"
-    case "$base" in xin-*) continue ;; esac
+    case "$base" in androidtui-*) continue ;; esac
     git mv -f "$f" ".github/disabled-workflows/$base" 2>/dev/null || mv -f "$f" ".github/disabled-workflows/$base"
     moved=$((moved + 1))
   done
@@ -285,8 +285,8 @@ cat <<EOF
   Next:
     bun install
     bash packages/core/scripts/build-native-termux.sh
-    bash scripts/xin-regen.sh
+    bash scripts/androidtui-regen.sh
     git add -A && git commit -m "port ANDROIDTUI Android patches to $TAG"
-    git tag xin-v$VERSION && git push origin "$BRANCH" xin-v$VERSION
+    git tag androidtui-v$VERSION && git push origin "$BRANCH" androidtui-v$VERSION
 
 EOF

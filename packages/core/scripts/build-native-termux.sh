@@ -499,7 +499,7 @@ cp "$SO_PATH" "$OUT_DIR/libopentui.so"
 # still warm, instead of at runtime or in CI.
 echo ""
 echo "🔍 Verifying FFI symbols against src/zig.ts..."
-SYM_TMP="$(mktemp -d "${TMPDIR:-/tmp}/xin-sym.XXXXXX")"
+SYM_TMP="$(mktemp -d "${TMPDIR:-/tmp}/androidtui-sym.XXXXXX")"
 if node -e '
   const fs = require("fs");
   const src = fs.readFileSync(process.argv[1], "utf8");
@@ -531,8 +531,8 @@ rm -rf "$SYM_TMP"
 
 # ── Report ─────────────────────────────────────────────────────────────
 
-XIN_VERSION="$(node -p "require('$REPO_ROOT/packages/core/package.json').version" 2>/dev/null || echo "")"
-XIN_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+ANDROIDTUI_VERSION="$(node -p "require('$REPO_ROOT/packages/core/package.json').version" 2>/dev/null || echo "")"
+ANDROIDTUI_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
 
 echo ""
 echo "╔═══════════════════════════════════════════════════════════════╗"
@@ -541,30 +541,30 @@ echo "╚═══════════════════════�
 echo ""
 echo "  Output:  packages/core/prebuilt/aarch64-android/libopentui.so"
 echo "  Size:    $(du -h "$OUT_DIR/libopentui.so" | cut -f1)"
-[ -n "$XIN_VERSION" ] && echo "  Version: $XIN_VERSION"
+[ -n "$ANDROIDTUI_VERSION" ] && echo "  Version: $ANDROIDTUI_VERSION"
 echo ""
 echo "  ── Publish all five @androidtui packages ─────────────────────────"
 echo ""
 echo "    git add -A"
 echo "    git commit -m 'build: native arm64 .so from Termux'"
 
-if [ -n "$XIN_VERSION" ]; then
-  echo "    git push origin ${XIN_BRANCH:-HEAD}"
-  echo "    git tag xin-v$XIN_VERSION && git push origin xin-v$XIN_VERSION"
+if [ -n "$ANDROIDTUI_VERSION" ]; then
+  echo "    git push origin ${ANDROIDTUI_BRANCH:-HEAD}"
+  echo "    git tag androidtui-v$ANDROIDTUI_VERSION && git push origin androidtui-v$ANDROIDTUI_VERSION"
   echo ""
-  echo "  That one tag runs .github/workflows/xin-release.yml, which"
-  echo "  publishes — in dependency order, all at $XIN_VERSION:"
+  echo "  That one tag runs .github/workflows/androidtui-release.yml, which"
+  echo "  publishes — in dependency order, all at $ANDROIDTUI_VERSION:"
   echo ""
   echo "    1. @androidtui/core-android-arm64   (this .so)"
   echo "    2. @androidtui/core"
   echo "    3. @androidtui/{react,solid,keymap}  (in parallel)"
   echo ""
   echo "  npm versions are immutable — the workflow refuses to start if"
-  echo "  $XIN_VERSION is already published. Check first with:"
+  echo "  $ANDROIDTUI_VERSION is already published. Check first with:"
   echo ""
-  echo "    npm view @androidtui/core@$XIN_VERSION version"
+  echo "    npm view @androidtui/core@$ANDROIDTUI_VERSION version"
 else
-  echo "    git push origin ${XIN_BRANCH:-HEAD}"
-  echo "    git tag xin-v<version> && git push origin xin-v<version>"
+  echo "    git push origin ${ANDROIDTUI_BRANCH:-HEAD}"
+  echo "    git tag androidtui-v<version> && git push origin androidtui-v<version>"
 fi
 echo ""

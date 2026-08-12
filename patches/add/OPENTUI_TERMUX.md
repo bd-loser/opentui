@@ -1,8 +1,8 @@
-# OpenTUI on Termux — How It Works
+# OpenTUI for Android and Termux: Architecture and Runtime Guide
 
 > **Canonical location:** `github.com/bd-loser/opentui/OPENTUI_TERMUX.md`
 >
-> Deep-dive documentation for the ANDROIDTUI fork of OpenTUI running natively on
+> Technical documentation for ANDROIDTUI, the Android distribution of OpenTUI running natively on
 > Android/Termux via Node.js 26.3+ `--experimental-ffi`.
 >
 > This doc captures everything we learned across 70+ native build iterations,
@@ -10,10 +10,12 @@
 > If we ever come back to this, this doc is the map.
 >
 > **Related docs in this repo:**
+>
 > - [`NATIVE_BUILD.md`](NATIVE_BUILD.md) — How to build `libopentui.so` natively on Termux
 > - [`packages/core/README.md`](packages/core/README.md) — Package-level install + usage
 >
 > **Related docs in the ANDROIDTUI app repo:**
+>
 > - [`Clagit/README.md`](https://github.com/bd-loser/Clagit#readme) — ANDROIDTUI app install + opentui support overview
 
 ---
@@ -34,7 +36,8 @@
 
 ## The Big Picture
 
-ANDROIDTUI is a Claude Code fork that runs on Termux/Android. Originally it used
+ANDROIDTUI provides OpenTUI for terminal applications running on Android through Termux. The first
+application integration was a Claude Code fork that originally used
 [Ink](https://github.com/vadimdemedes/ink) (React for terminals) for its UI.
 We wanted to migrate to [OpenTUI](https://opentui.com) — a native Zig-based
 terminal UI core with TypeScript bindings — because opentui offers:
@@ -45,7 +48,7 @@ terminal UI core with TypeScript bindings — because opentui offers:
 - Yoga flexbox layout engine
 - Color intent system (rgb / indexed / default) that respects user terminal palettes
 
-The problem: **opentui doesn't officially support Android/Termux**. There are
+The problem: **upstream OpenTUI does not officially support Android or Termux**. There are
 no prebuilt `aarch64-android` binaries. We had to fork opentui, build the
 native `.so` on a phone, and publish it under the `@androidtui` npm scope.
 
@@ -146,7 +149,7 @@ in Node 26.3.0+). Without it, `import('node:ffi')` throws.
 ### Step 2: The bundle imports `@androidtui/core`
 
 ```js
-import { createCliRenderer } from '@androidtui/core'
+import { createCliRenderer } from "@androidtui/core"
 ```
 
 The published `@androidtui/core@0.4.7` has `main: index.js` — compiled
@@ -158,9 +161,9 @@ Inside `@androidtui/core`, the `zig.ts` module runs:
 
 ```ts
 async function resolveNativePackage() {
-  if (process.platform === 'android') {
-    if (process.arch === 'arm64') {
-      return await import('@androidtui/core-android-arm64')
+  if (process.platform === "android") {
+    if (process.arch === "arm64") {
+      return await import("@androidtui/core-android-arm64")
     }
     // ...
   }
@@ -176,8 +179,8 @@ it to load our `@androidtui/core-android-arm64` package instead.
 `@androidtui/core-android-arm64@0.4.7` has this `index.js`:
 
 ```js
-import { fileURLToPath } from 'node:url'
-export default fileURLToPath(new URL('./libopentui.so', import.meta.url))
+import { fileURLToPath } from "node:url"
+export default fileURLToPath(new URL("./libopentui.so", import.meta.url))
 ```
 
 So `nativePackage.default` is a string path like
@@ -192,12 +195,12 @@ to ESM-import a binary file and throws `ERR_UNKNOWN_FILE_EXTENSION`.
 `@androidtui/core`'s `platform/ffi.ts` detects the runtime:
 
 ```ts
-const isBun = typeof process.versions.bun === 'string'
+const isBun = typeof process.versions.bun === "string"
 
 function loadBackend() {
-  if (isBun) return createBunBackend(require('bun:ffi'))
+  if (isBun) return createBunBackend(require("bun:ffi"))
   try {
-    const nodeFfi = require('node:ffi')
+    const nodeFfi = require("node:ffi")
     return createNodeBackend(nodeFfi.default ?? nodeFfi)
   } catch (error) {
     return createUnsupportedBackend(error)
@@ -219,6 +222,7 @@ enables mouse tracking, sets up the render loop at 30 FPS target, and
 starts writing ANSI escape sequences directly to `process.stdout`.
 
 The Zig core handles:
+
 - Yoga layout calculation (flexbox)
 - Cell-based double-buffering (only repaints changed cells)
 - ANSI 256 / truecolor output
@@ -228,7 +232,7 @@ The Zig core handles:
 ### Step 7: React mounts via `@androidtui/react`
 
 ```tsx
-import { createRoot } from '@androidtui/react'
+import { createRoot } from "@androidtui/react"
 createRoot(renderer).render(<App />)
 ```
 
@@ -261,18 +265,21 @@ source transpiled to JS by the fork's `scripts/build.ts`).
 **Size:** 1.18 MB (176 files including tree-sitter wasm assets)
 
 **Key files:**
+
 - `index.js` — main entry (bundled + code-split chunks)
 - `index.d.ts` — TypeScript declarations
 - `assets/*.wasm` — tree-sitter parser wasm files
 - `package.json` — `main: index.js`, `type: module`
 
 **Dependencies:**
+
 - `bun-ffi-structs`, `diff`, `marked`, `string-width`, `strip-ansi`
 - `web-tree-sitter` (peer)
 - `@opentui/core-{darwin,linux,win32}-*` (optional, upstream native packages)
 - `@androidtui/core-android-{arm64,arm,x64}` (optional, our Android native packages)
 
 **Install:**
+
 ```bash
 npm install @androidtui/core@0.4.7
 ```
@@ -284,20 +291,24 @@ npm install @androidtui/core@0.4.7
 **Size:** 22 KB (58 files)
 
 **Key files:**
+
 - `index.js` — main entry
 - `jsx-runtime.js` — JSX runtime (for `jsxImportSource`)
 - `chunk-*.js` — code-split chunks
 
 **Dependencies:**
+
 - `@opentui/core: npm:@androidtui/core@0.4.7` (aliased to our fork)
 - `react-reconciler: ^0.33.0`
 
 **Peer dependencies:**
+
 - `react: >=19.2.0`
 - `react-devtools-core: ^7.0.1`
 - `ws: ^8.18.0`
 
 **Install:**
+
 ```bash
 npm install @androidtui/react@0.4.7 react@19.2.0 react-reconciler@0.33.0 \
   react-devtools-core@7.0.1 ws@8.18.0 --legacy-peer-deps
@@ -314,17 +325,20 @@ that exports the `.so` path.
 **Size:** 11.8 MB (4 files)
 
 **Key files:**
+
 - `libopentui.so` — 12 MB ARM64 ELF, NDK r29, built natively on Termux
 - `index.js` — `export default fileURLToPath(new URL('./libopentui.so', import.meta.url))`
 - `index.d.ts` — `declare const path: string; export default path`
 - `package.json` — `main: index.js` (NOT `libopentui.so`!)
 
 **Why `index.js`?** opentui's `resolveNativePackage()` does:
+
 ```ts
-const nativePackage = await import('@androidtui/core-android-arm64')
+const nativePackage = await import("@androidtui/core-android-arm64")
 let targetLibPath = nativePackage.default
 // → dlopen(targetLibPath)
 ```
+
 It expects `nativePackage.default` to be a path STRING, not the binary itself.
 If `main` points at `libopentui.so`, Node tries to ESM-import the binary
 and crashes with `ERR_UNKNOWN_FILE_EXTENSION`.
@@ -340,6 +354,7 @@ on Android/arm64 devices.
 deps are listed but the bundle never calls `createCliRenderer()`.
 
 **Install:**
+
 ```bash
 npm install -g @androidtui/cli
 androidtui  # runs the Ink UI under Node 20+
@@ -352,6 +367,7 @@ androidtui  # runs the Ink UI under Node 20+
 ### Problem 1: `ERR_UNKNOWN_FILE_EXTENSION: Unknown file extension ".so"`
 
 **Symptom:**
+
 ```
 TypeError [ERR_UNKNOWN_FILE_EXTENSION]: Unknown file extension ".so" for
 /.../node_modules/@androidtui/core-android-arm64/libopentui.so
@@ -361,10 +377,12 @@ TypeError [ERR_UNKNOWN_FILE_EXTENSION]: Unknown file extension ".so" for
 Node tried to ESM-import the binary directly.
 
 **Solution:** Published `@0.4.7` with an `index.js` wrapper:
+
 ```js
-import { fileURLToPath } from 'node:url'
-export default fileURLToPath(new URL('./libopentui.so', import.meta.url))
+import { fileURLToPath } from "node:url"
+export default fileURLToPath(new URL("./libopentui.so", import.meta.url))
 ```
+
 And set `main: index.js` in package.json. The wrapper exports the `.so` PATH
 as a string, which is what opentui's `resolveNativePackage()` expects.
 
@@ -373,6 +391,7 @@ as a string, which is what opentui's `resolveNativePackage()` expects.
 ### Problem 2: `Stripping types is currently unsupported for files under node_modules`
 
 **Symptom:**
+
 ```
 Error: Stripping types is currently unsupported for files under node_modules,
 for "file:///.../node_modules/@opentui/core/src/index.ts"
@@ -391,6 +410,7 @@ for "file:///.../node_modules/@opentui/core/src/index.ts"
 ### Problem 3: `Cannot find module 'react-reconciler/constants'`
 
 **Symptom:**
+
 ```
 Error [ERR_MODULE_NOT_FOUND]: Cannot find module
 '/.../node_modules/react-reconciler/constants'
@@ -399,16 +419,20 @@ Did you mean to import "react-reconciler/constants.js"?
 
 **Cause:** opentui-react's bundled chunks use Bun-style imports without
 `.js` extensions:
+
 ```js
-import { ConcurrentRoot } from 'react-reconciler/constants'
+import { ConcurrentRoot } from "react-reconciler/constants"
 ```
+
 Bun resolves this fine. Node ESM requires explicit `.js`.
 
 **Solution:** The `publish-js-library.yml` workflow patches all `.js` files
 in the react package during repackaging:
+
 ```bash
 sed -i -E 's|from "(react-reconciler)/([a-zA-Z0-9_/-]+)"|from "\1/\2.js"|g' "$f"
 ```
+
 This adds `.js` to bare subpath imports, making them Node ESM-compatible.
 
 ---
@@ -416,6 +440,7 @@ This adds `.js` to bare subpath imports, making them Node ESM-compatible.
 ### Problem 4: `Cannot find package '@opentui/react'`
 
 **Symptom:**
+
 ```
 Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@opentui/react'
 imported from /.../tui-welcome-published.mjs
@@ -427,13 +452,15 @@ only creates the `@opentui/core` symlink, not `@opentui/react`.
 
 **Solution:** Changed all imports in the POC and main app to use
 `@androidtui/react` directly:
+
 ```ts
 // Before (broken):
-import { createRoot } from '@opentui/react'
+import { createRoot } from "@opentui/react"
 
 // After (working):
-import { createRoot } from '@androidtui/react'
+import { createRoot } from "@androidtui/react"
 ```
+
 Also updated `jsxImportSource` in esbuild config to `@androidtui/react`.
 
 ---
@@ -441,6 +468,7 @@ Also updated `jsxImportSource` in esbuild config to `@androidtui/react`.
 ### Problem 5: `node:ffi` not available
 
 **Symptom:**
+
 ```
 Error: Cannot find module 'node:ffi'
 ```
@@ -449,12 +477,14 @@ Error: Cannot find module 'node:ffi'
 experimental and only available in 26.3.0+.
 
 **Solution:** Require Node 26.3+ and run with `--experimental-ffi`:
+
 ```bash
 pkg upgrade nodejs  # on Termux, gets 26.x
 node --experimental-ffi cli-opentui.mjs
 ```
 
 The `bin/androidtui` launcher auto-detects Node version:
+
 - Node 26.3+ → runs `cli-opentui.mjs` with `--experimental-ffi`
 - Older Node → falls back to `cli.mjs` (Ink, no FFI needed)
 - `ANDROIDTUI_LEGACY=1` env var → forces legacy Ink UI
@@ -468,16 +498,17 @@ On Termux, `process.platform === 'android'`, so it throws
 `opentui is not supported on the current platform: android-arm64`.
 
 **Solution:** Forked opentui and patched `src/zig.ts`:
+
 ```ts
-if (process.platform === 'android') {
-  if (process.arch === 'arm64') {
-    return await import('@androidtui/core-android-arm64')
+if (process.platform === "android") {
+  if (process.arch === "arm64") {
+    return await import("@androidtui/core-android-arm64")
   }
-  if (process.arch === 'arm') {
-    return await import('@androidtui/core-android-arm')
+  if (process.arch === "arm") {
+    return await import("@androidtui/core-android-arm")
   }
-  if (process.arch === 'x64') {
-    return await import('@androidtui/core-android-x64')
+  if (process.arch === "x64") {
+    return await import("@androidtui/core-android-x64")
   }
 }
 ```
@@ -511,9 +542,11 @@ instead. The two libcs have different TLS layouts, and the mismatch
 corrupts thread-local storage.
 
 **Solution:** Set the `.so`'s `RUNPATH` to prefer Termux's lib dir:
+
 ```
 RUNPATH: $PREFIX/lib:/system/lib64
 ```
+
 This makes the linker load Termux's Bionic first (matching what the `.so`
 was built against), then fall back to system libs for anything missing.
 
@@ -529,7 +562,7 @@ in reverse.
 `std::__ndk1::string` are missing.
 
 **Cause:** Zig's `linkLibC++()` links against Zig's bundled libc++ which
-uses the `__ndk1` ABI namespace. Termux's libc++_shared.so uses `__ndk1`
+uses the `__ndk1` ABI namespace. Termux's libc++\_shared.so uses `__ndk1`
 too, but the two don't mix.
 
 **Solution:** Set `link_libcpp=false` in `build.zig` (don't link Zig's
@@ -561,12 +594,15 @@ scroll. I was passing `flexGrow: 1` but the parent didn't have bounded
 height, so scrollbox overflowed and clipped content.
 
 **Solution:** Calculate message list height explicitly:
+
 ```ts
 const messageListHeight = height - HEADER_ROWS - INPUT_ROWS - STATUSBAR_ROWS
 ```
+
 Pass as `height={messageListHeight}` to `<MessageList>`.
 
 Also: use correct opentui scrollbox props:
+
 - `stickyScroll={true}` (not `autoScroll`)
 - `stickyStart="bottom"` (auto-scroll to new messages)
 - `viewportCulling={true}` (only render visible messages)
@@ -578,19 +614,25 @@ Also: use correct opentui scrollbox props:
 **Symptom:** "keyboard on everything broke" — typing `q` anywhere quit the app.
 
 **Cause:** Global `useKeyboard` handler was checking for the `q` key:
+
 ```ts
-if (key.name === 'q') { renderer.destroy() }
+if (key.name === "q") {
+  renderer.destroy()
+}
 ```
+
 This fired on every `q` keystroke, even when typing in the input field.
 
 **Solution:** Global keyboard handler ONLY checks for `escape` and `ctrl+c`:
+
 ```ts
 useKeyboard((key) => {
-  if (key.name === 'escape' || (key.ctrl && key.name === 'c')) {
+  if (key.name === "escape" || (key.ctrl && key.name === "c")) {
     // exit
   }
 })
 ```
+
 The `<input>` component handles its own keyboard input when focused.
 
 ---
@@ -603,6 +645,7 @@ The `<input>` component handles its own keyboard input when focused.
 Termux portrait mode. opentui's default `overflow: 'hidden'` clipped content.
 
 **Solution:**
+
 - All panels use `width="auto"` (fills parent minus padding)
 - `overflow: 'visible'` (don't clip)
 - StatusBar has 4 responsive tiers (≥70/50/30/<30 cols), sections drop off gracefully
@@ -621,10 +664,13 @@ to commit (`clearContainer` iterates children and calls `.remove()`), but
 the renderer is already torn down.
 
 **Solution:** Defer destroy to next tick:
+
 ```ts
 setExiting(true)
 setTimeout(() => {
-  try { renderer.destroy() } catch {}
+  try {
+    renderer.destroy()
+  } catch {}
   process.exit(0)
 }, 50)
 ```
@@ -709,12 +755,12 @@ else
 fi
 ```
 
-| Environment | Node version | Runs | UI |
-|---|---|---|---|
-| Default | ≥ 26.3 | `cli-opentui.mjs --experimental-ffi` | opentui (new) |
-| Default | < 26.3 | `cli.mjs` | Ink (legacy) |
-| `ANDROIDTUI_LEGACY=1` | any | `cli.mjs` | Ink (legacy) |
-| `ANDROIDTUI_OPENTUI=1` | any | `cli-opentui.mjs --experimental-ffi` | opentui (will fail if Node < 26.3) |
+| Environment            | Node version | Runs                                 | UI                                 |
+| ---------------------- | ------------ | ------------------------------------ | ---------------------------------- |
+| Default                | ≥ 26.3       | `cli-opentui.mjs --experimental-ffi` | opentui (new)                      |
+| Default                | < 26.3       | `cli.mjs`                            | Ink (legacy)                       |
+| `ANDROIDTUI_LEGACY=1`  | any          | `cli.mjs`                            | Ink (legacy)                       |
+| `ANDROIDTUI_OPENTUI=1` | any          | `cli-opentui.mjs --experimental-ffi` | opentui (will fail if Node < 26.3) |
 
 ---
 
@@ -722,20 +768,20 @@ fi
 
 The full migration plan has 12 phases (0-11). Current status:
 
-| Phase | Goal | Status |
-|---|---|---|
-| 0 | POC — prove opentui renders on Termux | ✅ Complete |
-| 1 | Bootstrap dual-runtime architecture | ✅ Complete |
-| 2 | WelcomeV2 on opentui | ✅ Complete |
-| 3 | PromptInput + MessageList | ✅ Complete (paused) |
-| 4 | Messages + Markdown | ⏸ Paused |
-| 5 | Tool results | ⏸ Paused |
-| 6 | Dialogs + Pickers | ⏸ Paused |
-| 7 | HelpV2 + Commands | ⏸ Paused |
-| 8 | Onboarding flow | ⏸ Paused |
-| 9 | Mobile/Termux adaptation | ⏸ Paused |
-| 10 | Motion system | ⏸ Paused |
-| 11 | Drop Ink, ship @androidtui/cli@3.0.0 | ⏸ Paused |
+| Phase | Goal                                  | Status               |
+| ----- | ------------------------------------- | -------------------- |
+| 0     | POC — prove opentui renders on Termux | ✅ Complete          |
+| 1     | Bootstrap dual-runtime architecture   | ✅ Complete          |
+| 2     | WelcomeV2 on opentui                  | ✅ Complete          |
+| 3     | PromptInput + MessageList             | ✅ Complete (paused) |
+| 4     | Messages + Markdown                   | ⏸ Paused             |
+| 5     | Tool results                          | ⏸ Paused             |
+| 6     | Dialogs + Pickers                     | ⏸ Paused             |
+| 7     | HelpV2 + Commands                     | ⏸ Paused             |
+| 8     | Onboarding flow                       | ⏸ Paused             |
+| 9     | Mobile/Termux adaptation              | ⏸ Paused             |
+| 10    | Motion system                         | ⏸ Paused             |
+| 11    | Drop Ink, ship @androidtui/cli@3.0.0  | ⏸ Paused             |
 
 **Why paused:** User feedback was "I don't see freshness" — the opentui UI
 didn't feel like a meaningful upgrade over the existing Ink UI. Migration
@@ -808,6 +854,7 @@ node --experimental-ffi dist/cli-opentui.mjs
 ```
 
 Phase 4 goals:
+
 - Replace the simulated assistant response with real API calls
 - Use opentui's `<markdown>` component for assistant messages
 - Use opentui's `<code>` component with tree-sitter highlighting
@@ -815,17 +862,17 @@ Phase 4 goals:
 
 ### 4. Key files to know
 
-| File | Purpose |
-|---|---|
-| `source/src/tui/tokens.ts` | Aurora Glass design tokens (all colors, spacing, motion) |
-| `source/src/tui/main.tsx` | opentui entry point (createCliRenderer + React root) |
-| `source/src/tui/components/Glass.tsx` | GlassPanel/Card/Overlay/Dialog/Input + Pill/Divider/Backdrop |
-| `source/src/tui/components/AuroraWordmark.tsx` | Animated block logo with aurora gradient |
-| `source/src/tui/components/PromptInput.tsx` | opentui `<input>` with aurora focus ring |
-| `source/src/tui/components/MessageList.tsx` | Scrollable conversation history |
-| `source/src/tui/components/StatusBar.tsx` | Bottom strip (model · context · cost · fps) |
-| `source/scripts/build-tui.ts` | esbuild config for `dist/cli-opentui.mjs` |
-| `source/bin/androidtui` | Dual-runtime launcher |
+| File                                           | Purpose                                                      |
+| ---------------------------------------------- | ------------------------------------------------------------ |
+| `source/src/tui/tokens.ts`                     | Aurora Glass design tokens (all colors, spacing, motion)     |
+| `source/src/tui/main.tsx`                      | opentui entry point (createCliRenderer + React root)         |
+| `source/src/tui/components/Glass.tsx`          | GlassPanel/Card/Overlay/Dialog/Input + Pill/Divider/Backdrop |
+| `source/src/tui/components/AuroraWordmark.tsx` | Animated block logo with aurora gradient                     |
+| `source/src/tui/components/PromptInput.tsx`    | opentui `<input>` with aurora focus ring                     |
+| `source/src/tui/components/MessageList.tsx`    | Scrollable conversation history                              |
+| `source/src/tui/components/StatusBar.tsx`      | Bottom strip (model · context · cost · fps)                  |
+| `source/scripts/build-tui.ts`                  | esbuild config for `dist/cli-opentui.mjs`                    |
+| `source/bin/androidtui`                        | Dual-runtime launcher                                        |
 
 ### 5. Key gotchas to remember
 

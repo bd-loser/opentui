@@ -70,7 +70,7 @@ const variants: Variant[] = [
   // cross-compiled — Zig links it against the exact Bionic libc that will
   // load it. Excluded from the default --all build because that runs on a
   // CI runner with no Termux sysroot; the .so is committed to
-  // packages/core/prebuilt/ and published by the xin-release workflow.
+  // packages/core/prebuilt/ and published by the androidtui-release workflow.
   { platform: "android", arch: "arm64" },
 ]
 

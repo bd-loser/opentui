@@ -43,7 +43,7 @@
     "build:dev": "bun run scripts/build.ts --dev",
     "publish": "bun run scripts/publish.ts",
     "test": "bun test",
-    "publish:androidtui": "node ../../scripts/xin-repackage.mjs --package react"
+    "publish:androidtui": "node ../../scripts/androidtui-repackage.mjs --package react"
   },
   "devDependencies": {
     "@opentui/keymap": "workspace:*",

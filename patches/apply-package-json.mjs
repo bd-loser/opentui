@@ -9,14 +9,14 @@
 // them version-agnostic.
 //
 // This does NOT rename anything. The tree keeps upstream's @opentui/*
-// names so `workspace:*` linking works; scripts/xin-repackage.mjs does
+// names so `workspace:*` linking works; scripts/androidtui-repackage.mjs does
 // the rename in dist/ at publish time.
 //
 // Usage:
 //   node patches/apply-package-json.mjs [--check]
 //
 //   --check   report what would change and exit non-zero if anything
-//             would, without writing. Used by xin-regen.sh to detect
+//             would, without writing. Used by androidtui-regen.sh to detect
 //             drift between the tree and what the kit produces.
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -37,7 +37,7 @@ const checkOnly = process.argv.includes("--check")
  * the release workflow publishes it, so carrying it in the tree only
  * risks `bun install` noise for no benefit — nothing in a source
  * checkout resolves through it (android-native.ts finds prebuilt/
- * first). scripts/xin-repackage.mjs injects it into dist/package.json at
+ * first). scripts/androidtui-repackage.mjs injects it into dist/package.json at
  * publish time, which is the only place it matters.
  */
 const TRANSFORMS = {
@@ -76,7 +76,7 @@ for (const [name, transform] of Object.entries(TRANSFORMS)) {
 
   // A convenience alias so you can publish one package by hand from its
   // own directory: `bun run publish:androidtui -- --publish`
-  const publishCmd = `node ../../scripts/xin-repackage.mjs --package ${name}`
+  const publishCmd = `node ../../scripts/androidtui-repackage.mjs --package ${name}`
   if (pkg.scripts !== undefined && pkg.scripts["publish:androidtui"] !== publishCmd) {
     pkg.scripts["publish:androidtui"] = publishCmd
     changed = true

@@ -1,4 +1,4 @@
-# ANDROIDTUI patch kit — Android/Termux support for OpenTUI
+# ANDROIDTUI Patch Kit: Android and Termux Support for OpenTUI
 
 This fork exists to run OpenTUI on Android under Termux. Everything it
 adds lives in this directory, as a **patch kit** rather than a
@@ -13,21 +13,21 @@ by hand is a hunk that genuinely conflicts.
 ## Porting to a new upstream release
 
 ```sh
-bash scripts/xin-patch.sh 0.5.1
+bash scripts/androidtui-patch.sh 0.5.1
 ```
 
-That creates branch `xin/0.5.1` from upstream tag `v0.5.1`, lays the kit
+That creates branch `androidtui/0.5.1` from upstream tag `v0.5.1`, lays the kit
 on top, and reports what conflicted. Then:
 
 ```sh
 bun install
 bash packages/core/scripts/build-native-termux.sh   # on-device, ~10 min
-bash scripts/xin-regen.sh                           # move the kit's base forward
+bash scripts/androidtui-regen.sh                    # move the kit's base forward
 git add -A && git commit -m "port ANDROIDTUI Android patches to v0.5.1"
-git tag xin-v0.5.1 && git push origin xin/0.5.1 xin-v0.5.1
+git tag androidtui-v0.5.1 && git push origin androidtui/0.5.1 androidtui-v0.5.1
 ```
 
-The `xin-regen.sh` step is the one that is easy to skip and shouldn't
+The `androidtui-regen.sh` step is the one that is easy to skip and shouldn't
 be. It rewrites the patches as diffs against the version you just
 ported to, so the kit's base is always the last thing you shipped. Skip
 it and the base stays at 0.5.0 forever, and the diffs get harder to
@@ -36,12 +36,12 @@ design exists to avoid.
 
 ## Layout
 
-| Path | What it is |
-| --- | --- |
-| `meta.json` | The manifest: base tag, and the `add` / `mod` / `ignore` file lists. Editing the kit means editing this first. |
-| `add/**` | Files upstream doesn't have. Copied verbatim. These never conflict, which is why as much logic as possible lives here rather than in `mod/`. |
-| `mod/**.patch` | `git diff` against the base tag, applied with `git apply -3`. One patch per upstream file touched. |
-| `apply-package-json.mjs` | The four `package.json` edits, done programmatically. |
+| Path                     | What it is                                                                                                                                   |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `meta.json`              | The manifest: base tag, and the `add` / `mod` / `ignore` file lists. Editing the kit means editing this first.                               |
+| `add/**`                 | Files upstream doesn't have. Copied verbatim. These never conflict, which is why as much logic as possible lives here rather than in `mod/`. |
+| `mod/**.patch`           | `git diff` against the base tag, applied with `git apply -3`. One patch per upstream file touched.                                           |
+| `apply-package-json.mjs` | The four `package.json` edits, done programmatically.                                                                                        |
 
 ## Why some things aren't patches
 
@@ -53,18 +53,18 @@ and solid, add a `publish:androidtui` alias. It's idempotent, and
 
 **Workflow disabling** — upstream's CI assumes upstream's secrets and
 runners; left active it fires on every push to the fork and fails
-noisily. `xin-patch.sh` moves `.github/workflows/*` to
+noisily. `androidtui-patch.sh` moves `.github/workflows/*` to
 `.github/disabled-workflows/` mechanically, keeping anything named
-`xin-*`. Mechanical means it works on any upstream version regardless of
+`androidtui-*`. Mechanical means it works on any upstream version regardless of
 which workflows exist that release.
 
 **`packages/core/prebuilt/<arch>/libopentui.so`** — a binary, committed
-on purpose. Cross-compiling aarch64-android from a GitHub x86 runner was
+on purpose. Cross-compiling AArch64 Android from a GitHub x86 runner was
 tried and abandoned; a native Termux build links against the exact
 Bionic libc that will `dlopen` it. So the `.so` is built on the phone
 and the release workflow just packages what's committed.
 
-The `.so` does **not** carry across a port — `xin-patch.sh` branches
+The `.so` does **not** carry across a port — `androidtui-patch.sh` branches
 from a clean upstream tag, so it's simply absent, and you must rebuild.
 That's deliberate: 0.5.1 added four FFI symbols
 (`imageMaterialize`, `imageRetainIccCache`, `imageReleaseIccCache`,
@@ -75,14 +75,14 @@ against the `dlopen()` table in `src/zig.ts` and refuse a stale one.
 
 ## What the patches actually do
 
-| File | Change |
-| --- | --- |
-| `src/zig/build.zig` | Android/Bionic build support — 20 `ANDROIDTUI` markers. Android is `linux` + `.android` ABI in Zig, not a separate OS tag, so several upstream `.linux` branches need splitting. Paths come from `ANDROIDTUI_ANDROID_*` env vars set by the build script. |
-| `src/node-asset-target.ts` | Adds an `android` platform resolving to `@androidtui/core-android-<arch>`. Sits **before** the libc validation, because Bionic is neither glibc nor musl. Detects Termux via `$PREFIX`, since Bun reports `process.platform === "linux"` on Android while Node reports `"android"`. |
-| `src/platform/runtime-assets.{bun,node}.ts` | Route Android through the new resolver. |
-| `src/zig.ts` | Two lines: bunfs paths get extracted to a real file first, because `dlopen()` can't read Bun's virtual filesystem. |
-| `scripts/build.ts` | Registers the `android`/`arm64` variant. |
-| `.gitignore` | Ignores the ~22 MB of Zig vendoring scratch and the publish staging dirs. |
+| File                                        | Change                                                                                                                                                                                                                                                                              |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/zig/build.zig`                         | Android/Bionic build support — 20 `ANDROIDTUI` markers. Android is `linux` + `.android` ABI in Zig, not a separate OS tag, so several upstream `.linux` branches need splitting. Paths come from `ANDROIDTUI_ANDROID_*` env vars set by the build script.                           |
+| `src/node-asset-target.ts`                  | Adds an `android` platform resolving to `@androidtui/core-android-<arch>`. Sits **before** the libc validation, because Bionic is neither glibc nor musl. Detects Termux via `$PREFIX`, since Bun reports `process.platform === "linux"` on Android while Node reports `"android"`. |
+| `src/platform/runtime-assets.{bun,node}.ts` | Route Android through the new resolver.                                                                                                                                                                                                                                             |
+| `src/zig.ts`                                | Two lines: bunfs paths get extracted to a real file first, because `dlopen()` can't read Bun's virtual filesystem.                                                                                                                                                                  |
+| `scripts/build.ts`                          | Registers the `android`/`arm64` variant.                                                                                                                                                                                                                                            |
+| `.gitignore`                                | Ignores the ~22 MB of Zig vendoring scratch and the publish staging dirs.                                                                                                                                                                                                           |
 
 Additive modules (`platform/android-native.ts`,
 `platform/bunfs-extract.ts`) hold the bulk of the runtime logic
@@ -101,16 +101,16 @@ the bug is gone and the patch with it.
 One tag publishes all five packages at the same version:
 
 ```sh
-git tag xin-v0.5.0 && git push origin xin-v0.5.0
+git tag androidtui-v0.5.0 && git push origin androidtui-v0.5.0
 ```
 
-`.github/workflows/xin-release.yml` then runs
+`.github/workflows/androidtui-release.yml` then runs
 `core-android-arm64` → `core` → `react`/`solid`/`keymap` (parallel),
 and finishes by installing the published set from npm and importing it,
 the way a consumer would.
 
 The tree keeps upstream's `@opentui/*` names so `workspace:*` linking
-works; `scripts/xin-repackage.mjs` does the rename to `@androidtui/*` in
+works; `scripts/androidtui-repackage.mjs` does the rename to `@androidtui/*` in
 `dist/` at publish time, and rewrites every intra-fork dependency edge
 to `npm:@androidtui/...` so consumers never resolve upstream `@opentui/core`
 — which throws `opentui is not supported` on Termux.
@@ -118,5 +118,5 @@ to `npm:@androidtui/...` so consumers never resolve upstream `@opentui/core`
 Versions track upstream exactly: upstream `0.5.0` publishes as
 `@androidtui/*@0.5.0`. npm versions are immutable, so a given base
 gets one shot — `0.4.4` and `0.4.5` are already burned from an earlier
-run. Both `xin-patch.sh` and the workflow check npm before doing
+run. Both `androidtui-patch.sh` and the workflow check npm before doing
 anything.

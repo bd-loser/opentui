@@ -1,7 +1,7 @@
 diff --git a/packages/core/scripts/build.ts b/packages/core/scripts/build.ts
 old mode 100644
 new mode 100755
-index 0ac350e7..5a729493
+index 0ac350e7..b43c89a1
 --- a/packages/core/scripts/build.ts
 +++ b/packages/core/scripts/build.ts
 @@ -65,6 +65,13 @@ const variants: Variant[] = [
@@ -13,7 +13,7 @@ index 0ac350e7..5a729493
 +  // cross-compiled — Zig links it against the exact Bionic libc that will
 +  // load it. Excluded from the default --all build because that runs on a
 +  // CI runner with no Termux sysroot; the .so is committed to
-+  // packages/core/prebuilt/ and published by the xin-release workflow.
++  // packages/core/prebuilt/ and published by the androidtui-release workflow.
 +  { platform: "android", arch: "arm64" },
  ]
  

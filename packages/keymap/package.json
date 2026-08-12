@@ -63,7 +63,7 @@
     "publish": "bun run scripts/publish.ts",
     "test:dist": "bun run scripts/test-packed-consumer.ts",
     "test": "bun run scripts/test.ts",
-    "publish:androidtui": "node ../../scripts/xin-repackage.mjs --package keymap"
+    "publish:androidtui": "node ../../scripts/androidtui-repackage.mjs --package keymap"
   },
   "dependencies": {
     "@opentui/core": "workspace:*"

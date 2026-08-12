@@ -19,7 +19,7 @@
 //
 // Caveat: a checkout whose committed prebuilt .so predates the current
 // source can mismatch the FFI ABI. Rebuild it after changing upstream
-// versions — that is what the xin-patch flow does.
+// versions — that is what the androidtui-patch flow does.
 // ═════════════════════════════════════════════════════════════════════
 
 import { existsSync } from "node:fs"

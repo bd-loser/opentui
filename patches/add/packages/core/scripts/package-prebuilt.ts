@@ -57,11 +57,14 @@ function packageOne(archDir: string, packageName: string, cpu: string): void {
   const pkgJson = {
     name: packageName,
     version: corePkg.version,
-    description: `OpenTUI native core for Android ${archDir} (Termux). Built natively, packaged by ANDROIDTUI.`,
+    description: `Native OpenTUI core for Android ${archDir} and Termux, packaged by ANDROIDTUI`,
     repository: {
       type: "git",
       url: "git+https://github.com/bd-loser/opentui.git",
     },
+    homepage: "https://github.com/bd-loser/opentui#readme",
+    bugs: { url: "https://github.com/bd-loser/opentui/issues" },
+    keywords: ["android", "termux", "opentui", "terminal-ui", "tui", "native", "zig", archDir],
     license: "MIT",
     type: "module",
     os: OS_LIST,

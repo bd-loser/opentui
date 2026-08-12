@@ -1,5 +1,5 @@
 diff --git a/.gitignore b/.gitignore
-index ab59aa07..203f296c 100644
+index ab59aa07..f42505ab 100644
 --- a/.gitignore
 +++ b/.gitignore
 @@ -46,3 +46,19 @@ screenshot-*.png
@@ -15,7 +15,7 @@ index ab59aa07..203f296c 100644
 +.zig-linker-stubs/
 +
 +# Staging dirs for the @androidtui packages, written by
-+# scripts/xin-repackage.mjs and packages/core/scripts/package-prebuilt.ts.
++# scripts/androidtui-repackage.mjs and packages/core/scripts/package-prebuilt.ts.
 +artifacts/
 +packages/core/dist-prebuilt/
 +

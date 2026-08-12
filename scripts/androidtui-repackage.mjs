@@ -11,8 +11,8 @@
 // rename happens here, in dist/, at publish time only.
 //
 // Usage:
-//   node scripts/xin-repackage.mjs --package core   --version 0.5.0
-//   node scripts/xin-repackage.mjs --package solid  --version 0.5.0 --publish
+//   node scripts/androidtui-repackage.mjs --package core   --version 0.5.0
+//   node scripts/androidtui-repackage.mjs --package solid  --version 0.5.0 --publish
 //
 // Flags:
 //   --package <core|react|solid|keymap>   required
@@ -54,22 +54,22 @@ const PACKAGES = {
   core: {
     dir: "packages/core",
     build: ["bun", "scripts/build.ts", "--lib"],
-    description: "ANDROIDTUI fork of OpenTUI core — with Android/Termux support via @androidtui/core-android-*",
+    description: "OpenTUI core for native Android and Termux terminal user interfaces",
   },
   react: {
     dir: "packages/react",
     build: ["bun", "scripts/build.ts"],
-    description: "ANDROIDTUI fork of OpenTUI React binding — for use with @androidtui/core",
+    description: "React renderer for OpenTUI terminal applications on Android and Termux",
   },
   solid: {
     dir: "packages/solid",
     build: ["bun", "scripts/build.ts"],
-    description: "ANDROIDTUI fork of OpenTUI SolidJS binding — for use with @androidtui/core",
+    description: "SolidJS renderer for OpenTUI terminal applications on Android and Termux",
   },
   keymap: {
     dir: "packages/keymap",
     build: ["bun", "scripts/build.ts"],
-    description: "ANDROIDTUI fork of OpenTUI keymap — for use with @androidtui/core",
+    description: "Keybindings and command sequences for OpenTUI applications on Android and Termux",
   },
 }
 
@@ -154,6 +154,18 @@ pkg.name = publishedName
 pkg.version = version
 pkg.description = spec.description
 pkg.repository = { type: "git", url: REPO_URL, directory: spec.dir }
+pkg.homepage = "https://github.com/bd-loser/opentui#readme"
+pkg.bugs = { url: "https://github.com/bd-loser/opentui/issues" }
+pkg.keywords = [
+  "android",
+  "termux",
+  "opentui",
+  "terminal-ui",
+  "tui",
+  "typescript",
+  "zig",
+  pkgKey === "react" ? "react" : pkgKey === "solid" ? "solidjs" : pkgKey,
+]
 delete pkg.private
 
 // Point every intra-fork @opentui/* edge at its @androidtui counterpart, so a

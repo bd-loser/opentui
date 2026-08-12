@@ -7,7 +7,7 @@
 # which each needed their own tag and could drift out of lockstep.
 #
 # Trigger:
-#   git tag xin-v0.5.0 && git push origin xin-v0.5.0
+#   git tag androidtui-v0.5.0 && git push origin androidtui-v0.5.0
 #
 # Order matters — each stage's output is the next stage's dependency:
 #
@@ -24,10 +24,8 @@
 # x86 runner was tried and abandoned; a native Termux build links against
 # the exact Bionic libc that will dlopen it.
 #
-# Requires an npm automation token with publish rights on @androidtui, as
-# repo secret ANDROIDTUI_NPM_SECRET. XINCLI_NPM_SECRET is accepted as a
-# fallback so the rename can happen at leisure; drop it once the new
-# secret is set.
+# Requires an npm automation token with publish rights on @androidtui as
+# the repository secret ANDROIDTUI_NPM_SECRET.
 # ═══════════════════════════════════════════════════════════════════════
 
 name: ANDROIDTUI Release
@@ -35,7 +33,7 @@ name: ANDROIDTUI Release
 on:
   push:
     tags:
-      - "xin-v*"
+      - "androidtui-v*"
   workflow_dispatch:
     inputs:
       version:
@@ -75,7 +73,7 @@ jobs:
             PUBLISH="${{ inputs.publish }}"
           else
             TAG="${GITHUB_REF#refs/tags/}"
-            VERSION="${TAG#xin-v}"
+            VERSION="${TAG#androidtui-v}"
             PUBLISH="true"
           fi
 
@@ -217,7 +215,7 @@ jobs:
       - name: Publish
         if: needs.setup.outputs.publish == 'true'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET || secrets.XINCLI_NPM_SECRET }}
+          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET }}
         run: |
           set -euo pipefail
           if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
@@ -228,7 +226,7 @@ jobs:
             [ -d "$dir" ] || continue
             echo "Publishing $dir"
             # --tag is mandatory for prerelease versions (0.5.1-bun); npm
-            # errors out without it. See scripts/xin-repackage.mjs step 5.
+            # errors out without it. See scripts/androidtui-repackage.mjs step 5.
             npm publish "$dir" --access public --tag latest
           done
 
@@ -251,9 +249,9 @@ jobs:
 
       - name: Build + repackage + publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET || secrets.XINCLI_NPM_SECRET }}
+          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET }}
         run: |
-          node scripts/xin-repackage.mjs \
+          node scripts/androidtui-repackage.mjs \
             --package core \
             --version "${{ needs.setup.outputs.version }}" \
             ${{ needs.setup.outputs.publish == 'true' && '--publish' || '' }}
@@ -305,9 +303,9 @@ jobs:
 
       - name: Build + repackage + publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET || secrets.XINCLI_NPM_SECRET }}
+          NODE_AUTH_TOKEN: ${{ secrets.ANDROIDTUI_NPM_SECRET }}
         run: |
-          node scripts/xin-repackage.mjs \
+          node scripts/androidtui-repackage.mjs \
             --package "${{ matrix.package }}" \
             --version "${{ needs.setup.outputs.version }}" \
             ${{ needs.setup.outputs.publish == 'true' && '--publish' || '' }}

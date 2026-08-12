@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════
-# xin-regen.sh — regenerate the patch kit from the current working tree.
+# androidtui-regen.sh — regenerate the patch kit from the current working tree.
 #
-#   bash scripts/xin-regen.sh
+#   bash scripts/androidtui-regen.sh
 #
 # Run this after a successful port. It rewrites patches/mod/*.patch as
 # diffs against the CURRENT upstream tag and refreshes patches/add/**
@@ -52,7 +52,7 @@ cd "$ROOT"
 if [ -z "$BASE" ]; then
   BRANCH="$(git rev-parse --abbrev-ref HEAD)"
   case "$BRANCH" in
-    xin/*) BASE="v${BRANCH#xin/}" ;;
+    androidtui/*) BASE="v${BRANCH#androidtui/}" ;;
     *)     die "cannot infer the base tag from branch '$BRANCH'. Pass --base vX.Y.Z." ;;
   esac
 fi
@@ -78,7 +78,7 @@ ADD_LIST="$(read_list add)"
 
 info "mod/ — diffs against $BASE"
 STALE=0
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/xin-regen.XXXXXX")"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/androidtui-regen.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
 while IFS= read -r f; do

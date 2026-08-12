@@ -1,0 +1,169 @@
+diff --git a/README.md b/README.md
+index 348486ed..03daed90 100644
+--- a/README.md
++++ b/README.md
+@@ -1,96 +1,108 @@
+-# OpenTUI
++# ANDROIDTUI
+ 
+ <div align="center">
+-    <a href="https://www.npmjs.com/package/@opentui/core"><img alt="npm" src="https://img.shields.io/npm/v/@opentui/core?style=flat-square" /></a>
+-    <a href="https://github.com/anomalyco/opentui/actions/workflows/build-core.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/anomalyco/opentui/build-core.yml?style=flat-square&branch=main" /></a>
+-    <a href="https://github.com/msmps/awesome-opentui"><img alt="awesome opentui list" src="https://awesome.re/badge-flat.svg" /></a>
++  <strong>OpenTUI for Android and Termux</strong>
++  <br />
++  Native Zig rendering with TypeScript, React, and SolidJS bindings.
++  <br /><br />
++  <a href="https://www.npmjs.com/package/@androidtui/core"><img alt="ANDROIDTUI core on npm" src="https://img.shields.io/npm/v/@androidtui/core?style=flat-square&label=%40androidtui%2Fcore" /></a>
++  <a href="https://github.com/bd-loser/opentui/actions/workflows/androidtui-release.yml"><img alt="ANDROIDTUI release status" src="https://img.shields.io/github/actions/workflow/status/bd-loser/opentui/androidtui-release.yml?style=flat-square&label=release" /></a>
++  <a href="https://github.com/bd-loser/opentui/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2f855a?style=flat-square" /></a>
+ </div>
+ 
+-OpenTUI is a native terminal UI core written in Zig with TypeScript bindings. The native core exposes a C ABI and can be used from any language. OpenTUI powers [OpenCode](https://opencode.ai) in production today and will also power [terminal.shop](https://terminal.shop). It is an extensible core with a focus on correctness, stability, and high performance. It provides a component-based architecture with flexible layout capabilities, allowing you to create complex terminal applications.
++ANDROIDTUI is the Android compatibility distribution of [OpenTUI](https://github.com/anomalyco/opentui). It enables native terminal user interfaces on Android through [Termux](https://termux.dev), with an ARM64 native library built against Android's Bionic libc.
+ 
+-Docs: https://opentui.com/docs/getting-started
++Use ANDROIDTUI to build fast terminal applications for Android with OpenTUI's imperative API, React reconciler, SolidJS reconciler, Yoga layout, terminal input handling, and Tree-sitter syntax highlighting.
+ 
+-Quick start with [bun](https://bun.sh) and [create-tui](https://github.com/msmps/create-tui):
++## Install on Termux
++
++Install the core package with Bun:
+ 
+ ```bash
+-bun create tui
++bun add @androidtui/core
+ ```
+ 
+-This monorepo contains the following packages:
+-
+-- [`@opentui/core`](packages/core) - TypeScript bindings for OpenTUI's native Zig core, with an imperative API and all primitives.
+-- [`@opentui/three`](packages/three) - Three.js WebGPU renderer for OpenTUI.
+-- [`@opentui/solid`](packages/solid) - The SolidJS reconciler for OpenTUI.
+-- [`@opentui/react`](packages/react) - The React reconciler for OpenTUI.
+-- [`@opentui/keymap`](packages/keymap) - Shared command, keybinding, and sequence engine.
+-- [`@opentui/qrcode`](packages/qrcode) - QR encoder and terminal renderable integrations.
+-- [`@opentui/ssh`](packages/ssh) - Serve imperative, React, and Solid OpenTUI applications over SSH.
+-- [`@opentui/examples`](packages/examples) - Example browser and standalone examples executable build.
+-- [`@opentui/web`](packages/web) - Private documentation website and installable AI agent skill source.
++For React applications:
+ 
+-## Install
+-
+-NOTE: You must have [Zig](https://ziglang.org/learn/getting-started/) installed on your system to build the packages.
++```bash
++bun add @androidtui/core @androidtui/react react
++```
+ 
+-### TypeScript/JavaScript
++For SolidJS applications:
+ 
+ ```bash
+-bun install @opentui/core
++bun add @androidtui/core @androidtui/solid solid-js
+ ```
+ 
+-## AI Agent Skill
++The Android ARM64 native package, `@androidtui/core-android-arm64`, is installed automatically as an optional dependency of `@androidtui/core`.
+ 
+-Teach your AI coding assistant OpenTUI's APIs and patterns.
++## Quick Start
+ 
+-**Universal skill install with [`npx skills`](https://skills.sh):**
++```ts
++import { createCliRenderer, TextRenderable } from "@androidtui/core"
+ 
+-```bash
+-npx skills add anomalyco/opentui --skill opentui
++const renderer = await createCliRenderer()
++const text = new TextRenderable(renderer, {
++  id: "hello",
++  content: "Hello from Android and Termux",
++})
++
++renderer.root.add(text)
+ ```
+ 
+-Install globally for every project:
++ANDROIDTUI supports Bun on Termux. The Node.js path requires a Node release that provides `node:ffi` and must be started with `--experimental-ffi`. See [OpenTUI on Termux](OPENTUI_TERMUX.md) for runtime details and troubleshooting.
+ 
+-```bash
+-npx skills add anomalyco/opentui --skill opentui -g
+-```
++## Packages
+ 
+-OpenCode uses the same install command. No separate installer is needed.
++| Package                                                                                          | Purpose                                             |
++| ------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
++| [`@androidtui/core`](https://www.npmjs.com/package/@androidtui/core)                             | OpenTUI core with Android native package resolution |
++| [`@androidtui/core-android-arm64`](https://www.npmjs.com/package/@androidtui/core-android-arm64) | Native ARM64 Android library for Termux             |
++| [`@androidtui/react`](https://www.npmjs.com/package/@androidtui/react)                           | React renderer for Android terminal applications    |
++| [`@androidtui/solid`](https://www.npmjs.com/package/@androidtui/solid)                           | SolidJS renderer for Android terminal applications  |
++| [`@androidtui/keymap`](https://www.npmjs.com/package/@androidtui/keymap)                         | Commands, keybindings, and key sequence handling    |
+ 
+-## Try Examples
++Source packages retain their upstream `@opentui/*` workspace names. Release tooling publishes Android-compatible distributions under the `@androidtui/*` npm scope.
+ 
+-You can quickly try out OpenTUI examples without cloning the repository:
++## Android Support
+ 
+-**For macOS, Linux, WSL, Git Bash:**
++| Environment               | Status                              |
++| ------------------------- | ----------------------------------- |
++| Android ARM64 with Termux | Supported                           |
++| Bun on Termux             | Supported                           |
++| Node.js with `node:ffi`   | Supported with `--experimental-ffi` |
++| Android ARMv7             | Not currently published             |
++| Android x86_64            | Not currently published             |
+ 
+-```bash
+-curl -fsSL https://raw.githubusercontent.com/anomalyco/opentui/main/packages/examples/install.sh | sh
+-```
++The native library is built directly in Termux to match Android's Bionic libc and runtime linker. Cross-compiling the release library on a standard Linux runner is not supported by this project.
+ 
+-**For Windows (PowerShell/CMD):**
++## Documentation
+ 
+-Download the latest release directly from [GitHub Releases](https://github.com/anomalyco/opentui/releases/latest)
++- [OpenTUI on Android and Termux](OPENTUI_TERMUX.md): architecture, runtime selection, package layout, and troubleshooting
++- [Native Android build](NATIVE_BUILD.md): build `libopentui.so` directly in Termux
++- [Patch kit maintenance](patches/README.md): port Android support to a new upstream OpenTUI release
++- [Upstream OpenTUI documentation](https://opentui.com/docs/getting-started): APIs, components, and core concepts
+ 
+-## Running Examples (from the repo root)
++## Maintainer Workflow
+ 
+-### TypeScript Examples
++Port the Android patch kit to a new upstream version:
+ 
+ ```bash
+-bun install
+-cd packages/examples
+-bun run dev
++bash scripts/androidtui-patch.sh 0.5.1
+ ```
+ 
+-## Development
++After building the native library on an Android device, regenerate the patch kit and create the release tag:
+ 
+-See the [Development Guide](packages/core/docs/development.md) for building, testing, debugging, and local development linking.
++```bash
++bash scripts/androidtui-regen.sh
++git tag androidtui-v0.5.1
++git push origin androidtui-v0.5.1
++```
+ 
+-### Documentation
++The `androidtui-v*` tag triggers the unified release workflow for all `@androidtui` packages.
+ 
+-- [Website docs](https://opentui.com/docs/getting-started) - Guides and API references
+-- [Development Guide](packages/core/docs/development.md) - Building, testing, and local dev linking
+-- [Getting Started](https://opentui.com/docs/getting-started) - API and usage guide
+-- [Environment Variables](https://opentui.com/docs/reference/env-vars) - Configuration options
++## Upstream and License
+ 
+-## Showcase
++ANDROIDTUI is maintained as an Android-focused patch set on top of [anomalyco/opentui](https://github.com/anomalyco/opentui). OpenTUI's architecture, APIs, and most source code are developed by the upstream OpenTUI contributors.
+ 
+-Consider showcasing your work on the [awesome-opentui](https://github.com/msmps/awesome-opentui) list. A curated list of awesome resources and terminal user interfaces built with OpenTUI.
++Released under the [MIT License](LICENSE).

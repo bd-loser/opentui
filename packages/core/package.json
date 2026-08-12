@@ -46,7 +46,7 @@
     "test:js": "bun test",
     "test:js:node": "bun scripts/test-node.ts",
     "test": "bun run test:native && bun run test:js",
-    "publish:androidtui": "node ../../scripts/xin-repackage.mjs --package core"
+    "publish:androidtui": "node ../../scripts/androidtui-repackage.mjs --package core"
   },
   "license": "MIT",
   "devDependencies": {

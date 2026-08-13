@@ -13,6 +13,18 @@ apt install -y binutils clang curl file git libc++ ndk-sysroot tar xz-utils zig
 curl -fsSL https://raw.githubusercontent.com/bd-loser/bun-termux/main/scripts/install.sh | bash
 export PATH="$HOME/.bun/bin:$PATH"
 
+# termux-docker supplies a Bionic userspace without Android's getprop binary.
+# Zig queries it to resolve the Android API level for an explicit android target.
+cat > "$PREFIX/bin/getprop" <<'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+case "${1:-}" in
+  ro.build.version.sdk) printf '%s\n' '35' ;;
+  ro.product.cpu.abi) printf '%s\n' 'arm64-v8a' ;;
+  *) printf '%s\n' '' ;;
+esac
+EOF
+chmod 0755 "$PREFIX/bin/getprop"
+
 export ANDROIDTUI_WORK_ROOT="$HOME/androidtui-work"
 rm -rf "$ANDROIDTUI_WORK_ROOT"
 bun /workspace/scripts/prepare.mjs

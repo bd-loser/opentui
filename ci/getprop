@@ -1,0 +1,6 @@
+#!/data/data/com.termux/files/usr/bin/bash
+case "${1:-}" in
+  ro.build.version.sdk) printf '%s\n' '35' ;;
+  ro.product.cpu.abi) printf '%s\n' 'arm64-v8a' ;;
+  *) printf '%s\n' '' ;;
+esac

@@ -15,7 +15,7 @@
 //   node scripts/androidtui-repackage.mjs --package solid  --version 0.5.0 --publish
 //
 // Flags:
-//   --package <core|react|solid|keymap>   required
+//   --package <core|react|solid|keymap|qrcode|three|ssh>   required
 //   --version <semver>                    required
 //   --publish                             npm publish (default: dry run)
 //   --npm-tag <tag>                       dist-tag to publish under (default: latest)
@@ -48,6 +48,9 @@ const RENAMES = {
   "@opentui/react": rename("@opentui/react"),
   "@opentui/solid": rename("@opentui/solid"),
   "@opentui/keymap": rename("@opentui/keymap"),
+  "@opentui/qrcode": rename("@opentui/qrcode"),
+  "@opentui/three": rename("@opentui/three"),
+  "@opentui/ssh": rename("@opentui/ssh"),
 }
 
 const PACKAGES = {
@@ -70,6 +73,21 @@ const PACKAGES = {
     dir: "packages/keymap",
     build: ["bun", "scripts/build.ts"],
     description: "Keybindings and command sequences for OpenTUI applications on Android and Termux",
+  },
+  qrcode: {
+    dir: "packages/qrcode",
+    build: ["bun", "scripts/build.ts"],
+    description: "QR code encoder and renderer for OpenTUI applications on Android and Termux",
+  },
+  three: {
+    dir: "packages/three",
+    build: ["bun", "scripts/build.ts"],
+    description: "Three.js renderer for OpenTUI applications on Android and Termux",
+  },
+  ssh: {
+    dir: "packages/ssh",
+    build: ["bun", "scripts/build.ts"],
+    description: "Serve OpenTUI applications from Android and Termux over SSH",
   },
 }
 
@@ -243,6 +261,7 @@ if (pkgKey === "core") {
       opts[name] = name.startsWith("@opentui/core-") ? upstreamVersion : range
     }
   }
+  opts["@opentui/core-android-arm64"] = `npm:@androidtui/core-android-arm64@${version}`
   pkg.optionalDependencies = opts
   console.log(`  optionalDependencies: ${Object.keys(opts).length} platform(s)`)
 }

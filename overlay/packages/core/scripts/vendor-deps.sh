@@ -19,7 +19,8 @@ DEPS_DIR="$REPO_ROOT/.zig-deps"
 mkdir -p "$DEPS_DIR"
 
 # ── uucode ──────────────────────────────────────────────────────
-UUCODE_URL="https://github.com/jacobsandlund/uucode/archive/84ceda8561a17ba4a9b96ac5c583f779660bbd4e.tar.gz"
+UUCODE_COMMIT="8ad04b756f85a5ba1ac8d2b8cb48d0946f06b630"
+UUCODE_URL="https://github.com/jacobsandlund/uucode/archive/$UUCODE_COMMIT.tar.gz"
 UUCODE_DIR="$DEPS_DIR/uucode"
 
 if [ -d "$UUCODE_DIR" ]; then
@@ -29,7 +30,7 @@ else
   # Retry up to 3 times — mobile DNS can be flaky
   for attempt in 1 2 3; do
     if curl -fsSL --retry 3 --retry-delay 2 "$UUCODE_URL" | tar xz -C "$DEPS_DIR"; then
-      mv "$DEPS_DIR/uucode-84ceda8561a17ba4a9b96ac5c583f779660bbd4e" "$UUCODE_DIR" 2>/dev/null || true
+      mv "$DEPS_DIR/uucode-$UUCODE_COMMIT" "$UUCODE_DIR" 2>/dev/null || true
       echo "✓ uucode downloaded"
       break
     else

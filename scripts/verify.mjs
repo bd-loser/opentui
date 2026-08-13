@@ -42,7 +42,7 @@ if (!changed.includes("packages/core/src/node-asset-target.ts")) {
   throw new Error("Android native resolution patch was not applied")
 }
 
-for (const packageName of ["core", "react", "solid", "keymap"]) {
+for (const packageName of ["core", "react", "solid", "keymap", "qrcode", "three", "ssh"]) {
   const pkg = JSON.parse(readFileSync(join(sourceRoot, "packages", packageName, "package.json"), "utf8"))
   if (pkg.version !== manifest.upstream.tag.slice(1)) {
     throw new Error(`${packageName} version ${pkg.version} does not match ${manifest.upstream.tag}`)

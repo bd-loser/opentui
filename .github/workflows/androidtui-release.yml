@@ -1,4 +1,4 @@
-name: Verify ANDROIDTUI
+name: ANDROIDTUI Release
 
 on:
   push:
@@ -6,9 +6,19 @@ on:
     tags: ["androidtui-v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish all packages to npm after build and verification
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
+
+concurrency:
+  group: androidtui-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   verify-overlay:
@@ -37,12 +47,55 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build inside Termux
         run: bash ci/build-on-runner.sh
-      - name: Upload native library
+      - name: Upload release bundle
         uses: actions/upload-artifact@v4
         with:
-          name: opentui-android-arm64-${{ github.sha }}
+          name: androidtui-release-${{ github.sha }}
           path: |
             .work/native-artifacts/libopentui.so
             .work/native-artifacts/SHA256SUMS
             .work/native-artifacts/build-manifest.json
+            .work/native-artifacts/packages/*.tgz
           if-no-files-found: error
+
+  publish-npm:
+    name: Publish npm packages
+    needs: [verify-overlay, native-android-arm64]
+    if: (github.event_name == 'workflow_dispatch' && inputs.publish) || startsWith(github.ref, 'refs/tags/androidtui-v')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: androidtui-release-${{ github.sha }}
+          path: release
+      - name: Verify release bundle
+        run: |
+          cd release
+          sha256sum -c SHA256SUMS
+          test "$(find packages -name '*.tgz' -type f | wc -l)" -eq 8
+      - name: Preflight npm versions
+        run: |
+          VERSION="$(node -p "require('./release/build-manifest.json').version")"
+          for package_name in core-android-arm64 core react solid keymap qrcode three ssh; do
+            if npm view "@androidtui/$package_name@$VERSION" version >/dev/null 2>&1; then
+              echo "::error::@androidtui/$package_name@$VERSION already exists"
+              exit 1
+            fi
+          done
+      - name: Publish in dependency order
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
+        run: |
+          npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
+          publish() {
+            npm publish "release/packages/androidtui-$1-$(node -p "require('./release/build-manifest.json').version").tgz" \
+              --access public
+          }
+          publish core-android-arm64
+          publish core
+          publish react
+          publish solid
+          publish keymap
+          publish qrcode
+          publish three
+          publish ssh

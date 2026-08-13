@@ -8,34 +8,12 @@ export PREFIX
 # pkg mirror rotation can select stale mirrors. Pin Termux's canonical source.
 printf '%s\n' 'deb https://packages.termux.dev/apt/termux-main stable main' > "$PREFIX/etc/apt/sources.list"
 apt update -y
-apt install -y binutils clang curl file git libc++ ndk-sysroot tar xz-utils
+apt install -y binutils clang curl file git libc++ ndk-sysroot nodejs-lts npm tar xz-utils zig
 
 curl -fsSL https://raw.githubusercontent.com/bd-loser/bun-termux/main/scripts/install.sh | bash
 export PATH="$HOME/.bun/bin:$PATH"
 
-# OpenTUI 0.5.1's Android patch set was developed and tested with Zig 0.15.2.
-# Termux currently ships Zig 0.16, whose Android target resolver requires
-# getprop and fails inside termux-docker before the build starts.
-ZIG_VERSION="0.15.2"
-ZIG_DIR="$HOME/zig-aarch64-linux-$ZIG_VERSION"
-if [ ! -x "$ZIG_DIR/zig" ]; then
-  curl -fsSL "https://ziglang.org/download/$ZIG_VERSION/zig-aarch64-linux-$ZIG_VERSION.tar.xz" \
-    | tar xJ -C "$HOME"
-fi
-export PATH="$ZIG_DIR:$PATH"
 zig version
-
-# termux-docker supplies a Bionic userspace without Android's getprop binary.
-# Zig queries it to resolve the Android API level for an explicit android target.
-cat > "$PREFIX/bin/getprop" <<'EOF'
-#!/data/data/com.termux/files/usr/bin/bash
-case "${1:-}" in
-  ro.build.version.sdk) printf '%s\n' '35' ;;
-  ro.product.cpu.abi) printf '%s\n' 'arm64-v8a' ;;
-  *) printf '%s\n' '' ;;
-esac
-EOF
-chmod 0755 "$PREFIX/bin/getprop"
 
 export ANDROIDTUI_WORK_ROOT="$HOME/androidtui-work"
 rm -rf "$ANDROIDTUI_WORK_ROOT"
@@ -50,8 +28,23 @@ SO="$SOURCE_ROOT/packages/core/prebuilt/aarch64-android/libopentui.so"
 test -s "$SO"
 file "$SO"
 cp "$SO" /out/libopentui.so
+
+echo "=== Installing workspace dependencies with bun-termux ==="
+bun install --ignore-scripts
+
+echo "=== Packaging @androidtui/core-android-arm64 ==="
+bun packages/core/scripts/package-prebuilt.ts
+mkdir -p /out/packages
+npm pack packages/core/dist-prebuilt/@androidtui/core-android-arm64 --pack-destination /out/packages
+
+echo "=== Building ANDROIDTUI JavaScript packages ==="
+for package_name in core react solid keymap qrcode three ssh; do
+  bun scripts/androidtui-repackage.mjs --package "$package_name"
+done
+cp artifacts/*.tgz /out/packages/
+
 cd /out
-sha256sum libopentui.so > SHA256SUMS
+sha256sum libopentui.so packages/*.tgz > SHA256SUMS
 
 bun -e '
   const fs = require("node:fs");
@@ -60,6 +53,7 @@ bun -e '
     version: config.upstream.tag.slice(1),
     upstream: config.upstream,
     platform: "android",
-    architecture: "arm64"
+    architecture: "arm64",
+    packages: config.packages
   }, null, 2) + "\n");
 '

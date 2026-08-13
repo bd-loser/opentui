@@ -63,6 +63,15 @@ const TRANSFORMS = {
     // script added below.
     return false
   },
+  qrcode() {
+    return false
+  },
+  three() {
+    return false
+  },
+  ssh() {
+    return false
+  },
 }
 
 let anyChanged = false

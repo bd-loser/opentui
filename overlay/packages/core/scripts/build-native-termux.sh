@@ -7,8 +7,7 @@
 #
 # Prerequisites:
 #   pkg install nodejs git clang
-#   curl -L https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz | tar xJ
-#   export PATH="$HOME/zig-aarch64-linux-0.15.2:$PATH"
+#   pkg install zig
 #
 # Usage:
 #   git clone https://github.com/bd-loser/opentui.git
@@ -27,8 +26,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # ── Verify Zig ──────────────────────────────────────────────────
 if ! command -v zig >/dev/null 2>&1; then
   echo "❌ Zig not found in PATH."
-  echo "   curl -L https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz | tar xJ"
-  echo "   export PATH=\"\$HOME/zig-aarch64-linux-0.15.2:\$PATH\""
+  echo "   pkg install zig"
   exit 1
 fi
 ZIG_VERSION=$(zig version 2>/dev/null || echo "unknown")
@@ -52,7 +50,7 @@ mkdir -p "$ZIG_GLOBAL_CACHE"
 # The cache key is the hash from build.zig.zon. We use a fixed name per
 # dep — Zig will look for <hash> as the cache key. If it's not there,
 # Zig tries to fetch. We create the dirs with the expected hashes.
-UUCODE_HASH="uucode-0.1.0-ZZjBPtA_TQCWp5PIKmfm5tu1WOkKWFmBGFEMxircPfkA"
+UUCODE_HASH="uucode-0.2.0-ZZjBPuS4VABmt0lQ-jDiKB4afmuZVvZpbX09FP5JrR8N"
 YOGA_HASH="N-V-__8AAOYl0gAU76B1VRPFD9AWvy2VkOef2jN0B3sISTeO"
 
 # Zig 0.15 cache layout: $XDG_CACHE_HOME/zig/p/<hash>/
@@ -62,29 +60,6 @@ if [ -d "$DEPS_DIR/uucode" ] && [ ! -d "$ZIG_GLOBAL_CACHE/p/$UUCODE_HASH" ]; the
   echo "✓ Cached uucode in Zig global cache"
 fi
 
-# ── ANDROIDTUI: Patch uucode's build.zig so uucode_build_tables uses our
-# target (aarch64-linux-android) instead of b.graph.host (misdetected as
-# aarch64-linux-musl on Termux, which fails to link -lm -lc -ldl).
-# Idempotent — safe to re-run.
-UUCODE_BUILD_ZIG="$ZIG_GLOBAL_CACHE/p/$UUCODE_HASH/build.zig"
-if [ -f "$UUCODE_BUILD_ZIG" ] && ! grep -q "ANDROIDTUI-patched\|target: std.Build.ResolvedTarget," "$UUCODE_BUILD_ZIG"; then
-  echo "🔧 Patching uucode/build.zig for Android target..."
-  # 1. Add target param to buildTables signature
-  sed -i 's|^fn buildTables(\s*$|fn buildTables(\n    // ANDROIDTUI-patched: accept target|' "$UUCODE_BUILD_ZIG"
-  sed -i 's|^    b: \*std\.Build,\s*$|    b: *std.Build,\n    target: std.Build.ResolvedTarget,|' "$UUCODE_BUILD_ZIG"
-  # 2. Drop the local `const target = b.graph.host;`
-  sed -i 's|^    const target = b\.graph\.host;.*$|    // ANDROIDTUI-patched: target is now a parameter|' "$UUCODE_BUILD_ZIG"
-  # 3. Replace remaining `b.graph.host` reference for build_tables_mod
-  sed -i 's|\.target = b\.graph\.host,|.target = target,|g' "$UUCODE_BUILD_ZIG"
-  # 4. Update the call site in createLibMod
-  sed -i 's|buildTables(b, build_config_path, build_tables_optimize)|buildTables(b, target, build_config_path, build_tables_optimize)|' "$UUCODE_BUILD_ZIG"
-
-  if grep -q "target: std.Build.ResolvedTarget" "$UUCODE_BUILD_ZIG"; then
-    echo "✓ uucode/build.zig patched (target threaded through)"
-  else
-    echo "⚠️  uucode patch may not have applied — check $UUCODE_BUILD_ZIG"
-  fi
-fi
 if [ -d "$DEPS_DIR/yoga" ] && [ ! -d "$ZIG_GLOBAL_CACHE/p/$YOGA_HASH" ]; then
   cp -r "$DEPS_DIR/yoga" "$ZIG_GLOBAL_CACHE/p/$YOGA_HASH" 2>/dev/null || true
   echo "✓ Cached yoga in Zig global cache"

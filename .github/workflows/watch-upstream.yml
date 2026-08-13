@@ -1,0 +1,97 @@
+name: Watch OpenTUI Releases
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Detect and verify without committing or releasing
+        type: boolean
+        default: false
+      force_tag:
+        description: Force a stable upstream tag such as v0.5.2
+        type: string
+        default: ""
+
+concurrency:
+  group: watch-opentui-upstream
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve latest stable upstream release
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE_TAG: ${{ inputs.force_tag }}
+        run: |
+          if [ -n "$FORCE_TAG" ]; then
+            TAG="$FORCE_TAG"
+          else
+            TAG="$(gh api repos/anomalyco/opentui/releases/latest --jq .tag_name)"
+          fi
+          printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || {
+            echo "::error::Unsupported upstream tag: $TAG"
+            exit 1
+          }
+          CURRENT="$(node -p "require('./androidtui.json').upstream.tag")"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          if [ "$TAG" = "$CURRENT" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "ANDROIDTUI already follows $TAG"
+            exit 0
+          fi
+          COMMIT="$(gh api "repos/anomalyco/opentui/commits/$TAG" --jq .sha)"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "Updating $CURRENT -> $TAG ($COMMIT)"
+      - name: Pin and verify upstream release
+        if: steps.upstream.outputs.changed == 'true'
+        run: |
+          node scripts/update-upstream.mjs \
+            "${{ steps.upstream.outputs.tag }}" \
+            "${{ steps.upstream.outputs.commit }}"
+          node scripts/prepare.mjs
+          node scripts/verify.mjs
+      - name: Check npm version is unused
+        if: steps.upstream.outputs.changed == 'true'
+        run: |
+          VERSION="${{ steps.upstream.outputs.tag }}"
+          VERSION="${VERSION#v}"
+          for package_name in core-android-arm64 core react solid keymap qrcode three ssh; do
+            if npm view "@androidtui/$package_name@$VERSION" version >/dev/null 2>&1; then
+              echo "::error::@androidtui/$package_name@$VERSION already exists"
+              exit 1
+            fi
+          done
+      - name: Commit upstream pin
+        if: steps.upstream.outputs.changed == 'true' && inputs.dry_run != true
+        env:
+          TAG: ${{ steps.upstream.outputs.tag }}
+          CURRENT: ${{ steps.upstream.outputs.current }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add androidtui.json
+          git commit -m "chore(upstream): follow OpenTUI $TAG [skip ci]" \
+            -m "Automated update from $CURRENT after the Android patch series passed preflight."
+          git push origin HEAD:main
+      - name: Dispatch unified release
+        if: steps.upstream.outputs.changed == 'true' && inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run androidtui-release.yml --ref main -f publish=true
+          echo "Dispatched ANDROIDTUI release for ${{ steps.upstream.outputs.tag }}"
+      - name: Dry-run summary
+        if: steps.upstream.outputs.changed == 'true' && inputs.dry_run == true
+        run: echo "Would update ${{ steps.upstream.outputs.current }} to ${{ steps.upstream.outputs.tag }} and dispatch npm publication."

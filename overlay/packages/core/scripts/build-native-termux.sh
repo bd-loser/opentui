@@ -213,7 +213,7 @@ sed -i "s|@ANDROIDTUI_SYS_TIME_HEADER@|$TERMUX_INCLUDE/sys/time.h|g" "$TRANSLATE
 
 # ── Prepare Bionic linker inputs without modifying Termux ─────────
 # The container's ld.lld cannot reliably discover Android system/APEX paths.
-# Disposable symlinks give Zig conventional library names in a search path.
+# Disposable copies give Zig conventional library files in a search path.
 # Never copy Bionic libraries into $PREFIX/lib: loading a second libc
 # image into Termux can cause TLS failures.
 LINKER_STUBS_DIR="$REPO_ROOT/.zig-linker-stubs"
@@ -258,15 +258,15 @@ echo "   libc:  $SYSTEM_LIBC_REAL"
 echo "   libm:  $SYSTEM_LIBM_REAL"
 echo "   libdl: $SYSTEM_LIBDL_REAL"
 
-# These symlinks are build inputs only. They are outside $PREFIX and the
-# package staging tree, so neither the links nor Bionic itself are shipped.
+# These copies are build inputs only. They are outside $PREFIX and the
+# package staging tree, so Bionic is never installed or shipped.
 for libname in libc libm libdl; do
   case "$libname" in
     libc)  TARGET_REAL="$SYSTEM_LIBC_REAL" ;;
     libm)  TARGET_REAL="$SYSTEM_LIBM_REAL" ;;
     libdl) TARGET_REAL="$SYSTEM_LIBDL_REAL" ;;
   esac
-  ln -sfn "$TARGET_REAL" "$LINKER_STUBS_DIR/${libname}.so"
+  cp "$TARGET_REAL" "$LINKER_STUBS_DIR/${libname}.so"
 done
 echo "✓ Bionic linker inputs created in $LINKER_STUBS_DIR (no system libraries copied)"
 ls -la "$LINKER_STUBS_DIR"/ 2>&1
@@ -276,9 +276,9 @@ cd "$REPO_ROOT/packages/core/src/zig"
 
 echo ""
 echo "🔧 Building libopentui.so natively..."
-ANDROID_API_LEVEL="${ANDROID_API_LEVEL:-28}"
+ANDROID_API_LEVEL="${ANDROID_API_LEVEL:-35}"
 ANDROID_TARGET="aarch64-linux-android.${ANDROID_API_LEVEL}"
-echo "   Target: $ANDROID_TARGET (minimum supported Android API)"
+echo "   Target: $ANDROID_TARGET"
 echo "   Sysroot: $PREFIX (Termux's Bionic)"
 echo "   Lib search: $TERMUX_LIB + $LINKER_STUBS_DIR"
 echo ""

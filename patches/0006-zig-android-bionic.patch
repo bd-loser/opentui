@@ -6,7 +6,7 @@ index ed85ddf..27962db 100644
      .{ .zig_target = "aarch64-macos.13.0", .output_name = "aarch64-macos", .description = "macOS aarch64 (Apple Silicon)" },
      .{ .zig_target = "x86_64-windows-gnu", .output_name = "x86_64-windows", .description = "Windows x86_64" },
      .{ .zig_target = "aarch64-windows-gnu", .output_name = "aarch64-windows", .description = "Windows aarch64" },
-+    .{ .zig_target = "aarch64-linux-android.28", .output_name = "aarch64-android", .description = "Android 9+ aarch64 (Termux)" },
++    .{ .zig_target = "aarch64-linux-android.35", .output_name = "aarch64-android", .description = "Android API 35 aarch64 (Termux)" },
  };
  
  const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk";

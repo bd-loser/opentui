@@ -29,7 +29,7 @@ index ed85ddf..6ec08db 100644
 -            module.linkSystemLibrary("pthread", .{});
 -            module.linkSystemLibrary("m", .{});
 +            if (target.result.abi == .android) {
-+                if (std.posix.getenv("ANDROIDTUI_ANDROID_LIB_PATH")) |lib_path| {
++                if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_LIB_PATH")) |lib_path| {
 +                    module.addObjectFile(.{ .cwd_relative = b.pathJoin(&.{ lib_path, "libOpenSLES.so" }) });
 +                } else {
 +                    module.linkSystemLibrary("OpenSLES", .{});
@@ -51,10 +51,10 @@ index ed85ddf..6ec08db 100644
 -    module.link_libcpp = true;
 +    module.link_libcpp = target.result.abi != .android;
 +    if (target.result.abi == .android) {
-+        if (std.posix.getenv("ANDROIDTUI_ANDROID_LIBCXX_INCLUDE")) |path| {
++        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_LIBCXX_INCLUDE")) |path| {
 +            module.addIncludePath(.{ .cwd_relative = path });
 +        }
-+        if (std.posix.getenv("ANDROIDTUI_ANDROID_LIBCXX_INCLUDE2")) |path| {
++        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_LIBCXX_INCLUDE2")) |path| {
 +            module.addIncludePath(.{ .cwd_relative = path });
 +        }
 +    }
@@ -92,16 +92,16 @@ index ed85ddf..6ec08db 100644
 +    if (target.result.abi == .android) {
 +        module.link_libc = true;
 +        module.link_libcpp = false;
-+        if (std.posix.getenv("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
++        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
 +            module.addSystemIncludePath(.{ .cwd_relative = path });
 +        }
-+        if (std.posix.getenv("ANDROIDTUI_ANDROID_LIB_SEARCH_PATHS")) |paths| {
++        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_LIB_SEARCH_PATHS")) |paths| {
 +            var it = std.mem.splitScalar(u8, paths, ':');
 +            while (it.next()) |path| {
 +                if (path.len > 0) module.addLibraryPath(.{ .cwd_relative = path });
 +            }
 +        }
-+        if (std.posix.getenv("ANDROIDTUI_ANDROID_LIBCXX_PATH")) |path| {
++        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_LIBCXX_PATH")) |path| {
 +            module.addObjectFile(.{ .cwd_relative = path });
 +        }
 +    }
@@ -117,7 +117,7 @@ index ed85ddf..6ec08db 100644
 +    addYogaDependencies(b, module, target);
 +
 +    if (target.result.abi == .android) {
-+        if (std.posix.getenv("ANDROIDTUI_ANDROID_LIB_PATH")) |path| {
++        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_LIB_PATH")) |path| {
 +            lib.addRPath(.{ .cwd_relative = path });
 +        }
 +        lib.addRPath(.{ .cwd_relative = "/system/lib64" });

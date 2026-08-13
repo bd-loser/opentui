@@ -212,8 +212,8 @@ TRANSLATE_COMPAT_HEADER="$REPO_ROOT/packages/core/src/zig/android-translate-comp
 sed -i "s|@ANDROIDTUI_SYS_TIME_HEADER@|$TERMUX_INCLUDE/sys/time.h|g" "$TRANSLATE_COMPAT_HEADER"
 
 # ── Prepare Bionic linker inputs without modifying Termux ─────────
-# The container's ld.lld cannot reliably stat Android system/APEX paths.
-# Disposable linker scripts let it open the system objects directly.
+# The container's ld.lld cannot reliably discover Android system/APEX paths.
+# Disposable symlinks give Zig conventional library names in a search path.
 # Never copy Bionic libraries into $PREFIX/lib: loading a second libc
 # image into Termux can cause TLS failures.
 LINKER_STUBS_DIR="$REPO_ROOT/.zig-linker-stubs"
@@ -258,25 +258,17 @@ echo "   libc:  $SYSTEM_LIBC_REAL"
 echo "   libm:  $SYSTEM_LIBM_REAL"
 echo "   libdl: $SYSTEM_LIBDL_REAL"
 
-# Bionic on Termux: libm and libdl symbols are inside libc.so. Termux
-# doesn't ship separate libm.so/libdl.so in $PREFIX/lib. We create
-# LINKER SCRIPTS (not symlinks) in our temp stubs dir. The scripts use
-# ABSOLUTE paths to the APEX .so files so ld.lld opens them directly
-# via open() — bypassing the stat() call that fails on /apex/ due to
-# Android's restricted mount namespace.
-#
-# Format: INPUT ( /absolute/path/to/lib.so )
-# ld.lld reads this as a linker script and opens the absolute path.
-#
+# These symlinks are build inputs only. They are outside $PREFIX and the
+# package staging tree, so neither the links nor Bionic itself are shipped.
 for libname in libc libm libdl; do
   case "$libname" in
     libc)  TARGET_REAL="$SYSTEM_LIBC_REAL" ;;
     libm)  TARGET_REAL="$SYSTEM_LIBM_REAL" ;;
     libdl) TARGET_REAL="$SYSTEM_LIBDL_REAL" ;;
   esac
-  printf 'INPUT ( %s )\n' "$TARGET_REAL" > "$LINKER_STUBS_DIR/${libname}.so"
+  ln -sfn "$TARGET_REAL" "$LINKER_STUBS_DIR/${libname}.so"
 done
-echo "✓ Bionic linker scripts created in $LINKER_STUBS_DIR (no system libraries copied)"
+echo "✓ Bionic linker inputs created in $LINKER_STUBS_DIR (no system libraries copied)"
 ls -la "$LINKER_STUBS_DIR"/ 2>&1
 
 # ── Build ───────────────────────────────────────────────────────

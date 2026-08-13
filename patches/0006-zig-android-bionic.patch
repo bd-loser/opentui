@@ -1,5 +1,5 @@
 diff --git a/packages/core/src/zig/build.zig b/packages/core/src/zig/build.zig
-index ed85ddf..6ec08db 100644
+index ed85ddf..339e87e 100644
 --- a/packages/core/src/zig/build.zig
 +++ b/packages/core/src/zig/build.zig
 @@ -27,6 +27,7 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
@@ -67,7 +67,31 @@ index ed85ddf..6ec08db 100644
      });
  }
  
-@@ -556,7 +577,7 @@ pub fn build(b: *std.Build) void {
+@@ -411,6 +432,11 @@ fn addTranslatedCImports(
+         .optimize = optimize,
+     });
+     miniaudio_translate.addIncludePath(b.path("."));
++    if (target.result.abi == .android) {
++        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
++            miniaudio_translate.addSystemIncludePath(.{ .cwd_relative = path });
++        }
++    }
+     module.addImport("miniaudio", miniaudio_translate.createModule());
+ 
+     const yoga_dep = b.dependency("yoga", .{});
+@@ -420,6 +446,11 @@ fn addTranslatedCImports(
+         .optimize = optimize,
+     });
+     yoga_translate.addIncludePath(yoga_dep.path(""));
++    if (target.result.abi == .android) {
++        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
++            yoga_translate.addSystemIncludePath(.{ .cwd_relative = path });
++        }
++    }
+     module.addImport("yoga", yoga_translate.createModule());
+ }
+ 
+@@ -556,7 +587,7 @@ pub fn build(b: *std.Build) void {
          std.process.exit(1);
      }
      addNativeAudioDependencies(b, test_mod, native_target, macos_sdk_path);
@@ -76,7 +100,7 @@ index ed85ddf..6ec08db 100644
  
      const run_test = b.addRunArtifact(test_artifact);
      test_step.dependOn(&run_test.step);
-@@ -600,7 +621,7 @@ pub fn build(b: *std.Build) void {
+@@ -600,7 +631,7 @@ pub fn build(b: *std.Build) void {
          std.process.exit(1);
      }
      addNativeAudioDependencies(b, bench_ffi_mod, bench_ffi_target, macos_sdk_path);
@@ -85,7 +109,7 @@ index ed85ddf..6ec08db 100644
      const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
      bench_ffi_step.dependOn(&install_bench_ffi.step);
      bench_step.dependOn(bench_ffi_step);
-@@ -723,6 +744,23 @@ fn buildTarget(
+@@ -723,6 +754,23 @@ fn buildTarget(
          .optimize = optimize,
      });
  
@@ -109,7 +133,7 @@ index ed85ddf..6ec08db 100644
      applyDependencies(b, module, optimize, target, build_options);
  
      const lib = b.addLibrary(.{
-@@ -732,7 +770,14 @@ fn buildTarget(
+@@ -732,7 +780,14 @@ fn buildTarget(
      });
  
      addNativeAudioDependencies(b, module, target, macos_sdk_path);

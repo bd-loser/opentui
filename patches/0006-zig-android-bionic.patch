@@ -118,9 +118,9 @@ index ed85ddf..6ec08db 100644
 +
 +    if (target.result.abi == .android) {
 +        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_LIB_PATH")) |path| {
-+            lib.addRPath(.{ .cwd_relative = path });
++            module.addRPath(.{ .cwd_relative = path });
 +        }
-+        lib.addRPath(.{ .cwd_relative = "/system/lib64" });
++        module.addRPath(.{ .cwd_relative = "/system/lib64" });
 +    }
  
      const install_dir = b.addInstallArtifact(lib, .{

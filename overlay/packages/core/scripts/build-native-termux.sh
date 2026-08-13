@@ -39,6 +39,17 @@ if [ ! -d "$DEPS_DIR/yoga" ] || [ ! -d "$DEPS_DIR/uucode" ]; then
   bash "$SCRIPT_DIR/vendor-deps.sh"
 fi
 
+# Zig 0.16 does not reuse the old package-cache layout populated below and
+# its HTTPS client cannot initialize TLS inside termux-docker. Point this
+# disposable generated checkout at the exact vendored dependency sources.
+ZON_FILE="$REPO_ROOT/packages/core/src/zig/build.zig.zon"
+if ! grep -q '\.path = "../../../../.zig-deps/uucode"' "$ZON_FILE"; then
+  sed -i \
+    -e '/github.com\/jacobsandlund\/uucode/{s|\.url = .*|.path = "../../../../.zig-deps/uucode",|;n;/\.hash = /d;}' \
+    -e '/git+https:\/\/github.com\/facebook\/yoga/{s|\.url = .*|.path = "../../../../.zig-deps/yoga",|;n;/\.hash = /d;}' \
+    "$ZON_FILE"
+fi
+
 # ── Populate Zig's dep cache from vendored deps ─────────────────
 # Zig's build.zig.zon fetches yoga + uucode from GitHub at build time,
 # which fails on flaky mobile DNS. We pre-fetch them (vendor-deps.sh)

@@ -17,4 +17,4 @@ docker run --rm \
 
 test -s "$OUT_HOST/libopentui.so"
 file "$OUT_HOST/libopentui.so"
-sha256sum -c "$OUT_HOST/SHA256SUMS"
+(cd "$OUT_HOST" && sha256sum -c SHA256SUMS)

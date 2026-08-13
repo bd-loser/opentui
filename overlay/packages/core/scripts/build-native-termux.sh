@@ -181,18 +181,20 @@ fi
 # For the arch-specific asm/ headers (asm/sigcontext.h, asm/types.h),
 # we add them via ANDROIDTUI_ANDROID_ASM_INCLUDE env var which build.zig
 # passes to @cImport only (not C++ compilation).
+LINKER_STUBS_DIR="$REPO_ROOT/.zig-linker-stubs"
+mkdir -p "$LINKER_STUBS_DIR"
 LIBC_FILE="$REPO_ROOT/packages/core/src/zig/libc-termux.txt"
 cat > "$LIBC_FILE" << EOF
 include_dir=$TERMUX_INCLUDE
 sys_include_dir=$TERMUX_INCLUDE
-crt_dir=$CRT_DIR
+crt_dir=$LINKER_STUBS_DIR
 msvc_lib_dir=
 kernel32_lib_dir=
 gcc_dir=
 EOF
 echo "✓ Generated libc file: $LIBC_FILE"
 echo "  → include_dir=$TERMUX_INCLUDE (Termux real include — proper C/C++ separation)"
-echo "  → crt_dir=$CRT_DIR"
+echo "  → crt_dir=$LINKER_STUBS_DIR (disposable linker sysroot)"
 
 # ── Set up asm include path for @cImport ────────────────────────
 # The asm/ headers (asm/sigcontext.h, asm/types.h) live at
@@ -216,9 +218,6 @@ sed -i "s|@ANDROIDTUI_SYS_TIME_HEADER@|$TERMUX_INCLUDE/sys/time.h|g" "$TRANSLATE
 # Disposable copies give Zig conventional library files in a search path.
 # Never copy Bionic libraries into $PREFIX/lib: loading a second libc
 # image into Termux can cause TLS failures.
-LINKER_STUBS_DIR="$REPO_ROOT/.zig-linker-stubs"
-mkdir -p "$LINKER_STUBS_DIR"
-
 REAL_LIBC=""
 for candidate in \
   "$TERMUX_LIB/libc.so" \
@@ -260,6 +259,8 @@ echo "   libdl: $SYSTEM_LIBDL_REAL"
 
 # These copies are build inputs only. They are outside $PREFIX and the
 # package staging tree, so Bionic is never installed or shipped.
+cp "$CRT_DIR/crtbegin_so.o" "$LINKER_STUBS_DIR/crtbegin_so.o"
+cp "$CRT_DIR/crtend_so.o" "$LINKER_STUBS_DIR/crtend_so.o"
 for libname in libc libm libdl; do
   case "$libname" in
     libc)  TARGET_REAL="$SYSTEM_LIBC_REAL" ;;
@@ -268,7 +269,7 @@ for libname in libc libm libdl; do
   esac
   cp "$TARGET_REAL" "$LINKER_STUBS_DIR/${libname}.so"
 done
-echo "✓ Bionic linker inputs created in $LINKER_STUBS_DIR (no system libraries copied)"
+echo "✓ Disposable Android linker sysroot created in $LINKER_STUBS_DIR"
 ls -la "$LINKER_STUBS_DIR"/ 2>&1
 
 # ── Build ───────────────────────────────────────────────────────

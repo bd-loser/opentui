@@ -329,12 +329,12 @@ cd "$REPO_ROOT/packages/core/src/zig"
 
 echo ""
 echo "🔧 Building libopentui.so natively..."
-echo "   Target: aarch64-linux-android (explicit — avoids musl misdetection)"
+echo "   Target: aarch64-linux-android.35 (explicit API — avoids getprop detection)"
 echo "   Sysroot: $PREFIX (Termux's Bionic)"
 echo "   Lib search: $TERMUX_LIB + $LINKER_STUBS_DIR"
 echo ""
 
-# Explicit -Dtarget=aarch64-linux-android so Zig doesn't misdetect as musl.
+# Explicit API level keeps container builds independent of Android's getprop.
 # ZIG_LIBC env var makes Zig read our generated libc file (Bionic paths).
 # ANDROIDTUI_ANDROID_LIB_SEARCH_PATHS is read by build.zig's addLibraryPath calls
 # so ld.lld finds libc/libm/libdl in $PREFIX/lib + the linker-stubs dir.
@@ -383,7 +383,7 @@ echo "Cleaning previous build cache..."
 rm -rf "$REPO_ROOT/packages/core/src/zig/zig-out" "$REPO_ROOT/packages/core/src/zig/.zig-cache" 2>/dev/null || true
 
 zig build \
-  -Dtarget=aarch64-linux-android \
+  -Dtarget=aarch64-linux-android.35 \
   -Doptimize=ReleaseFast \
   --summary all
 ZIG_EXIT=$?
@@ -391,7 +391,7 @@ echo "zig build exit code: $ZIG_EXIT"
 if [ $ZIG_EXIT -ne 0 ]; then
   echo "=== Build failed. Re-running with verbose to see the actual error ==="
   zig build \
-    -Dtarget=aarch64-linux-android \
+    -Dtarget=aarch64-linux-android.35 \
     -Doptimize=ReleaseFast \
     --summary all \
     --verbose

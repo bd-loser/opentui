@@ -50,6 +50,6 @@ cpSync(join(root, "overlay"), sourceRoot, { recursive: true, force: true })
 cpSync(join(root, "scripts", "androidtui-repackage.mjs"), join(sourceRoot, "scripts", "androidtui-repackage.mjs"))
 mkdirSync(join(sourceRoot, "patches"), { recursive: true })
 cpSync(join(root, "patches", "apply-package-json.mjs"), join(sourceRoot, "patches", "apply-package-json.mjs"))
-run("bun", ["patches/apply-package-json.mjs"], sourceRoot)
+run(process.execPath, ["patches/apply-package-json.mjs"], sourceRoot)
 
 console.log(`Prepared OpenTUI ${manifest.upstream.tag} for ANDROIDTUI at ${sourceRoot}`)

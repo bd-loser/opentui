@@ -113,7 +113,7 @@ cd .work/opentui
 bash packages/core/scripts/build-native-termux.sh
 ```
 
-The same build runs in GitHub Actions on every push to `main` and uploads the Android ARM64 native library as a workflow artifact.
+The same build runs in GitHub Actions on every push to `main` and uploads the Android ARM64 native library as a workflow artifact. The Android job installs `bd-loser/bun-termux`; upstream Oven Bun is not used for the Termux build.
 
 Versions follow upstream exactly. Update `androidtui.json` only when adopting a new upstream release, refresh patches against that pinned commit, and then create the matching release tag:
 

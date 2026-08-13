@@ -205,6 +205,12 @@ if [ -d "$ASM_INCLUDE" ]; then
   echo "✓ asm include: $ASM_INCLUDE"
 fi
 
+# The translate-c compatibility wrapper needs the real Bionic sys/time.h.
+# Fill this path only in the disposable prepared checkout; the tracked
+# overlay remains independent of a particular Termux installation prefix.
+TRANSLATE_COMPAT_HEADER="$REPO_ROOT/packages/core/src/zig/android-translate-compat/sys/time.h"
+sed -i "s|@ANDROIDTUI_SYS_TIME_HEADER@|$TERMUX_INCLUDE/sys/time.h|g" "$TRANSLATE_COMPAT_HEADER"
+
 # ── Prepare Bionic linker inputs without modifying Termux ─────────
 # The container's ld.lld cannot reliably stat Android system/APEX paths.
 # Disposable linker scripts let it open the system objects directly.
@@ -292,7 +298,6 @@ echo ""
 export ZIG_LIBC="$LIBC_FILE"
 export ANDROIDTUI_ANDROID_LIB_PATH="$TERMUX_LIB"
 export ANDROIDTUI_ANDROID_LIB_SEARCH_PATHS="$TERMUX_LIB:$LINKER_STUBS_DIR"
-export ANDROIDTUI_ANDROID_INCLUDE_PATH="$TERMUX_INCLUDE"
 
 # libc++_shared.so lives in Termux's $PREFIX/lib (from the libc++ package).
 # Termux ships no libc++.so, so build.zig links this one by absolute path

@@ -6,7 +6,7 @@ index ed85ddf..27962db 100644
      .{ .zig_target = "aarch64-macos.13.0", .output_name = "aarch64-macos", .description = "macOS aarch64 (Apple Silicon)" },
      .{ .zig_target = "x86_64-windows-gnu", .output_name = "x86_64-windows", .description = "Windows x86_64" },
      .{ .zig_target = "aarch64-windows-gnu", .output_name = "aarch64-windows", .description = "Windows aarch64" },
-+    .{ .zig_target = "aarch64-linux-android.35", .output_name = "aarch64-android", .description = "Android aarch64 (Termux)" },
++    .{ .zig_target = "aarch64-linux-android.28", .output_name = "aarch64-android", .description = "Android 9+ aarch64 (Termux)" },
  };
  
  const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk";
@@ -67,12 +67,15 @@ index ed85ddf..27962db 100644
      });
  }
  
-@@ -411,6 +432,12 @@ fn addTranslatedCImports(
+@@ -411,6 +432,15 @@ fn addTranslatedCImports(
          .optimize = optimize,
      });
      miniaudio_translate.addIncludePath(b.path("."));
 +    if (target.result.abi == .android) {
 +        miniaudio_translate.addIncludePath(b.path("android-translate-compat"));
++        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_INCLUDE_PATH")) |path| {
++            miniaudio_translate.addIncludePath(.{ .cwd_relative = path });
++        }
 +        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
 +            miniaudio_translate.addSystemIncludePath(.{ .cwd_relative = path });
 +        }
@@ -80,12 +83,15 @@ index ed85ddf..27962db 100644
      module.addImport("miniaudio", miniaudio_translate.createModule());
  
      const yoga_dep = b.dependency("yoga", .{});
-@@ -420,6 +447,12 @@ fn addTranslatedCImports(
+@@ -420,6 +450,15 @@ fn addTranslatedCImports(
          .optimize = optimize,
      });
      yoga_translate.addIncludePath(yoga_dep.path(""));
 +    if (target.result.abi == .android) {
 +        yoga_translate.addIncludePath(b.path("android-translate-compat"));
++        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_INCLUDE_PATH")) |path| {
++            yoga_translate.addIncludePath(.{ .cwd_relative = path });
++        }
 +        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
 +            yoga_translate.addSystemIncludePath(.{ .cwd_relative = path });
 +        }

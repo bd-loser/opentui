@@ -205,16 +205,11 @@ if [ -d "$ASM_INCLUDE" ]; then
   echo "✓ asm include: $ASM_INCLUDE"
 fi
 
-# ── Verify Bionic libs exist (DO NOT create stubs — they break Termux) ─
-# Zig's linkLibC() adds -lm -lc -ldl. On Termux/Bionic, libc.so IS the
-# real Bionic — but it's often a linker script (text file) that points
-# at the real binary. We must NOT overwrite it.
-#
-# If libm.so or libdl.so are missing (some minimal Termux installs don't
-# ship them as separate files — Bionic folds them into libc.so), we
-# create SEPARATE stub files in a temp dir (NOT $PREFIX/lib) and add
-# that temp dir to the linker search path. This keeps Termux's real
-# libs untouched.
+# ── Prepare Bionic linker inputs without modifying Termux ─────────
+# The container's ld.lld cannot reliably stat Android system/APEX paths.
+# Disposable linker scripts let it open the system objects directly.
+# Never copy Bionic libraries into $PREFIX/lib: loading a second libc
+# image into Termux can cause TLS failures.
 LINKER_STUBS_DIR="$REPO_ROOT/.zig-linker-stubs"
 mkdir -p "$LINKER_STUBS_DIR"
 
@@ -267,55 +262,25 @@ echo "   libdl: $SYSTEM_LIBDL_REAL"
 # Format: INPUT ( /absolute/path/to/lib.so )
 # ld.lld reads this as a linker script and opens the absolute path.
 #
-# SAFETY: these copies must NEVER survive the script. At runtime the
-# dynamic linker searches RUNPATH ($PREFIX/lib first) and would find a
-# second copy of Bionic libc, which crashes on dlopen with a TLS error.
-# An EXIT trap removes them on every path out of this script — success,
-# `zig build` failure under `set -e`, or Ctrl-C — because a stale copy
-# left behind by a failed build breaks unrelated Termux programs too.
-cleanup_bionic_copies() {
-  local status=$?
-  for libname in libc libm libdl; do
-    rm -f "$TERMUX_LIB/${libname}.so" 2>/dev/null || true
-  done
-  return $status
-}
-trap cleanup_bionic_copies EXIT INT TERM
-
-NEED_EXTRA_L_PATH=""
 for libname in libc libm libdl; do
-  if [ ! -f "$TERMUX_LIB/${libname}.so" ] && [ ! -L "$TERMUX_LIB/${libname}.so" ]; then
-    # Pick the resolved real path for each lib
-    case "$libname" in
-      libc)  TARGET_REAL="$SYSTEM_LIBC_REAL" ;;
-      libm)  TARGET_REAL="$SYSTEM_LIBM_REAL" ;;
-      libdl) TARGET_REAL="$SYSTEM_LIBDL_REAL" ;;
-    esac
-    # rm -f first — previous runs may have left a broken symlink
-    rm -f "$LINKER_STUBS_DIR/${libname}.so" 2>/dev/null || true
-    rm -f "$TERMUX_LIB/${libname}.so" 2>/dev/null || true
-    # Copy the real .so via dd (open/read/write — bypasses stat())
-    echo "ℹ️  Copying $TARGET_REAL → $TERMUX_LIB/${libname}.so (Termux lib dir)"
-    dd if="$TARGET_REAL" of="$TERMUX_LIB/${libname}.so" bs=1M 2>&1 | tail -2
-    # Also copy to stubs dir as backup
-    dd if="$TARGET_REAL" of="$LINKER_STUBS_DIR/${libname}.so" bs=1M 2>/dev/null || true
-    # Verify the copy is a real ELF (check file size > 1000 bytes)
-    FILE_SIZE=$(wc -c < "$TERMUX_LIB/${libname}.so" 2>/dev/null || echo "0")
-    echo "  → $libname.so size: $FILE_SIZE bytes at $TERMUX_LIB/"
-    NEED_EXTRA_L_PATH=1
-  fi
+  case "$libname" in
+    libc)  TARGET_REAL="$SYSTEM_LIBC_REAL" ;;
+    libm)  TARGET_REAL="$SYSTEM_LIBM_REAL" ;;
+    libdl) TARGET_REAL="$SYSTEM_LIBDL_REAL" ;;
+  esac
+  printf 'INPUT ( %s )\n' "$TARGET_REAL" > "$LINKER_STUBS_DIR/${libname}.so"
 done
-if [ "$NEED_EXTRA_L_PATH" = "1" ]; then
-  echo "✓ Bionic linker scripts created in $LINKER_STUBS_DIR"
-  ls -la "$LINKER_STUBS_DIR"/ 2>&1
-fi
+echo "✓ Bionic linker scripts created in $LINKER_STUBS_DIR (no system libraries copied)"
+ls -la "$LINKER_STUBS_DIR"/ 2>&1
 
 # ── Build ───────────────────────────────────────────────────────
 cd "$REPO_ROOT/packages/core/src/zig"
 
 echo ""
 echo "🔧 Building libopentui.so natively..."
-echo "   Target: aarch64-linux-android.35 (explicit API — avoids getprop detection)"
+ANDROID_API_LEVEL="${ANDROID_API_LEVEL:-28}"
+ANDROID_TARGET="aarch64-linux-android.${ANDROID_API_LEVEL}"
+echo "   Target: $ANDROID_TARGET (minimum supported Android API)"
 echo "   Sysroot: $PREFIX (Termux's Bionic)"
 echo "   Lib search: $TERMUX_LIB + $LINKER_STUBS_DIR"
 echo ""
@@ -327,6 +292,7 @@ echo ""
 export ZIG_LIBC="$LIBC_FILE"
 export ANDROIDTUI_ANDROID_LIB_PATH="$TERMUX_LIB"
 export ANDROIDTUI_ANDROID_LIB_SEARCH_PATHS="$TERMUX_LIB:$LINKER_STUBS_DIR"
+export ANDROIDTUI_ANDROID_INCLUDE_PATH="$TERMUX_INCLUDE"
 
 # libc++_shared.so lives in Termux's $PREFIX/lib (from the libc++ package).
 # Termux ships no libc++.so, so build.zig links this one by absolute path
@@ -369,7 +335,7 @@ echo "Cleaning previous build cache..."
 rm -rf "$REPO_ROOT/packages/core/src/zig/zig-out" "$REPO_ROOT/packages/core/src/zig/.zig-cache" 2>/dev/null || true
 
 zig build \
-  -Dtarget=aarch64-linux-android.35 \
+  -Dtarget="$ANDROID_TARGET" \
   -Doptimize=ReleaseFast \
   --summary all
 ZIG_EXIT=$?
@@ -377,7 +343,7 @@ echo "zig build exit code: $ZIG_EXIT"
 if [ $ZIG_EXIT -ne 0 ]; then
   echo "=== Build failed. Re-running with verbose to see the actual error ==="
   zig build \
-    -Dtarget=aarch64-linux-android.35 \
+    -Dtarget="$ANDROID_TARGET" \
     -Doptimize=ReleaseFast \
     --summary all \
     --verbose
@@ -441,22 +407,6 @@ if command -v readelf >/dev/null 2>&1; then
   readelf -d "$SO_PATH" 2>/dev/null | grep NEEDED | head -10
 fi
 
-# ── Remove Bionic .so copies from $PREFIX/lib after build ──────
-# These were needed for BUILD (linking) but must NOT be present at RUNTIME.
-# At runtime, the linker searches RUNPATH ($PREFIX/lib first) and finds
-# these copies (from /apex/) which cause TLS crash on dlopen because
-# Bionic libc is already loaded in the process.
-#
-# At runtime, the linker should find libc.so at /system/lib64 (second in
-# RUNPATH) — which is the SAME libc already loaded, so no re-load = no crash.
-#
-# Only libc++_shared.so should remain in $PREFIX/lib (Termux's version).
-echo "🧹 Removing Bionic .so copies from $PREFIX/lib (runtime TLS fix)..."
-rm -f "$TERMUX_LIB/libc.so" 2>/dev/null && echo "  ✓ Removed libc.so" || true
-rm -f "$TERMUX_LIB/libm.so" 2>/dev/null && echo "  ✓ Removed libm.so" || true
-rm -f "$TERMUX_LIB/libdl.so" 2>/dev/null && echo "  ✓ Removed libdl.so" || true
-echo "  Remaining in $PREFIX/lib:"
-ls -la "$TERMUX_LIB"/libc*.so "$TERMUX_LIB"/libm*.so "$TERMUX_LIB"/libdl*.so 2>/dev/null || echo "    (none — good!)"
 OUT_DIR="$REPO_ROOT/packages/core/prebuilt/aarch64-android"
 mkdir -p "$OUT_DIR"
 cp "$SO_PATH" "$OUT_DIR/libopentui.so"

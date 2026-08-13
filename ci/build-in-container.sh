@@ -8,7 +8,7 @@ export PREFIX
 # pkg mirror rotation can select stale mirrors. Pin Termux's canonical source.
 printf '%s\n' 'deb https://packages.termux.dev/apt/termux-main stable main' > "$PREFIX/etc/apt/sources.list"
 apt update -y
-apt install -y binutils clang curl file git libc++ libc++-dev ndk-sysroot tar xz-utils zig
+apt install -y binutils clang curl file git libc++ ndk-sysroot tar xz-utils zig
 
 curl -fsSL https://raw.githubusercontent.com/bd-loser/bun-termux/main/scripts/install.sh | bash
 export PATH="$HOME/.bun/bin:$PATH"

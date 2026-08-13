@@ -5,6 +5,6 @@ node_modules/
 .zig-deps/
 .zig-linker-stubs/
 buffer_dump/
-packages/
+/packages/
 *.tgz
 *.log

@@ -365,22 +365,8 @@ for candidate in \
 done
 
 if [ -z "$LIBCXX_INCLUDE" ]; then
-  echo "📦 libc++ headers not found — installing libc++-dev..."
-  pkg install -y libc++-dev 2>&1 | tail -3 || true
-  for candidate in \
-    "$PREFIX/include/c++/v1" \
-    "$PREFIX/include/c++"/*/v1 \
-    "$PREFIX/include"/*/c++/v1; do
-    if [ -f "$candidate/type_traits" ] 2>/dev/null; then
-      LIBCXX_INCLUDE=$(echo $candidate | head -1)
-      break
-    fi
-  done
-fi
-
-if [ -z "$LIBCXX_INCLUDE" ]; then
   echo "❌ Cannot find libc++ headers (type_traits)."
-  echo "   Try: pkg install libc++-dev"
+  echo "   Reinstall Termux's libc++ package: apt install --reinstall libc++"
   exit 1
 fi
 export ANDROIDTUI_ANDROID_LIBCXX_INCLUDE="$LIBCXX_INCLUDE"

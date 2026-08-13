@@ -8,10 +8,22 @@ export PREFIX
 # pkg mirror rotation can select stale mirrors. Pin Termux's canonical source.
 printf '%s\n' 'deb https://packages.termux.dev/apt/termux-main stable main' > "$PREFIX/etc/apt/sources.list"
 apt update -y
-apt install -y binutils clang curl file git libc++ ndk-sysroot tar xz-utils zig
+apt install -y binutils clang curl file git libc++ ndk-sysroot tar xz-utils
 
 curl -fsSL https://raw.githubusercontent.com/bd-loser/bun-termux/main/scripts/install.sh | bash
 export PATH="$HOME/.bun/bin:$PATH"
+
+# OpenTUI 0.5.1's Android patch set was developed and tested with Zig 0.15.2.
+# Termux currently ships Zig 0.16, whose Android target resolver requires
+# getprop and fails inside termux-docker before the build starts.
+ZIG_VERSION="0.15.2"
+ZIG_DIR="$HOME/zig-aarch64-linux-$ZIG_VERSION"
+if [ ! -x "$ZIG_DIR/zig" ]; then
+  curl -fsSL "https://ziglang.org/download/$ZIG_VERSION/zig-aarch64-linux-$ZIG_VERSION.tar.xz" \
+    | tar xJ -C "$HOME"
+fi
+export PATH="$ZIG_DIR:$PATH"
+zig version
 
 # termux-docker supplies a Bionic userspace without Android's getprop binary.
 # Zig queries it to resolve the Android API level for an explicit android target.

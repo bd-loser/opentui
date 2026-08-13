@@ -1,48 +1,10 @@
-# dependencies (bun install)
-node_modules
-
-Session.vim
-
-# output
-out
-dist
-packed
+.work/
+artifacts/
+node_modules/
+.claude/
+.zig-deps/
+.zig-linker-stubs/
+buffer_dump/
+packages/
 *.tgz
 *.log
-*.txt
-
-# code coverage
-coverage
-*.lcov
-
-# logs
-logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
-
-# dotenv environment variable files
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
-
-# caches
-.eslintcache
-.cache
-.node
-*.tsbuildinfo
-
-# IntelliJ based IDEs
-.idea
-
-# Finder (MacOS) folder config
-.DS_Store
-
-screenshot-*.png
-
-# SSH host keys — never commit private keys. @opentui/ssh examples write a
-# `host_key` relative to the cwd, so a run from the repo root drops one here.
-host_key
-host_key.pub
-*.host_key

@@ -65,8 +65,9 @@ EOF
 cd "$SMOKE_ROOT"
 bun install --ignore-scripts
 bun -e '
+  const { dlopen } = await import("bun:ffi");
   const native = (await import("@opentui/core-android-arm64")).default;
-  const library = Bun.dlopen(native, {});
+  const library = dlopen(native, {});
   library.close();
   await import("@opentui/core");
   console.log(`Bionic package smoke test passed: ${native}`);

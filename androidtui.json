@@ -1,8 +1,17 @@
 {
   "upstream": {
     "repository": "https://github.com/anomalyco/opentui.git",
-    "tag": "v0.5.2",
-    "commit": "14b3d135a35a946a6fa68bbba1caef2128d28709"
+    "tag": "v0.5.3",
+    "commit": "1500698af07951ea0c1c67c9ad737fc54382ee20"
   },
-  "packages": ["core-android-arm64", "core", "react", "solid", "keymap", "qrcode", "three", "ssh"]
+  "packages": [
+    "core-android-arm64",
+    "core",
+    "react",
+    "solid",
+    "keymap",
+    "qrcode",
+    "three",
+    "ssh"
+  ]
 }

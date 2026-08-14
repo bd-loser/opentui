@@ -21,8 +21,11 @@ bun /workspace/scripts/prepare.mjs
 bun /workspace/scripts/verify.mjs
 
 ANDROIDTUI_VERSION="$(bun -e 'console.log(JSON.parse(require("node:fs").readFileSync("/workspace/androidtui.json", "utf8")).releaseVersion)')"
+ANDROIDTUI_UPSTREAM_VERSION="$(bun -e 'console.log(JSON.parse(require("node:fs").readFileSync("/workspace/androidtui.json", "utf8")).upstream.tag.slice(1))')"
 test -n "$ANDROIDTUI_VERSION"
+test -n "$ANDROIDTUI_UPSTREAM_VERSION"
 export ANDROIDTUI_VERSION
+export ANDROIDTUI_UPSTREAM_VERSION
 
 SOURCE_ROOT="$ANDROIDTUI_WORK_ROOT/opentui"
 cd "$SOURCE_ROOT"
@@ -67,7 +70,9 @@ bun install --ignore-scripts
 bun -e '
   const { dlopen } = await import("bun:ffi");
   const native = (await import("@opentui/core-android-arm64")).default;
-  const library = dlopen(native, {});
+  const library = dlopen(native, {
+    createNativeRenderable: { args: [], returns: "u32" },
+  });
   library.close();
   await import("@opentui/core");
   console.log(`Bionic package smoke test passed: ${native}`);

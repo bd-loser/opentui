@@ -130,7 +130,7 @@ if (typeof version !== "string" || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(ver
 // Anything published under @androidtui uses the full fork version. Anything still
 // resolved from upstream — the non-Android core-<platform> binaries — must use
 // the base, because upstream publishes 0.5.1 and never 0.5.1-bun.
-const upstreamVersion = version.replace(/-.*$/, "")
+const upstreamVersion = process.env.ANDROIDTUI_UPSTREAM_VERSION ?? version.replace(/-.*$/, "")
 
 console.log("=".repeat(58))
 console.log(`Repackaging ${publishedName}@${version}`)

@@ -9,10 +9,15 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const sourceRoot = join(resolve(process.env.ANDROIDTUI_WORK_ROOT ?? join(root, ".work")), "opentui")
 const manifest = JSON.parse(readFileSync(join(root, "androidtui.json"), "utf8"))
 
-if (!/^\d+\.\d+\.\d+-android\.\d+$/.test(manifest.releaseVersion)) {
+if (!/^\d+\.\d+\.\d+-(?:android|future)\.\d+$/.test(manifest.releaseVersion)) {
   throw new Error(`Invalid Android release version: ${manifest.releaseVersion}`)
 }
-if (!manifest.releaseVersion.startsWith(`${manifest.upstream.tag.slice(1)}-`)) {
+const releaseBase = manifest.releaseVersion.split("-")[0]
+const upstreamBase = manifest.upstream.tag.slice(1)
+if (manifest.releaseVersion.includes("-future.") && releaseBase >= upstreamBase) {
+  throw new Error(`Future preview ${manifest.releaseVersion} must precede upstream ${manifest.upstream.tag}`)
+}
+if (!manifest.releaseVersion.includes("-future.") && releaseBase !== upstreamBase) {
   throw new Error(`${manifest.releaseVersion} is not based on ${manifest.upstream.tag}`)
 }
 

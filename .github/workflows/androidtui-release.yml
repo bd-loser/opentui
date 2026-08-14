@@ -91,7 +91,7 @@ jobs:
           npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
           publish() {
             npm publish "release/packages/androidtui-$1-$(node -p "require('./release/build-manifest.json').version").tgz" \
-              --access public --tag latest
+              --access public --tag future
           }
           publish core-android-arm64
           publish core

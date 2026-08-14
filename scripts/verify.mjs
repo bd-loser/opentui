@@ -9,6 +9,13 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const sourceRoot = join(resolve(process.env.ANDROIDTUI_WORK_ROOT ?? join(root, ".work")), "opentui")
 const manifest = JSON.parse(readFileSync(join(root, "androidtui.json"), "utf8"))
 
+if (!/^\d+\.\d+\.\d+-android\.\d+$/.test(manifest.releaseVersion)) {
+  throw new Error(`Invalid Android release version: ${manifest.releaseVersion}`)
+}
+if (!manifest.releaseVersion.startsWith(`${manifest.upstream.tag.slice(1)}-`)) {
+  throw new Error(`${manifest.releaseVersion} is not based on ${manifest.upstream.tag}`)
+}
+
 if (!existsSync(join(sourceRoot, ".git"))) {
   console.error("Generated source is missing. Run: npm run prepare:upstream")
   process.exit(1)
@@ -49,4 +56,6 @@ for (const packageName of ["core", "react", "solid", "keymap", "qrcode", "three"
   }
 }
 
-console.log(`Verified reproducible ANDROIDTUI source for ${manifest.upstream.tag} (${commit})`)
+console.log(
+  `Verified reproducible ANDROIDTUI ${manifest.releaseVersion} source from upstream ${manifest.upstream.tag} (${commit})`,
+)

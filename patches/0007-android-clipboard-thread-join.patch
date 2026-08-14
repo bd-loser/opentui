@@ -1,0 +1,18 @@
+diff --git a/packages/core/src/zig/clipboard/host.zig b/packages/core/src/zig/clipboard/host.zig
+index 0634f51..6d8c9df 100644
+--- a/packages/core/src/zig/clipboard/host.zig
++++ b/packages/core/src/zig/clipboard/host.zig
+@@ -103,6 +103,13 @@ extern "c" fn pthread_tryjoin_np(thread: std.Thread.Handle, result: ?*?*anyopa
+ extern "c" fn pthread_peekjoin_np(thread: std.Thread.Handle, result: ?*?*anyopaque) c_int;
+ 
+ fn tryJoinThread(thread: std.Thread) bool {
++    if (comptime builtin.abi == .android) {
++        // Bionic has no pthread_tryjoin_np. Callers only probe after the
++        // worker publishes its terminal state, so joining here cannot race
++        // with active clipboard work.
++        thread.join();
++        return true;
++    }
+     return switch (builtin.os.tag) {
+         .linux => switch (pthread_tryjoin_np(thread.getHandle(), null)) {
+             0 => true,

@@ -33,7 +33,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/androidtui-v')
         run: |
           VERSION="${GITHUB_REF_NAME#androidtui-v}"
-          PINNED="$(node -p "require('./androidtui.json').upstream.tag.slice(1)")"
+          PINNED="$(node -p "require('./androidtui.json').releaseVersion")"
           test "$VERSION" = "$PINNED" || {
             echo "Release tag $VERSION does not match pinned upstream $PINNED"
             exit 1
@@ -61,7 +61,9 @@ jobs:
   publish-npm:
     name: Publish npm packages
     needs: [verify-overlay, native-android-arm64]
-    if: (github.event_name == 'workflow_dispatch' && inputs.publish) || startsWith(github.ref, 'refs/tags/androidtui-v')
+    # Publishing is deliberately manual. First build on main, download the
+    # artifact, and run the renderer smoke test on a real Termux device.
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/download-artifact@v4
@@ -89,7 +91,7 @@ jobs:
           npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
           publish() {
             npm publish "release/packages/androidtui-$1-$(node -p "require('./release/build-manifest.json').version").tgz" \
-              --access public
+              --access public --tag latest
           }
           publish core-android-arm64
           publish core

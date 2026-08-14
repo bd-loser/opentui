@@ -20,6 +20,10 @@ rm -rf "$ANDROIDTUI_WORK_ROOT"
 bun /workspace/scripts/prepare.mjs
 bun /workspace/scripts/verify.mjs
 
+ANDROIDTUI_VERSION="$(bun -e 'console.log(JSON.parse(require("node:fs").readFileSync("/workspace/androidtui.json", "utf8")).releaseVersion)')"
+test -n "$ANDROIDTUI_VERSION"
+export ANDROIDTUI_VERSION
+
 SOURCE_ROOT="$ANDROIDTUI_WORK_ROOT/opentui"
 cd "$SOURCE_ROOT"
 bash packages/core/scripts/build-native-termux.sh
@@ -39,9 +43,34 @@ npm pack packages/core/dist-prebuilt/@androidtui/core-android-arm64 --pack-desti
 
 echo "=== Building ANDROIDTUI JavaScript packages ==="
 for package_name in core react solid keymap qrcode three ssh; do
-  bun scripts/androidtui-repackage.mjs --package "$package_name"
+  bun scripts/androidtui-repackage.mjs --package "$package_name" --version "$ANDROIDTUI_VERSION"
 done
 cp artifacts/*.tgz /out/packages/
+
+echo "=== Smoke-testing packaged Bionic native library ==="
+SMOKE_ROOT="$HOME/androidtui-smoke"
+rm -rf "$SMOKE_ROOT"
+mkdir -p "$SMOKE_ROOT"
+cat > "$SMOKE_ROOT/package.json" <<EOF
+{
+  "name": "androidtui-bionic-smoke",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@opentui/core": "file:/out/packages/androidtui-core-${ANDROIDTUI_VERSION}.tgz",
+    "@opentui/core-android-arm64": "file:/out/packages/androidtui-core-android-arm64-${ANDROIDTUI_VERSION}.tgz"
+  }
+}
+EOF
+cd "$SMOKE_ROOT"
+bun install --ignore-scripts
+bun -e '
+  const native = (await import("@opentui/core-android-arm64")).default;
+  const library = Bun.dlopen(native, {});
+  library.close();
+  await import("@opentui/core");
+  console.log(`Bionic package smoke test passed: ${native}`);
+'
 
 cd /out
 sha256sum libopentui.so packages/*.tgz > SHA256SUMS
@@ -50,7 +79,8 @@ bun -e '
   const fs = require("node:fs");
   const config = JSON.parse(fs.readFileSync("/workspace/androidtui.json", "utf8"));
   fs.writeFileSync("build-manifest.json", JSON.stringify({
-    version: config.upstream.tag.slice(1),
+    version: config.releaseVersion,
+    upstreamVersion: config.upstream.tag.slice(1),
     upstream: config.upstream,
     platform: "android",
     architecture: "arm64",

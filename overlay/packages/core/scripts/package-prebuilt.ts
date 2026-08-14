@@ -54,9 +54,10 @@ function packageOne(archDir: string, packageName: string, cpu: string): void {
   // Read version from core package.json so the prebuilt packages stay in sync
   const corePkg = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"))
 
+  const releaseVersion = process.env.ANDROIDTUI_VERSION ?? corePkg.version
   const pkgJson = {
     name: packageName,
-    version: corePkg.version,
+    version: releaseVersion,
     description: `Native OpenTUI core for Android ${archDir} and Termux, packaged by ANDROIDTUI`,
     repository: {
       type: "git",

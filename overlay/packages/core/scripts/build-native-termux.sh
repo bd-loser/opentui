@@ -31,6 +31,13 @@ if ! command -v zig >/dev/null 2>&1; then
 fi
 ZIG_VERSION=$(zig version 2>/dev/null || echo "unknown")
 echo "✓ Zig $ZIG_VERSION detected"
+case "$ZIG_VERSION" in
+  0.16.*) ;;
+  *)
+    echo "❌ OpenTUI 0.5.2 requires Zig 0.16.x; found $ZIG_VERSION"
+    exit 1
+    ;;
+esac
 
 # ── Verify vendored deps exist ──────────────────────────────────
 DEPS_DIR="$REPO_ROOT/.zig-deps"
@@ -331,6 +338,11 @@ echo "✓ libc++ headers: $LIBCXX_INCLUDE"
 # Force clean first to avoid cached results that don't output the .so
 echo "Cleaning previous build cache..."
 rm -rf "$REPO_ROOT/packages/core/src/zig/zig-out" "$REPO_ROOT/packages/core/src/zig/.zig-cache" 2>/dev/null || true
+ZIG_LOCAL_CACHE_DIR="${TMPDIR:-$PREFIX/tmp}/androidtui-zig-local-cache"
+rm -rf "$ZIG_LOCAL_CACHE_DIR"
+mkdir -p "$ZIG_LOCAL_CACHE_DIR"
+export ZIG_LOCAL_CACHE_DIR
+echo "✓ Zig local cache: $ZIG_LOCAL_CACHE_DIR"
 
 zig build \
   -Dtarget="$ANDROID_TARGET" \
@@ -403,6 +415,11 @@ if command -v readelf >/dev/null 2>&1; then
   readelf -h "$SO_PATH" 2>/dev/null | grep -E "Machine|Class" || true
   echo "  Dynamic deps (should include libc.so):"
   readelf -d "$SO_PATH" 2>/dev/null | grep NEEDED | head -10
+  if readelf -Ws "$SO_PATH" 2>/dev/null | grep -q 'UND pthread_tryjoin_np'; then
+    echo "  ❌ libopentui.so imports pthread_tryjoin_np, which Bionic does not provide"
+    exit 1
+  fi
+  echo "  ✓ no unsupported pthread_tryjoin_np import"
 fi
 
 OUT_DIR="$REPO_ROOT/packages/core/prebuilt/aarch64-android"

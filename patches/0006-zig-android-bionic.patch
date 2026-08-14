@@ -111,7 +111,7 @@ index ed85ddf..27962db 100644
      const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
      bench_ffi_step.dependOn(&install_bench_ffi.step);
      bench_step.dependOn(bench_ffi_step);
-@@ -723,6 +756,23 @@ fn buildTarget(
+@@ -723,6 +756,26 @@ fn buildTarget(
          .optimize = optimize,
      });
  
@@ -130,12 +130,15 @@ index ed85ddf..27962db 100644
 +        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_LIBCXX_PATH")) |path| {
 +            module.addObjectFile(.{ .cwd_relative = path });
 +        }
++        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_LIBUNWIND_PATH")) |path| {
++            module.addObjectFile(.{ .cwd_relative = path });
++        }
 +    }
 +
      applyDependencies(b, module, optimize, target, build_options);
  
      const lib = b.addLibrary(.{
-@@ -732,7 +782,14 @@ fn buildTarget(
+@@ -732,7 +785,14 @@ fn buildTarget(
      });
  
      addNativeAudioDependencies(b, module, target, macos_sdk_path);

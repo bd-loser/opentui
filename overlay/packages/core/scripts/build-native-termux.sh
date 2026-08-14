@@ -303,8 +303,14 @@ export ANDROIDTUI_ANDROID_LIB_SEARCH_PATHS="$TERMUX_LIB:$LINKER_STUBS_DIR"
 # Termux ships no libc++.so, so build.zig links this one by absolute path
 # via addObjectFile instead of calling linkLibCpp().
 export ANDROIDTUI_ANDROID_LIBCXX_PATH="$TERMUX_LIB/libc++_shared.so"
+export ANDROIDTUI_ANDROID_LIBUNWIND_PATH="$TERMUX_LIB/libunwind.a"
 echo "✓ Bionic libs (resolved): $SYSTEM_LIBC_REAL"
 echo "✓ libc++: $ANDROIDTUI_ANDROID_LIBCXX_PATH"
+if [ ! -f "$ANDROIDTUI_ANDROID_LIBUNWIND_PATH" ]; then
+  echo "❌ libunwind.a not found at $ANDROIDTUI_ANDROID_LIBUNWIND_PATH"
+  exit 1
+fi
+echo "✓ libunwind: $ANDROIDTUI_ANDROID_LIBUNWIND_PATH"
 
 # ── Find libc++ headers for C++ compilation ─────────────────────
 # Yoga's C++ files need <type_traits>, <cstddef>, etc. from libc++.
@@ -420,6 +426,11 @@ if command -v readelf >/dev/null 2>&1; then
     exit 1
   fi
   echo "  ✓ no unsupported pthread_tryjoin_np import"
+  if readelf -Ws "$SO_PATH" 2>/dev/null | grep -Eq 'UND (_Unwind_|__gxx_personality_v0)'; then
+    echo "  ❌ libopentui.so has unresolved C++ unwind symbols"
+    exit 1
+  fi
+  echo "  ✓ C++ unwind symbols are linked into the Bionic library"
 fi
 
 OUT_DIR="$REPO_ROOT/packages/core/prebuilt/aarch64-android"

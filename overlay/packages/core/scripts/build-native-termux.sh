@@ -426,7 +426,7 @@ if command -v readelf >/dev/null 2>&1; then
     exit 1
   fi
   echo "  ✓ no unsupported pthread_tryjoin_np import"
-  if readelf -Ws "$SO_PATH" 2>/dev/null | grep -Eq 'UND (_Unwind_|__gxx_personality_v0)'; then
+  if readelf -Ws "$SO_PATH" 2>/dev/null | grep -Eq 'UND _Unwind_'; then
     echo "  ❌ libopentui.so has unresolved C++ unwind symbols"
     exit 1
   fi

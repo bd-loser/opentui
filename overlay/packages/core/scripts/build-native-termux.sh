@@ -284,7 +284,7 @@ cd "$REPO_ROOT/packages/core/src/zig"
 
 echo ""
 echo "🔧 Building libopentui.so natively..."
-ANDROID_API_LEVEL="${ANDROID_API_LEVEL:-35}"
+ANDROID_API_LEVEL="${ANDROID_API_LEVEL:-24}"
 ANDROID_TARGET="aarch64-linux-android.${ANDROID_API_LEVEL}"
 echo "   Target: $ANDROID_TARGET"
 echo "   Sysroot: $PREFIX (Termux's Bionic)"
@@ -426,6 +426,11 @@ if command -v readelf >/dev/null 2>&1; then
     exit 1
   fi
   echo "  ✓ no unsupported pthread_tryjoin_np import"
+  if readelf -Ws "$SO_PATH" 2>/dev/null | grep -q 'UND copy_file_range'; then
+    echo "  ❌ libopentui.so imports copy_file_range instead of using the Android syscall path"
+    exit 1
+  fi
+  echo "  ✓ no API-dependent copy_file_range libc import"
   if readelf -Ws "$SO_PATH" 2>/dev/null | grep -Eq 'UND _Unwind_'; then
     echo "  ❌ libopentui.so has unresolved C++ unwind symbols"
     exit 1

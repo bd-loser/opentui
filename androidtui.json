@@ -4,7 +4,7 @@
     "tag": "v0.5.4",
     "commit": "7f5b19b640de50d5665c88d4bc1cfbb884dd0f49"
   },
-  "releaseVersion": "0.5.3-future.1",
+  "releaseVersion": "0.5.4",
   "packages": [
     "core-android-arm64",
     "core",

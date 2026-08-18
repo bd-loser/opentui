@@ -9,7 +9,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const sourceRoot = join(resolve(process.env.ANDROIDTUI_WORK_ROOT ?? join(root, ".work")), "opentui")
 const manifest = JSON.parse(readFileSync(join(root, "androidtui.json"), "utf8"))
 
-if (!/^\d+\.\d+\.\d+-(?:android|future)\.\d+$/.test(manifest.releaseVersion)) {
+if (!/^\d+\.\d+\.\d+(?:-(?:android|future)\.\d+)?$/.test(manifest.releaseVersion)) {
   throw new Error(`Invalid Android release version: ${manifest.releaseVersion}`)
 }
 const releaseBase = manifest.releaseVersion.split("-")[0]

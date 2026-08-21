@@ -89,9 +89,23 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.XINCLI_NPM_SECRET }}
         run: |
           npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
+          VERSION="$(node -p "require('./release/build-manifest.json').version")"
+          UPSTREAM="$(node -p "require('./release/build-manifest.json').upstreamVersion")"
+          # Only a stable version equal to upstream is a promotion, and only a
+          # promotion may move `latest`. The other two shapes are both
+          # deliberately non-default: a -future.N preview, and a stable version
+          # below upstream (a test publish burning a spare number). Hardcoding
+          # `future` here is what stranded `latest` at 0.5.3 while 0.5.4 and
+          # 0.5.5 shipped past it.
+          case "$VERSION" in
+            *-future.*)  DIST_TAG=future ;;
+            "$UPSTREAM") DIST_TAG=latest ;;
+            *)           DIST_TAG=future ;;
+          esac
+          echo "Publishing $VERSION (upstream $UPSTREAM) to dist-tag $DIST_TAG"
           publish() {
-            npm publish "release/packages/androidtui-$1-$(node -p "require('./release/build-manifest.json').version").tgz" \
-              --access public --tag future
+            npm publish "release/packages/androidtui-$1-$VERSION.tgz" \
+              --access public --tag "$DIST_TAG"
           }
           publish core-android-arm64
           publish core

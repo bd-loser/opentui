@@ -513,7 +513,9 @@ if (process.platform === "android") {
 }
 ```
 
-Also patched `src/zig/build.zig` to add the `aarch64-linux-android` target.
+Also patched the Zig build to add the `aarch64-linux-android` target. Upstream
+0.5.6 moved that file from `packages/core/src/zig/build.zig` to
+`packages/native/build.zig`.
 
 ---
 
@@ -683,7 +685,7 @@ setTimeout(() => {
 
 ```
 Phone (Termux)
-  ↓  zig build -Doptimize=ReleaseFast (no -Dtarget, no --sysroot, no NDK)
+  ↓  zig build -Dlibrary-target=aarch64-linux-android.24 (no --sysroot, no NDK)
 prebuilt/aarch64-android/libopentui.so
   ↓  git add + commit + push
 GitHub

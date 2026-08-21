@@ -12,8 +12,11 @@
 # Usage:
 #   git clone https://github.com/bd-loser/opentui.git
 #   cd opentui
-#   bash packages/core/scripts/vendor-deps.sh        # one-time, needs network
-#   bash packages/core/scripts/build-native-termux.sh # builds offline after vendor
+#   bash packages/core/scripts/build-native-termux.sh
+#
+# Since upstream 0.5.6 the Zig dependencies (yoga, uucode, ghostty) ship
+# in-repo as packages/native/src/vendor/zig-deps.tar.gz, so the build needs
+# no network at all.
 #
 # Output: packages/core/prebuilt/aarch64-android/libopentui.so
 # ═════════════════════════════════════════════════════════════════
@@ -22,6 +25,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+# Upstream 0.5.6 moved the Zig sources out of packages/core/src/zig into
+# their own workspace package.
+NATIVE_DIR="$REPO_ROOT/packages/native"
 
 # ── Verify Zig ──────────────────────────────────────────────────
 if ! command -v zig >/dev/null 2>&1; then
@@ -34,53 +40,44 @@ echo "✓ Zig $ZIG_VERSION detected"
 case "$ZIG_VERSION" in
   0.16.*) ;;
   *)
-    echo "❌ OpenTUI 0.5.2 requires Zig 0.16.x; found $ZIG_VERSION"
+    echo "❌ OpenTUI requires Zig 0.16.x; found $ZIG_VERSION"
     exit 1
     ;;
 esac
 
-# ── Verify vendored deps exist ──────────────────────────────────
-DEPS_DIR="$REPO_ROOT/.zig-deps"
-if [ ! -d "$DEPS_DIR/yoga" ] || [ ! -d "$DEPS_DIR/uucode" ]; then
-  echo "📦 Vendored deps not found. Running vendor-deps.sh first..."
-  bash "$SCRIPT_DIR/vendor-deps.sh"
+# ── Extract the in-repo Zig dependencies ────────────────────────
+# Upstream 0.5.6 vendors yoga, uucode and ghostty as a tracked archive and
+# points build.zig.zon at the extracted paths. That replaces the fork's old
+# vendor-deps.sh download plus the hand-seeded global package cache: no
+# network, no cache-key hashes, and no rewriting of build.zig.zon.
+DEPS_ARCHIVE="$NATIVE_DIR/src/vendor/zig-deps.tar.gz"
+if [ ! -f "$DEPS_ARCHIVE" ]; then
+  echo "❌ Vendored Zig dependencies missing at $DEPS_ARCHIVE"
+  echo "   This checkout is not upstream 0.5.6 or newer."
+  exit 1
 fi
-
-# Zig 0.16 does not reuse the old package-cache layout populated below and
-# its HTTPS client cannot initialize TLS inside termux-docker. Point this
-# disposable generated checkout at the exact vendored dependency sources.
-ZON_FILE="$REPO_ROOT/packages/core/src/zig/build.zig.zon"
-if ! grep -q '\.path = "../../../../.zig-deps/uucode"' "$ZON_FILE"; then
-  sed -i \
-    -e '/github.com\/jacobsandlund\/uucode/{s|\.url = .*|.path = "../../../../.zig-deps/uucode",|;n;/\.hash = /d;}' \
-    -e '/git+https:\/\/github.com\/facebook\/yoga/{s|\.url = .*|.path = "../../../../.zig-deps/yoga",|;n;/\.hash = /d;}' \
-    "$ZON_FILE"
-fi
-
-# ── Populate Zig's dep cache from vendored deps ─────────────────
-# Zig's build.zig.zon fetches yoga + uucode from GitHub at build time,
-# which fails on flaky mobile DNS. We pre-fetch them (vendor-deps.sh)
-# and symlink into Zig's global cache so `zig build` finds them locally
-# without any network access.
-ZIG_GLOBAL_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/zig"
-mkdir -p "$ZIG_GLOBAL_CACHE"
-
-# The cache key is the hash from build.zig.zon. We use a fixed name per
-# dep — Zig will look for <hash> as the cache key. If it's not there,
-# Zig tries to fetch. We create the dirs with the expected hashes.
-UUCODE_HASH="uucode-0.2.0-ZZjBPuS4VABmt0lQ-jDiKB4afmuZVvZpbX09FP5JrR8N"
-YOGA_HASH="N-V-__8AAOYl0gAU76B1VRPFD9AWvy2VkOef2jN0B3sISTeO"
-
-# Zig 0.15 cache layout: $XDG_CACHE_HOME/zig/p/<hash>/
-mkdir -p "$ZIG_GLOBAL_CACHE/p"
-if [ -d "$DEPS_DIR/uucode" ] && [ ! -d "$ZIG_GLOBAL_CACHE/p/$UUCODE_HASH" ]; then
-  cp -r "$DEPS_DIR/uucode" "$ZIG_GLOBAL_CACHE/p/$UUCODE_HASH" 2>/dev/null || true
-  echo "✓ Cached uucode in Zig global cache"
-fi
-
-if [ -d "$DEPS_DIR/yoga" ] && [ ! -d "$ZIG_GLOBAL_CACHE/p/$YOGA_HASH" ]; then
-  cp -r "$DEPS_DIR/yoga" "$ZIG_GLOBAL_CACHE/p/$YOGA_HASH" 2>/dev/null || true
-  echo "✓ Cached yoga in Zig global cache"
+# Do NOT call upstream's packages/native/scripts/prepare-zig-deps.sh here. It
+# guards extraction with a hardlink mutex (ln OWNER LOCK), and Android denies
+# hardlinks under /data — so ln always fails, the lock file it then waits on is
+# never created, and the retry loop spins forever without extracting anything.
+# This script is the only writer of the tree, so extract without a lock and
+# write the marker upstream looks for. is_ready() is the first thing its loop
+# checks, so a valid marker makes that script a no-op if anything else runs it.
+DEPS_DIR="$NATIVE_DIR/zig-deps"
+DEPS_ID="$(cksum "$DEPS_ARCHIVE")"
+if [ "$(cat "$DEPS_DIR/.ready" 2>/dev/null)" = "$DEPS_ID" ]; then
+  echo "✓ Zig dependencies already extracted to $DEPS_DIR"
+else
+  # Clear anything a killed earlier run left behind; a stale lock makes
+  # upstream's script hard-fail instead of extracting.
+  rm -rf "$NATIVE_DIR/.zig-deps.lock" "$NATIVE_DIR"/.zig-deps.*.owner "$NATIVE_DIR"/.zig-deps.*.tmp
+  DEPS_TMP="$NATIVE_DIR/.zig-deps.$$.tmp"
+  mkdir -p "$DEPS_TMP"
+  tar -xzf "$DEPS_ARCHIVE" -C "$DEPS_TMP"
+  printf '%s\n' "$DEPS_ID" > "$DEPS_TMP/.ready"
+  rm -rf "$DEPS_DIR"
+  mv "$DEPS_TMP" "$DEPS_DIR"
+  echo "✓ Zig dependencies extracted to $DEPS_DIR"
 fi
 
 # ── Verify we're on Termux (for Bionic detection) ───────────────
@@ -157,25 +154,6 @@ if [ -z "$CRT_DIR" ]; then
 fi
 echo "✓ crt objects found at: $CRT_DIR"
 
-# ── Heal a yoga cache left rewritten by an older build script ─────────
-#
-# This script used to sed yoga's sources in the global Zig cache,
-# rewriting std::isinf/isnan/abs into __builtin_* intrinsics. That was a
-# workaround for Bionic's math.h defining isinf/isnan as C macros; with
-# Termux's libc++ headers on the include path (see ANDROIDTUI_ANDROID_LIBCXX_INCLUDE
-# in build.zig) the std:: forms compile fine, so the rewrite is gone.
-#
-# It has to be undone rather than merely stopped: the cache lives outside
-# the repo and survives checkouts, and the old std::abs → __builtin_fabs
-# rule was lossy (integer abs silently became double fabs). Restore the
-# pristine vendored copy so the build compiles what upstream shipped.
-if grep -q "__builtin_" "$ZIG_GLOBAL_CACHE/p/$YOGA_HASH/yoga/numeric/Comparison.h" 2>/dev/null; then
-  echo "⚠️  Yoga cache was rewritten by an older build script — restoring pristine source"
-  rm -rf "${ZIG_GLOBAL_CACHE:?}/p/$YOGA_HASH"
-  cp -r "$DEPS_DIR/yoga" "$ZIG_GLOBAL_CACHE/p/$YOGA_HASH"
-  echo "✓ Yoga source restored from $DEPS_DIR/yoga"
-fi
-
 # ── Generate a Zig libc file pointing at Termux's Bionic ────────
 # CRITICAL: Without this, Zig detects the host as 'aarch64-linux-musl'
 # (wrong!) and produces a .so that won't load on Termux. The libc file
@@ -190,7 +168,7 @@ fi
 # passes to @cImport only (not C++ compilation).
 LINKER_STUBS_DIR="$REPO_ROOT/.zig-linker-stubs"
 mkdir -p "$LINKER_STUBS_DIR"
-LIBC_FILE="$REPO_ROOT/packages/core/src/zig/libc-termux.txt"
+LIBC_FILE="$NATIVE_DIR/libc-termux.txt"
 cat > "$LIBC_FILE" << EOF
 include_dir=$TERMUX_INCLUDE
 sys_include_dir=$TERMUX_INCLUDE
@@ -217,7 +195,7 @@ fi
 # The translate-c compatibility wrapper needs the real Bionic sys/time.h.
 # Fill this path only in the disposable prepared checkout; the tracked
 # overlay remains independent of a particular Termux installation prefix.
-TRANSLATE_COMPAT_HEADER="$REPO_ROOT/packages/core/src/zig/android-translate-compat/sys/time.h"
+TRANSLATE_COMPAT_HEADER="$NATIVE_DIR/src/android-translate-compat/sys/time.h"
 sed -i "s|@ANDROIDTUI_SYS_TIME_HEADER@|$TERMUX_INCLUDE/sys/time.h|g" "$TRANSLATE_COMPAT_HEADER"
 
 # ── Prepare Bionic linker inputs without modifying Termux ─────────
@@ -280,7 +258,7 @@ echo "✓ Disposable Android linker sysroot created in $LINKER_STUBS_DIR"
 ls -la "$LINKER_STUBS_DIR"/ 2>&1
 
 # ── Build ───────────────────────────────────────────────────────
-cd "$REPO_ROOT/packages/core/src/zig"
+cd "$NATIVE_DIR"
 
 echo ""
 echo "🔧 Building libopentui.so natively..."
@@ -343,15 +321,19 @@ echo "✓ libc++ headers: $LIBCXX_INCLUDE"
 # Run zig build with --summary all to see all steps + errors
 # Force clean first to avoid cached results that don't output the .so
 echo "Cleaning previous build cache..."
-rm -rf "$REPO_ROOT/packages/core/src/zig/zig-out" "$REPO_ROOT/packages/core/src/zig/.zig-cache" 2>/dev/null || true
+rm -rf "$NATIVE_DIR/zig-out" "$NATIVE_DIR/.zig-cache" "$NATIVE_DIR/lib" 2>/dev/null || true
 ZIG_LOCAL_CACHE_DIR="${TMPDIR:-$PREFIX/tmp}/androidtui-zig-local-cache"
 rm -rf "$ZIG_LOCAL_CACHE_DIR"
 mkdir -p "$ZIG_LOCAL_CACHE_DIR"
 export ZIG_LOCAL_CACHE_DIR
 echo "✓ Zig local cache: $ZIG_LOCAL_CACHE_DIR"
 
+# Upstream 0.5.6 renamed the cross-build option to -Dlibrary-target and gave
+# -Dtarget to standardTargetOptions for the exported "opentui" Zig module.
+# Passing -Dtarget here would silently retarget that module and build the
+# NATIVE library instead of the Android one.
 zig build \
-  -Dtarget="$ANDROID_TARGET" \
+  -Dlibrary-target="$ANDROID_TARGET" \
   -Doptimize=ReleaseFast \
   --summary all
 ZIG_EXIT=$?
@@ -359,7 +341,7 @@ echo "zig build exit code: $ZIG_EXIT"
 if [ $ZIG_EXIT -ne 0 ]; then
   echo "=== Build failed. Re-running with verbose to see the actual error ==="
   zig build \
-    -Dtarget="$ANDROID_TARGET" \
+    -Dlibrary-target="$ANDROID_TARGET" \
     -Doptimize=ReleaseFast \
     --summary all \
     --verbose
@@ -371,20 +353,17 @@ fi
 # problem was the TLS crash from NEEDED: libc.so, which is now fixed
 # by RUNPATH: /system/lib64.
 echo "✓ No symbol renaming needed (Termux libc++ uses __ndk1 too)"
-# The install step uses dest_dir "../lib/{output_name}" which puts the .so
-# at zig-out/lib/aarch64-android/libopentui.so (outside the default zig-out/)
-# Search broadly: zig-out/, .zig-cache/, and parent directories
+# The install step uses dest_dir "../lib/{output_name}", which resolves
+# relative to zig-out and lands the .so in packages/native/lib/<target>/.
 echo "Searching for libopentui.so..."
-find "$REPO_ROOT/packages/core/src/zig" -name "libopentui*.so" -ls 2>/dev/null || echo "  (find in src/zig returned nothing)"
-# Also search the zig global cache
-find "$HOME/.cache/zig" -name "libopentui*.so" -ls 2>/dev/null || true
+find "$NATIVE_DIR" -name "libopentui*.so" -ls 2>/dev/null || echo "  (find in packages/native returned nothing)"
 
 SO_PATH=""
 for candidate in \
-  "$REPO_ROOT/packages/core/src/zig/zig-out/lib/libopentui.so" \
-  "$REPO_ROOT/packages/core/src/zig/zig-out/libopentui.so" \
-  "$REPO_ROOT/packages/core/src/zig/zig-out/lib/aarch64-android/libopentui.so" \
-  "$REPO_ROOT/packages/core/src/zig/lib/aarch64-android/libopentui.so" \
+  "$NATIVE_DIR/lib/aarch64-android/libopentui.so" \
+  "$NATIVE_DIR/zig-out/lib/aarch64-android/libopentui.so" \
+  "$NATIVE_DIR/zig-out/lib/libopentui.so" \
+  "$NATIVE_DIR/zig-out/libopentui.so" \
   "$REPO_ROOT/packages/core/lib/aarch64-android/libopentui.so" \
   "$REPO_ROOT/lib/aarch64-android/libopentui.so" \
   "$(find "$REPO_ROOT" -name 'libopentui*.so' -not -path '*/prebuilt/*' 2>/dev/null | head -1)"; do
@@ -397,12 +376,12 @@ done
 if [ -z "$SO_PATH" ]; then
   echo ""
   echo "❌ libopentui.so not found after build."
-  echo "   zig-out/ contents:"
-  find "$REPO_ROOT/packages/core/src/zig/zig-out" -type f 2>/dev/null | head -20
+  echo "   packages/native tree:"
+  find "$NATIVE_DIR/lib" "$NATIVE_DIR/zig-out" -type f 2>/dev/null | head -20
   echo ""
   echo "   Common fixes:"
-  echo "   - If yoga/uucode fetch failed: bash packages/core/scripts/vendor-deps.sh"
-  echo "   - If DNS failed: try again on WiFi, or vendor deps on a laptop and push"
+  echo "   - Stale extraction: rm -rf packages/native/zig-deps and re-run"
+  echo "   - Wrong Zig: this build needs 0.16.x"
   exit 1
 fi
 

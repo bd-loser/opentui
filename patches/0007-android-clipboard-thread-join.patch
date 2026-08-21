@@ -1,8 +1,8 @@
-diff --git a/packages/core/src/zig/clipboard/host.zig b/packages/core/src/zig/clipboard/host.zig
-index 0634f51..6d8c9df 100644
---- a/packages/core/src/zig/clipboard/host.zig
-+++ b/packages/core/src/zig/clipboard/host.zig
-@@ -103,6 +103,13 @@ extern "c" fn pthread_tryjoin_np(thread: std.Thread.Handle, result: ?*?*anyopa
+diff --git a/packages/native/src/clipboard/host.zig b/packages/native/src/clipboard/host.zig
+index 6305136..63f7135 100644
+--- a/packages/native/src/clipboard/host.zig
++++ b/packages/native/src/clipboard/host.zig
+@@ -103,6 +103,13 @@ extern "c" fn pthread_tryjoin_np(thread: std.Thread.Handle, result: ?*?*anyopaqu
  extern "c" fn pthread_peekjoin_np(thread: std.Thread.Handle, result: ?*?*anyopaque) c_int;
  
  fn tryJoinThread(thread: std.Thread) bool {

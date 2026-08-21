@@ -1,7 +1,7 @@
-diff --git a/packages/core/src/zig/build.zig b/packages/core/src/zig/build.zig
-index ed85ddf..27962db 100644
---- a/packages/core/src/zig/build.zig
-+++ b/packages/core/src/zig/build.zig
+diff --git a/packages/native/build.zig b/packages/native/build.zig
+index a698e69..d75ce9d 100644
+--- a/packages/native/build.zig
++++ b/packages/native/build.zig
 @@ -27,6 +27,7 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
      .{ .zig_target = "aarch64-macos.13.0", .output_name = "aarch64-macos", .description = "macOS aarch64 (Apple Silicon)" },
      .{ .zig_target = "x86_64-windows-gnu", .output_name = "x86_64-windows", .description = "Windows x86_64" },
@@ -21,7 +21,7 @@ index ed85ddf..27962db 100644
      // Zig 0.16's ELF linker still fails on newer glibc startup objects that
      // ship .sframe relocations. Keep shipped libraries on linux-gnu, but use
      // musl for local native executables so test/debug/bench still work.
-@@ -366,23 +371,39 @@ fn addNativeAudioDependencies(
+@@ -366,18 +371,34 @@ fn addNativeAudioDependencies(
      switch (target.result.os.tag) {
          .macos => addMacOSSystemLibraries(b, module, macos_sdk_path.?),
          .linux => {
@@ -61,18 +61,12 @@ index ed85ddf..27962db 100644
      module.addIncludePath(yoga_dep.path(""));
      module.addCSourceFiles(.{
          .root = yoga_dep.path(""),
-         .files = &YOGA_CXX_SOURCES,
--        .flags = &YOGA_CXX_FLAGS,
-+        .flags = if (target.result.abi == .android) &.{ "-std=c++20", "-fexceptions", "-frtti" } else &YOGA_CXX_FLAGS,
-     });
- }
- 
 @@ -411,6 +432,12 @@ fn addTranslatedCImports(
          .optimize = optimize,
      });
-     miniaudio_translate.addIncludePath(b.path("."));
+     miniaudio_translate.addIncludePath(b.path("src"));
 +    if (target.result.abi == .android) {
-+        miniaudio_translate.addIncludePath(b.path("android-translate-compat"));
++        miniaudio_translate.addIncludePath(b.path("src/android-translate-compat"));
 +        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
 +            miniaudio_translate.addSystemIncludePath(.{ .cwd_relative = path });
 +        }
@@ -85,7 +79,7 @@ index ed85ddf..27962db 100644
      });
      yoga_translate.addIncludePath(yoga_dep.path(""));
 +    if (target.result.abi == .android) {
-+        yoga_translate.addIncludePath(b.path("android-translate-compat"));
++        yoga_translate.addIncludePath(b.path("src/android-translate-compat"));
 +        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
 +            yoga_translate.addSystemIncludePath(.{ .cwd_relative = path });
 +        }
@@ -93,7 +87,16 @@ index ed85ddf..27962db 100644
      module.addImport("yoga", yoga_translate.createModule());
  }
  
-@@ -556,7 +589,7 @@ pub fn build(b: *std.Build) void {
+@@ -524,7 +557,7 @@ pub fn build(b: *std.Build) void {
+     });
+     applyDependencies(b, opentui_module, optimize, module_target, build_options);
+     addNativeAudioDependencies(b, opentui_module, module_target, macos_sdk_path);
+-    addYogaDependencies(b, opentui_module);
++    addYogaDependencies(b, opentui_module, module_target);
+ 
+     if (target_option) |target_str| {
+         // Build single target
+@@ -566,7 +599,7 @@ pub fn build(b: *std.Build) void {
          std.process.exit(1);
      }
      addNativeAudioDependencies(b, test_mod, native_target, macos_sdk_path);
@@ -102,7 +105,7 @@ index ed85ddf..27962db 100644
  
      const run_test = b.addRunArtifact(test_artifact);
      test_step.dependOn(&run_test.step);
-@@ -600,7 +633,7 @@ pub fn build(b: *std.Build) void {
+@@ -610,7 +643,7 @@ pub fn build(b: *std.Build) void {
          std.process.exit(1);
      }
      addNativeAudioDependencies(b, bench_ffi_mod, bench_ffi_target, macos_sdk_path);
@@ -111,7 +114,7 @@ index ed85ddf..27962db 100644
      const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
      bench_ffi_step.dependOn(&install_bench_ffi.step);
      bench_step.dependOn(bench_ffi_step);
-@@ -723,6 +756,23 @@ fn buildTarget(
+@@ -733,6 +766,23 @@ fn buildTarget(
          .optimize = optimize,
      });
  
@@ -135,7 +138,7 @@ index ed85ddf..27962db 100644
      applyDependencies(b, module, optimize, target, build_options);
  
      const lib = b.addLibrary(.{
-@@ -732,7 +782,18 @@ fn buildTarget(
+@@ -742,7 +792,18 @@ fn buildTarget(
      });
  
      addNativeAudioDependencies(b, module, target, macos_sdk_path);

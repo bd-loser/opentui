@@ -16,8 +16,8 @@ files, and header paths. Native builds skip all of it.
 │  YOUR PHONE (Termux, aarch64)                           │
 │                                                          │
 │  build-native-termux.sh                                  │
-│    ↓  zig build -Doptimize=ReleaseFast                   │
-│    ↓  (no -Dtarget, no --sysroot, no NDK)                │
+│    ↓  zig build -Dlibrary-target=aarch64-linux-android.24 │
+│    ↓  (no --sysroot, no NDK)                             │
 │  prebuilt/aarch64-android/libopentui.so                  │
 │    ↓  git add + commit + push                            │
 └─────────────────────────┬───────────────────────────────┘

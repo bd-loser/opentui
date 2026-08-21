@@ -14,11 +14,32 @@ if (!/^\d+\.\d+\.\d+(?:-(?:android|future)\.\d+)?$/.test(manifest.releaseVersion
 }
 const releaseBase = manifest.releaseVersion.split("-")[0]
 const upstreamBase = manifest.upstream.tag.slice(1)
-if (manifest.releaseVersion.includes("-future.") && releaseBase >= upstreamBase) {
+
+// Compare numerically. String comparison gets 0.5.10 vs 0.5.9 backwards.
+function compareVersions(a, b) {
+  const left = a.split(".").map(Number)
+  const right = b.split(".").map(Number)
+  for (let i = 0; i < 3; i++) {
+    if (left[i] !== right[i]) return left[i] - right[i]
+  }
+  return 0
+}
+const versionOrder = compareVersions(releaseBase, upstreamBase)
+
+if (manifest.releaseVersion.includes("-future.") && versionOrder >= 0) {
   throw new Error(`Future preview ${manifest.releaseVersion} must precede upstream ${manifest.upstream.tag}`)
 }
-if (!manifest.releaseVersion.includes("-future.") && releaseBase !== upstreamBase) {
-  throw new Error(`${manifest.releaseVersion} is not based on ${manifest.upstream.tag}`)
+if (!manifest.releaseVersion.includes("-future.") && versionOrder > 0) {
+  throw new Error(`${manifest.releaseVersion} is ahead of upstream ${manifest.upstream.tag}`)
+}
+// A stable releaseVersion below upstream is a deliberate test publish: it
+// burns an unused npm version to exercise the pipeline on newer upstream
+// code without consuming the number that upstream release will claim.
+if (!manifest.releaseVersion.includes("-future.") && versionOrder < 0) {
+  console.warn(
+    `Note: publishing upstream ${manifest.upstream.tag} as ${manifest.releaseVersion} ` +
+      `(behind upstream). Intended for test releases.`,
+  )
 }
 
 if (!existsSync(join(sourceRoot, ".git"))) {
@@ -44,6 +65,13 @@ const required = [
   "packages/core/scripts/build-native-termux.sh",
   "packages/core/scripts/package-prebuilt.ts",
   "scripts/androidtui-repackage.mjs",
+  // Upstream 0.5.6 split the Zig sources into their own workspace package and
+  // vendored the Zig dependencies in-repo. Both are load-bearing for the
+  // Termux build, so a future upstream move should fail here, not mid-build.
+  "packages/native/build.zig",
+  "packages/native/scripts/prepare-zig-deps.sh",
+  "packages/native/src/vendor/zig-deps.tar.gz",
+  "packages/native/src/android-translate-compat/sys/time.h",
 ]
 for (const file of required) {
   if (!existsSync(join(sourceRoot, file))) throw new Error(`Generated source is missing ${file}`)
@@ -52,6 +80,9 @@ for (const file of required) {
 const changed = output("git", ["status", "--short"], sourceRoot)
 if (!changed.includes("packages/core/src/node-asset-target.ts")) {
   throw new Error("Android native resolution patch was not applied")
+}
+if (!changed.includes("packages/native/build.zig")) {
+  throw new Error("Android Zig build patch was not applied")
 }
 
 for (const packageName of ["core", "react", "solid", "keymap", "qrcode", "three", "ssh"]) {

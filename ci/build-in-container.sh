@@ -48,6 +48,28 @@ cp "$SO" /out/libopentui.so
 echo "=== Installing workspace dependencies with bun-termux ==="
 bun install --ignore-scripts
 
+# bun >= 1.4 inside termux-docker leaves workspace .bin links dangling
+# (packages/core/node_modules/.bin/tsc points at a hoisted-away copy),
+# so bunx tsc dies during declaration generation. Re-point the bin at
+# wherever typescript actually landed. Container-only repair; the
+# published tarballs never see it.
+echo "--- tsc diagnostics ---"
+ls -la packages/core/node_modules/.bin/ 2>&1 | grep -i tsc || echo "no tsc entry in packages/core/node_modules/.bin"
+find . -maxdepth 5 -type d -name typescript -not -path './.git/*' 2>/dev/null | head -5
+tsc_src="$(find "$PWD/node_modules" -path '*/typescript/bin/tsc' -type f -print -quit)"
+echo "hoisted tsc: ${tsc_src:-NOT FOUND}"
+for pkg in core react solid keymap qrcode three ssh; do
+  bin_dir="packages/$pkg/node_modules/.bin"
+  [ -d "packages/$pkg" ] || continue
+  if [ ! -e "$bin_dir/tsc" ]; then
+    test -n "$tsc_src"
+    mkdir -p "$bin_dir"
+    ln -sf "$tsc_src" "$bin_dir/tsc"
+    echo "linked $bin_dir/tsc -> $tsc_src"
+  fi
+done
+( cd packages/core && bunx tsc --version )
+
 echo "=== Packaging @androidtui/core-android-arm64 ==="
 bun packages/core/scripts/package-prebuilt.ts
 mkdir -p /out/packages

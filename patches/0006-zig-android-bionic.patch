@@ -1,5 +1,5 @@
 diff --git a/packages/native/build.zig b/packages/native/build.zig
-index b226da7..031ba9c 100644
+index b226da7..bbebddf 100644
 --- a/packages/native/build.zig
 +++ b/packages/native/build.zig
 @@ -27,6 +27,7 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
@@ -67,11 +67,11 @@ index b226da7..031ba9c 100644
      miniaudio_translate.addIncludePath(b.path("src"));
 +    if (target.result.abi == .android) {
 +        miniaudio_translate.addIncludePath(b.path("src/android-translate-compat"));
-+        // NDK r30 headers hard-error when __ANDROID_API__ is undefined, and
-+        // zig translate-c forwards an unversioned triple so clang never
-+        // defines it. Pin our API level explicitly (matches ANDROID_TARGET
-+        // aarch64-linux-android.24 in build-native-termux.sh).
++        // NDK r30 sys/cdefs.h #errors unless clang saw a versioned triple;
++        // zig translate-c forwards an unversioned one, so neither the API
++        // level nor the guard macro get defined. Pin both (api 24).
 +        miniaudio_translate.defineCMacro("__ANDROID_API__", "24");
++        miniaudio_translate.defineCMacro("__ANDROID_MIN_SDK_VERSION__", "24");
 +        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
 +            miniaudio_translate.addSystemIncludePath(.{ .cwd_relative = path });
 +        }
@@ -79,14 +79,16 @@ index b226da7..031ba9c 100644
      module.addImport("miniaudio", miniaudio_translate.createModule());
  
      const yoga_dep = b.dependency("yoga", .{});
-@@ -420,6 +447,14 @@ fn addTranslatedCImports(
+@@ -420,6 +452,16 @@ fn addTranslatedCImports(
          .optimize = optimize,
      });
      yoga_translate.addIncludePath(yoga_dep.path(""));
 +    if (target.result.abi == .android) {
 +        yoga_translate.addIncludePath(b.path("src/android-translate-compat"));
-+        // Same NDK r30 __ANDROID_API__ pin as the miniaudio step above.
++        // Same NDK r30 cdefs.h pin as the miniaudio step above: the guard
++        // checks __ANDROID_MIN_SDK_VERSION__, so both macros are required.
 +        yoga_translate.defineCMacro("__ANDROID_API__", "24");
++        yoga_translate.defineCMacro("__ANDROID_MIN_SDK_VERSION__", "24");
 +        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
 +            yoga_translate.addSystemIncludePath(.{ .cwd_relative = path });
 +        }
@@ -94,7 +96,7 @@ index b226da7..031ba9c 100644
      module.addImport("yoga", yoga_translate.createModule());
  }
  
-@@ -525,7 +558,7 @@ pub fn build(b: *std.Build) void {
+@@ -525,7 +567,7 @@ pub fn build(b: *std.Build) void {
      });
      applyDependencies(b, opentui_module, optimize, module_target, build_options);
      addNativeAudioDependencies(b, opentui_module, module_target, macos_sdk_path);
@@ -103,7 +105,7 @@ index b226da7..031ba9c 100644
  
      if (target_option) |target_str| {
          // Build single target
-@@ -567,7 +600,7 @@ pub fn build(b: *std.Build) void {
+@@ -567,7 +609,7 @@ pub fn build(b: *std.Build) void {
          std.process.exit(1);
      }
      addNativeAudioDependencies(b, test_mod, native_target, macos_sdk_path);
@@ -112,7 +114,7 @@ index b226da7..031ba9c 100644
  
      const run_test = b.addRunArtifact(test_artifact);
      test_step.dependOn(&run_test.step);
-@@ -611,7 +644,7 @@ pub fn build(b: *std.Build) void {
+@@ -611,7 +653,7 @@ pub fn build(b: *std.Build) void {
          std.process.exit(1);
      }
      addNativeAudioDependencies(b, bench_ffi_mod, bench_ffi_target, macos_sdk_path);
@@ -121,7 +123,7 @@ index b226da7..031ba9c 100644
      const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
      bench_ffi_step.dependOn(&install_bench_ffi.step);
      bench_step.dependOn(bench_ffi_step);
-@@ -737,6 +770,23 @@ fn buildTarget(
+@@ -737,6 +779,23 @@ fn buildTarget(
          .strip = false,
      });
  
@@ -145,7 +147,7 @@ index b226da7..031ba9c 100644
      applyDependencies(b, module, optimize, target, build_options);
  
      const lib = b.addLibrary(.{
-@@ -748,7 +798,18 @@ fn buildTarget(
+@@ -748,7 +807,18 @@ fn buildTarget(
      if (target.result.os.tag == .linux and optimize != .Debug) lib.build_id = .sha1;
  
      addNativeAudioDependencies(b, module, target, macos_sdk_path);

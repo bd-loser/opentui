@@ -11,13 +11,14 @@ apt update -y
 apt install -y binutils clang curl file git libc++ ndk-sysroot nodejs-lts npm tar xz-utils zig
 
 # Pin the bun build instead of floating on install.sh: 1.4.0-patched
-# resolves the workspace differently inside termux-docker — typescript
-# never lands under packages/core/node_modules, so declaration generation
-# dies with "node_modules/.bin/tsc: No such file or directory". The same
-# binary works fine on a real device, so this is a container-only break.
-# 1.3.14-patched is the build every successful release so far used.
+# resolved the workspace differently inside termux-docker — typescript
+# never landed under packages/core/node_modules, so declaration
+# generation died with "node_modules/.bin/tsc: No such file or
+# directory" (container-only break; fine on device). Now on 1.4.2-patched:
+# Android 12 close_range seccomp fix plus upstream 1.4.2 install work.
+# Non-publish CI runs are the gate before releases switch over.
 curl -fsSL -o "$PREFIX/tmp/bun.deb" \
-  "https://github.com/bd-loser/bun-termux/releases/download/v1.3.14-patched/bun_1.3.14-patched_aarch64.deb"
+  "https://github.com/bd-loser/bun-termux/releases/download/v1.4.2-patched/bun_1.4.2-patched_aarch64.deb"
 dpkg -i "$PREFIX/tmp/bun.deb"
 rm -f "$PREFIX/tmp/bun.deb"
 

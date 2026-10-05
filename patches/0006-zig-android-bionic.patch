@@ -61,12 +61,17 @@ index b226da7..031ba9c 100644
      module.addIncludePath(yoga_dep.path(""));
      module.addCSourceFiles(.{
          .root = yoga_dep.path(""),
-@@ -411,6 +432,12 @@ fn addTranslatedCImports(
+@@ -411,6 +432,17 @@ fn addTranslatedCImports(
          .optimize = optimize,
      });
      miniaudio_translate.addIncludePath(b.path("src"));
 +    if (target.result.abi == .android) {
 +        miniaudio_translate.addIncludePath(b.path("src/android-translate-compat"));
++        // NDK r30 headers hard-error when __ANDROID_API__ is undefined, and
++        // zig translate-c forwards an unversioned triple so clang never
++        // defines it. Pin our API level explicitly (matches ANDROID_TARGET
++        // aarch64-linux-android.24 in build-native-termux.sh).
++        miniaudio_translate.defineCMacro("__ANDROID_API__", "24");
 +        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
 +            miniaudio_translate.addSystemIncludePath(.{ .cwd_relative = path });
 +        }
@@ -74,12 +79,14 @@ index b226da7..031ba9c 100644
      module.addImport("miniaudio", miniaudio_translate.createModule());
  
      const yoga_dep = b.dependency("yoga", .{});
-@@ -420,6 +447,12 @@ fn addTranslatedCImports(
+@@ -420,6 +447,14 @@ fn addTranslatedCImports(
          .optimize = optimize,
      });
      yoga_translate.addIncludePath(yoga_dep.path(""));
 +    if (target.result.abi == .android) {
 +        yoga_translate.addIncludePath(b.path("src/android-translate-compat"));
++        // Same NDK r30 __ANDROID_API__ pin as the miniaudio step above.
++        yoga_translate.defineCMacro("__ANDROID_API__", "24");
 +        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
 +            yoga_translate.addSystemIncludePath(.{ .cwd_relative = path });
 +        }

@@ -68,6 +68,7 @@ for pkg in core react solid keymap qrcode three ssh; do
   bin_dir="packages/$pkg/node_modules/.bin"
   [ -d "packages/$pkg" ] || continue
   mkdir -p "$bin_dir"
+  rm -f "$bin_dir/tsc"
   printf '#!%s/bin/bash\nexec "%s/bin/node" "%s" "$@"\n' "$PREFIX" "$PREFIX" "$tsc_src" > "$bin_dir/tsc"
   chmod +x "$bin_dir/tsc"
   echo "wrapped $bin_dir/tsc -> node $tsc_src"

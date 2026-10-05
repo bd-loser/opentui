@@ -48,25 +48,29 @@ cp "$SO" /out/libopentui.so
 echo "=== Installing workspace dependencies with bun-termux ==="
 bun install --ignore-scripts
 
-# bun >= 1.4 inside termux-docker leaves workspace .bin links dangling
-# (packages/core/node_modules/.bin/tsc points at a hoisted-away copy),
-# so bunx tsc dies during declaration generation. Re-point the bin at
-# wherever typescript actually landed. Container-only repair; the
-# published tarballs never see it.
+# bun >= 1.4 inside termux-docker execs node_modules/.bin scripts through
+# its posix_spawn shebang remap and drops the `node` argument, so
+# bunx tsc dies during declaration generation. Replace the bin entries
+# with a node-direct wrapper. Container-only repair; the published
+# tarballs never see it.
 echo "--- tsc diagnostics ---"
+ls -la /usr/bin/env 2>&1 || true
 ls -la packages/core/node_modules/.bin/ 2>&1 | grep -i tsc || echo "no tsc entry in packages/core/node_modules/.bin"
 find . -maxdepth 5 -type d -name typescript -not -path './.git/*' 2>/dev/null | head -5
 tsc_src="$(find "$PWD/node_modules" -path '*/typescript/bin/tsc' -type f -print -quit)"
 echo "hoisted tsc: ${tsc_src:-NOT FOUND}"
+test -n "$tsc_src"
+# bun 1.4.x canary spawn drops the `node` argument when exec'ing
+# scripts whose shebang is `#!/usr/bin/env node` via a symlinked bin
+# dir, so env tries to exec the script itself (ENOENT, exit 127).
+# Replace the bin entries with a wrapper that runs node directly.
 for pkg in core react solid keymap qrcode three ssh; do
   bin_dir="packages/$pkg/node_modules/.bin"
   [ -d "packages/$pkg" ] || continue
-  if [ ! -e "$bin_dir/tsc" ]; then
-    test -n "$tsc_src"
-    mkdir -p "$bin_dir"
-    ln -sf "$tsc_src" "$bin_dir/tsc"
-    echo "linked $bin_dir/tsc -> $tsc_src"
-  fi
+  mkdir -p "$bin_dir"
+  printf '#!%s/bin/bash\nexec "%s/bin/node" "%s" "$@"\n' "$PREFIX" "$PREFIX" "$tsc_src" > "$bin_dir/tsc"
+  chmod +x "$bin_dir/tsc"
+  echo "wrapped $bin_dir/tsc -> node $tsc_src"
 done
 ( cd packages/core && bunx tsc --version )
 

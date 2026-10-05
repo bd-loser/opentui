@@ -9,7 +9,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const sourceRoot = join(resolve(process.env.ANDROIDTUI_WORK_ROOT ?? join(root, ".work")), "opentui")
 const manifest = JSON.parse(readFileSync(join(root, "androidtui.json"), "utf8"))
 
-if (!/^\d+\.\d+\.\d+(?:-(?:android|future)\.\d+)?$/.test(manifest.releaseVersion)) {
+// Releases ship plain upstream versions (0.5.14 == vX.Y.Z). Only preview
+// slots may carry a suffix, and only -future.N — the old -android.N test
+// numbering is retired.
+if (!/^\d+\.\d+\.\d+(?:-future\.\d+)?$/.test(manifest.releaseVersion)) {
   throw new Error(`Invalid Android release version: ${manifest.releaseVersion}`)
 }
 const releaseBase = manifest.releaseVersion.split("-")[0]

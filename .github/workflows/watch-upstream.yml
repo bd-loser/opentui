@@ -43,29 +43,41 @@ jobs:
             exit 1
           }
           CURRENT="$(node -p "require('./androidtui.json').upstream.tag")"
+          RELEASE="$(node -p "require('./androidtui.json').releaseVersion")"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
           if [ "$TAG" = "$CURRENT" ]; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "ANDROIDTUI already follows $TAG"
+            # Retry gate: a pinned tag with a release version missing from
+            # npm means the last release run died (native break, runner
+            # flake). Re-dispatch until the version actually ships instead
+            # of parking forever on "already follows".
+            if npm view "@androidtui/core@$RELEASE" version >/dev/null 2>&1; then
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "ANDROIDTUI already follows $TAG and $RELEASE is published"
+              exit 0
+            fi
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "repin=false" >> "$GITHUB_OUTPUT"
+            echo "$TAG already pinned but @androidtui/core@$RELEASE is missing on npm; retrying the release"
             exit 0
           fi
           COMMIT="$(gh api "repos/anomalyco/opentui/commits/$TAG" --jq .sha)"
           echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
           echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "repin=true" >> "$GITHUB_OUTPUT"
           echo "Updating $CURRENT -> $TAG ($COMMIT)"
       - name: Pin and verify upstream release
-        if: steps.upstream.outputs.changed == 'true'
+        if: steps.upstream.outputs.repin == 'true'
         run: |
           node scripts/update-upstream.mjs \
             "${{ steps.upstream.outputs.tag }}" \
             "${{ steps.upstream.outputs.commit }}"
           node scripts/prepare.mjs
           node scripts/verify.mjs
-      - name: Check npm version is unused
+      - name: Check npm release version is unused
         if: steps.upstream.outputs.changed == 'true'
         run: |
-          VERSION="${{ steps.upstream.outputs.tag }}"
+          VERSION="$(node -p "require('./androidtui.json').releaseVersion")"
           VERSION="${VERSION#v}"
           for package_name in core-android-arm64 core react solid keymap qrcode three ssh; do
             if npm view "@androidtui/$package_name@$VERSION" version >/dev/null 2>&1; then
@@ -74,7 +86,7 @@ jobs:
             fi
           done
       - name: Commit upstream pin
-        if: steps.upstream.outputs.changed == 'true' && inputs.dry_run != true
+        if: steps.upstream.outputs.repin == 'true' && inputs.dry_run != true
         env:
           TAG: ${{ steps.upstream.outputs.tag }}
           CURRENT: ${{ steps.upstream.outputs.current }}
@@ -90,8 +102,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          ACTIVE="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/androidtui-release.yml/runs?per_page=50" \
+            --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length')"
+          if [ "$ACTIVE" != "0" ]; then
+            echo "An androidtui-release run is already queued or in progress; skipping dispatch"
+            exit 0
+          fi
           gh workflow run androidtui-release.yml --ref main -f publish=true
           echo "Dispatched ANDROIDTUI release for ${{ steps.upstream.outputs.tag }}"
       - name: Dry-run summary
         if: steps.upstream.outputs.changed == 'true' && inputs.dry_run == true
-        run: echo "Would update ${{ steps.upstream.outputs.current }} to ${{ steps.upstream.outputs.tag }} and dispatch npm publication."
+        run: echo "Would ensure ${{ steps.upstream.outputs.tag }} ships as the matching upstream version and dispatch npm publication."

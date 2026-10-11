@@ -1,5 +1,5 @@
 diff --git a/packages/native/build.zig b/packages/native/build.zig
-index b226da7..bbebddf 100644
+index 84cafc7..6669606 100644
 --- a/packages/native/build.zig
 +++ b/packages/native/build.zig
 @@ -27,6 +27,7 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
@@ -21,7 +21,7 @@ index b226da7..bbebddf 100644
      // Zig 0.16's ELF linker still fails on newer glibc startup objects that
      // ship .sframe relocations. Keep shipped libraries on linux-gnu, but use
      // musl for local native executables so test/debug/bench still work.
-@@ -366,18 +371,34 @@ fn addNativeAudioDependencies(
+@@ -366,9 +371,17 @@ fn addNativeAudioDependencies(
      switch (target.result.os.tag) {
          .macos => addMacOSSystemLibraries(b, module, macos_sdk_path.?),
          .linux => {
@@ -42,15 +42,13 @@ index b226da7..bbebddf 100644
          },
          else => {},
      }
- }
- 
--fn addYogaDependencies(b: *std.Build, module: *std.Build.Module) void {
-+fn addYogaDependencies(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
-     const yoga_dep = b.dependency("yoga", .{});
+@@ -381,7 +394,15 @@ fn addYogaDependencies(b: *std.Build, module: *std.Build.Module, test_allocator:
+     else
+         &YOGA_CXX_FLAGS;
  
 -    module.link_libcpp = true;
-+    module.link_libcpp = target.result.abi != .android;
-+    if (target.result.abi == .android) {
++    module.link_libcpp = !test_allocator;
++    if (test_allocator) {
 +        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_LIBCXX_INCLUDE")) |path| {
 +            module.addIncludePath(.{ .cwd_relative = path });
 +        }
@@ -61,109 +59,3 @@ index b226da7..bbebddf 100644
      module.addIncludePath(yoga_dep.path(""));
      module.addCSourceFiles(.{
          .root = yoga_dep.path(""),
-@@ -411,6 +432,17 @@ fn addTranslatedCImports(
-         .optimize = optimize,
-     });
-     miniaudio_translate.addIncludePath(b.path("src"));
-+    if (target.result.abi == .android) {
-+        miniaudio_translate.addIncludePath(b.path("src/android-translate-compat"));
-+        // NDK r30 sys/cdefs.h #errors unless clang saw a versioned triple;
-+        // zig translate-c forwards an unversioned one, so neither the API
-+        // level nor the guard macro get defined. Pin both (api 24).
-+        miniaudio_translate.defineCMacro("__ANDROID_API__", "24");
-+        miniaudio_translate.defineCMacro("__ANDROID_MIN_SDK_VERSION__", "24");
-+        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
-+            miniaudio_translate.addSystemIncludePath(.{ .cwd_relative = path });
-+        }
-+    }
-     module.addImport("miniaudio", miniaudio_translate.createModule());
- 
-     const yoga_dep = b.dependency("yoga", .{});
-@@ -420,6 +452,16 @@ fn addTranslatedCImports(
-         .optimize = optimize,
-     });
-     yoga_translate.addIncludePath(yoga_dep.path(""));
-+    if (target.result.abi == .android) {
-+        yoga_translate.addIncludePath(b.path("src/android-translate-compat"));
-+        // Same NDK r30 cdefs.h pin as the miniaudio step above: the guard
-+        // checks __ANDROID_MIN_SDK_VERSION__, so both macros are required.
-+        yoga_translate.defineCMacro("__ANDROID_API__", "24");
-+        yoga_translate.defineCMacro("__ANDROID_MIN_SDK_VERSION__", "24");
-+        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
-+            yoga_translate.addSystemIncludePath(.{ .cwd_relative = path });
-+        }
-+    }
-     module.addImport("yoga", yoga_translate.createModule());
- }
- 
-@@ -525,7 +567,7 @@ pub fn build(b: *std.Build) void {
-     });
-     applyDependencies(b, opentui_module, optimize, module_target, build_options);
-     addNativeAudioDependencies(b, opentui_module, module_target, macos_sdk_path);
--    addYogaDependencies(b, opentui_module);
-+    addYogaDependencies(b, opentui_module, module_target);
- 
-     if (target_option) |target_str| {
-         // Build single target
-@@ -567,7 +609,7 @@ pub fn build(b: *std.Build) void {
-         std.process.exit(1);
-     }
-     addNativeAudioDependencies(b, test_mod, native_target, macos_sdk_path);
--    addYogaDependencies(b, test_mod);
-+    addYogaDependencies(b, test_mod, native_target);
- 
-     const run_test = b.addRunArtifact(test_artifact);
-     test_step.dependOn(&run_test.step);
-@@ -611,7 +653,7 @@ pub fn build(b: *std.Build) void {
-         std.process.exit(1);
-     }
-     addNativeAudioDependencies(b, bench_ffi_mod, bench_ffi_target, macos_sdk_path);
--    addYogaDependencies(b, bench_ffi_mod);
-+    addYogaDependencies(b, bench_ffi_mod, bench_ffi_target);
-     const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
-     bench_ffi_step.dependOn(&install_bench_ffi.step);
-     bench_step.dependOn(bench_ffi_step);
-@@ -737,6 +779,23 @@ fn buildTarget(
-         .strip = false,
-     });
- 
-+    if (target.result.abi == .android) {
-+        module.link_libc = true;
-+        module.link_libcpp = false;
-+        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
-+            module.addSystemIncludePath(.{ .cwd_relative = path });
-+        }
-+        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_LIB_SEARCH_PATHS")) |paths| {
-+            var it = std.mem.splitScalar(u8, paths, ':');
-+            while (it.next()) |path| {
-+                if (path.len > 0) module.addLibraryPath(.{ .cwd_relative = path });
-+            }
-+        }
-+        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_LIBCXX_PATH")) |path| {
-+            module.addObjectFile(.{ .cwd_relative = path });
-+        }
-+    }
-+
-     applyDependencies(b, module, optimize, target, build_options);
- 
-     const lib = b.addLibrary(.{
-@@ -748,7 +807,18 @@ fn buildTarget(
-     if (target.result.os.tag == .linux and optimize != .Debug) lib.build_id = .sha1;
- 
-     addNativeAudioDependencies(b, module, target, macos_sdk_path);
--    addYogaDependencies(b, module);
-+    addYogaDependencies(b, module, target);
-+
-+    if (target.result.abi == .android) {
-+        // Keep the archive after Yoga so its unwind references extract members.
-+        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_LIBUNWIND_PATH")) |path| {
-+            module.addObjectFile(.{ .cwd_relative = path });
-+        }
-+        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_LIB_PATH")) |path| {
-+            module.addRPath(.{ .cwd_relative = path });
-+        }
-+        module.addRPath(.{ .cwd_relative = "/system/lib64" });
-+    }
- 
-     const install_dir = b.addInstallArtifact(lib, .{
-         .dest_dir = .{

@@ -107,7 +107,7 @@ bun -e '
   const { dlopen } = await import("bun:ffi");
   const native = (await import("@opentui/core-android-arm64")).default;
   const library = dlopen(native, {
-    createNativeRenderable: { args: [], returns: "u32" },
+    ot_buffer_create: { args: ["ptr", "ptr", "ptr"], returns: "u32" },
   });
   library.close();
   await import("@opentui/core");

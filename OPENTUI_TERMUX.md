@@ -213,7 +213,7 @@ function loadBackend() {
 - **Older Node:** falls back to `createUnsupportedBackend()` → `createCliRenderer()` throws
 
 Once the backend is loaded, opentui calls `dlopen(libopentui.so)` and
-resolves the C ABI symbols (`createNativeRenderable`, `render`, etc.).
+resolves the C ABI symbols (`ot_buffer_create`, `ot_context_create`, etc.).
 
 ### Step 6: The native renderer takes over stdout
 

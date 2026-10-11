@@ -45,13 +45,6 @@ test -s "$SO"
 file "$SO"
 cp "$SO" /out/libopentui.so
 
-# The JS package build (below) rechecks the native ABI with "zig run".
-# build-native-termux.sh exported ZIG_LIBC only for its own "zig build",
-# and that does not survive into this step, so re-export it here.
-if [ -f "$SOURCE_ROOT/packages/native/libc-termux.txt" ]; then
-  export ZIG_LIBC="$SOURCE_ROOT/packages/native/libc-termux.txt"
-fi
-
 echo "=== Installing workspace dependencies with bun-termux ==="
 bun install --ignore-scripts
 

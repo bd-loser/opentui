@@ -26,15 +26,22 @@ index c6c3e24..749c1fc 100644
  ]
 
 diff --git a/packages/core/scripts/native-abi.ts b/packages/core/scripts/native-abi.ts
-index 1d74d4d..0798f78 100644
+index 1d74d4d..e4624d5 100644
 --- a/packages/core/scripts/native-abi.ts
 +++ b/packages/core/scripts/native-abi.ts
-@@ -16,7 +16,7 @@ const scriptRoot = dirname(fileURLToPath(import.meta.url))
- const nativeRoot = resolve(scriptRoot, "../../native")
- const outputPath = resolve(scriptRoot, "../src/native-abi.generated.ts")
- const archNames: Record<string, string> = { x64: "x86_64", arm64: "aarch64" }
--const osNames: Record<string, string> = { linux: "linux-musl", darwin: "macos", win32: "windows-gnu" }
-+const osNames: Record<string, string> = { linux: "linux-musl", darwin: "macos", win32: "windows-gnu", android: "linux-android.24" }
- 
- interface Signature {
-   args: string[]
+@@ -317,6 +317,15 @@ if (import.meta.main) {
+   const args = process.argv.slice(2)
+   if (args.some((arg) => arg !== "--check" && arg !== "--all-targets" && arg !== "--audit"))
+     throw new Error("Expected --check, --all-targets and/or --audit")
++  // Android (Termux): the ABI audit needs a host clang that resolves libc
++  // headers, and Termux's sys/cdefs.h rejects every triple Zig can emit
++  // ("Unversioned target triples are not supported!"). The .so shipped for
++  // android is built by build-native-termux.sh, whose translate-c steps pin
++  // -D__ANDROID_API__; generated.ts always comes from a supported host.
++  if (process.platform === "android") {
++    console.log("native-abi: skipped on Android host (see packages/core/scripts/native-abi.ts)")
++    process.exit(0)
++  }
+   const abi = compileHeader({ allTargets: args.includes("--all-targets") })
+   const generated = await generateNativeABI(abi)
+   if (args.includes("--check")) verifyNativeABI(generated)

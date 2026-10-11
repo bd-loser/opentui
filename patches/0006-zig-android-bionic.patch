@@ -1,5 +1,5 @@
 diff --git a/packages/native/build.zig b/packages/native/build.zig
-index 84cafc7..a606058 100644
+index 84cafc7..2678844 100644
 --- a/packages/native/build.zig
 +++ b/packages/native/build.zig
 @@ -27,6 +27,7 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
@@ -100,7 +100,23 @@ index 84cafc7..a606058 100644
      module.addImport("yoga", yoga_translate.createModule());
      addContextABIHeader(b, module, optimize, target);
  }
-@@ -546,7 +588,7 @@ pub fn build(b: *std.Build) void {
+@@ -440,6 +482,15 @@ fn addContextABIHeader(
+         .target = target,
+         .optimize = optimize,
+     });
++    if (target.result.abi == .android) {
++        header.addIncludePath(b.path("src/android-translate-compat"));
++        // Same NDK r30 cdefs.h pin as the miniaudio and yoga steps above.
++        header.defineCMacro("__ANDROID_API__", "24");
++        header.defineCMacro("__ANDROID_MIN_SDK_VERSION__", "24");
++        if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |path| {
++            header.addSystemIncludePath(.{ .cwd_relative = path });
++        }
++    }
+     module.addImport("context_abi_c", header.createModule());
+ }
+ 
+@@ -546,7 +597,7 @@ pub fn build(b: *std.Build) void {
      });
      applyDependencies(b, opentui_module, optimize, module_target, build_options);
      addNativeAudioDependencies(b, opentui_module, module_target, macos_sdk_path);
@@ -109,7 +125,7 @@ index 84cafc7..a606058 100644
  
      if (target_option) |target_str| {
          // Build single target
-@@ -588,7 +630,7 @@ pub fn build(b: *std.Build) void {
+@@ -588,7 +639,7 @@ pub fn build(b: *std.Build) void {
          std.process.exit(1);
      }
      addNativeAudioDependencies(b, test_mod, native_target, macos_sdk_path);
@@ -118,7 +134,7 @@ index 84cafc7..a606058 100644
  
      const run_test = b.addRunArtifact(test_artifact);
      test_step.dependOn(&run_test.step);
-@@ -612,7 +654,7 @@ pub fn build(b: *std.Build) void {
+@@ -612,7 +663,7 @@ pub fn build(b: *std.Build) void {
          .use_llvm = true,
      });
      addNativeAudioDependencies(b, cov_mod, native_target, macos_sdk_path);
@@ -127,7 +143,7 @@ index 84cafc7..a606058 100644
      const install_cov = b.addInstallArtifact(cov_artifact, .{});
      cov_step.dependOn(&install_cov.step);
  
-@@ -663,7 +705,7 @@ pub fn build(b: *std.Build) void {
+@@ -663,7 +714,7 @@ pub fn build(b: *std.Build) void {
          .use_llvm = debug_use_llvm,
      });
      addNativeAudioDependencies(b, lifetime_mod, native_target, macos_sdk_path);
@@ -136,7 +152,7 @@ index 84cafc7..a606058 100644
      const run_lifetime = b.addRunArtifact(lifetime_artifact);
      lifetime_step.dependOn(&run_lifetime.step);
  
-@@ -681,7 +723,7 @@ pub fn build(b: *std.Build) void {
+@@ -681,7 +732,7 @@ pub fn build(b: *std.Build) void {
      });
      bench_mod.link_libc = true;
      addImageShim(b, bench_mod, native_target, macos_sdk_path);
@@ -145,7 +161,7 @@ index 84cafc7..a606058 100644
      if (native_target.result.os.tag == .macos) addMacOSSDKSearchPaths(b, bench_mod, macos_sdk_path.?);
      const run_bench = b.addRunArtifact(bench_exe);
      if (b.args) |args| {
-@@ -707,7 +749,7 @@ pub fn build(b: *std.Build) void {
+@@ -707,7 +758,7 @@ pub fn build(b: *std.Build) void {
          std.process.exit(1);
      }
      addNativeAudioDependencies(b, bench_ffi_mod, bench_ffi_target, macos_sdk_path);
@@ -154,7 +170,7 @@ index 84cafc7..a606058 100644
      const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
      bench_ffi_step.dependOn(&install_bench_ffi.step);
      bench_step.dependOn(bench_ffi_step);
-@@ -861,9 +903,37 @@ fn createLibraries(
+@@ -861,9 +912,37 @@ fn createLibraries(
          .strip = false,
          .pic = true,
      });

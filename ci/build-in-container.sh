@@ -10,17 +10,12 @@ printf '%s\n' 'deb https://packages.termux.dev/apt/termux-main stable main' > "$
 apt update -y
 apt install -y binutils clang curl file git libc++ ndk-sysroot nodejs-lts npm tar xz-utils zig
 
-# Pin the bun build instead of floating on install.sh: 1.4.0-patched
-# resolved the workspace differently inside termux-docker — typescript
-# never landed under packages/core/node_modules, so declaration
-# generation died with "node_modules/.bin/tsc: No such file or
-# directory" (container-only break; fine on device). Now on 1.4.2-patched:
-# Android 12 close_range seccomp fix plus upstream 1.4.2 install work.
-# Non-publish CI runs are the gate before releases switch over.
+BUN_TERMUX_VERSION="1.4.3-patched"
 curl -fsSL -o "$PREFIX/tmp/bun.deb" \
-  "https://github.com/bd-loser/bun-termux/releases/download/v1.4.2-patched/bun_1.4.2-patched_aarch64.deb"
+  "https://github.com/bd-loser/bun-termux/releases/download/v${BUN_TERMUX_VERSION}/bun_${BUN_TERMUX_VERSION}_aarch64.deb"
 dpkg -i "$PREFIX/tmp/bun.deb"
 rm -f "$PREFIX/tmp/bun.deb"
+test "$(bun --version)" = "${BUN_TERMUX_VERSION%-patched}"
 
 zig version
 

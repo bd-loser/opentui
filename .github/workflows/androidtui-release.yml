@@ -24,7 +24,7 @@ jobs:
   verify-overlay:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Prepare pinned OpenTUI source
         run: node scripts/prepare.mjs
       - name: Verify patches and overlay
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build inside Termux
         run: bash ci/build-on-runner.sh
       - name: Upload release bundle

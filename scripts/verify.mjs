@@ -9,10 +9,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const sourceRoot = join(resolve(process.env.ANDROIDTUI_WORK_ROOT ?? join(root, ".work")), "opentui")
 const manifest = JSON.parse(readFileSync(join(root, "androidtui.json"), "utf8"))
 
-// Releases ship plain upstream versions (0.5.14 == vX.Y.Z). Only preview
-// slots may carry a suffix, and only -future.N — the old -android.N test
-// numbering is retired.
-if (!/^\d+\.\d+\.\d+(?:-future\.\d+)?$/.test(manifest.releaseVersion)) {
+// An Android-only packaging fix to an already published upstream version
+// needs a new npm version; published tarballs cannot be replaced.
+if (!/^\d+\.\d+\.\d+(?:-(?:future|android)\.\d+)?$/.test(manifest.releaseVersion)) {
   throw new Error(`Invalid Android release version: ${manifest.releaseVersion}`)
 }
 const releaseBase = manifest.releaseVersion.split("-")[0]
@@ -31,6 +30,9 @@ const versionOrder = compareVersions(releaseBase, upstreamBase)
 
 if (manifest.releaseVersion.includes("-future.") && versionOrder >= 0) {
   throw new Error(`Future preview ${manifest.releaseVersion} must precede upstream ${manifest.upstream.tag}`)
+}
+if (manifest.releaseVersion.includes("-android.") && versionOrder !== 0) {
+  throw new Error(`Android fix ${manifest.releaseVersion} must match upstream ${manifest.upstream.tag}`)
 }
 if (!manifest.releaseVersion.includes("-future.") && versionOrder > 0) {
   throw new Error(`${manifest.releaseVersion} is ahead of upstream ${manifest.upstream.tag}`)
@@ -86,6 +88,9 @@ if (!changed.includes("packages/core/src/node-asset-target.ts")) {
 }
 if (!changed.includes("packages/native/build.zig")) {
   throw new Error("Android Zig build patch was not applied")
+}
+if (!changed.includes("packages/core/src/platform/ffi.ts")) {
+  throw new Error("Android tagged-pointer FFI patch was not applied")
 }
 
 for (const packageName of ["core", "react", "solid", "keymap", "qrcode", "three", "ssh"]) {

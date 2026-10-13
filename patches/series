@@ -5,3 +5,4 @@
 0005-register-android-build.patch
 0006-zig-android-bionic.patch
 0007-android-clipboard-thread-join.patch
+0008-android-tagged-ffi-pointers.patch

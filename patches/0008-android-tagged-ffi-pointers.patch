@@ -1,0 +1,124 @@
+diff --git a/packages/core/src/platform/ffi.test.ts b/packages/core/src/platform/ffi.test.ts
+index 78b9b51..4f2e91b 100644
+--- a/packages/core/src/platform/ffi.test.ts
++++ b/packages/core/src/platform/ffi.test.ts
+@@ -27,6 +27,7 @@ import {
+ } from "./ffi.js"
+ 
+ const IS_BUN = typeof process.versions?.bun === "string"
++const ANDROID_BUN = IS_BUN && process.platform === "android"
+ 
+ test("trims fresh Node FFI output buffers without copying", () => {
+   const partial = new Uint8Array([1, 2, 3, 4])
+@@ -47,7 +48,7 @@ function createMockBackend() {
+   const events: string[] = []
+   const symbolDefinitions: unknown[] = []
+   const callbackDefinitions: unknown[] = []
+-  const toArrayBufferPointers: number[] = []
++  const toArrayBufferPointers: Array<number | bigint> = []
+   const rawCallbacks: MockJSCallback[] = []
+   let nextPtr = 1
+ 
+@@ -233,14 +234,14 @@ describe("platform/ffi", () => {
+     const { backend, callbackDefinitions, symbolDefinitions, toArrayBufferPointers } = createMockBackend()
+ 
+     backend.dlopen("mock", { withPtr: { ptr: 12n as Pointer } })
+-    expect((symbolDefinitions[0] as any).withPtr.ptr).toBe(12)
++    expect((symbolDefinitions[0] as any).withPtr.ptr).toBe(ANDROID_BUN ? 12n : 12)
+ 
+     const library = backend.dlopen("mock", {})
+     library.createCallback(() => undefined, { ptr: 13n as Pointer, returns: "void" })
+-    expect((callbackDefinitions[0] as any).ptr).toBe(13)
++    expect((callbackDefinitions[0] as any).ptr).toBe(ANDROID_BUN ? 13n : 13)
+ 
+     backend.toArrayBuffer(14n as Pointer, 0, 1)
+-    expect(toArrayBufferPointers).toEqual([14])
++    expect(toArrayBufferPointers).toEqual([ANDROID_BUN ? 14n : 14])
+   })
+ 
+   test("rejects unsafe bigint pointer narrowing", () => {
+@@ -248,18 +249,29 @@ describe("platform/ffi", () => {
+     const unsafePointer = (BigInt(Number.MAX_SAFE_INTEGER) + 1n) as Pointer
+     const negativePointer = -1n as Pointer
+ 
+-    expect(toPointer(1n)).toBe((IS_BUN ? 1 : 1n) as Pointer)
++    expect(toPointer(1n)).toBe((IS_BUN && !ANDROID_BUN ? 1 : 1n) as Pointer)
+ 
+     if (IS_BUN) {
+-      expect(() => toPointer(BigInt(Number.MAX_SAFE_INTEGER) + 1n)).toThrow(POINTER_UNSAFE)
++      if (ANDROID_BUN) {
++        expect(toPointer(unsafePointer)).toBe(unsafePointer)
++      } else {
++        expect(() => toPointer(unsafePointer)).toThrow(POINTER_UNSAFE)
++      }
+       expect(() => toPointer(-1n)).toThrow(POINTER_NEGATIVE)
+     } else {
+       expect(toPointer(unsafePointer)).toBe(unsafePointer)
+       expect(toPointer(negativePointer)).toBe(negativePointer)
+     }
+ 
+-    expect(() => backend.toArrayBuffer(unsafePointer, 0, 1)).toThrow(POINTER_UNSAFE)
+-    expect(() => backend.dlopen("mock", { withPtr: { ptr: unsafePointer } })).toThrow(POINTER_UNSAFE)
++    if (ANDROID_BUN) {
++      backend.toArrayBuffer(unsafePointer, 0, 1)
++      backend.dlopen("mock", { withPtr: { ptr: unsafePointer } })
++      expect(() => toPointer(1n << 64n)).toThrow(POINTER_UNSAFE)
++      expect(() => backend.toArrayBuffer(negativePointer, 0, 1)).toThrow(POINTER_NEGATIVE)
++    } else {
++      expect(() => backend.toArrayBuffer(unsafePointer, 0, 1)).toThrow(POINTER_UNSAFE)
++      expect(() => backend.dlopen("mock", { withPtr: { ptr: unsafePointer } })).toThrow(POINTER_UNSAFE)
++    }
+ 
+     const library = backend.dlopen("mock", {})
+     expect(() => library.createCallback(() => undefined, { ptr: negativePointer, returns: "void" })).toThrow(
+diff --git a/packages/core/src/platform/ffi.ts b/packages/core/src/platform/ffi.ts
+index 3d10839..ba6a715 100644
+--- a/packages/core/src/platform/ffi.ts
++++ b/packages/core/src/platform/ffi.ts
+@@ -17,9 +17,9 @@ export type Pointer = PointerInput & { readonly [pointerBrand]: "Pointer" }
+ 
+ type PointerSource = ArrayBufferLike | ArrayBufferView
+ 
+-// Bun accepts numeric pointers only. Keep this type private so Bun's pointer
+-// model does not leak into the exported surface.
+-type BunPointer = number
++// Bun accepts numeric pointers, and Android's tagged pointers as bigints.
++// Keep this type private so Bun's pointer model stays at the backend boundary.
++type BunPointer = number | bigint
+ 
+ // These names match the Bun FFI type strings OpenTUI uses today. Other
+ // backends map them at library load time instead of wrapping every native call.
+@@ -223,6 +223,9 @@ function loadBackend(): FfiBackend {
+ // representation before passing them to native code.
+ export function toPointer(value: PointerInput): Pointer {
+   if (isBun && typeof value === "bigint") {
++    // Bionic tags the high byte of native pointers. Preserve it at the
++    // Bun FFI boundary rather than narrowing to an unsafe JS number.
++    if (process.platform === "android") return toAndroidPointer(value) as Pointer
+     return toSafeNumberPointer(value) as Pointer
+   }
+ 
+@@ -256,6 +259,12 @@ function toSafeNumberPointer(pointer: bigint): number {
+   return Number(pointer)
+ }
+ 
++function toAndroidPointer(pointer: bigint): bigint {
++  if (pointer < 0n) throw new Error(POINTER_NEGATIVE)
++  if (pointer > 0xffff_ffff_ffff_ffffn) throw new Error(POINTER_UNSAFE)
++  return pointer
++}
++
+ function toSafeBigIntPointer(pointer: number): bigint {
+   if (pointer < 0) {
+     throw new Error(POINTER_NEGATIVE)
+@@ -325,7 +334,9 @@ function normalizeBunDefinition(definition: FFIFunction): BunFFIFunction {
+ 
+ // Convert Pointer pointers to Bun pointers at the Bun boundary only.
+ function toBunPointer(pointer: Pointer): BunPointer {
+-  return typeof pointer === "bigint" ? toSafeNumberPointer(pointer) : pointer
++  if (typeof pointer !== "bigint") return pointer
++  if (process.platform === "android") return toAndroidPointer(pointer)
++  return toSafeNumberPointer(pointer)
+ }
+ 
+ // Create a Bun backend from bun:ffi.

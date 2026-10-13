@@ -4,7 +4,7 @@
     "tag": "v0.6.2",
     "commit": "aac943066a5c87e7b4ac9953b918bcd5d631bec9"
   },
-  "releaseVersion": "0.6.2",
+  "releaseVersion": "0.6.2-android.1",
   "packages": [
     "core-android-arm64",
     "core",

@@ -105,7 +105,10 @@ bun -e '
     ot_buffer_create: { args: ["ptr", "ptr", "ptr"], returns: "u32" },
   });
   library.close();
-  await import("@opentui/core");
+  const { resolveRenderLib } = await import("@opentui/core");
+  const renderLib = resolveRenderLib();
+  const context = renderLib.createContext({ objectCapacity: 1024, renderCellsMax: 100000 });
+  renderLib.destroyContext(context);
   console.log(`Bionic package smoke test passed: ${native}`);
 '
 

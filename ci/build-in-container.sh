@@ -10,7 +10,7 @@ printf '%s\n' 'deb https://packages.termux.dev/apt/termux-main stable main' > "$
 apt update -y
 apt install -y binutils clang curl file git libc++ ndk-sysroot nodejs-lts npm tar xz-utils zig
 
-BUN_TERMUX_VERSION="1.4.3-patched"
+BUN_TERMUX_VERSION="1.4.4-patched"
 curl -fsSL -o "$PREFIX/tmp/bun.deb" \
   "https://github.com/bd-loser/bun-termux/releases/download/v${BUN_TERMUX_VERSION}/bun_${BUN_TERMUX_VERSION}_aarch64.deb"
 dpkg -i "$PREFIX/tmp/bun.deb"

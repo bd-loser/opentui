@@ -8,7 +8,20 @@ export PREFIX
 # pkg mirror rotation can select stale mirrors. Pin Termux's canonical source.
 printf '%s\n' 'deb https://packages.termux.dev/apt/termux-main stable main' > "$PREFIX/etc/apt/sources.list"
 apt update -y
-apt install -y binutils clang curl file git libc++ ndk-sysroot nodejs-lts npm tar xz-utils zig
+apt install -y binutils clang curl file git libc++ ndk-sysroot nodejs-lts npm tar xz-utils
+
+# Termux's stock zig package moved to 0.17.0, but the pinned OpenTUI
+# requires Zig 0.16.x (packages/native/build.zig.zon minimum_zig_version).
+# Install the exact version from ziglang.org so the native build matches.
+ZIG_VERSION="0.16.0"
+ZIG_FILE="zig-aarch64-linux-${ZIG_VERSION}.tar.xz"
+ZIG_URL="https://ziglang.org/download/${ZIG_VERSION}/${ZIG_FILE}"
+echo "Installing Zig ${ZIG_VERSION} from ${ZIG_URL}"
+curl -fsSL --connect-timeout 20 --max-time 300 -o "$PREFIX/tmp/$ZIG_FILE" "$ZIG_URL"
+mkdir -p "$PREFIX/opt/zig"
+tar -xJf "$PREFIX/tmp/$ZIG_FILE" -C "$PREFIX/opt/zig" --strip-components=1
+rm -f "$PREFIX/tmp/$ZIG_FILE"
+ln -sf "$PREFIX/opt/zig/zig" "$PREFIX/bin/zig"
 
 BUN_TERMUX_VERSION="1.4.4-patched"
 curl -fsSL -o "$PREFIX/tmp/bun.deb" \

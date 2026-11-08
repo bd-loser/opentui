@@ -180,6 +180,7 @@ crt_dir=$LINKER_STUBS_DIR
 msvc_lib_dir=
 kernel32_lib_dir=
 gcc_dir=
+cc_dir=$PREFIX/bin
 darwin_sdk_dir=
 EOF
 echo "✓ Generated libc file: $LIBC_FILE"

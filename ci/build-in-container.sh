@@ -41,12 +41,13 @@ zig version
 # Diagnostic: Zig 0.17 reshaped the libc paths-file schema. Print the exact
 # field list this Zig expects so the overlay writes a parseable libc file.
 echo "=== zig libc-file schema (LibCInstallation fields) ==="
-for f in "$PREFIX/opt/zig/lib/std/zig/LibCInstallation.zig" "$PREFIX/opt/zig/lib/std/zig/system/NativeTargetInfo.zig"; do
+ZIG_LIB_DIR="$(dirname "$(readlink -f "$(command -v zig)")")/lib"
+for f in "$ZIG_LIB_DIR/std/zig/LibCInstallation.zig" "$PREFIX/lib/zig/lib/std/zig/LibCInstallation.zig" "$PREFIX/opt/zig/lib/std/zig/LibCInstallation.zig"; do
   [ -f "$f" ] || continue
   echo "--- $f"
-  sed -n '1,60p' "$f" | grep -nE '^\s*[a-z_]+:\s*\?' || true
+  sed -n '1,80p' "$f" | grep -nE '^[a-z_]+:[[:space:]]*\?' || true
 done
-grep -rn "darwin_sdk_dir" "$PREFIX/opt/zig/lib/std" 2>/dev/null | head -10 || true
+grep -rn "may not be empty\|missing field" "$ZIG_LIB_DIR/std/zig/LibCInstallation.zig" 2>/dev/null | head || true
 echo "=== end schema ==="
 
 export ANDROIDTUI_WORK_ROOT="$HOME/androidtui-work"

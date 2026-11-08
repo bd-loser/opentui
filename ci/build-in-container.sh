@@ -8,20 +8,26 @@ export PREFIX
 # pkg mirror rotation can select stale mirrors. Pin Termux's canonical source.
 printf '%s\n' 'deb https://packages.termux.dev/apt/termux-main stable main' > "$PREFIX/etc/apt/sources.list"
 apt update -y
-apt install -y binutils clang curl file git libc++ ndk-sysroot nodejs-lts npm tar xz-utils
+apt install -y binutils clang curl file git libc++ ndk-sysroot nodejs-lts npm tar xz-utils zig
 
-# Pinned OpenTUI requires a specific Zig (packages/native/build.zig.zon
-# minimum_zig_version). Termux's stock zig can lag or lead, so install the
-# exact version from ziglang.org so the native build matches.
+# Pinned OpenTUI requires Zig 0.17.x. Termux's stock `zig` package now ships
+# 0.17.0, so install it from apt rather than a fragile 50 MB tarball. If a
+# future apt moves ahead, fall back to the exact pin from ziglang.org.
 ZIG_VERSION="0.17.0"
-ZIG_FILE="zig-aarch64-linux-${ZIG_VERSION}.tar.xz"
-ZIG_URL="https://ziglang.org/download/${ZIG_VERSION}/${ZIG_FILE}"
-echo "Installing Zig ${ZIG_VERSION} from ${ZIG_URL}"
-curl -fsSL --connect-timeout 20 --max-time 300 -o "$PREFIX/tmp/$ZIG_FILE" "$ZIG_URL"
-mkdir -p "$PREFIX/opt/zig"
-tar -xJf "$PREFIX/tmp/$ZIG_FILE" -C "$PREFIX/opt/zig" --strip-components=1
-rm -f "$PREFIX/tmp/$ZIG_FILE"
-ln -sf "$PREFIX/opt/zig/zig" "$PREFIX/bin/zig"
+got="$(zig version 2>/dev/null || true)"
+case "$got" in
+  0.17.*) echo "✓ apt zig ${got}" ;;
+  *)
+    ZIG_FILE="zig-aarch64-linux-${ZIG_VERSION}.tar.xz"
+    ZIG_URL="https://ziglang.org/download/${ZIG_VERSION}/${ZIG_FILE}"
+    echo "apt zig '${got}' is not 0.17.x; installing Zig ${ZIG_VERSION} from ${ZIG_URL}"
+    curl -fsSL --connect-timeout 20 --max-time 600 --retry 5 --retry-all-errors -o "$PREFIX/tmp/$ZIG_FILE" "$ZIG_URL"
+    mkdir -p "$PREFIX/opt/zig"
+    tar -xJf "$PREFIX/tmp/$ZIG_FILE" -C "$PREFIX/opt/zig" --strip-components=1
+    rm -f "$PREFIX/tmp/$ZIG_FILE"
+    ln -sf "$PREFIX/opt/zig/zig" "$PREFIX/bin/zig"
+    ;;
+esac
 
 BUN_TERMUX_VERSION="1.4.4-patched"
 curl -fsSL -o "$PREFIX/tmp/bun.deb" \
@@ -31,6 +37,17 @@ rm -f "$PREFIX/tmp/bun.deb"
 test "$(bun --version)" = "${BUN_TERMUX_VERSION%-patched}"
 
 zig version
+
+# Diagnostic: Zig 0.17 reshaped the libc paths-file schema. Print the exact
+# field list this Zig expects so the overlay writes a parseable libc file.
+echo "=== zig libc-file schema (LibCInstallation fields) ==="
+for f in "$PREFIX/opt/zig/lib/std/zig/LibCInstallation.zig" "$PREFIX/opt/zig/lib/std/zig/system/NativeTargetInfo.zig"; do
+  [ -f "$f" ] || continue
+  echo "--- $f"
+  sed -n '1,60p' "$f" | grep -nE '^\s*[a-z_]+:\s*\?' || true
+done
+grep -rn "darwin_sdk_dir" "$PREFIX/opt/zig/lib/std" 2>/dev/null | head -10 || true
+echo "=== end schema ==="
 
 export ANDROIDTUI_WORK_ROOT="$HOME/androidtui-work"
 rm -rf "$ANDROIDTUI_WORK_ROOT"

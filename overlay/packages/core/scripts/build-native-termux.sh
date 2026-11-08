@@ -169,6 +169,10 @@ echo "✓ crt objects found at: $CRT_DIR"
 LINKER_STUBS_DIR="$REPO_ROOT/.zig-linker-stubs"
 mkdir -p "$LINKER_STUBS_DIR"
 LIBC_FILE="$NATIVE_DIR/libc-termux.txt"
+# Zig's LibCInstallation parser rejects a file that omits ANY struct field
+# (it logs "missing field: <name>" and returns ParseError). Extra keys are
+# ignored. Zig 0.17 added darwin_sdk_dir; emit every field the schema may
+# have, blank for the ones that do not apply to a Linux/Android target.
 cat > "$LIBC_FILE" << EOF
 include_dir=$TERMUX_INCLUDE
 sys_include_dir=$TERMUX_INCLUDE
@@ -176,6 +180,7 @@ crt_dir=$LINKER_STUBS_DIR
 msvc_lib_dir=
 kernel32_lib_dir=
 gcc_dir=
+darwin_sdk_dir=
 EOF
 echo "✓ Generated libc file: $LIBC_FILE"
 echo "  → include_dir=$TERMUX_INCLUDE (Termux real include — proper C/C++ separation)"

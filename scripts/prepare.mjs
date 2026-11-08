@@ -42,8 +42,8 @@ const series = readFileSync(join(root, "patches", "series"), "utf8")
 for (const patch of series) {
   const patchPath = join(root, "patches", patch)
   if (!existsSync(patchPath)) throw new Error(`Missing patch: ${patch}`)
-  run("git", ["apply", "--check", patchPath], sourceRoot)
-  run("git", ["apply", patchPath], sourceRoot)
+  run("git", ["apply", "-C1", "--check", patchPath], sourceRoot)
+  run("git", ["apply", "-C1", patchPath], sourceRoot)
 }
 
 cpSync(join(root, "overlay"), sourceRoot, { recursive: true, force: true })

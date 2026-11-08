@@ -38,9 +38,9 @@ fi
 ZIG_VERSION=$(zig version 2>/dev/null || echo "unknown")
 echo "✓ Zig $ZIG_VERSION detected"
 case "$ZIG_VERSION" in
-  0.16.*) ;;
+  0.17.*) ;;
   *)
-    echo "❌ OpenTUI requires Zig 0.16.x; found $ZIG_VERSION"
+    echo "❌ OpenTUI requires Zig 0.17.x; found $ZIG_VERSION"
     exit 1
     ;;
 esac
@@ -381,7 +381,7 @@ if [ -z "$SO_PATH" ]; then
   echo ""
   echo "   Common fixes:"
   echo "   - Stale extraction: rm -rf packages/native/zig-deps and re-run"
-  echo "   - Wrong Zig: this build needs 0.16.x"
+  echo "   - Wrong Zig: this build needs 0.17.x"
   exit 1
 fi
 

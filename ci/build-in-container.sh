@@ -10,10 +10,10 @@ printf '%s\n' 'deb https://packages.termux.dev/apt/termux-main stable main' > "$
 apt update -y
 apt install -y binutils clang curl file git libc++ ndk-sysroot nodejs-lts npm tar xz-utils
 
-# Termux's stock zig package moved to 0.17.0, but the pinned OpenTUI
-# requires Zig 0.16.x (packages/native/build.zig.zon minimum_zig_version).
-# Install the exact version from ziglang.org so the native build matches.
-ZIG_VERSION="0.16.0"
+# Pinned OpenTUI requires a specific Zig (packages/native/build.zig.zon
+# minimum_zig_version). Termux's stock zig can lag or lead, so install the
+# exact version from ziglang.org so the native build matches.
+ZIG_VERSION="0.17.0"
 ZIG_FILE="zig-aarch64-linux-${ZIG_VERSION}.tar.xz"
 ZIG_URL="https://ziglang.org/download/${ZIG_VERSION}/${ZIG_FILE}"
 echo "Installing Zig ${ZIG_VERSION} from ${ZIG_URL}"

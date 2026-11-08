@@ -1,5 +1,5 @@
 diff --git a/packages/native/build.zig b/packages/native/build.zig
-index 84cafc7..2678844 100644
+index eebdf8b..137a9a0 100644
 --- a/packages/native/build.zig
 +++ b/packages/native/build.zig
 @@ -27,6 +27,7 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
@@ -10,18 +10,18 @@ index 84cafc7..2678844 100644
  };
  
  const DEFAULT_MACOS_SDK_PATH = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk";
-@@ -97,6 +98,10 @@ fn nativeExecutableTarget(b: *std.Build) std.Build.ResolvedTarget {
-         return b.resolveTargetQuery(.{});
-     }
+@@ -99,6 +100,10 @@ fn nativeTarget(b: *std.Build) std.Build.ResolvedTarget {
+ }
  
-+    if (builtin.abi == .android) {
+ fn nativeExecutableTarget(b: *std.Build) std.Build.ResolvedTarget {
++    if (builtin.target.abi == .android) {
 +        return b.resolveTargetQuery(.{});
 +    }
 +
-     // Zig 0.16's ELF linker still fails on newer glibc startup objects that
-     // ship .sframe relocations. Keep shipped libraries on linux-gnu, but use
-     // musl for local native executables so test/debug/bench still work.
-@@ -366,22 +371,38 @@ fn addNativeAudioDependencies(
+     if (builtin.target.os.tag != .linux) {
+         return nativeTarget(b);
+     }
+@@ -451,15 +456,23 @@ fn addNativeAudioDependencies(
      switch (target.result.os.tag) {
          .macos => addMacOSSystemLibraries(b, module, macos_sdk_path.?),
          .linux => {
@@ -47,10 +47,11 @@ index 84cafc7..2678844 100644
 -fn addYogaDependencies(b: *std.Build, module: *std.Build.Module, test_allocator: bool) void {
 +fn addYogaDependencies(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget, test_allocator: bool) void {
      const yoga_dep = b.dependency("yoga", .{});
-     const flags = if (test_allocator)
-         appendCFlags(b, &YOGA_CXX_FLAGS, &.{"-DOT_YOGA_TEST_ALLOCATOR"})
-     else
-         &YOGA_CXX_FLAGS;
+     var flags: []const []const u8 = &YOGA_CXX_FLAGS;
+     if (test_allocator) flags = appendCFlags(b, flags, &.{"-DOT_YOGA_TEST_ALLOCATOR"});
+@@ -467,7 +480,15 @@ fn addYogaDependencies(b: *std.Build, module: *std.Build.Module, test_allocator:
+     // libc++'s float.h then skips the full include, so Yoga's FLT_MAX is missing.
+     if (module.resolved_target.?.result.os.tag == .macos) flags = appendCFlags(b, flags, &.{"-DFLT_MAX=__FLT_MAX__"});
  
 -    module.link_libcpp = true;
 +    module.link_libcpp = target.result.abi != .android;
@@ -65,7 +66,7 @@ index 84cafc7..2678844 100644
      module.addIncludePath(yoga_dep.path(""));
      module.addCSourceFiles(.{
          .root = yoga_dep.path(""),
-@@ -416,6 +437,17 @@ fn addTranslatedCImports(
+@@ -502,6 +523,17 @@ fn addTranslatedCImports(
          .optimize = optimize,
      });
      miniaudio_translate.addIncludePath(b.path("src"));
@@ -83,7 +84,7 @@ index 84cafc7..2678844 100644
      module.addImport("miniaudio", miniaudio_translate.createModule());
  
      const yoga_dep = b.dependency("yoga", .{});
-@@ -425,6 +457,16 @@ fn addTranslatedCImports(
+@@ -511,6 +543,16 @@ fn addTranslatedCImports(
          .optimize = optimize,
      });
      yoga_translate.addIncludePath(yoga_dep.path(""));
@@ -100,7 +101,7 @@ index 84cafc7..2678844 100644
      module.addImport("yoga", yoga_translate.createModule());
      addContextABIHeader(b, module, optimize, target);
  }
-@@ -440,6 +482,15 @@ fn addContextABIHeader(
+@@ -526,6 +568,15 @@ fn addContextABIHeader(
          .target = target,
          .optimize = optimize,
      });
@@ -116,7 +117,7 @@ index 84cafc7..2678844 100644
      module.addImport("context_abi_c", header.createModule());
  }
  
-@@ -546,7 +597,7 @@ pub fn build(b: *std.Build) void {
+@@ -643,7 +694,7 @@ pub fn build(b: *std.Build) void {
      });
      applyDependencies(b, opentui_module, optimize, module_target, build_options);
      addNativeAudioDependencies(b, opentui_module, module_target, macos_sdk_path);
@@ -125,7 +126,7 @@ index 84cafc7..2678844 100644
  
      if (target_option) |target_str| {
          // Build single target
-@@ -588,7 +639,7 @@ pub fn build(b: *std.Build) void {
+@@ -686,7 +737,7 @@ pub fn build(b: *std.Build) void {
          std.process.exit(1);
      }
      addNativeAudioDependencies(b, test_mod, native_target, macos_sdk_path);
@@ -134,7 +135,7 @@ index 84cafc7..2678844 100644
  
      const run_test = b.addRunArtifact(test_artifact);
      test_step.dependOn(&run_test.step);
-@@ -612,7 +663,7 @@ pub fn build(b: *std.Build) void {
+@@ -724,7 +775,7 @@ pub fn build(b: *std.Build) void {
          .use_llvm = true,
      });
      addNativeAudioDependencies(b, cov_mod, native_target, macos_sdk_path);
@@ -143,7 +144,7 @@ index 84cafc7..2678844 100644
      const install_cov = b.addInstallArtifact(cov_artifact, .{});
      cov_step.dependOn(&install_cov.step);
  
-@@ -663,7 +714,7 @@ pub fn build(b: *std.Build) void {
+@@ -776,7 +827,7 @@ pub fn build(b: *std.Build) void {
          .use_llvm = debug_use_llvm,
      });
      addNativeAudioDependencies(b, lifetime_mod, native_target, macos_sdk_path);
@@ -152,11 +153,16 @@ index 84cafc7..2678844 100644
      const run_lifetime = b.addRunArtifact(lifetime_artifact);
      lifetime_step.dependOn(&run_lifetime.step);
  
-@@ -684,2 +735,2 @@ pub fn build(b: *std.Build) void {
+@@ -795,7 +846,7 @@ pub fn build(b: *std.Build) void {
+     bench_mod.link_libc = true;
+     // The scene bench drives a whole Context, which owns audio resources; this adds the image and video shims too.
+     addNativeAudioDependencies(b, bench_mod, native_target, macos_sdk_path);
 -    addYogaDependencies(b, bench_mod, false);
 +    addYogaDependencies(b, bench_mod, native_target, false);
      if (native_target.result.os.tag == .macos) addMacOSSDKSearchPaths(b, bench_mod, macos_sdk_path.?);
-@@ -707,7 +758,7 @@ pub fn build(b: *std.Build) void {
+     // The benches in bench-isolated.zig compile as their own unit, so other benches cannot change their code.
+     const bench_isolated_mod = b.createModule(.{
+@@ -828,7 +879,7 @@ pub fn build(b: *std.Build) void {
          std.process.exit(1);
      }
      addNativeAudioDependencies(b, bench_ffi_mod, bench_ffi_target, macos_sdk_path);
@@ -165,7 +171,7 @@ index 84cafc7..2678844 100644
      const install_bench_ffi = b.addInstallArtifact(bench_ffi_lib, .{});
      bench_ffi_step.dependOn(&install_bench_ffi.step);
      bench_step.dependOn(bench_ffi_step);
-@@ -861,9 +912,37 @@ fn createLibraries(
+@@ -982,9 +1033,37 @@ fn createLibraries(
          .strip = false,
          .pic = true,
      });

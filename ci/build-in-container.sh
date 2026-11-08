@@ -42,12 +42,19 @@ zig version
 # field list this Zig expects so the overlay writes a parseable libc file.
 echo "=== zig libc-file schema (LibCInstallation fields) ==="
 ZIG_LIB_DIR="$(dirname "$(readlink -f "$(command -v zig)")")/lib"
-for f in "$ZIG_LIB_DIR/std/zig/LibCInstallation.zig" "$PREFIX/lib/zig/lib/std/zig/LibCInstallation.zig" "$PREFIX/opt/zig/lib/std/zig/LibCInstallation.zig"; do
-  [ -f "$f" ] || continue
-  echo "--- $f"
-  sed -n '1,80p' "$f" | grep -nE '^[a-z_]+:[[:space:]]*\?' || true
-done
-grep -rn "may not be empty\|missing field" "$ZIG_LIB_DIR/std/zig/LibCInstallation.zig" 2>/dev/null | head || true
+LCI="$ZIG_LIB_DIR/std/zig/LibCInstallation.zig"
+[ -f "$LCI" ] || LCI="$PREFIX/lib/zig/lib/std/zig/LibCInstallation.zig"
+[ -f "$LCI" ] || LCI="$PREFIX/opt/zig/lib/std/zig/LibCInstallation.zig"
+if [ -f "$LCI" ]; then
+  echo "--- $LCI"
+  # field declarations
+  grep -nE '^[a-z_]+:[[:space:]]*\?' "$LCI" || true
+  # how cc_dir is consumed (search dirs / -B flags / crt resolution)
+  echo "--- cc_dir references"
+  grep -n "cc_dir" "$LCI" || true
+  echo "--- crt / search-dir logic"
+  grep -nE "crt_dir|crt1|crtbegin|search_dir|-B|forbidden|include_dir" "$LCI" | head -40 || true
+fi
 echo "=== end schema ==="
 
 export ANDROIDTUI_WORK_ROOT="$HOME/androidtui-work"

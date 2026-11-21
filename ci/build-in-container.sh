@@ -29,7 +29,7 @@ case "$got" in
     ;;
 esac
 
-BUN_TERMUX_VERSION="1.4.4-patched"
+BUN_TERMUX_VERSION="1.4.5-patched"
 curl -fsSL -o "$PREFIX/tmp/bun.deb" \
   "https://github.com/bd-loser/bun-termux/releases/download/v${BUN_TERMUX_VERSION}/bun_${BUN_TERMUX_VERSION}_aarch64.deb"
 dpkg -i "$PREFIX/tmp/bun.deb"

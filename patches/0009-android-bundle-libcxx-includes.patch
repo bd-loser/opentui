@@ -1,23 +1,25 @@
 diff --git a/packages/native/build.zig b/packages/native/build.zig
-index 979f36c..160e447 100644
+index 979f36c..9cb44ee 100644
 --- a/packages/native/build.zig
 +++ b/packages/native/build.zig
-@@ -996,6 +996,15 @@ fn buildTarget(
-             // runtime, so the Windows archive carries what of it MSVC lacks. The shared library installs the header.
-             const run = b.addRunArtifact(bundleTool(b, windows));
-             run.addArgs(&.{ b.graph.zig_exe, zig_target, @tagName(optimize) });
+@@ -1002,6 +1002,17 @@ fn buildTarget(
+             run.addArtifactArg(lib);
+             const name = if (windows) "opentui-static.lib" else "libopentui.a";
+             const archive = run.addOutputFileArg(name);
 +            if (!windows and target.result.abi == .android) {
-+                // The probe compile inherits ZIG_LIBC (Termux's bionic libc
-+                // file) whose include_dir is $PREFIX/include; its linux/*.h
-+                // then need the NDK asm/ headers from outside that directory.
++                // Trailing extra argument: bundle-libcxx forwards arguments
++                // after the standard six to its probe compile as -I. The
++                // probe inherits ZIG_LIBC (Termux's bionic libc file) whose
++                // include_dir is $PREFIX/include; its linux/*.h need the NDK
++                // asm/ headers from outside that directory.
 +                // build-native-termux.sh exports the path — hand it through.
 +                if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |asm_include| {
 +                    run.addArg(asm_include);
 +                }
 +            }
-             run.addFileArg(b.addWriteFiles().add("probe.cpp", "int opentui_probe;\n"));
-             if (windows) run.addFileArg(b.path("src/windows-msvc-shim.c"));
-             if (windows) run.addDirectoryArg(std.Build.LazyPath.zig_lib.path(b, "libc/mingw/lib-common"));
+             const install_archive = b.addInstallFileWithDir(archive, .{ .custom = install_path }, name);
+             build_step.dependOn(&install_archive.step);
+             b.getInstallStep().dependOn(&install_archive.step);
 diff --git a/packages/native/scripts/bundle-libcxx.zig b/packages/native/scripts/bundle-libcxx.zig
 index 5d66ee3..384662f 100644
 --- a/packages/native/scripts/bundle-libcxx.zig

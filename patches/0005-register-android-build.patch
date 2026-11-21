@@ -1,35 +1,8 @@
-diff --git a/packages/core/scripts/build.ts b/packages/core/scripts/build.ts
-index d57da47..2257403 100644
---- a/packages/core/scripts/build.ts
-+++ b/packages/core/scripts/build.ts
-@@ -67,8 +67,8 @@ if (!buildLib && !buildNative) {
- }
- 
- const getZigTarget = (platform: string, arch: string, abi?: string): string => {
--  const platformMap: Record<string, string> = { darwin: "macos", win32: "windows", linux: "linux" }
--  const archMap: Record<string, string> = { x64: "x86_64", arm64: "aarch64" }
-+  const platformMap: Record<string, string> = { darwin: "macos", win32: "windows", linux: "linux", android: "android" }
-+  const archMap: Record<string, string> = { x64: "x86_64", arm64: "aarch64", arm: "arm" }
-   const base = `${archMap[arch] ?? arch}-${platformMap[platform] ?? platform}`
-   return abi ? `${base}-${abi}` : base
- }
-diff --git a/packages/core/scripts/variants.ts b/packages/core/scripts/variants.ts
-index c6c3e24..749c1fc 100644
---- a/packages/core/scripts/variants.ts
-+++ b/packages/core/scripts/variants.ts
-@@ -13,4 +13,6 @@ export const variants: Variant[] = [
-   { platform: "linux", arch: "arm64", abi: "musl" },
-   { platform: "win32", arch: "x64" },
-   { platform: "win32", arch: "arm64" },
-+  // ANDROIDTUI builds the Android native library separately in Termux.
-+  { platform: "android", arch: "arm64" },
- ]
-
 diff --git a/packages/core/scripts/native-abi.ts b/packages/core/scripts/native-abi.ts
-index 1d74d4d..e4624d5 100644
+index 040cabb..416c64c 100644
 --- a/packages/core/scripts/native-abi.ts
 +++ b/packages/core/scripts/native-abi.ts
-@@ -317,6 +317,15 @@ if (import.meta.main) {
+@@ -318,6 +318,15 @@ if (import.meta.main) {
    const args = process.argv.slice(2)
    if (args.some((arg) => arg !== "--check" && arg !== "--all-targets" && arg !== "--audit"))
      throw new Error("Expected --check, --all-targets and/or --audit")
@@ -44,4 +17,28 @@ index 1d74d4d..e4624d5 100644
 +  }
    const abi = compileHeader({ allTargets: args.includes("--all-targets") })
    const generated = await generateNativeABI(abi)
-   if (args.includes("--check")) verifyNativeABI(generated)
+   const rust = generateRustABI(abi, readFileSync(join(nativeRoot, "include/opentui.h")))
+diff --git a/packages/core/scripts/variants.ts b/packages/core/scripts/variants.ts
+index 78a6edb..e84d380 100644
+--- a/packages/core/scripts/variants.ts
++++ b/packages/core/scripts/variants.ts
+@@ -13,6 +13,8 @@ export const variants: Variant[] = [
+   { platform: "linux", arch: "arm64", abi: "musl" },
+   { platform: "win32", arch: "x64" },
+   { platform: "win32", arch: "arm64" },
++  // ANDROIDTUI builds the Android native library separately in Termux.
++  { platform: "android", arch: "arm64" },
+ ]
+ 
+ /** The variant's suffix in package and symbol directory names, such as linux-x64-musl. */
+@@ -22,8 +24,8 @@ export function variantName({ platform, arch, abi }: Variant): string {
+ 
+ /** The output name of the variant in packages/native/build.zig, its directory under lib/: x86_64-linux-musl. */
+ export function zigOutputName({ platform, arch, abi }: Variant): string {
+-  const platformMap: Record<string, string> = { darwin: "macos", win32: "windows", linux: "linux" }
+-  const archMap: Record<string, string> = { x64: "x86_64", arm64: "aarch64" }
++  const platformMap: Record<string, string> = { darwin: "macos", win32: "windows", linux: "linux", android: "android" }
++  const archMap: Record<string, string> = { x64: "x86_64", arm64: "aarch64", arm: "arm" }
+   const base = `${archMap[arch] ?? arch}-${platformMap[platform] ?? platform}`
+   return abi ? `${base}-${abi}` : base
+ }

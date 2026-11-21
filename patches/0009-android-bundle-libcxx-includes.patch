@@ -1,0 +1,54 @@
+diff --git a/packages/native/build.zig b/packages/native/build.zig
+index 979f36c..160e447 100644
+--- a/packages/native/build.zig
++++ b/packages/native/build.zig
+@@ -996,6 +996,15 @@ fn buildTarget(
+             // runtime, so the Windows archive carries what of it MSVC lacks. The shared library installs the header.
+             const run = b.addRunArtifact(bundleTool(b, windows));
+             run.addArgs(&.{ b.graph.zig_exe, zig_target, @tagName(optimize) });
++            if (!windows and target.result.abi == .android) {
++                // The probe compile inherits ZIG_LIBC (Termux's bionic libc
++                // file) whose include_dir is $PREFIX/include; its linux/*.h
++                // then need the NDK asm/ headers from outside that directory.
++                // build-native-termux.sh exports the path — hand it through.
++                if (b.graph.environ_map.get("ANDROIDTUI_ANDROID_ASM_INCLUDE")) |asm_include| {
++                    run.addArg(asm_include);
++                }
++            }
+             run.addFileArg(b.addWriteFiles().add("probe.cpp", "int opentui_probe;\n"));
+             if (windows) run.addFileArg(b.path("src/windows-msvc-shim.c"));
+             if (windows) run.addDirectoryArg(std.Build.LazyPath.zig_lib.path(b, "libc/mingw/lib-common"));
+diff --git a/packages/native/scripts/bundle-libcxx.zig b/packages/native/scripts/bundle-libcxx.zig
+index 5d66ee3..384662f 100644
+--- a/packages/native/scripts/bundle-libcxx.zig
++++ b/packages/native/scripts/bundle-libcxx.zig
+@@ -24,7 +24,7 @@ pub fn main(init: std.process.Init) !void {
+     const arena = init.arena.allocator();
+     const io = init.io;
+     const args = try init.minimal.args.toSlice(arena);
+-    if (args.len != 7) return error.Usage;
++    if (args.len < 7) return error.Usage;
+     const zig, const target, const optimize, const probe, const input, const output =
+         .{ args[1], args[2], args[3], args[4], args[5], args[6] };
+     const cwd = std.Io.Dir.cwd();
+@@ -34,9 +34,18 @@ pub fn main(init: std.process.Init) !void {
+ 
+     // An explicit -femit-bin links on every run, so the linker line prints even when Zig's cache has the probe.
+     const emit = try std.fmt.allocPrint(arena, "-femit-bin={s}/probe.so", .{work});
+-    const link = try run(arena, io, &.{
+-        zig, "build-lib", "-dynamic", "-lc++", "-fstrip", "-fPIC", "--verbose-link", "-target", target, "-O", optimize, probe, emit,
++    // Extra arguments after the standard six are include directories the host
++    // build found necessary (Android: the NDK asm/ headers, without which the
++    // Termux linux/*.h headers cannot be resolved).
++    var link_argv: std.ArrayList([]const u8) = .empty;
++    try link_argv.appendSlice(arena, &.{
++        zig, "build-lib", "-dynamic", "-lc++", "-fstrip", "-fPIC", "--verbose-link", "-target", target, "-O", optimize,
+     });
++    for (args[7..]) |include_dir| {
++        try link_argv.append(arena, try std.fmt.allocPrint(arena, "-I{s}", .{include_dir}));
++    }
++    try link_argv.appendSlice(arena, &.{ probe, emit });
++    const link = try run(arena, io, link_argv.items);
+     var line: ?[]const u8 = null;
+     var lines = std.mem.splitScalar(u8, link, '\n');
+     while (lines.next()) |raw| {

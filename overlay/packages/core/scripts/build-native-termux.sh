@@ -198,6 +198,17 @@ if [ -d "$ASM_INCLUDE" ]; then
   echo "✓ asm include: $ASM_INCLUDE"
 fi
 
+# A real Termux install carries $PREFIX/include/asm (a symlink), but the CI
+# container's ndk-sysroot does not. Zig's bundled libcxx/libcxxabi/libunwind
+# sub-compilations only search the libc file's include_dir, so without it
+# they cannot resolve the <asm/...> includes inside Termux's linux/*.h and
+# bundle-libcxx dies with "asm/types.h file not found". Mirror the device
+# layout so every compilation — probe, sub-compiles, main library — agrees.
+# Best effort: a read-only prefix leaves the -I fallback in patch 0009.
+if [ -d "$ASM_INCLUDE" ] && [ ! -e "$TERMUX_INCLUDE/asm" ]; then
+  ln -s "aarch64-linux-android/asm" "$TERMUX_INCLUDE/asm" 2>/dev/null     && echo "✓ linked $TERMUX_INCLUDE/asm -> aarch64-linux-android/asm"     || echo "! could not create $TERMUX_INCLUDE/asm (patch 0009 -I fallback applies)"
+fi
+
 # The translate-c compatibility wrapper needs the real Bionic sys/time.h.
 # Fill this path only in the disposable prepared checkout; the tracked
 # overlay remains independent of a particular Termux installation prefix.

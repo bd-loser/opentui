@@ -1,10 +1,10 @@
 {
   "upstream": {
     "repository": "https://github.com/anomalyco/opentui.git",
-    "tag": "v0.9.7",
-    "commit": "4ea9c4035286e6d6eb75784ed21c52a9375c7035"
+    "tag": "v0.9.9",
+    "commit": "c93d6f5a57c6d206399d2506aa7e05153b88ffd5"
   },
-  "releaseVersion": "0.9.7",
+  "releaseVersion": "0.9.9",
   "packages": [
     "core-android-arm64",
     "core",
